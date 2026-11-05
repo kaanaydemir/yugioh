@@ -25,7 +25,7 @@ import {
 } from '../../art/arena-nt/wall';
 import type { NtAtlas } from '../../art/arena-nt/wall-kit';
 import { PixelCanvas } from '../../art/pixel';
-import { BRICKWALL_AT, BRICK_BANNERS, BRICK_BOXES, BRICK_TORCHES, NT_BRICKWALL_KEY, paintBrickWall, paintPoolFlicker, poolRect } from '../../art/arena-nt/brickwall';
+import { BRICK_VAULT_H, BRICK_VAULT_W, NT_BRICK_VAULT_KEY, paintBrickVault, BRICKWALL_AT, BRICK_BANNERS, BRICK_BOXES, BRICK_TORCHES, NT_BRICKWALL_KEY, paintBrickWall, paintPoolFlicker, poolRect } from '../../art/arena-nt/brickwall';
 import { HALL_PILLARS, HALL_PIPES, NT_BANNER_KEY, NT_PILLAR_KEY, NT_PIPES_KEY, ensureBackHallTextures } from './backhall';
 import { type NtCtx, type NtLayer } from './layer';
 import { ensureNtTexture } from './textures';
@@ -44,16 +44,18 @@ export function ensureWallTextures(scene: Phaser.Scene): void {
   // hedef-gorunum-3 back wall: its own layer name so the wall's navy lift (calm-remap LIFT_LAYERS) does not touch it
   ensureNtTexture(scene, 'brickwall', NT_BRICKWALL_KEY, () => paintBrickWall());
   BRICK_TORCHES.forEach((_, i) => ensureNtTexture(scene, 'brickwall', `${NT_BRICKWALL_KEY}:pool:${i}`, () => paintPoolFlicker(i)));
+  ensureNtTexture(scene, 'brickwall', NT_BRICK_VAULT_KEY, paintBrickVault);
   // hedef-gorunum-3: the centre emblem as a steel-grey wall ornament (the navy emblem frame, recoloured; no lift remap)
   ensureNtTexture(scene, 'brickwall', NT_STEEL_EMBLEM_KEY, paintSteelEmblem);
 }
 
 const NT_STEEL_EMBLEM_KEY = 'nt:wall:brick:emblem';
 const STEEL_OF: ReadonlyMap<number, number> = new Map([
-  [PAL.night1, PAL.stone0],
-  [PAL.night2, PAL.stone1],
-  [PAL.night3, PAL.stone2],
-  [PAL.night4, PAL.stone3],
+  // one step darker than a plain recolour: the emblem is a recessed wall ornament, it must not compete with the top bar
+  [PAL.night1, PAL.night0],
+  [PAL.night2, PAL.stone0],
+  [PAL.night3, PAL.stone1],
+  [PAL.night4, PAL.stone2],
 ]);
 function paintSteelEmblem(): PixelCanvas {
   const r = wallAtlas().frames['emblem:0'];
@@ -87,8 +89,9 @@ export function createWallLayer(ctx: NtCtx): NtLayer {
   });
   let lit = true;
 
-  const upper = ctx.add(scene.add.blitter(0, 0, NT_WALL_PANEL_KEY).setDepth(WALL_Z.panel).setVisible(false));
-  for (let y = -118; y > -480; y -= 110) for (let x = -8; x < 648; x += 128) upper.create(x, y);
+  // above the brick wall (seen while the intro pans up): the same dark vault, not the old navy panels
+  const upper = ctx.add(scene.add.blitter(0, 0, NT_BRICK_VAULT_KEY).setDepth(WALL_Z.panel).setVisible(false));
+  for (let y = BRICKWALL_AT.y - BRICK_VAULT_H; y > -480; y -= BRICK_VAULT_H) for (let x = -8; x < 648; x += BRICK_VAULT_W) upper.create(x, y);
 
   const blit = (z: number): Phaser.GameObjects.Blitter => ctx.add(scene.add.blitter(0, 0, NT_WALL_KEY).setDepth(z));
   const blitters = new Map<number, Phaser.GameObjects.Blitter>();

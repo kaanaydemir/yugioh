@@ -47,10 +47,10 @@ const SIGIL: readonly string[] = [
   '........',
 ];
 
-/** A hanging banner, 16 × 46 in the player's colour with a gold emblem; `frame` 0..2 sways the swallowtail by a pixel. */
+/** A hanging banner, 16 × 50 in the player's colour with a gold emblem; `frame` 0..2 sways the swallowtail by a pixel. */
 export function paintBanner(side: 0 | 1, frame: number): PixelCanvas {
   const W = 16;
-  const H = 46;
+  const H = 50;
   const p = new PixelCanvas(W, H);
   const R: readonly number[] = side === 0 ? [PAL.cyan0, PAL.cyan1, PAL.cyan2] : [PAL.crim0, PAL.crim1, PAL.crim2];
   const sway = frame === 1 ? 1 : frame === 2 ? -1 : 0;
@@ -66,11 +66,13 @@ export function paintBanner(side: 0 | 1, frame: number): PixelCanvas {
       if (tail && Math.abs(dx + 0.5 - W / 2) < k) continue; // swallowtail notch
       const edge = x === 2 || x === W - 3 || y === H - 1 || (tail && Math.abs(dx + 0.5 - W / 2) < k + 1);
       let c: number = edge ? PAL.ink : x < 5 ? R[2] : x < W - 5 ? R[1] : R[0];
+      // a 1-px lit edge on the cloth (light from the left) so the banner separates from the dark brick
+      if (!edge && x === 3 && y > 3) c = side === 0 ? PAL.cyan3 : PAL.crim3;
       // a gold border stripe and a small diamond emblem
-      if (!edge && (x === 4 || x === W - 5) && y > 4 && !tail) c = PAL.gold1;
+      if (!edge && (x === 4 || x === W - 5) && y > 4 && !tail) c = PAL.gold2;
       // hedef-gorunum-3: a gold winged-V sigil (the arena emblem in miniature)
       const sig = SIGIL[y - 15];
-      if (!edge && sig && x >= 4 && x <= 11 && sig[x - 4] !== '.') c = sig[x - 4] === 'o' ? PAL.gold3 : sig[x - 4] === 'x' ? PAL.gold2 : PAL.gold1;
+      if (!edge && sig && x >= 4 && x <= 11 && sig[x - 4] !== '.') c = sig[x - 4] === 'o' ? PAL.gold4 : sig[x - 4] === 'x' ? PAL.gold3 : PAL.gold2;
       p.set(x, y, c);
     }
   }

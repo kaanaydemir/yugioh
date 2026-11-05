@@ -368,3 +368,67 @@ titreşim filmi wall-06-film.png. typecheck temiz, palcheck PASS, vitest arena-n
 Kalan farklar: meşale alevleri hedefe göre küçük (sprite lights.ts paintTorch, mangallarla ortak — dokunulmadı);
 hedefte havuzlar daha yumuşak/geniş; tavan kemerleri sade; sağdaki borular/kutular HUD ve hologram altında az görünüyor;
 yukarı kaydırılan kamerada (intro) eski panel karoları duruyor.
+
+#### Arka duvar — eleştiri turu 1/3 düzeltmeleri (2026-11-05)
+Önce: `shots/arena/bw2-0.png` (+ `bw2-0-sbs.png`, üst biz / alt hedef). Dosyalar: `art/arena-nt/brickwall.ts`, `view/board-nt/wall.ts`, `view/board-nt/lights.ts`.
+1. **#3 tuğla fazla sıcak/doygun** (geçerli): uzak alan stone0 (+ night1 varyant) — soğuk lacivert-gri; ışık havuzu yarıçapı
+   64×46 → 34×28 px (`POOL_RX/RY`), merdiven stone0 → stone0/skin0 → skin0 → skin1 → skin2 (`bw2-1`).
+2. **#1 meşaleler zayıf** (geçerli): mangaldan ayrı, duvara özel meşale sprite'ı `paintWallTorch` (9×24: 5×9 alev, 3 kare
+   titreşim — dik / sola / sağa, altın-kenarlı demir kap, sap, perçinli duvar plakası); ışık artık PİKSEL başına basamaklı
+   (alevin çevresinde düz eşmerkezli bantlar, dither yok; tuğla deseni kalır) → tuğla kutusu şeklindeki havuz yerine yuvarlak
+   sıcak ışık (`bw2-2`, `bw2-3-z`). Sütun yüzleri de aynı bantlarla sıcak aydınlanıyor (`bw2-5-z`).
+3. **#4 iç meşale konumları** (geçerli): 251/389 → amblem sütunlarının yüzüne 276,40 / 364,40 (sağdaki artık kırmızı ekranın
+   dibinde değil; amblemi iki yandan sarıyor) (`bw2-4`).
+4. **#6 amblem** (kısmen): navy çerçeve stone rampına yeniden boyandı (lift remap'siz) → çelik-gri duvar süsü (`bw2-6-z`).
+   %20 küçültme REDDEDİLDİ: tam sayı olmayan ölçek piksel dilini bozar; yeniden çizim gerekir.
+5. **#2 tavan / intro panelleri** (geçerli kısmı): kameranın yukarı kaydığı intro'da eski lacivert paneller yerine aynı koyu
+   tonoz karosu `paintBrickVault` (kaburga + kemer + boru) (`bw2-7-up.png`). Dinlenme kamerasında 0–17 px tavan zaten var,
+   HUD altında kalıyor (hedefte de) → değiştirilmedi.
+6. **#5 bayraklar** REDDEDİLDİ: kumaş zaten 12 px (16 px sprite), hedefte de sağ bayrak daha alçakta (y≈52–90) — mevcut hali hedefe uyuyor.
+7. **#7 LED kutusu** REDDEDİLDİ: x≈575–590 bandı mor hologramın arkasında; hologram ile HUD arasında görünür boş duvar yok.
+Titreşim filmi `bw2-8-film.png`. Son: `bw2-6.png`, `bw2-final-sbs.png`. typecheck temiz, palcheck PASS; vitest'te 5 kırmızı
+yalnız kart/canavar testlerinde (bu işin dışı). v1: yalnız ARENA_NT yolu.
+Kalan farklar: meşale braketi hedefteki gibi yana kıvrık değil (önden plaka); havuz bantları hedefin yumuşak halesine göre sert.
+
+#### Arka duvar — eleştiri turu 2/3 düzeltmeleri (2026-11-05)
+Önce: `shots/arena/bw3-0.png` (+ `bw3-0-sbs.png` üst biz / alt hedef, yakın `bw3-0-zl.png`). Dosyalar: `art/arena-nt/brickwall.ts`, `view/board-nt/backhall.ts`.
+1. **#1 havuzlar koyu disk** (geçerli): ton merdiveni yalnız AYDINLATIYOR — kenar halkası skin0 (+ stone1 varyant), sonra
+   skin0/earth1 (harç earth0), earth2/skin1, alevin dibinde earth3/earth2 (üst kenar earth4). Koyulaştıran basamak yok; havuz
+   yarıçapı 34×28 aynı, turuncu çekirdek eşikleri 0.3/0.52 → 0.22/0.46 (turuncu yalnız alevin yanında) (`bw3-1`).
+2. **#2 sütunlar okunmuyor** (geçerli): sütunlar vardı ama tuğla merdiveniyle aydınlanıp tuğla gibi görünüyordu. Artık
+   tuğladan KOYU: yüz night0 (havuzda earth0), sağ üçte bir ink, 1 px aydınlık sol kenar (stone1 → havuzda skin0/skin1),
+   başlık + kaide bandı ve ince yatay derzler kalıyor. İç meşaleler (276/364) sütun yüzlerinde okunuyor (`bw3-1-zl`, `bw3-2-zc`).
+   Konum 68/316/604 önerisi REDDEDİLDİ: hedefteki sütunlar ≈109 ve amblemin iki yanında (mevcut 109/268/356); 316 amblemin ortası,
+   68 ve 604 ejderha/mor hologramın arkasında kalıyor.
+3. **#3 tuğla tabanını bir ton koyulaştır** REDDEDİLDİ: uzak alan zaten en koyu taş (stone0 + night1); hedeften örneklenen tuğla
+   (≈#322433) bizimkinden açık. Sıcaklık artık yalnız havuzların içinde.
+4. **#4 meşale küçük** (geçerli): yeni sprite 11×24 — 7×11 alev, gold4 beyaz-sarı çekirdek, 3 kare (dik/sola/sağa), altın
+   ağızlı demir kap, soldaki perçinli duvar kayışından çıkan yan kol + altında kıvrık demir sarmal (`bw3-2-zc`, film `bw3-4-film`).
+5. **#5 amblem** (kısmen): levhanın girintisine 1 px pah (alt/sağ dudak stone1, üst/sol gölgede) → gömme çerçeve okunuyor.
+   Küçültülmüş amblem REDDEDİLDİ (yine): hedefteki amblem ≈45×23, bizimki 54×25 — fark küçük; tam sayı ölçekte yeniden çizim bu turun dışı.
+6. **#6 bayraklar** (geçerli, küçük): kumaş 4 px uzadı (16×46 → 16×50), mevcut V çentikli kuyruk korunuyor (`bw3-3`).
+7. **#7** sahne/zemin maddesi — bu maddenin dışı.
+Son: `bw3-3.png`, `bw3-3-sbs.png`, `bw3-3-zl.png`. typecheck temiz, palcheck PASS, vitest arena-nt/board-nt/board-calm 37/37.
+v1: değişiklikler yalnız v3 tuğla duvar dokusu/sprite'ı ve yalnız v3 duvarın kullandığı bayrakta.
+Kalan farklar: havuzlar hedefin yumuşak halesine göre hâlâ basamaklı disk (palet + dither yasağı); sağ dış sütunlar HUD/hologram altında.
+
+#### Arka duvar — eleştiri turu 3/3 düzeltmeleri (2026-11-05)
+Önce: `shots/arena/bw4-0.png` (+ `bw4-0-sbs.png` üst biz / alt hedef, yakın `bw4-0-z.png`, hedef yakın `bw4-tgt-z.png`).
+Dosyalar: `art/arena-nt/brickwall.ts`, `view/board-nt/wall.ts`, `view/board-nt/backhall.ts`.
+1. **#1 havuzlar düz disk** (geçerli): havuz bantlarının sınırları 4×4 sıralı dither ile çapraz taranıyor (`bay()`, genişlik
+   yarıçapın 0.16'sı; yalnız duvarda, tahta üstünde değil) → kenar halka yerine tuğlaya eriyen hale (`bw4-1-z`). Sütunlar da aynı dither'ı kullanır.
+2. **#2 sütunlar okunmuyor** (geçerli): sütunlar artık tuğladan BİR TON AÇIK yontma taş (yüz stone1, sol kenar stone2, sağ üçte
+   bir stone0, ink derzler; havuzda skin0/skin1/skin2), başlık/kaide üst 2 sırası parlak dudak + altında gölge → kapitel bandı
+   net (`bw4-2-z`). "Tuğladan %15 koyu" önerisi REDDEDİLDİ: tuğla alanı zaten en koyu taş (stone0); daha koyu sütun turda 2'de
+   boşluk/yarık gibi okunuyordu. Konumlar aynı (iç meşaleler 268/356 sütun yüzlerinde).
+3. **#3 amblem** (kısmen): çelik eşleme bir kademe koyu (night1→night0, night2→stone0, night3→stone1, night4→stone2) → gömme,
+   üst barla yarışmıyor (`bw4-3-z`). 44×22'ye küçültme REDDEDİLDİ (yine): tam sayı olmayan ölçek piksel dilini bozar; yeniden çizim ayrı iş.
+4. **#4 meşale** (geçerli): sprite 11×24 → 15×28: alev 7×13 (daha uzun, 3 kare dik/sola/sağa), alevi saran 1 px açık hale
+   (earth3, uçta gold1), kâse 2 px daha geniş + bir sıra derin, 4 px perçinli duvar kayışı + belirgin yan kol (`bw4-4-z`, film `bw4-7-film`).
+5. **#5 bayrak kontrastı** (geçerli): kumaşa 1 px aydınlık sol kenar (crim3), altın şerit gold1→gold2, V mührü gold2/3/4 (`bw4-5-z`).
+   Bu bayrak sprite'ı yalnız v3 tuğla duvarda kullanılıyor.
+6. **#6 duvar tekdüze** (geçerli): uzak alanda seyrek koyu (night0) ve aşınmış açık (stone1) tuğla varyantları; amblem sütunlarının
+   iki yanında birer ızgaralı havalandırma + altında oyuncu renginde yanan gösterge (sol camgöbeği, sağ kızıl) (`bw4-6-z`).
+7. **#7** sahne/zemin/mangal — bu maddenin dışı (sahne ve zemin maddelerine bırakıldı).
+Son: `bw4-6.png`, `bw4-6-sbs.png`. typecheck temiz, palcheck PASS, vitest arena-nt + board-nt 34/34. v1: dokunulan her şey yalnız ARENA_NT v3 duvarında.
+Kalan farklar: hedefin duvarı daha büyük, daha açık mor-gri taş bloklar; havuzlar hâlâ hedeften daha geniş/turuncu; amblem hedeften ~%20 büyük.
