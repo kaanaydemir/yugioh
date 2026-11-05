@@ -615,13 +615,14 @@ function paintMantle(f: Frame): void {
 }
 
 /** Beard layouts in head-local px (facing right): the mass over the jaw and the braids (start x, start y, length). */
-// A moustache-and-chin mass only (the cheek and the jaw's back stay skin), then THREE separate braids hanging onto the
-// chest with dark gaps between them, each ending in a 2×2 stone bead: never a solid plate over the lower face.
+// A moustache-and-chin mass only (the cheek and the jaw's back stay skin), then TWO short braids hanging onto the chest
+// with a clear gap of skin between them (5 px apart: their soft outlines never touch), each ending in a bright 2×2 stone
+// bead — never a solid plate over the lower face, never a grille over the haft crossing the chest.
 const BEARDS: Record<'r34' | 'side' | 'front' | 'back34', { mass: (readonly [number, number])[]; braids: [number, number, number][] }> = {
-  r34: { mass: [[3, 0.5], [5.5, -0.5], [8, 0.5], [8.5, 2.5], [7, 4], [4.5, 4], [3, 2.5]], braids: [[0.4, 3, 8], [3.3, 3.5, 10], [6.2, 3, 7]] },
-  side: { mass: [[4, 0.5], [6.5, -0.5], [9, 0.5], [9.5, 2.5], [8, 4], [5.5, 4], [4, 2.5]], braids: [[2.2, 3, 8], [5.2, 3.5, 10], [8.2, 3, 7]] },
-  front: { mass: [[-4.5, 0.5], [0, -0.5], [4.5, 0.5], [5, 2.5], [3.5, 4], [-3.5, 4], [-5, 2.5]], braids: [[-3, 3, 8], [0, 3.5, 10], [3, 3, 8]] },
-  back34: { mass: [[4.5, 1], [6.5, 1], [7, 4], [5.5, 5.5]], braids: [[6.2, 4, 7]] },
+  r34: { mass: [[4, 1.5], [6, 0.5], [8, 1.5], [8.5, 3], [7, 4.5], [5, 4.5], [3.5, 3]], braids: [[4, 4, 4], [7.8, 3.5, 5]] },
+  side: { mass: [[5, 1.5], [7, 0.5], [9, 1.5], [9.5, 3], [8, 4.5], [6, 4.5], [4.5, 3]], braids: [[5, 4, 4], [8.8, 3.5, 5]] },
+  front: { mass: [[-4.5, 0.5], [0, -0.5], [4.5, 0.5], [5, 2], [3.5, 3.5], [-3.5, 3.5], [-5, 2]], braids: [[-3, 3, 6], [3, 3, 6]] },
+  back34: { mass: [[4.5, 1], [6.5, 1], [7, 4], [5.5, 5.5]], braids: [[6.2, 4, 5]] },
 };
 
 function paintBeard(f: Frame): void {
@@ -637,30 +638,31 @@ function paintBeard(f: Frame): void {
   polyT(f, q, loc([hx, hy], mx, B.mass), BEARD.M);
   bands(q, BEARD, f.light, 1, 1, { top: 1, bottom: 1 });
   f.comp.add(q, Part.beard, { out: BEARD.D });
-  // three braids, each its own part: a dark gap between them (their outlines), swinging by `bead` (the middle one the
-  // longest and the latest), a weave nick every 3 rows; a 2×2 stone bead on each end (stone4 lit, stone3, ink rim)
+  // the braids, each its own part with a SOFT outline (stone1: a grey on skin, not ink bars), swinging by `bead` (the
+  // longer front one the latest); the braid's twist is a nick on its shadow side every 2 rows (a zig-zag, not stripes);
+  // a 2×2 stone bead on each end (stone4 lit, stone3, a stone0 under-rim)
   B.braids.forEach(([dx, y0, len], i) => {
     const bq = layer();
     const x0 = hx + dx * mx;
-    const sw = o.bead * (len / 9) * (i === 1 ? 1.2 : 0.9);
+    const sw = o.bead * (len / 7) * (i === B.braids.length - 1 ? 1.2 : 0.85);
     const path = spline([[x0, hy + y0], [x0 + sw * 0.4, hy + y0 + len * 0.5], [x0 + sw, hy + y0 + len]], 4);
-    polyT(f, bq, ribbon(path, (k) => lerp(1.9, 1.5, k)), BEARD.M);
+    polyT(f, bq, ribbon(path, (k) => lerp(1.8, 1.4, k)), BEARD.M);
     planes(bq, (x, y, src) => {
       const [, by] = xfInv(f.T, x, y);
       if (!src.isOpaque(x + f.light.side, y)) return BEARD.L;
-      if (rnd(by - hy) % 3 === 0) return BEARD.S;
+      if (!src.isOpaque(x - f.light.side, y) && rnd(by - hy) % 2 === 0) return BEARD.S;
       return BEARD.M;
     });
-    f.comp.add(bq, Part.beard, { out: BEARD.D });
+    f.comp.add(bq, Part.beard, { out: BEARD.S });
     const kq = layer();
     const [X, Y] = xf(f.T, [x0 + sw, hy + y0 + len + 1]);
     kq.rect(rnd(X) - 1, rnd(Y) - 1, 2, 2, PAL.stone3);
     kq.set(rnd(X) - 1 + (f.light.side < 0 ? 0 : 1), rnd(Y) - 1, PAL.stone4);
-    f.comp.add(kq, Part.beard, { out: PAL.ink });
+    f.comp.add(kq, Part.beard, { out: PAL.stone0 });
   });
   // the open mouth (nara): a dark hole in the beard under the moustache
   if (o.mouth > 0 && L.head !== 'back34') {
-    const pts: [number, number][] = front ? [[-1, 3], [0, 3], [1, 3], [-1, 4], [0, 4], [1, 4], [0, 5]] : [[4, 3], [5, 3], [6, 3], [4, 4], [5, 4], [5, 5]];
+    const pts: [number, number][] = front ? [[-1, 3], [0, 3], [1, 3], [-1, 4], [0, 4], [1, 4], [0, 5]] : [[5, 3], [6, 3], [7, 3], [5, 4], [6, 4], [6, 5]];
     for (const [lx, ly] of pts) {
       const [x, y] = xf(f.T, [hx + lx * mx, hy + ly]);
       f.p.set(rnd(x), rnd(y), ly === 3 ? PAL.skin0 : PAL.ink);
@@ -690,8 +692,10 @@ function paintHead(f: Frame): void {
   // hair: shaved crown with a dark band at the back, a top-knot (back views: all hair)
   const hairT: Tones = { L: PAL.earth1, M: PAL.earth0, S: PAL.earth0, D: PAL.ink };
   const isHair = (lx: number, ly: number): boolean => {
-    if (mode === 'back') return Math.abs(lx) < 2.5 && ly < -3;
-    if (mode === 'back34') return lx < -1 && lx > -5 && ly < -3;
+    // seen from behind the whole crown is hair (the shaved sides grown dark at the back), the nape skin below it: a back
+    // of a head can never be mistaken for a blank face
+    if (mode === 'back') return ly < -1 - (Math.abs(lx) > 4 ? 1 : 0);
+    if (mode === 'back34') return lx < 2.5 && ly < -1 - (lx < -4 ? 1 : 0);
     if (front) return ly < -6 && Math.abs(lx) < 2;
     return lx < -2 && lx > -5 && ly < -3;
   };
@@ -706,7 +710,7 @@ function paintHead(f: Frame): void {
   f.comp.add(q, Part.head, { out: SKIN.D });
   // top-knot: a tuft tied with a stone ring at the back of the crown
   const kq = layer();
-  const kx = hx + (front ? 0 : -2 * mx) + tl;
+  const kx = hx + (front || mode === 'back' ? 0 : mode === 'back34' ? -1 * mx : -2 * mx) + tl;
   polyT(f, kq, [[kx - 1.5, hy - 7], [kx + 1.5, hy - 7], [kx + 1, hy - 10], [kx - 1 - 2 * mx, hy - 12], [kx - 2, hy - 10]], PAL.earth0);
   f.comp.add(kq, Part.head, { out: PAL.ink });
   const rq = layer();
@@ -848,7 +852,10 @@ function paintAxe(f: Frame, part: Part): void {
   bands(hq, WOOD, f.light, 1, 1);
   f.comp.add(hq, part, { out: WOOD.D });
   // vine wraps (3 bands of leaf, 2 px each) between the grip and the head
-  for (const k of [-7, 6, 9.5]) {
+  // (a band past the butt end would float off the haft: only those on the haft's own length, foreshortened with it)
+  for (const k0 of [-7, 6, 9.5]) {
+    if (k0 < -(HAFT_ALL - o.hl) + 1.5) continue;
+    const k = k0 * o.fore;
     const c: Pt = [sk.G[0] + sk.dir[0] * k, sk.G[1] + sk.dir[1] * k];
     const a: Pt = [c[0] - sk.dir[0], c[1] - sk.dir[1]];
     const b: Pt = [c[0] + sk.dir[0], c[1] + sk.dir[1]];
@@ -1032,10 +1039,11 @@ export function drawAxeman(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right')
     f = { ...f, p, sk: af.sk, T: IDENT };
   } else {
     f = newFrame(p, o, light, IDENT);
-    // the fallen halves lie behind him (drawn first: his boots stand in front of them); the whole boulder hides him
-    if (o.bould >= 4) boulderFx(f, true);
+    // the fallen halves lie behind him (drawn first: his boots stand in front of them); the whole boulder hides him, and
+    // while its halves fall open they are still the shell AROUND him (drawn over him: he is revealed as they fall away)
+    if (o.bould >= 5) boulderFx(f, true);
     if (!o.hide) drawBody(f, true);
-    if (o.bould > 0 && o.bould < 4) boulderFx(f, true);
+    if (o.bould > 0 && o.bould < 5) boulderFx(f, true);
     p.outline(PAL.ink);
     if (!o.hide) {
       lightPass(f);
