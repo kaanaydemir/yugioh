@@ -46,7 +46,6 @@ import type { CinematicContext, StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
 import { atFrame, panAt, play, start, takeCharge } from '../_v3/sound';
 import type { SfxName } from '../../audio/sfx';
-import { holoOnset } from '../_v3/summon';
 import { behindBodies, cardLeaves } from '../_v3/card';
 import { contactFlash } from '../_v3/flash';
 import { deathStartFrom, takePlannedEntry } from '../_v3/posematch';
@@ -609,6 +608,23 @@ if (LOOK_V3)
 
 // ================================================================ summon "Rüzgâr Kapısı"
 
+/**
+ * Her materialisation out of the floor light: the glide frame appears as a SOLID sunlit silhouette that steps down
+ * the gold ramp (gold4 → gold3 → gold2, one palette step per frame) and then shows her own colours — flat palette
+ * steps, no dither / scan-line hologram (critique r1 #13).
+ */
+function goldOnset(sc: Phaser.Scene, u: MonsterUnit): Promise<void> {
+  const s = u.sprite;
+  const tones = [PAL.gold4, PAL.gold3, PAL.gold2];
+  return animate(sc, tones.length * STEP_MS, (t) => {
+    if (!s.active) return;
+    if (t >= 1) s.clearTint();
+    else s.setTintFill(tones[Math.min(tones.length - 1, Math.floor(t * tones.length))]);
+  }).then(() => {
+    if (s.active) s.clearTint();
+  });
+}
+
 async function glideIn(S: Stage): Promise<void> {
   const sc = S.scene;
   const u = S.unit;
@@ -659,7 +675,7 @@ async function glideIn(S: Stage): Promise<void> {
   const p0 = { x: startFloor.x + (home.x - startFloor.x) * 0.2, y: startFloor.y + (home.y - startFloor.y) * 0.2 };
   setFeet(u, { x: p0.x, y: p0.y - lift0 }, p0, DEPTH.FX - 6);
   u.showSprite();
-  void holoOnset(sc, u, RAMPS.gold, 200);
+  void goldOnset(sc, u);
   const streams = layer(sc, DEPTH.FX - 5);
   let prev = { ...p0, y: p0.y - lift0 };
   const GLIDE = 360;
@@ -693,19 +709,24 @@ async function glideIn(S: Stage): Promise<void> {
   atFrame(u, 'summon', landF + 1, () => {
     if (u.sprite.active && u.frameInfo().anim === 'summon') u.sprite.anims.timeScale = 1.6;
   }, { late: true, maxMs: 2200 });
-  const lifts = [9, 4, 1];
-  for (let b = 0; b < 3; b++) {
-    const f = 4 + b;
+  // three back-wing beats over six frames (mid · down · mid · up · mid · down, summon f4–f9): the sprite bobs in
+  // its own frames, the cinematic sinks her toward the floor under it; a beat sound and a crescent on each downstroke
+  const first = 4;
+  const lifts = [10, 8, 6, 5, 3, 1];
+  for (let b = 0; b < lifts.length; b++) {
+    const f = first + b;
+    const down = b === 1 || b === 5;
+    const up = b === 3;
     atFrame(
       u,
       'summon',
       f,
       () => {
-        play('khWingBeat', { volume: 0.8 - b * 0.15, pan: panAt(home.x) });
+        if (down || up) play('khWingBeat', { volume: up ? 0.55 : b === 1 ? 0.8 : 0.6, pan: panAt(home.x) });
         const fl = { ...home };
         setFeet(u, { x: fl.x, y: fl.y - lifts[b] }, fl, DEPTH.FX - 6);
-        void crescent(sc, { x: home.x + facing * 6, y: home.y + 1 }, facing, 12 - b * 2);
-        lightSpan = 18 - b;
+        if (down) void crescent(sc, { x: home.x + facing * 6, y: home.y + 1 }, facing, b === 1 ? 12 : 9);
+        lightSpan = 18 - (b >> 1);
       },
       { late: true, maxMs: 1600 },
     );
@@ -726,7 +747,7 @@ async function glideIn(S: Stage): Promise<void> {
   );
   atFrame(u, 'summon', landF + 1, () => play('khToe', { volume: 0.7, pan: panAt(home.x) }), { late: false, maxMs: 2200 });
   // ---- the salute (f11): the jewel flares, she sings her first note, the badge pops
-  const saluteF = 11;
+  const saluteF = landF + 4;
   await untilShown(u, 'summon', saluteF, 2600);
   stopLight();
   if (glow.g.active) glow.g.destroy();
@@ -805,6 +826,9 @@ async function kestrel(s: StrikeArgs): Promise<void> {
   const charge = takeCharge(u, 'khHover', { volume: 0.85, pan });
   const conF = u.markFrame('attack', 'contact', 6);
   const relF = u.markFrame('attack', 'release', 5);
+  // the follow-through after the clap (sprite order): open (the brackets spring outward / fail on a guard) ·
+  // sweep (wings level) · rebound (wings up) · two back-flaps · touch down
+  const F = { open: conF + 1, sweep: conF + 2, rebound: conF + 3 };
   const loses = s.ctx.ev.result === 'attackerDestroyed' || s.ctx.ev.result === 'bothDestroyed';
   const aim: XY = s.direct || !s.target || !s.target.sprite.active ? { x: s.to.x, y: s.to.y } : s.target.core();
   const tip = artPoint(u, 'attack', conF, 'muzzle') ?? u.art.muzzle;
@@ -874,24 +898,60 @@ async function kestrel(s: StrikeArgs): Promise<void> {
       await sleep(sc, 34);
       return;
     }
-    await sleep(sc, 70);
+    // blocked: the battle claims her animation on this frame for its generic recoil (battle.ts recoilAfterStop);
+    // the perch is HER answer, so a stand-in image of her own frames carries it from the contact frame on while
+    // the claimed sprite plays the recoil hidden underneath (kite_fencer's blocked bow does the same)
+    const spr = u.sprite;
+    const stand = s.blocked && s.target && s.target.sprite.active
+      ? sc.add.image(spr.x, spr.y, spr.texture.key, `attack:${conF}`).setOrigin(spr.originX, spr.originY).setFlipX(spr.flipX).setDepth(s.target.sprite.depth + 1)
+      : null;
+    if (stand) spr.setVisible(false);
+    // the clap holds its contact beat (the class hit-stop rides on top)
+    await sleep(sc, 60);
     const f6 = feetOf(u);
-    if (s.blocked && s.target && s.target.sprite.active) {
-      // ---- blocked: the brackets fail; she PERCHES one beat on top of the defender, then kicks off
-      // the defender's head: its silhouette top over the core (the frame top can be far above the body)
+    if (stand && !(s.target && s.target.sprite.active)) {
+      stand.destroy();
+      if (spr.active) spr.setVisible(true);
+    }
+    if (stand && stand.active && s.target && s.target.sprite.active) {
+      // ---- blocked: she STAYS in contact while the brackets bend outward on the guard (the open pose, a 1-px
+      // shiver), then rises straight off the contact point onto the defender's head along a short arc with an
+      // anticipation dip; the rebound pose is the arc's apex and the perch; the feet plant with a 1-px squash
       const tc = s.target.core();
       const th = s.target.home;
       const top = s.target.worldPoint('top');
-      // 'top' is the idle silhouette top; attack f7 draws her soles 4 px above the anchor and a guard pose
-      // sits a few px lower than idle: +10 puts her soles ON the defender's head, not above it
       const perch = rint({ x: tc.x - dir * 3, y: Math.max(top.y + 10, tc.y - (th.y - tc.y) + 6) });
-      u.pose('attack', 7);
-      await animate(sc, 110, (t) => {
-        const k = E.outQ(t);
-        setFeet(u, { x: f6.x + (perch.x - f6.x) * k, y: f6.y + (perch.y - f6.y) * k - Math.sin(Math.PI * t) * 4 }, goal, s.target!.sprite.depth + 1);
-      });
-      play('khPerch', { volume: 0.9, pan: panAt(perch.x) });
-      await sleep(sc, 120);
+      const dTop = s.target.sprite.depth + 1;
+      const img = stand;
+      const show = (f: number, p: XY) => {
+        setFeet(u, p, goal, dTop);
+        if (img.active) img.setFrame(`attack:${f}`).setPosition(Math.round(p.x), Math.round(p.y - u.art.hover)).setDepth(dTop);
+      };
+      try {
+        for (let k = 0; k < 3; k++) {
+          show(F.open, { x: f6.x - dir * (k % 2), y: f6.y });
+          await sleep(sc, 25);
+        }
+        // the anticipation dip (2 px down) with the wings sweeping level
+        show(F.sweep, { x: f6.x, y: f6.y + 2 });
+        await sleep(sc, 34);
+        const apex = { x: (f6.x + perch.x) / 2, y: Math.min(f6.y, perch.y) - 7 };
+        await animate(sc, 130, (t) => show(t > 0.35 ? F.rebound : F.sweep, quad({ x: f6.x, y: f6.y + 2 }, apex, perch, E.outQ(t))));
+        // plant: a 1-px squash (one frame down), then the perch beat
+        show(F.rebound, { x: perch.x, y: perch.y + 1 });
+        play('khPerch', { volume: 0.9, pan: panAt(perch.x) });
+        await sleep(sc, 34);
+        show(F.rebound, perch);
+        await sleep(sc, 90);
+      } finally {
+        img.destroy();
+        if (spr.active) spr.setVisible(true);
+      }
+      // the recoil is over (or cut): the sprite is hers again
+      if (u.claimed) u.unclaim();
+      if (u.retired || !u.sprite.active) return;
+      u.pose('attack', F.rebound);
+      setFeet(u, perch, goal, dTop);
       // the kick: the defender is pushed 1 px down for two frames
       const ts = s.target.sprite;
       const ty = ts.y;
@@ -902,35 +962,38 @@ async function kestrel(s: StrikeArgs): Promise<void> {
         });
       }
       play('khKickOff', { volume: 0.85, pan: panAt(perch.x) });
-      u.pose('attack', 8);
+      u.pose('attack', F.rebound + 1);
       // a short push back off the head (not a climb: high over the back rows she would read as standing there)
       const kick = { x: perch.x - dir * 12, y: perch.y - 3 };
       await animate(sc, 120, (t) => setFeet(u, { x: perch.x + (kick.x - perch.x) * E.outQ(t), y: perch.y + (kick.y - perch.y) * E.outQ(t) }, home));
-      await flapHome(u, kick, home, 340, false);
+      await flapHome(u, kick, home, 340, false, F.rebound + 1);
     } else if (s.direct) {
-      // ---- direct: she bursts up off the clap and the wind carries her home on a high backward arc
-      u.pose('attack', 7);
+      // ---- direct: she bursts up off the clap (open → sweep → rebound, moving together) and the wind carries her
+      // home on a high backward arc
       const top = { x: (f6.x + home.x) / 2, y: Math.min(f6.y, home.y) - 26 };
-      await animate(sc, 340, (t) => {
+      await animate(sc, 400, (t) => {
         const p = quad(f6, top, { x: home.x, y: home.y - 3 }, E.inOutQ(t));
         const ground = { x: f6.x + (home.x - f6.x) * t, y: goal.y + (home.y - goal.y) * t };
         setFeet(u, p, ground);
-        if (t > 0.35 && u.frameInfo().frame === 7) {
-          u.pose('attack', 8);
-          play('khWingBeat', { volume: 0.5, pan: panAt(p.x) });
-        }
-        if (t > 0.7 && u.frameInfo().frame === 8) {
-          u.pose('attack', 9);
-          play('khWingBeat', { volume: 0.45, pan: panAt(p.x) });
+        const want = t < 0.08 ? F.open : t < 0.18 ? F.sweep : t < 0.4 ? F.rebound : t < 0.7 ? F.rebound + 1 : F.rebound + 2;
+        if (u.frameInfo().frame !== want) {
+          u.pose('attack', want);
+          if (want > F.rebound) play('khWingBeat', { volume: want === F.rebound + 1 ? 0.5 : 0.45, pan: panAt(p.x) });
         }
       });
-      await touchDown(u, home);
+      await touchDown(u, home, F.rebound + 3);
     } else {
-      // ---- normal: the rebound (f7: 8 back, 4 up), then two back-flaps home, still facing the enemy
-      u.pose('attack', 7);
+      // ---- normal: the recoil — the brackets open, the torso unrolls head-first, the wings sweep up through
+      // level to the rebound pose WHILE she is carried 8 back / 4 up (Quad.Out from the contact frame: position and
+      // pose change together over five game frames), then two back-flaps home, still facing it
       const rb = { x: f6.x - dir * 8, y: f6.y - 4 };
-      await animate(sc, 150, (t) => setFeet(u, { x: f6.x + (rb.x - f6.x) * E.outQ(t), y: f6.y + (rb.y - f6.y) * E.outQ(t) }, goal));
-      await flapHome(u, rb, home, 430, false);
+      await animate(sc, 170, (t) => {
+        const k = E.outQ(t);
+        setFeet(u, { x: f6.x + (rb.x - f6.x) * k, y: f6.y + (rb.y - f6.y) * k }, goal);
+        const want = t < 0.25 ? F.open : t < 0.5 ? F.sweep : F.rebound;
+        if (u.frameInfo().frame !== want) u.pose('attack', want);
+      });
+      await flapHome(u, rb, home, 430, false, F.rebound + 1);
     }
   } finally {
     charge.stop(80);
@@ -951,7 +1014,7 @@ async function kestrel(s: StrikeArgs): Promise<void> {
 }
 
 /** Two strong back-beats (attack f8 / f9) along a shallow arc to just above her tile, then the touch down. */
-async function flapHome(u: MonsterUnit, from: XY, home: XY, ms: number, high: boolean): Promise<void> {
+async function flapHome(u: MonsterUnit, from: XY, home: XY, ms: number, high: boolean, back1: number): Promise<void> {
   const sc = u.scene;
   // a descending arc: from a high start (the perch) she sinks all the way home instead of cruising at head height
   const mid = { x: (from.x + home.x) / 2, y: Math.min(Math.min(from.y, home.y) + Math.abs(home.y - from.y) * 0.45, Math.max(from.y, home.y) - 4) - (high ? 10 : 6) };
@@ -962,23 +1025,97 @@ async function flapHome(u: MonsterUnit, from: XY, home: XY, ms: number, high: bo
     const want = t < 0.5 ? 1 : 2;
     if (want > beat) {
       beat = want;
-      u.pose('attack', want === 1 ? 8 : 9);
+      u.pose('attack', want === 1 ? back1 : back1 + 1);
       play('khWingBeat', { volume: 0.55, pan: panAt(p.x) });
     }
   });
-  await touchDown(u, home);
+  await touchDown(u, home, back1 + 2);
 }
 
-async function touchDown(u: MonsterUnit, home: XY): Promise<void> {
-  u.pose('attack', 10);
+async function touchDown(u: MonsterUnit, home: XY, touchF: number): Promise<void> {
+  u.pose('attack', touchF);
   setFeet(u, home);
   play('khToe', { volume: 0.6, pan: panAt(home.x) });
-  await sleep(u.scene, u.frameMs('attack', 10));
-  u.pose('attack', 11);
-  await sleep(u.scene, Math.min(120, u.frameMs('attack', 11)));
+  await sleep(u.scene, u.frameMs('attack', touchF));
+  u.pose('attack', touchF + 1);
+  await sleep(u.scene, Math.min(120, u.frameMs('attack', touchF + 1)));
 }
 
 if (LOOK_V3) registerStrike(ID, (s) => kestrel(s), { priority: 20, name: `kart-f:${ID}:strike` });
+
+// ================================================================ guard "Kanat Kalkanı": her own guard read
+
+/**
+ * A blow on her guard: the shared hex-shield glint (MonsterUnit.guardHit) is hidden on the contact frame — her
+ * buckler wing IS the shield — and a gold feather-edge spark runs along the buckler's leading edge (gold4 → gold3 →
+ * gold2 over three frames) with three short gold dashes thrown back along the blow. The pose answer is the sprite's:
+ * guardHit's brace plays toGuard f4 (the buckler flares) → f3 (it bends, the shoulders rock back) → guard.
+ */
+function featherEdgeSpark(sc: Phaser.Scene, u: MonsterUnit, face: number): void {
+  const tip = pointNow(u, 'staff', u.core());
+  const c = u.core();
+  const wrist = rint({ x: c.x + face * 3, y: c.y - 6 });
+  const path = pixelPath([wrist, { x: (wrist.x + tip.x) / 2 + face * 2, y: (wrist.y + tip.y) / 2 - 1 }, tip]);
+  const px = layer(sc, u.sprite.depth + 0.7);
+  void animate(sc, 3 * STEP_MS, (t) => {
+    px.clear();
+    if (t >= 1) return;
+    const f = Math.min(2, Math.floor(t * 3));
+    const tone = [PAL.gold4, PAL.gold3, PAL.gold2][f];
+    path.forEach((p, i) => {
+      if (f === 0 || (i + f) % 2 === 0) px.dot(p.x + face * f, p.y, tone);
+    });
+    for (let k = 0; k < 3; k++) {
+      const p = path[Math.min(path.length - 1, Math.round(((k + 1) * path.length) / 4))];
+      const d = 2 + f * 3;
+      px.dot(p.x + face * d, p.y - k + 1, tone).dot(p.x + face * (d + 1), p.y - k + 1, tone);
+    }
+  }).then(() => px.g.destroy());
+}
+
+if (LOOK_V3)
+  registerCardHook(
+    ID,
+    'defend',
+    async (ctx) => {
+      const ev = ctx.ev;
+      const u = ev.targetUid !== null ? ctx.unit(ev.targetUid) : null;
+      if (!u || ev.targetPosition !== 'defense' || !u.has('toGuard')) return ctx.base();
+      const sc = ctx.scene;
+      const onContact = (uid: unknown) => {
+        if (uid !== ev.attackerUid) return;
+        sc.events.off('v3:contact', onContact);
+        if (!u.sprite.active || !u.guarding) return;
+        const before = new Set(sc.children.list);
+        const face = u.flipX ? -1 : 1; // she faces the attacker
+        const hide = onFrame(sc, (_dt, el) => {
+          const want = u.sprite.depth + 0.5;
+          for (const o of sc.children.list) {
+            if (before.has(o)) continue;
+            if (o.type === 'Image') {
+              // the hex-shield glint (MonsterUnit guardGlint: an ADD raster at the body's depth + 0.5)
+              const im = o as Phaser.GameObjects.Image;
+              if (im.blendMode === 1 && Math.abs(im.depth - want) < 0.01 && im.texture.key.startsWith('fx:set:')) im.setVisible(false);
+            } else if (o.type === 'Graphics') {
+              // the battle's hex-plate clang (vfx blockClang: graphics at DEPTH.FX + 0.1 / + 0.2; reed_heron hides it too)
+              const g = o as Phaser.GameObjects.Graphics;
+              if (Math.abs(g.depth - (DEPTH.FX + 0.1)) < 1e-6 || Math.abs(g.depth - (DEPTH.FX + 0.2)) < 1e-6) g.setVisible(false);
+            }
+          }
+          return el < 420;
+        });
+        void hide;
+        featherEdgeSpark(sc, u, face);
+      };
+      sc.events.on('v3:contact', onContact);
+      try {
+        return await ctx.base();
+      } finally {
+        sc.events.off('v3:contact', onContact);
+      }
+    },
+    { priority: 20, name: `kart-f:${ID}:guard` },
+  );
 
 // ================================================================ death "Düşen Pelerin"
 
@@ -1011,9 +1148,12 @@ function paintBird(px: Px, cx: number, cy: number, span: number, up: number, rim
     for (const dx of [-2, -1, 0, 1, 2]) put(cx + dx, cy + 6);
     for (const dx of [-3, -1, 1, 3]) put(cx + dx, cy + 7);
   }
+  // two tones: the night fill and a lighter band along the top (lit) edge of the wings and the back (night2 over
+  // night1; night1 over night0) — a body with a light plane, not a flat glyph
+  const band = fill === PAL.night0 ? PAL.night1 : PAL.night2;
   for (const k of set) {
     const [x, y] = k.split(',').map(Number);
-    px.dot(x, y, fill);
+    px.dot(x, y, !flat && !set.has(`${x},${y - 1}`) ? band : fill);
   }
   for (const k of set) {
     const [x, y] = k.split(',').map(Number);
@@ -1118,30 +1258,49 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
       { late: true, maxMs: 2400 },
     );
     at(7, () => play('khFallThud', { volume: 0.9, pan }));
+    // the prone hold lives: the primaries settle a pixel a frame (death f7–f9 in the sprite), the braid slides, and
+    // the jewel gives one last green flicker on f8 (a 1-px leaf3 dot over the dark jewel, two frames)
+    at(8, () => {
+      if (!u.sprite.active) return;
+      const j = pointNow(u, 'head', u.core());
+      const fl = layer(sc, u.sprite.depth + 0.3);
+      fl.dot(j.x, j.y, PAL.leaf3);
+      void sleep(sc, 2 * 17).then(() => fl.g.destroy());
+    });
     await capped(sc, untilShown(u, 'death', n - 1, 1600), 1600);
-    if (u.sprite.active) await sleep(sc, Math.min(90, u.frameMs('death', n - 1)));
-    // ---- lift-off: her outline rises off the floor as a gold-rimmed bird, opens its wings and flies to the graveyard
-    const body = u.sprite.active ? { x: Math.round(u.sprite.x + dir * 4), y: feetOf(u).y - 4 } : { x: home.x, y: home.y - 4 };
-    if (u.sprite.active) u.sprite.setVisible(false);
+    // ---- lift-off: the cape on her back rises as a gold-rimmed bird WHILE the body under it darkens into the floor
+    // (three palette steps night2 → night1 → night0, then gone); the card is born once the bird is off her
+    const spr = u.sprite;
+    const body = spr.active ? { x: Math.round(spr.x + dir * 4), y: feetOf(u).y - 4 } : { x: home.x, y: home.y - 4 };
     play('khBirdFlight', { volume: 0.9, pan });
-    born();
     let pile: XY = { x: home.x - dir * 60, y: home.y - 40 };
     try {
       pile = ctx.views.field.pile(owner, 'graveyard').topXY();
     } catch {
       /* keep */
     }
-    // over the card that is born on the same tile (the bird lifts off ABOVE it)
+    // over the card that will be born on the same tile (the bird lifts off ABOVE it)
     const px = layer(sc, DEPTH.FX + 40);
     void lightFlash(sc, body.x, body.y, PAL.gold3, 22, 240, { floorY: home.y, intensity: 0.55 });
-    // 3 frames: slab → half wings → full bird (it lifts 2 px a frame)
-    for (let k = 0; k < 3; k++) {
+    // 4 frames: the cape slab lifts off her back → half wings → full bird (2–5 px a frame); the body fades by steps
+    const fade = [PAL.night2, PAL.night1, PAL.night0];
+    for (let k = 0; k < 4; k++) {
       px.clear();
-      if (k === 0) paintBird(px, body.x, body.y, 13, 0, PAL.gold2, PAL.night0, true);
-      else paintBird(px, body.x, body.y - k * 5, k === 1 ? 11 : 17, k === 1 ? 2 : 6, PAL.gold3, PAL.night1);
+      if (k === 0) paintBird(px, body.x, body.y - 1, 13, 0, PAL.gold2, PAL.night0, true);
+      else paintBird(px, body.x, body.y - 1 - k * 4, k === 1 ? 10 : k === 2 ? 14 : 17, k === 1 ? 1 : k === 2 ? 4 : 6, PAL.gold3, PAL.night1);
+      if (spr.active) {
+        if (k < fade.length) spr.setTintFill(fade[k]);
+        else spr.setVisible(false);
+      }
+      if (k === 2) born();
       await sleep(sc, STEP_MS);
     }
-    const from = { x: body.x, y: body.y - 10 };
+    if (spr.active) {
+      spr.setVisible(false);
+      spr.clearTint();
+    }
+    born();
+    const from = { x: body.x, y: body.y - 13 };
     const ctl = { x: (from.x + pile.x) / 2, y: Math.min(from.y, pile.y) - 34 };
     await animate(sc, 400, (t) => {
       px.clear();

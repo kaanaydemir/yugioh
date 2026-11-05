@@ -108,7 +108,7 @@ interface Tones {
 }
 const LEGGING: Tones = { d: PAL.leaf0, m: PAL.leaf1, l: PAL.leaf2 };
 const LEGGING_FAR: Tones = { d: PAL.leaf0, m: PAL.leaf0, l: PAL.leaf1 };
-const BODICE: Tones = { d: PAL.leaf1, m: PAL.leaf2, l: PAL.leaf3 };
+const BODICE: Tones = { d: PAL.leaf0, m: PAL.leaf1, l: PAL.leaf2 };
 const SKIN: Tones = { d: PAL.skin2, m: PAL.skin3, l: PAL.skin3 };
 /** the near arm in P1: its outer side faces away from the light */
 const SKIN_SHADE: Tones = { d: PAL.skin2, m: PAL.skin2, l: PAL.skin2 };
@@ -201,6 +201,8 @@ export interface Pose {
   nearFront: boolean;
   /** the far wing drawn in front of the torso (but behind the near arm) */
   farMid: boolean;
+  /** the near wing drawn BEHIND the torso (the clap: both wings arc ahead of the body, the body stays clear) */
+  nearBack: boolean;
   braid: Ribbon;
   sash: Ribbon;
   /** jewel: 0 dark, 1 dim (leaf3), 2 lit (leaf4), 3 flare (3-px cross) */
@@ -230,16 +232,17 @@ export const NEUTRAL: Pose = {
   fby: GY,
   ffx: 40,
   ffy: GY,
-  gx: 42,
+  gx: 44,
   gy: 48,
   rgx: 31,
   rgy: 47,
-  sa: 96,
+  sa: 56,
   noSword: false,
   wn: WING_NEAR0,
   wf: WING_FAR0,
   nearFront: false,
   farMid: false,
+  nearBack: false,
   braid: BRAID0,
   sash: SASH0,
   jewel: 2,
@@ -428,8 +431,9 @@ export function paintWing(f: PixelCanvas, root: V, w: Wing, rot: number, tones: 
   const serr = (i: number) => {
     const s = pts[i].s;
     if (s < 0.08 || s > 0.94) return 0;
-    const k = i % 3 === 1 ? 1 : 0;
-    return k * (s > w.ps ? 2 : 1.2);
+    // the secondaries: small regular feather tips; the primaries: long separated fingers (cut below)
+    if (s > w.ps) return 1.5;
+    return i % 3 === 1 ? 1 : 0;
   };
   const P = (i: number, v: number, jut = 0): V => {
     const p = pts[i];
@@ -470,13 +474,37 @@ export function paintWing(f: PixelCanvas, root: V, w: Wing, rot: number, tones: 
         if (open(x + side, y) || open(x + 2 * side, y) || open(x + 3 * side, y) || open(x, y - 1)) q.set(x, y, up(c));
         else if (open(x - side, y) || open(x - 2 * side, y)) q.set(x, y, wdown(c));
       }
-  // three slate bars across the flight feathers (1 px, 4-connected), parallel to the chord
-  for (const sb of [0.24, 0.4]) {
-    const i = Math.round(sb * N);
-    line4(q, P(i, w.cv + 0.12), P(i, 0.82), (x, y) => {
-      const c = q.get(x, y);
-      if (q.isOpaque(x, y) && c !== tones.lc && c !== PAL.earth4) q.set(x, y, tones.bar);
-    });
+  // the barring: evenly spaced short slate dashes in two rows ALONG the feathers' run (parallel to the
+  // leading edge), the same length each, staggered like chevrons — never loose blobs
+  const rows = [w.cv + (0.86 - w.cv) * 0.35, w.cv + (0.86 - w.cv) * 0.8];
+  rows.forEach((v, r) => {
+    const s0 = 0.1 + r * 0.06;
+    const s1 = w.ps - 0.02;
+    const step = 4 / N;
+    for (let sb = s0; sb + 2 / N <= s1; sb += step) {
+      const i = Math.round(sb * N);
+      line4(q, P(i, v), P(Math.min(N, i + 1), v + 0.06), (x, y) => {
+        const c = q.get(x, y);
+        if (q.isOpaque(x, y) && c !== tones.lc && c !== PAL.earth4 && c !== tones.pr && c !== tones.pt) q.set(x, y, tones.bar);
+      });
+    }
+  });
+  // the primaries' fingers: 1-px gaps cut from the trailing edge inward (3 separate points beyond the hand)
+  for (let k = 1; k <= 3; k++) {
+    const sf = w.ps + ((1 - w.ps) * k) / 4.2;
+    const i = Math.round(sf * N);
+    if (i >= N) continue;
+    line4(q, P(i, 0.5), P(Math.min(N, i + 1), 1.15, 1.5), (x, y) => q.erase(x, y));
+  }
+  // the alula: a small lit corner jutting off the leading edge at the wrist
+  {
+    const iw = Math.round(0.42 * N);
+    const a = pts[iw];
+    const tip: V = [a.L[0] - a.n[0] * 2 + (pts[iw + 1].L[0] - a.L[0]) * 1.2, a.L[1] - a.n[1] * 2 + (pts[iw + 1].L[1] - a.L[1]) * 1.2];
+    const al = new PixelCanvas(W, H);
+    al.poly([a.L, tip, pts[Math.min(N, iw + 2)].L].map((p) => [rnd(p[0]), rnd(p[1])] as const), tones.lc);
+    al.poly([pts[iw - 1].L, a.L, pts[iw + 1].L].map((p) => [rnd(p[0]), rnd(p[1])] as const), tones.lc);
+    q.blit(al, 0, 0);
   }
   composite(f, q, seam, frontLayer ? { top: 1, side: 1, bottom: 1 } : { top: 1, side: 1, bottom: 1 });
 }
@@ -503,13 +531,12 @@ export function ribbonPath(r: Ribbon, root: V, rot: number): V[] {
 function drawBraid(f: PixelCanvas, P: Pose, S: Skel) {
   const path = ribbonPath(P.braid, S.braidRoot, S.rot);
   const q = new PixelCanvas(W, H);
-  q.stroke(path, 3, 2, PAL.night1);
-  // the plait: alternating lit links every 2 px along the path
+  // a solid 2-px plait (night2 body, never a hollow outline against the dark floor), night1 links every 3 px
+  q.stroke(path, 3, 2, PAL.night2);
   for (let i = 2; i < path.length - 1; i += 3) {
     const [x, y] = path[i];
-    q.set(x, y, PAL.night2);
-    if (q.isOpaque(x, y - 1)) q.set(x, y - 1, PAL.night2);
-    else if (q.isOpaque(x + 1, y)) q.set(x + 1, y, PAL.night2);
+    if (q.isOpaque(x, y + 1)) q.set(x, y + 1, PAL.night1);
+    else if (q.isOpaque(x - 1, y)) q.set(x - 1, y, PAL.night1);
   }
   // gold tie two links from the tip
   const t = path[Math.max(1, path.length - 3)];
@@ -518,21 +545,19 @@ function drawBraid(f: PixelCanvas, P: Pose, S: Skel) {
 }
 
 function drawSash(f: PixelCanvas, P: Pose, S: Skel, light: Light) {
-  // a knot at the belt's back and two short tails (the long one lit along its top, the short one in shade)
-  const long = ribbonPath(P.sash, S.sashRoot, S.rot);
-  const short = ribbonPath({ ...P.sash, len: P.sash.len * 0.6, th: P.sash.th + 22, ph: P.sash.ph + 0.3 }, S.sashRoot, S.rot);
+  // a soft knot at the belt's back and two THIN tails (≤ 2 px at the root, tapering to 1 px, curling with a
+  // travelling wave): cloth, never a blade — mist with one white highlight pixel on the knot
+  const long = ribbonPath({ ...P.sash, th: P.sash.th + 34, curl: P.sash.curl - 34, amp: P.sash.amp + 0.9 }, S.sashRoot, S.rot);
+  const short = ribbonPath({ ...P.sash, len: P.sash.len * 0.6, th: P.sash.th - 34, ph: P.sash.ph + 0.35, curl: P.sash.curl + 40, amp: P.sash.amp + 0.6 }, S.sashRoot, S.rot);
   const q = new PixelCanvas(W, H);
-  q.stroke(short, 2, 2, PAL.steel);
-  q.stroke(long, 2, 2, PAL.mist);
+  q.stroke(short, 1, 1, PAL.steel);
+  q.stroke(long, 1, 1, PAL.mist);
   const r = S.sashRoot;
-  q.rect(rnd(r[0]) - 1, rnd(r[1]) - 1, 2, 2, PAL.mist);
-  const src = q.clone();
-  const b = src.bounds();
-  const side = light.side;
-  if (b)
-    for (let y = b.y; y < b.y + b.h; y++)
-      for (let x = b.x; x < b.x + b.w; x++)
-        if (src.get(x, y) === PAL.mist && !src.isOpaque(x, y - 1) && !src.isOpaque(x + side, y - 1)) q.set(x, y, PAL.white);
+  q.set(rnd(r[0]), rnd(r[1]), PAL.mist);
+  // the one highlight: a white pixel on the long tail's second link
+  const hl = long[Math.min(2, long.length - 1)];
+  q.set(hl[0], hl[1], PAL.white);
+  void light;
   composite(f, q, seam);
 }
 
@@ -586,7 +611,16 @@ function drawTorso(f: PixelCanvas, P: Pose, S: Skel, light: Light) {
     ],
     BODICE.m,
   );
-  shade(body, light, BODICE, { lw: 2, sw: 2, tw: 1, bw: 0 });
+  shade(body, light, BODICE, { lw: 2, sw: 1, tw: 1, bw: 0 });
+  // leaf3 only as the lit EDGE of the bust (a 1-px rim on the light side, upper half only)
+  {
+    const src = body.clone();
+    const bb = src.bounds();
+    if (bb)
+      for (let y = bb.y; y < bb.y + Math.min(7, bb.h); y++)
+        for (let x = bb.x; x < bb.x + bb.w; x++)
+          if (src.isOpaque(x, y) && !src.isOpaque(x + light.side, y) && src.isOpaque(x - light.side, y)) body.set(x, y, PAL.leaf3);
+  }
   // the bodice's gold neckline: two pixels at the collar
   const nl = T([s[0] + 1, s[1]]);
   body.set(rnd(nl[0]), rnd(nl[1]), PAL.gold2);
@@ -604,11 +638,14 @@ function drawArm(f: PixelCanvas, sh: V, hand: V, light: Light, t: Tones, bend: n
   const el = ik2(sh, hand, 6, 6, bend);
   const up1 = tube(sh, el, 2, t.m);
   composite(f, up1, seam);
-  const fo = tube(el, hand, 2, t.m);
+  // the forearm: 3 px on the near (bracer) arm, a lit plane and a shade plane, the elbow a 1-step darker corner
+  const fo = tube(el, hand, bracer ? 3 : 2, t.m);
+  if (bracer) shade(fo, light, t, { lw: 1, sw: 1, tw: 0, bw: 0 });
   if (bracer) {
     // gold bracer on the forearm's middle
     const m: V = [(el[0] + hand[0] * 2) / 3, (el[1] + hand[1] * 2) / 3];
     fo.set(rnd(m[0]), rnd(m[1]), PAL.gold2);
+    fo.set(rnd(el[0]), rnd(el[1]), t.d);
   }
   composite(f, fo, seam);
   const hq = new PixelCanvas(W, H);
@@ -632,13 +669,9 @@ function drawSword(f: PixelCanvas, P: Pose, S: Skel, light: Light) {
   const b0 = at(1.5);
   const bm = at(1.5 + BLADE * 0.45);
   const tip = at(BLADE + 1);
-  const hw = 1.6;
+  const hw = 2;
   const blade = poly([b0, [bm[0] + perp[0] * hw, bm[1] + perp[1] * hw], tip, [bm[0] - perp[0] * hw, bm[1] - perp[1] * hw]], PAL.mist);
   shade(blade, light, { d: PAL.steel, m: PAL.mist, l: PAL.mist }, { lw: 1, sw: 1, tw: 0, bw: 0 });
-  // a fuller line (steel) down the middle (4-connected)
-  line4(blade, at(2.5), at(BLADE - 2), (x, y) => {
-    if (blade.isOpaque(x, y) && blade.get(x, y) === PAL.mist) blade.set(x, y, PAL.steel);
-  });
   composite(f, blade, seam);
   // guard: gold wire across
   const gq = new PixelCanvas(W, H);
@@ -790,6 +823,7 @@ export function drawWingLady(p: PixelCanvas, P: Pose, lightFrom: 'left' | 'right
 
   // 1 far wing (behind everything unless farMid)
   if (!P.farMid) paintWing(f, S.wfRoot, P.wf, S.rot, WING_FAR, light);
+  if (P.nearBack) paintWing(f, S.wnRoot, P.wn, S.rot, WING_NEAR, light);
   // 3 back arm, back leg
   drawArm(f, S.shB, S.rhand, light, SKIN_FAR, 1, false);
   drawLeg(f, S, S.hipB, [P.fbx, P.fby], light, true);
@@ -801,7 +835,7 @@ export function drawWingLady(p: PixelCanvas, P: Pose, lightFrom: 'left' | 'right
   drawSash(f, P, S, light);
   if (P.farMid) paintWing(f, S.wfRoot, P.wf, S.rot, WING_FAR, light);
   // 7 near wing (behind the head and the sword arm) — or in front (buckler / clap / cape)
-  if (!P.nearFront) paintWing(f, S.wnRoot, P.wn, S.rot, WING_NEAR, light);
+  if (!P.nearFront && !P.nearBack) paintWing(f, S.wnRoot, P.wn, S.rot, WING_NEAR, light);
   // 8 braid (hangs down her back over the wing roots), head
   drawBraid(f, P, S);
   const jewel = drawHead(f, P, S, light);
@@ -828,6 +862,19 @@ export function drawWingLady(p: PixelCanvas, P: Pose, lightFrom: 'left' | 'right
         const y = jewel[1] + dy;
         if (f.inBounds(x, y) && x > 1 && x < W - 2 && y > 1) f.set(x, y, PAL.leaf3);
       }
+  }
+  // the point: one white pixel on the blade's last lit pixel (it reads as a blade at 1×, not as a leg stripe)
+  if (!P.noSword) {
+    const d = dirOf(P.sa + S.rot);
+    for (let k = BLADE + 1; k >= BLADE - 2; k--) {
+      const x = rnd(S.hand[0] + d[0] * k);
+      const y = rnd(S.hand[1] + d[1] * k);
+      const c = f.get(x, y);
+      if (c === PAL.mist || c === PAL.steel) {
+        f.set(x, y, PAL.white);
+        break;
+      }
+    }
   }
   // the blade glint (≤ 1 per anim)
   if (P.glint > 0 && !P.noSword) {

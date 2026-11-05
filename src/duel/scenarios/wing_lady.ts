@@ -30,8 +30,10 @@ const bolt = (p: PlayerId, target: ZoneRef): Step => (D) => ({
 const mon = (player: PlayerId, index: number): ZoneRef => ({ player, zone: 'monster', index });
 
 /** A side for the 5-zone summon: two hawks (WIND) around her zone, a wolf (FIRE: visibly skipped) between. */
-const FIVE: (CardId | null)[] = ['storm_hawk', 'ember_wolf', null, 'storm_hawk', null];
-const FIVE_P2: (CardId | null)[] = [null, 'storm_hawk', null, 'ember_wolf', 'storm_hawk'];
+// the lane in FRONT of her (zone 3 for P1) stays empty (critique r1 #8): nothing covers her landing or her salute;
+// the FIRE wolf stands behind her, under her glide-in (she passes over it), and the current passes it to the hawk
+const FIVE: (CardId | null)[] = ['storm_hawk', 'ember_wolf', null, null, 'storm_hawk'];
+const FIVE_P2: (CardId | null)[] = ['storm_hawk', null, null, 'ember_wolf', 'storm_hawk'];
 
 const scenarios: Record<string, Scenario> = {
   // ---- summon "Rüzgâr Kapısı" + Kanat Selamı (the aura switches on: the statChange run of her arrival)

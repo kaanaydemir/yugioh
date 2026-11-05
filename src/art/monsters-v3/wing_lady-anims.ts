@@ -52,10 +52,14 @@ export function idlePose(f: number): Pose {
   const lag = (1 - Math.cos((t - 1 / IDLE_N) * TAU)) / 2;
   return {
     ...NEUTRAL,
-    hy: k === 11 || k === 12 ? 1 : 0,
+    // the breath shows in the body: the chest (and with it the shoulders, the wing roots and the head) rises a
+    // pixel through the wing breath (f4–f11)
+    chest: k >= 4 && k <= 10 ? -1 : 0,
+    // the head lags the chest by a frame each way (f4 up late, f11 down late), then the 1-px "listening" dip at f13
+    hy: k === 4 || k === 13 ? 1 : k === 11 ? -1 : 0,
     wn: { ...WING_NEAR0, a: WING_NEAR0.a + 2 - 10 * br, len: WING_NEAR0.len + 1.5 * br, bend: WING_NEAR0.bend + 3 - 8 * lag + 4 * sn(2 * t), cv: 0.42 + 0.07 * sn(2 * t) },
     wf: { ...WING_FAR0, a: WING_FAR0.a - 1 + 7 * lag, len: WING_FAR0.len + 1.2 * lag, bend: WING_FAR0.bend + 3 - 7 * br + 4 * sn(2 * t + 0.25), cv: 0.45 + 0.07 * sn(2 * t + 0.25) },
-    braid: { ...BRAID0, ph: t, amp: 2 },
+    braid: { ...BRAID0, ph: t, amp: 2.4 },
     sash: { ...SASH0, ph: t + 0.5, flick: k === 5 || k === 13 ? 1.5 : 0 },
     jewel: k >= 10 ? 1 : 2,
     glint: k === 8 || k === 10 ? 1 : k === 9 ? 2 : 0,
@@ -77,11 +81,14 @@ const G0: PD = {
   lean: 1,
   hx: 1,
   nearFront: true,
-  wn: { a: -22, len: 25, bend: 46, chord: 11, side: -1, cv: 0.5, ps: 0.62 },
+  // the buckler: the near wing's arm swung forward over the shoulder, its hand dropping in front of her as a
+  // feathered shield, the primaries fanned down as separate points at belt height
+  wn: { a: -6, len: 27, bend: 78, chord: 10, side: -1, cv: 0.48, ps: 0.56 },
   wf: { a: -104, len: 24, bend: -12 },
-  gx: 45,
-  gy: 41,
-  sa: -48,
+  // the parry blade crosses IN FRONT of the buckler, its whole length clear above the wing's edge
+  gx: 46,
+  gy: 37,
+  sa: -62,
   sash: { th: 150, amp: 1 },
   braid: { th: 110, amp: 0.8 },
 };
@@ -107,7 +114,12 @@ const OVER: PD = { nearFront: true, wn: { a: -55, len: 26, bend: 20, chord: 10, 
 function toGuardPose(f: number): Pose {
   const g = guardPose(0);
   const i0 = IDLE0();
-  const keys = [K(UPW, mix(i0, g, 0.15)), K({ ...UPW, wn: { ...UPW.wn, a: -80 } }, mix(i0, g, 0.35)), K(OVER, mix(i0, g, 0.55)), mix(K(OVER, mix(i0, g, 0.7)), g, 0.5), mix(i0, g, 0.92), g];
+  // f3 / f4 double as her GUARD-HIT (MonsterUnit.brace plays toGuard f4 → f3 → f4 → guard on a blocked blow):
+  // f3 the buckler bends under the blow (the wing hand pressed up, the shoulders rocked back, the knees give),
+  // f4 it flares back out (the primaries fanned 2–3 px wider) before it settles into the guard
+  const bend = K({ ...G0, lean: -1, crouch: 2, hx: 0, gx: 45, gy: 38, sa: -72, wn: { ...(G0.wn as Wing), a: -16, len: 25, bend: 60, chord: 10 } });
+  const flare = K({ ...G0, lean: 0, wn: { ...(G0.wn as Wing), len: 28, chord: 12, bend: 74, ps: 0.52 } });
+  const keys = [K(UPW, mix(i0, g, 0.15)), K({ ...UPW, wn: { ...UPW.wn, a: -80 } }, mix(i0, g, 0.35)), K(OVER, mix(i0, g, 0.55)), mix(K(OVER, mix(i0, g, 0.7)), bend, 0.6), flare, g];
   return keys[f] ?? g;
 }
 const TG_HOLDS = [50, 60, 60, 70, 70, 80];
@@ -126,7 +138,15 @@ const FG_HOLDS = [60, 60, 70, 70, 70];
 // up and back, wings open · two back-flaps home · touch down.
 
 const HOVER: PD = { by: -5, crouch: 0, lean: 1, fbx: 33, fby: GY - 1, ffx: 39, ffy: GY, gx: 39, gy: 45, sa: 195, face: 'calm', jewel: 2 };
-const A_N = 12;
+const A_N = 14;
+/** the clap (contact): both wings arc AHEAD of a clear body — the far wing high, the near wing low, their tips
+ *  curling toward each other like brackets — and the blade thrust straight out between them, point first */
+const CLAP: PD = {
+  bx: 9, by: -2, rot: 8, lean: 2, fbx: 31, fby: GY, ffx: 39, ffy: GY - 1, gx: 51, gy: 39, sa: -4, nearBack: true, face: 'struck',
+  wn: { a: 84, len: 34, bend: -104, chord: 9, side: -1, cv: 0.45, ps: 0.62 },
+  wf: { a: -24, len: 33, bend: 52, chord: 8, side: 1, cv: 0.45, ps: 0.62 },
+  sash: { th: 175, ph: 0.8 }, braid: { th: 150, ph: 0.8 }, glint: 2,
+};
 function attackPose(f: number): Pose {
   const keys: PD[] = [
     { wn: { a: -134 }, wf: { a: -101 } },
@@ -134,17 +154,26 @@ function attackPose(f: number): Pose {
     { ...HOVER, wn: { a: 148, len: 27, bend: 18, chord: 10 }, wf: { a: 122, len: 22, bend: 14 }, sash: { ph: 0.45, th: 160 }, braid: { ph: 0.4 } },
     { ...HOVER, wn: { a: -150, len: 29, bend: -4 }, wf: { a: -118, len: 24, bend: -6 }, sash: { ph: 0.45, th: 160 }, braid: { ph: 0.4 } },
     { by: -3, rot: 14, lean: 2, fbx: 33, fby: GY - 1, ffx: 38, ffy: GY - 1, gx: 46, gy: 43, sa: 4, wn: { a: 176, len: 22, bend: 8, chord: 9 }, wf: { a: 166, len: 20, bend: 8 }, sash: { th: 178, ph: 0.6 }, braid: { th: 150, ph: 0.6 } },
-    { bx: 6, by: -2, rot: 34, lean: 2, fbx: 34, fby: GY, ffx: 37, ffy: GY - 1, gx: 47, gy: 42, sa: -6, wn: { a: 172, len: 21, bend: 6, chord: 8 }, wf: { a: 164, len: 19, bend: 6 }, sash: { th: 182, ph: 0.7, amp: 0.6 }, braid: { th: 160, ph: 0.7, amp: 0.6 } },
-    { bx: 10, by: -2, rot: 16, lean: 2, fbx: 33, fby: GY, ffx: 38, ffy: GY - 1, gx: 50, gy: 41, sa: -2, nearFront: true, farMid: false, face: 'struck', wn: { a: 14, len: 25, bend: -48, chord: 9, side: -1, cv: 0.5, ps: 0.62 }, wf: { a: -58, len: 24, bend: 62, chord: 8 }, sash: { th: 175, ph: 0.8 }, braid: { th: 150, ph: 0.8 }, glint: 2 },
-    { bx: 5, by: -5, rot: 0, lean: 0, fbx: 32, fby: GY - 1, ffx: 39, ffy: GY, gx: 46, gy: 40, sa: -30, wn: { a: -160, len: 28, bend: -2 }, wf: { a: -96, len: 26, bend: 10 }, sash: { th: 130, ph: 0.9, flick: 2 }, braid: { th: 100, ph: 0.9 }, glint: 1 },
+    // the stoop: ONE streamlined line — torso, legs trailing straight behind (ankles together, toes pointed),
+    // head up along the flight line, the blade pointing AHEAD, the wings swept back flat along the body
+    { bx: 6, by: -6, rot: 64, hr: -50, lean: 0, crouch: 0, fbx: 35, fby: GY, ffx: 37, ffy: GY - 1, gx: 41, gy: 27, sa: -52, rgx: 34, rgy: 44, wn: { a: 140, len: 24, bend: 6, chord: 8 }, wf: { a: 132, len: 21, bend: 6, chord: 7 }, sash: { th: 120, ph: 0.7, amp: 0.6 }, braid: { th: 110, ph: 0.7, amp: 0.6, curl: 6 } },
+    CLAP,
+    // recoil a: the brackets spring OUTWARD (the clap opens), the torso starts to unroll head-first, the blade
+    // still out — also the blocked "clap fails" pose (held on the guard)
+    { ...CLAP, bx: 8, by: -3, rot: 4, lean: 1, gx: 49, gy: 40, sa: -12, wn: { a: 96, len: 32, bend: -70, chord: 9, side: -1, cv: 0.45, ps: 0.62 }, wf: { a: -96, len: 30, bend: 66, chord: 8, side: 1, cv: 0.45, ps: 0.64 }, sash: { th: 160, ph: 0.85 }, braid: { th: 135, ph: 0.85 }, glint: 1 },
+    // recoil b: the wings sweep up through level (both spread back, tips separate), the body upright, arm coming back
+    { bx: 6, by: -4, rot: 0, lean: 0, fbx: 32, fby: GY - 1, ffx: 39, ffy: GY, gx: 48, gy: 40, sa: -22, face: 'struck', wn: { a: 178, len: 28, bend: -8, chord: 10 }, wf: { a: -150, len: 25, bend: -4 }, sash: { th: 140, ph: 0.9, flick: 1 }, braid: { th: 115, ph: 0.9 } },
+    { bx: 5, by: -5, rot: 0, lean: 0, fbx: 32, fby: GY - 1, ffx: 39, ffy: GY, gx: 46, gy: 40, sa: -30, wn: { a: -160, len: 28, bend: -2 }, wf: { a: -96, len: 26, bend: 10 }, sash: { th: 130, ph: 0.95, flick: 2 }, braid: { th: 100, ph: 0.95 }, glint: 1 },
     { bx: 3, by: -4, fbx: 32, fby: GY - 1, ffx: 39, ffy: GY, gx: 44, gy: 44, sa: 30, wn: { a: 150, len: 27, bend: 16 }, wf: { a: 124, len: 22, bend: 12 }, sash: { th: 150, ph: 0.05 }, braid: { ph: 0.05 } },
-    { bx: 1, by: -2, fbx: 32, fby: GY - 1, ffx: 39, ffy: GY, gx: 43, gy: 46, sa: 70, wn: { a: -146, len: 29, bend: -6 }, wf: { a: -112, len: 24 }, sash: { ph: 0.2 }, braid: { ph: 0.2 } },
-    { crouch: 2, gx: 42, gy: 48, sa: 90, wn: { a: -128, len: 27 }, wf: { a: -98 }, sash: { ph: 0.3 }, braid: { ph: 0.3 } },
+    { bx: 1, by: -2, fbx: 32, fby: GY - 1, ffx: 39, ffy: GY, gx: 43, gy: 46, sa: 60, wn: { a: -146, len: 29, bend: -6 }, wf: { a: -112, len: 24 }, sash: { ph: 0.2 }, braid: { ph: 0.2 } },
+    { crouch: 2, gx: 43, gy: 48, sa: 70, wn: { a: -128, len: 27 }, wf: { a: -98 }, sash: { ph: 0.3 }, braid: { ph: 0.3 } },
   ];
   if (f >= A_N - 1) return IDLE0();
   return K(keys[f]);
 }
-const ATTACK_HOLDS = [70, 110, 100, 200, 130, 50, 60, 80, 110, 120, 130, 150];
+const ATTACK_HOLDS = [70, 110, 100, 200, 130, 50, 60, 50, 50, 80, 110, 120, 130, 150];
+/** attack frame names the cinematic uses (kept in one place) */
+export const ATK = { crouch: 1, hoverDown: 2, hoverUp: 3, fold: 4, stoop: 5, clap: 6, open: 7, sweep: 8, rebound: 9, back1: 10, back2: 11, touch: 12, end: 13 } as const;
 
 // ------------------------------------------------------------------ special "Kanat Selamı" (12)
 // wings lift to half-span, the blade rises overhead tip-up, the jewel brightens step by step · ONE full
@@ -197,11 +226,15 @@ const ROAR_HOLDS = [80, 110, 160, 70, 110, 100, 110, 110, 120, 130];
 // in two beats, the head re-locks.
 function hitPose(f: number): Pose {
   const keys: PD[] = [
-    { face: 'struck', wn: { a: -139, len: 28 }, wf: { a: -104 }, jewel: 2 },
-    { bx: -1, hx: -1, crouch: 1, face: 'struck', wn: { a: -146, len: 29, bend: -8 }, wf: { a: -110 }, sash: { th: 60, curl: -20 }, braid: { th: 70 } },
-    { bx: -1, crouch: 1, wn: { a: -124, len: 27, bend: -20 }, wf: { a: -94 }, sash: { th: 110 }, braid: { th: 95 } },
-    { crouch: 1, wn: { a: -136 }, wf: { a: -102 }, sash: { th: 130, ph: 0.3 } },
-    { wn: { a: -130 }, wf: { a: -99 }, sash: { ph: 0.4 } },
+    // f0 stays local (KK-4): the struck face, the wings jolt a step
+    { face: 'struck', chest: -1, wn: { a: -137, len: 28 }, wf: { a: -101 }, jewel: 2 },
+    // f1–f2: the torso snaps back from the hips (feet planted), the head tips back with the eyes shut, the wings
+    // flare out
+    { lean: -2, hx: -1, crouch: 1, hr: -8, face: 'closed', gx: 42, gy: 47, wn: { a: -150, len: 30, bend: -10, chord: 11 }, wf: { a: -112, len: 26 }, sash: { th: 60, curl: -20 }, braid: { th: 70 } },
+    { lean: -3, hx: -1, crouch: 2, hr: -10, face: 'closed', gx: 41, gy: 48, wn: { a: -154, len: 30, bend: -14, chord: 11 }, wf: { a: -114, len: 26 }, sash: { th: 90 }, braid: { th: 80 } },
+    // f3–f4: she rocks forward past upright (overshoot), the wings come down, the head re-locks
+    { lean: 1, crouch: 1, hr: 2, wn: { a: -126, len: 27, bend: -18 }, wf: { a: -96 }, sash: { th: 130, ph: 0.3 }, braid: { th: 110 } },
+    { wn: { a: -131 }, wf: { a: -99 }, sash: { ph: 0.4 } },
   ];
   return f >= 5 ? IDLE0() : K(keys[f]);
 }
@@ -212,8 +245,8 @@ const HIT_HOLDS = [50, 70, 150, 110, 120, 130];
 function hitHeavyPose(f: number): Pose {
   const keys: PD[] = [
     { face: 'struck', wn: { a: -139, len: 28, bend: -9 }, wf: { a: -96, len: 22 } },
-    { bx: -2, crouch: 3, lean: -2, hx: -1, face: 'struck', gx: 46, gy: 40, sa: -20, wn: { a: -160, len: 27 }, wf: { a: 84, len: 21, bend: 10 }, sash: { th: 70, curl: -20 }, braid: { th: 60 } },
-    { bx: -3, crouch: 5, lean: -1, face: 'struck', gx: 45, gy: 44, sa: 30, wn: { a: 118, len: 26, bend: 6, chord: 9 }, wf: { a: -86 }, sash: { th: 110 }, braid: { th: 90 } },
+    { bx: -2, crouch: 3, lean: -2, hx: -1, hr: -6, face: 'closed', gx: 37, gy: 50, sa: 130, wn: { a: -160, len: 27 }, wf: { a: 84, len: 21, bend: 10 }, sash: { th: 70, curl: -20 }, braid: { th: 60 } },
+    { bx: -3, crouch: 5, lean: -1, face: 'struck', gx: 40, gy: 50, sa: 110, wn: { a: 118, len: 26, bend: 6, chord: 9 }, wf: { a: -86 }, sash: { th: 110 }, braid: { th: 90 } },
     { bx: -2, crouch: 4, gx: 44, gy: 46, sa: 60, wn: { a: 128, len: 26, bend: 0 }, wf: { a: -94 }, sash: { th: 130, ph: 0.3 } },
     { bx: -1, crouch: 2, gx: 43, gy: 47, sa: 80, wn: { a: -160, len: 27, bend: -6 }, wf: { a: -100 }, sash: { ph: 0.45 } },
     { crouch: 1, wn: { a: -138 }, wf: { a: -101 }, sash: { ph: 0.6 } },
@@ -227,7 +260,7 @@ const HH_HOLDS = [50, 60, 130, 110, 100, 120, 130];
 const SHUT: PD = { nearFront: true, wn: { a: -40, len: 24, bend: 58, chord: 10, side: -1, cv: 0.5, ps: 0.62 }, wf: { a: -96, len: 19, bend: -10 } };
 function hitMagicPose(f: number): Pose {
   const keys: PD[] = [
-    { face: 'closed', jewel: 0, wn: { a: -125, len: 27 }, wf: { a: -98 } },
+    { face: 'closed', jewel: 0, chest: -1, wn: { a: -129, len: 28 }, wf: { a: -100 } },
     { ...SHUT, bx: 1, face: 'closed', hr: 6, crouch: 1, jewel: 0, sash: { th: 120 } },
     { ...SHUT, bx: -1, face: 'closed', hr: 6, crouch: 1, jewel: 1, sash: { th: 140 } },
     { wn: { a: -88, len: 26, bend: 0, side: 1, chord: 10, cv: 0.45, ps: 0.66 }, wf: { a: -92 }, crouch: 1, jewel: 1 },
@@ -243,17 +276,30 @@ const HM_HOLDS = [50, 60, 120, 110, 100, 110, 130];
 // the BRAKE-FLARE: wings swing forward and up into a tall W, the body swings upright, feet forward · f4–f6
 // three back-wing beats, sinking · f7 LAND (front toe) · f8 back foot, skid · f9 the wings snap-fold · f10 the
 // blade comes up · f11 the salute (flat of the blade at her brow, jewel flare, the first note) · idle.
-const SU_N = 13;
+const SU_N = 16;
 const GLIDE: PD = { rot: 74, hr: -62, fbx: 34, fby: GY, ffx: 37, ffy: GY - 1, gx: 40, gy: 44, sa: 92, rgx: 33, rgy: 45, braid: { th: 95, curl: 10, amp: 0.6 }, sash: { th: 92, curl: 6, amp: 0.6 } };
+/** a back-wing beat's three wing positions (the body bobs with them: lifted on the downstroke, sinking on the
+ *  upstroke; the braid and the sash answer one frame late) — the far wing always a separate, higher tip */
+const BEAT_UP = { wn: { a: -142, len: 29, bend: -6, chord: 10 }, wf: { a: -104, len: 25, bend: -8 } };
+const BEAT_MID = { wn: { a: 176, len: 30, bend: -4, chord: 11 }, wf: { a: -158, len: 26, bend: -6, chord: 9 } };
+const BEAT_DOWN = { wn: { a: 160, len: 28, bend: 20, chord: 10 }, wf: { a: 120, len: 23, bend: -18, chord: 8 } };
+const SU_FEET = { fbx: 34, fby: GY - 1, ffx: 41, ffy: GY - 2, gx: 43, gy: 46, sa: 66 };
 function summonPose(f: number): Pose {
   const keys: PD[] = [
     { ...GLIDE, by: -4, wn: { a: 166, len: 32, bend: -12, chord: 11 }, wf: { a: -122, len: 27, bend: -10 } },
     { ...GLIDE, rot: 62, hr: -52, by: -6, wn: { a: 172, len: 31, bend: -6, chord: 11 }, wf: { a: -128, len: 26, bend: -6 }, braid: { ph: 0.2 }, sash: { ph: 0.2 } },
-    { rot: 24, by: -5, hr: -12, fbx: 36, fby: GY - 2, ffx: 42, ffy: GY - 3, gx: 42, gy: 44, sa: 120, wn: { a: -96, len: 29, bend: 18, chord: 11 }, wf: { a: -66, len: 25, bend: 16 }, braid: { th: 100, ph: 0.3 }, sash: { th: 110, ph: 0.3 } },
-    { rot: 6, by: -5, fbx: 36, fby: GY - 1, ffx: 42, ffy: GY - 2, gx: 42, gy: 46, sa: 110, wn: { a: -98, len: 29, bend: 24, chord: 11 }, wf: { a: -68, len: 25, bend: 22 }, braid: { th: 96, ph: 0.4 }, sash: { th: 120, ph: 0.4 } },
-    { by: -6, fbx: 34, fby: GY - 1, ffx: 41, ffy: GY - 2, gx: 42, gy: 46, sa: 100, wn: { a: 152, len: 28, bend: 16 }, wf: { a: 126, len: 23, bend: 12 }, braid: { th: 80, ph: 0.5 }, sash: { th: 115, ph: 0.5, flick: 2 } },
-    { by: -3, fbx: 34, fby: GY - 1, ffx: 41, ffy: GY - 1, gx: 42, gy: 47, sa: 98, wn: { a: -150, len: 29, bend: -4 }, wf: { a: -112 }, braid: { ph: 0.6 }, sash: { ph: 0.6 } },
-    { by: -1, fbx: 33, fby: GY - 1, ffx: 41, ffy: GY, gx: 42, gy: 47, sa: 96, wn: { a: 160, len: 27, bend: 12 }, wf: { a: 132, len: 22, bend: 10 }, braid: { ph: 0.7 }, sash: { ph: 0.7 } },
+    // the brake-flare: the wings swing forward-up into a tall W BEHIND / ABOVE the head (the face kept clear)
+    { rot: 24, by: -5, hr: -12, fbx: 36, fby: GY - 2, ffx: 42, ffy: GY - 3, gx: 42, gy: 44, sa: 120, wn: { a: -112, len: 29, bend: -4, chord: 11 }, wf: { a: -86, len: 26, bend: -14 }, braid: { th: 100, ph: 0.3 }, sash: { th: 110, ph: 0.3 } },
+    { rot: 6, by: -5, fbx: 36, fby: GY - 1, ffx: 42, ffy: GY - 2, gx: 42, gy: 46, sa: 110, wn: { a: -118, len: 29, bend: -2, chord: 11 }, wf: { a: -90, len: 26, bend: -10 }, braid: { th: 96, ph: 0.4 }, sash: { th: 120, ph: 0.4 } },
+    // beat 1: mid → down (lifted)
+    { ...SU_FEET, by: -6, ...BEAT_MID, braid: { th: 92, ph: 0.45 }, sash: { th: 120, ph: 0.45 } },
+    { ...SU_FEET, by: -8, ...BEAT_DOWN, braid: { th: 86, ph: 0.5 }, sash: { th: 118, ph: 0.5, flick: 1 } },
+    // beat 2: mid → up (sinking) — the braid / sash still flung up from the downstroke
+    { ...SU_FEET, by: -5, ...BEAT_MID, braid: { th: 78, ph: 0.58 }, sash: { th: 110, ph: 0.58, flick: 2 } },
+    { ...SU_FEET, by: -3, ...BEAT_UP, braid: { th: 88, ph: 0.66 }, sash: { th: 124, ph: 0.66 } },
+    // beat 3: mid → down, nearly home
+    { ...SU_FEET, by: -2, ffy: GY - 1, ...BEAT_MID, braid: { th: 98, ph: 0.72 }, sash: { th: 128, ph: 0.72 } },
+    { ...SU_FEET, by: -2, ffy: GY - 1, ...BEAT_DOWN, braid: { th: 92, ph: 0.76 }, sash: { th: 120, ph: 0.76, flick: 1 } },
     { crouch: 2, fbx: 32, fby: GY - 2, ffx: 41, ffy: GY, wn: { a: -122, len: 28, bend: -10 }, wf: { a: -92 }, braid: { ph: 0.8 }, sash: { ph: 0.8, th: 160 } },
     { crouch: 3, bx: 1, fbx: 31, ffx: 40, wn: { a: -140, len: 28, bend: -16 }, wf: { a: -104 }, braid: { ph: 0.9 }, sash: { ph: 0.9 } },
     { crouch: 1, wn: { a: -126, len: 24, bend: -20, chord: 9 }, wf: { a: -96, len: 21 }, braid: { ph: 0.0 }, sash: { ph: 0.0 } },
@@ -263,7 +309,7 @@ function summonPose(f: number): Pose {
   if (f >= SU_N - 1) return IDLE0();
   return K(keys[f]);
 }
-const SU_HOLDS = [120, 90, 70, 80, 90, 100, 110, 70, 80, 70, 80, 150, 130];
+const SU_HOLDS = [120, 90, 70, 80, 50, 60, 50, 60, 50, 60, 70, 80, 70, 80, 150, 130];
 
 // ------------------------------------------------------------------ death (10): "the falling cape"
 // f0 struck (asymmetric wings) · f1 staggers back, the song breaks · f2 BOTH WINGS DROP over her like a falling
@@ -279,8 +325,10 @@ const CAPE = (rot: number): PD => ({
   gx: 41,
   gy: 49,
   sa: 100,
-  wn: { a: 104, len: 25, bend: 10, chord: 11, side: -1, cv: 0.5, ps: 0.64 },
-  wf: { a: 118, len: 22, bend: 10 },
+  // two wings DRAPED over the shoulders (not a shell): long and narrow, the near one hanging over her side, the
+  // far one trailing further back, both primaries reaching the floor as separate points
+  wn: { a: 98, len: 30, bend: 14, chord: 9, side: 1, cv: 0.45, ps: 0.72 },
+  wf: { a: 128, len: 29, bend: 10, chord: 8, side: 1, cv: 0.45, ps: 0.72 },
   braid: { th: 95, amp: 0.4 },
   sash: { th: 100, amp: 0.4, len: 6 },
 });
@@ -308,7 +356,7 @@ function deathPose(f: number): Pose {
     { ...CAPE(0), bx: -2, crouch: 2, hr: 12 },
     { ...CAPE(4), bx: -2, crouch: 6, lean: 2, hr: 16 },
     { ...CAPE(22), bx: -3, crouch: 7, lean: 2, hr: 14 },
-    { ...CAPE(46), bx: -4, crouch: 7, lean: 2, hr: 10, wn: { a: 106, len: 25, bend: 4, chord: 11, side: -1, cv: 0.5, ps: 0.64 } },
+    { ...CAPE(46), bx: -4, crouch: 7, lean: 2, hr: 10, wn: { a: 100, len: 28, bend: 8, chord: 9, side: 1, cv: 0.45, ps: 0.72 } },
     { ...PRONE(72, 0), bx: -5, by: 0 },
     { ...PRONE(86, 0) },
     { ...PRONE(88, 1) },
@@ -347,12 +395,12 @@ export const IMPACT = 5;
 export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   idle: spec(IDLE_N, 8, true, IDLE_HOLDS),
   guard: spec(GUARD_N, 6, true, GUARD_HOLDS),
-  attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: IMPACT, impact: IMPACT, contact: 6, recover: 8 }),
+  attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: IMPACT, impact: IMPACT, contact: 6, recover: 10 }),
   roar: spec(R_N, 10, false, ROAR_HOLDS, { charge: 1, release: 3, impact: 3, recover: 5 }),
   hit: spec(6, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 3 }),
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
-  summon: spec(SU_N, 10, false, SU_HOLDS, { land: 7 }),
+  summon: spec(SU_N, 10, false, SU_HOLDS, { land: 10 }),
   death: spec(D_N, 12, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 4 }),
   revive: spec(RV_N, 10, false, RV_HOLDS, { land: 5 }),
   special: spec(SP_N, 10, false, SPECIAL_HOLDS, { charge: 1, release: 4, impact: 4, recover: 8 }),
