@@ -286,7 +286,8 @@ export function guardChips(sc: Phaser.Scene, club: XY, feet: XY, dir: number, R:
     const a = -Math.PI / 2 + (R() - 0.5) * 1.8 - dir * 0.8;
     const v = 70 + R() * 80;
     const heart = i % 2 === 0;
-    sp.add({ x: club.x + (R() - 0.5) * 8, y: club.y + (R() - 0.5) * 4, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 30, ay: 400, floor: feet.y + (R() - 0.5) * 6, bounce: 0.35, life: 480 + R() * 260, colors: heart ? [PAL.earth4, PAL.earth4, PAL.earth3, PAL.earth2] : [PAL.earth2, PAL.earth1, PAL.earth0], shape: i % 3 === 2 ? 'px' : 'sq', size: 2, fadeAt: 1, flicker: i % 5 === 0 });
+    // the first beat of each chip is a hot white / gold glint (it reads over the brown trunk), then bark tones
+    sp.add({ x: club.x + (R() - 0.5) * 8, y: club.y + (R() - 0.5) * 4, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 30, ay: 400, floor: feet.y + (R() - 0.5) * 6, bounce: 0.35, life: 480 + R() * 260, colors: heart ? [PAL.white, PAL.earth4, PAL.earth4, PAL.earth3, PAL.earth2] : [PAL.gold4, PAL.earth2, PAL.earth1, PAL.earth0], shape: i % 3 === 2 ? 'px' : 'sq', size: i % 4 === 0 ? 3 : 2, fadeAt: 1, flicker: i % 5 === 0 });
   }
   sp.release();
   for (const dx of [-8, 8]) loam(sc, { x: feet.x + dx, y: feet.y }, 5, 36, R);
@@ -791,8 +792,10 @@ export function boostAura(sc: Phaser.Scene, u: MonsterUnit, n0: number): Boost {
           const [ox, oy] = KNOT_SPOTS[i];
           const w0 = rint(u.framePoint(c.x + ox, c.y + oy));
           const sx = u.flipX ? -1 : 1;
-          for (const [dx, dy] of [[-1, 0], [2, 0], [0, -1], [1, -1], [-1, 1], [2, 1], [0, 2], [1, 2]] as const) g.px(w0.x + dx * sx, w0.y + dy, hot || beat ? PAL.void3 : (dx + dy) % 2 === 0 ? PAL.void2 : PAL.earth0);
-          for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) g.px(w0.x + dx * sx, w0.y + dy, hot && dx + dy === 0 ? PAL.white : (br + i) % 2 === 0 && dx + dy === 2 ? PAL.void3 : PAL.void4);
+          // a burning knot: charred corners, a violet EMBER ring (breathing void3 / void2), a 2×2 void4 heart
+          for (const [dx, dy] of [[-1, -1], [2, -1], [-1, 2], [2, 2]] as const) g.px(w0.x + dx * sx, w0.y + dy, PAL.earth0);
+          for (const [dx, dy] of [[-1, 0], [2, 0], [0, -1], [1, -1], [-1, 1], [2, 1], [0, 2], [1, 2]] as const) g.px(w0.x + dx * sx, w0.y + dy, hot || beat ? PAL.void4 : (dx + dy + br) % 3 === 0 ? PAL.void2 : PAL.void3);
+          for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) g.px(w0.x + dx * sx, w0.y + dy, hot && dx + dy === 0 ? PAL.white : (br + i) % 2 === 0 && dx + dy === 0 ? PAL.white : PAL.void4);
         }
       }
       // sprouts on the club: two BIG sprouts (9–11 px) standing up off the club's head end, leaf pairs, a 5×5 violet
@@ -803,22 +806,52 @@ export function boostAura(sc: Phaser.Scene, u: MonsterUnit, n0: number): Boost {
           const fp = { x: Math.round(lerp(grip.x, head.x, t)), y: Math.round(lerp(grip.y, head.y, t)) };
           const base = rint(u.framePoint(fp.x + (i ? 2 : -2), fp.y - 3));
           const h = 9 + i * 2 + (beat ? 1 : 0);
-          const sway = Math.round(Math.sin(el * 0.008 + i * 1.7) * 1.4);
-          const top = { x: base.x + sway, y: base.y - h };
-          // the stem: 2 px (leaf3 lit / leaf1), ink-edged so it reads on the dark bark
-          g.line(base.x - 1, base.y, top.x - 1, top.y + 1, PAL.ink);
-          g.line(base.x + 2, base.y, top.x + 2, top.y + 1, PAL.ink);
-          g.line(base.x, base.y, top.x, top.y + 1, PAL.leaf3);
-          g.line(base.x + 1, base.y, top.x + 1, top.y + 1, PAL.leaf1);
-          for (const [yy, len] of [[Math.round(h * 0.35), 3], [Math.round(h * 0.65), 4]] as const) {
-            const ly = base.y - yy;
-            const lx = base.x + Math.round(sway * (yy / h));
-            g.rect(lx - len, ly - 1, len, 1, PAL.ink);
-            g.rect(lx - len, ly, len, 1, PAL.leaf3);
-            g.rect(lx - len + 1, ly + 1, len - 1, 1, PAL.leaf1);
-            g.rect(lx + 2, ly - 2, len, 1, PAL.ink);
-            g.rect(lx + 2, ly - 1, len, 1, PAL.leaf2);
-            g.rect(lx + 2, ly, len - 1, 1, PAL.leaf1);
+          // the stem CURVES outward off the club (critic r2: a straight stem with a symmetric leaf pair read as a green
+          // "+" health cross): it leans away from the club's axis and bends back up at the top, ink-edged
+          const out = (u.flipX ? -1 : 1) * (i ? 1 : -1);
+          const sway = Math.round(Math.sin(el * 0.008 + i * 1.7) * 1.2);
+          const stemAt = (t: number): XY => ({ x: base.x + Math.round(out * (Math.sin(t * Math.PI * 0.8) * 3.2) + sway * t), y: base.y - Math.round(t * h) });
+          const top = stemAt(1);
+          const stem: XY[] = [];
+          for (let j = 0; j <= h; j++) stem.push(stemAt(j / h));
+          for (const q of stem) g.rect(q.x - 1, q.y, 4, 1, PAL.ink);
+          for (const q of stem) {
+            g.px(q.x, q.y, PAL.leaf3);
+            g.px(q.x + 1, q.y, PAL.leaf1);
+          }
+          // two leaves at DIFFERENT heights on opposite sides: a low one drooping outward, a high one reaching up
+          const lo = stemAt(0.38);
+          const hi = stemAt(0.72);
+          // the low leaf droops (3 px out, falling 2 px)
+          const dl = -out;
+          for (let k = 1; k <= 4; k++) {
+            const lx = lo.x + dl * k + (dl > 0 ? 1 : 0);
+            const ly = lo.y + (k > 2 ? 1 : 0) + (k > 3 ? 1 : 0);
+            g.rect(lx, ly - 1, 1, k === 4 ? 2 : 3, PAL.ink);
+          }
+          for (let k = 1; k <= 3; k++) {
+            const lx = lo.x + dl * k + (dl > 0 ? 1 : 0);
+            const ly = lo.y + (k > 2 ? 1 : 0);
+            g.px(lx, ly, k === 1 ? PAL.leaf3 : PAL.leaf2);
+            if (k < 3) g.px(lx, ly + 1, PAL.leaf1);
+          }
+          // the high leaf reaches UP and out (a diagonal blade)
+          const dh = out;
+          for (let k = 1; k <= 4; k++) {
+            const lx = hi.x + dh * k + (dh > 0 ? 1 : 0);
+            const ly = hi.y - k + 1;
+            g.rect(lx - 1, ly - 1, 3, 3, PAL.ink);
+          }
+          for (let k = 1; k <= 3; k++) {
+            const lx = hi.x + dh * k + (dh > 0 ? 1 : 0);
+            const ly = hi.y - k + 1;
+            g.px(lx, ly, PAL.leaf3);
+            g.px(lx, ly + 1, k === 3 ? PAL.leaf1 : PAL.leaf2);
+          }
+          // the stem over the leaves' ink (the leaves grow out of it)
+          for (const q of stem) {
+            g.px(q.x, q.y, PAL.leaf3);
+            g.px(q.x + 1, q.y, PAL.leaf1);
           }
           // the bud
           const bx = top.x;
@@ -1185,6 +1218,9 @@ export function graveRoot(sc: Phaser.Scene, base: XY, toward: XY, reach: number,
   let ret = 0;
   let snapT = -1;
   let carryT = -1;
+  /** The sap pulse running home along the run (0 at the cup … 1 at the club; −1 none) while the root waits. */
+  let pulse = -1;
+  let pulseAcc = 0;
   let alive = true;
   const st = {
     open: 0,
@@ -1211,6 +1247,12 @@ export function graveRoot(sc: Phaser.Scene, base: XY, toward: XY, reach: number,
   const stop = onFrame(sc, (dt, el) => {
     if (!alive) return false;
     if (snapT >= 0) snapT += dt;
+    // while the cup waits (grown, nothing carried) a sap pulse runs home every ~0.55 s
+    if (grown >= 1 && carryT < 0 && ret <= 0) {
+      pulseAcc += dt;
+      pulse = pulseAcc < 420 ? pulseAcc / 420 : -1;
+      if (pulseAcc > 560) pulseAcc = 0;
+    } else pulse = -1;
     const shown = Math.round(grown * (1 - (stalk > 0 ? 0 : ret)) * N);
     const floorKeep = ret > 0.45 ? Math.round(N * (1 - (ret - 0.45) / 0.55)) : N;
     const nShow = Math.min(shown, floorKeep);
@@ -1231,24 +1273,38 @@ export function graveRoot(sc: Phaser.Scene, base: XY, toward: XY, reach: number,
           g.px(q.x + 1, q.y + 3, PAL.earth1);
         }
       });
-      const wAt = (i: number) => (i < N * 0.55 ? 3 : 2);
+      // the run (critic r2: it read as a flat tan pipe): a root bundle that TAPERS 4 → 2 px from the club to the tip,
+      // lit top band earth3 / body earth2 / shade earth1 under it, a twist seam crossing it every 7 px (two strands
+      // round each other), a sap PULSE swelling along it toward the giant while it waits (the root is alive, drinking)
+      const wAt = (i: number) => Math.max(2, Math.round(4 - (i / N) * 2.4));
+      const pulseI = pulse >= 0 ? Math.round((1 - pulse) * (run.length - 1)) : -99;
+      const bulge = (i: number) => (Math.abs(i - pulseI) <= 1 ? 1 : 0);
       for (let i = 0; i < run.length; i++) {
         const q = run[i];
-        g.rect(q.x - 1, q.y - 2, wAt(i) + 2, 5, PAL.ink);
+        const w = wAt(i) + bulge(i);
+        g.rect(q.x - 1, q.y - 1 - Math.ceil(w / 2), 3, w + 2, PAL.ink);
       }
       for (let i = 0; i < run.length; i++) {
         const q = run[i];
-        const w = wAt(i);
-        g.rect(q.x, q.y - 1, w, 1, PAL.earth3);
-        g.rect(q.x, q.y, w, 1, i % 6 === 3 ? PAL.earth1 : PAL.earth2);
-        g.rect(q.x, q.y + 1, w, 1, PAL.earth1);
+        const w = wAt(i) + bulge(i);
+        const y0 = q.y - Math.ceil(w / 2);
+        for (let k = 0; k < w; k++) {
+          const tone = k === 0 ? PAL.earth3 : k === w - 1 ? PAL.earth1 : PAL.earth2;
+          g.px(q.x, y0 + k, tone);
+        }
+        // the twist seam: a darker diagonal step crossing the bundle
+        const tw = (i + Math.floor(el / 400)) % 7;
+        if (w >= 3 && tw < w - 1) g.px(q.x, y0 + 1 + tw, tw === 0 ? PAL.earth2 : PAL.earth1);
+        if (bulge(i) && i === pulseI) g.px(q.x, y0 + 1, PAL.void3);
       }
-      // rootlets feeling the floor
+      // rootlets feeling the floor: short hairs off both sides, longer near the club, curling at the tip
       run.forEach((q, i) => {
-        if (i % 9 !== 4 || i > run.length - 3) return;
-        const s = i % 18 === 4 ? 1 : -1;
-        g.px(q.x + 1, q.y + 2 * s + (s > 0 ? 1 : -1), PAL.earth2);
-        g.px(q.x + 2, q.y + 3 * s + (s > 0 ? 1 : -1), PAL.earth1);
+        if (i % 6 !== 3 || i > run.length - 3) return;
+        const s = (i / 6) % 2 < 1 ? 1 : -1;
+        const w = wAt(i);
+        const y = s > 0 ? q.y + Math.floor(w / 2) + 1 : q.y - Math.ceil(w / 2) - 1;
+        const L = i < N * 0.5 ? 3 : 2;
+        for (let k = 0; k < L; k++) g.px(q.x + (k === L - 1 ? 1 : 0), y + s * k, k === 0 ? PAL.earth2 : PAL.earth1);
       });
       // the stalk rises out of the floor and opens into a three-pronged cup
       const sk = stalk * (1 - Math.min(1, ret / 0.45));
@@ -1256,12 +1312,17 @@ export function graveRoot(sc: Phaser.Scene, base: XY, toward: XY, reach: number,
         const dip = snapT >= 0 && snapT < 160 ? 2 : 0;
         const pts: XY[] = [];
         for (let i = 0; i <= 12; i++) pts.push(stalkAt((i / 12) * sk, dip));
-        for (const q of pts) g.rect(q.x - 2, q.y - 1, 5, 3, PAL.ink);
-        for (const q of pts) {
+        // the stalk: 3 px tapering to 2 at the cup, lit left / body / shade right, a twist seam spiralling up it
+        pts.forEach((q, i) => {
+          const w = i < 7 ? 3 : 2;
+          g.rect(q.x - 2, q.y - 1, w + 2, 3, PAL.ink);
+        });
+        pts.forEach((q, i) => {
+          const w = i < 7 ? 3 : 2;
           g.px(q.x - 1, q.y, PAL.earth3);
-          g.px(q.x, q.y, PAL.earth2);
-          g.px(q.x + 1, q.y, PAL.earth1);
-        }
+          if (w === 3) g.px(q.x, q.y, i % 4 === 1 ? PAL.earth1 : PAL.earth2);
+          g.px(q.x - 1 + w - 1, q.y, PAL.earth1);
+        });
         const top = pts[pts.length - 1];
         if (sk > 0.7) {
           const o = snapT >= 0 && snapT < 120 ? 0 : st.open;

@@ -72,6 +72,7 @@ const scenarios: Record<string, Scenario> = {
   hoEatAttack: eat('Kovuğa ekim ×2 (2200) then the boosted Kütük Ezmesi on Sazlık Balıkçılı: glowing sprouts, violet pollen', 0, ['ember_wolf', 'storm_hawk', 'judgment_bolt'], [activate(1), choose(2), enterBattle(0), attack(1, 1)]),
   hoEatAttackP2: eat('(P2) Kovuğa ekim ×1 (1800) then the boosted attack on Sazlık Balıkçılı', 1, ['storm_hawk'], [activate(1, 1), enterBattle(1), attack(1, 1, 1)], { monsters: [null, 'reed_heron'] }),
   hoEatDirect: eat('Kovuğa ekim ×2 then a boosted direct attack (2200)', 0, ['ember_wolf', 'storm_hawk'], [activate(1), choose(2), enterBattle(0), attack(1, null)], { monsters: [] }),
+  hoEatDie: eat('Kovuğa ekim ×2 (2200) then the boosted ogre attacks Kristal Ejder (2800) and dies: the knot seeds leave the hollow', 0, ['ember_wolf', 'storm_hawk', 'judgment_bolt'], [activate(1), choose(2), enterBattle(0), attack(1, 1)], { monsters: [null, 'crystal_wyrm'] }),
   hoIdle: {
     desc: 'Kovuk Devi idle in attack and defense next to other monsters (1× readability)',
     stage: { p0: { monsters: ['hollow_ogre', 'stone_sentinel', { id: 'hollow_ogre', position: 'defense' }] }, p1: { monsters: ['ember_wolf', 'hollow_ogre', 'mudgrasp_spirit'] } },

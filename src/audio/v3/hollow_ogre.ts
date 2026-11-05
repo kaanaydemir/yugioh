@@ -18,10 +18,13 @@
 //   weight     the giant: driven 40–60 Hz body thumps, the club's wooden knock (the tok an octave down + a
 //              splinter crack), leaves (a short high rustle) and loam (brown puffs).
 //
+//   hoLogCall       summon (under the card slam): the hole opens (oom), a whistle starts high above
 //   hoLogFall       summon (sustained, faded at the stake): the log drops from above the screen — a falling
 //                   whistle (air around a big body, pitch dropping), the log turning with a creak
 //   hoStake         summon 'land': the log stakes into the tile — a huge driven thump, the hollow booms, splinters
 //   hoBarkSplit     summon f3: the bark splits open from inside like a door (tearing creak, wood crack, two hinges)
+//   hoEmber / hoEyes / hoCrumble   summon f2 ember hiss, f4 the eyes ignite, f11 the door slabs crumble
+//   hoRupture / hoRootBurst        direct attack: the rupture runs (sustained) / the roots burst under the duelist
 //   hoStep          summon f6 / strike path: a heavy root foot comes down and the roots grip the floor
 //   hoClubSlam      summon f9 SLAM / the roar role: the trunk groans (low creak) and the club pounds the ground
 //   hoCharge        strike charge (sustained): the roots tighten round the club and heave it up — creaks climb
@@ -31,9 +34,10 @@
 //   hoPollen        strike contact when boosted: the sprouts burst into violet pollen (soft knot chimes, air)
 //   hoShoulder      strike f9: the club is thrown onto the shoulder (a wooden knock on wood, a creak)
 //   hoReach         effect: the club reaches toward the graveyard, the roots creak, the graveyard stirs
-//   hoShrink        effect (per seed): a graveyard monster shrinks into a violet light seed (a hollow inhale)
-//   hoSeed          effect (per seed): the seed's arc through the air (the rising sine "fiuuu")
-//   hoCatch         effect (per seed): the seed lands on the root tip and the tendril wraps it (rustle + tick)
+//   hoShrink        effect (per seed): the ghost collapses into a violet light seed (a hollow inhale, tik on the seed)
+//   hoSeed / hoSeedSlow  effect (per seed, sustained launch → catch): the seed's arc (the rising sine "fiuuu")
+//   hoGhost         effect (per seed): the real monster's ghost rises over the pile (the hollow's low call)
+//   hoCatch         effect (per seed): the seed lands in the root's cup, the prongs snap shut (rustle + tick)
 //   hoKnot          effect (per seed): planted in the hollow — the knot "tok" and its glow (pass `pitch` 1 / 1.19)
 //   hoSprout        effect (per seed): a new sprout springs on the club (+400 tick)
 //   hoGlow          effect end: the hollow glows with its knot lights (a warm hollow chord, embers)
@@ -149,6 +153,43 @@ function trim(v: Voice, g: number, fn: () => void): void {
   }
 }
 
+
+/**
+ * The seed's flight voice over `D` s (the flight's game length): the arc follows the picture (rise to the apex at
+ * ≈ 45 %, then a gentle fall to the catch), a warm body, sparks shed along it and a sparkling shimmer that HANGS on the
+ * apex (the slow-motion) and trails it in. Sustained: the cinematic stops it on the catch.
+ */
+function seedVoice(v: Voice, D: number, slow: boolean): void {
+  trim(v, 1.41, () => {
+    const ap = D * (slow ? 0.5 : 0.45);
+    for (const [det, gg, mul] of [
+      [0, 0.2, 1],
+      [9, 0.09, 1],
+      [4, 0.045, 1.5],
+    ] as const) {
+      const s = v.tone('sine', [[0, 720 * mul], [ap, 1320 * mul, 'e'], [D, 1050 * mul, 'e']], { g: [[0, 0], [D * 0.15, gg], [ap, gg * (slow ? 1.1 : 1)], [D * 0.9, gg * 0.75], [D, 0.0001, 'e']], detune: det, to: v.panner([[0, 0.35], [D, -0.15]]) });
+      v.lfo(s.osc.detune, 6, [[0, 4], [D, 22]], { d: D + 0.02 });
+    }
+    v.noise('pink', { g: [[0, 0], [D * 0.4, 0.17], [D, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1080], [ap, 2100, 'e'], [D, 1700, 'e']], 3) });
+    v.tone('triangle', [[0, 360], [ap, 660, 'e'], [D, 560, 'e']], { g: [[0, 0], [D * 0.3, 0.05], [D, 0.0001, 'e']], to: v.filt('lowpass', 1200, 0.8) });
+    // sparks shed along the rise
+    const notes = [78, 80, 82, 85, 87];
+    for (let i = 0; i < 6; i++) {
+      const t = 0.04 + (i / 6) * (ap - 0.04) + v.r(-0.012, 0.012);
+      v.tone('sine', midiHz(notes[Math.min(4, Math.floor((i / 6) * 5 + v.rnd() * 1.5))]), { t, g: perc(0.04, 0.12, 0.002), to: v.panner(0.3 - i * 0.06) });
+    }
+    // the shimmer on the apex and the tail that trails it in (+6 dB over round 1): high pentatonic glints, thinning
+    const tail = slow ? [90, 87, 89, 85, 90, 87, 85, 82, 85, 82] : [90, 87, 89, 85, 87, 82, 85];
+    const t0 = ap - 0.04;
+    const step = (D - 0.04 - t0) / tail.length;
+    tail.forEach((m, i) => {
+      const t = t0 + i * step + v.r(-0.006, 0.006);
+      v.tone('sine', midiHz(m), { t, g: perc(0.045 * (1 - i / (tail.length + 4)), 0.12, 0.001), to: v.panner(0.05 - i * 0.03) });
+      v.tone('triangle', midiHz(m) * 2.01, { t: t + 0.003, g: perc(0.012, 0.06, 0.001), to: v.panner(0.05 - i * 0.03) });
+    });
+  });
+}
+
 // ================================================================ recipes
 
 export const HOLLOW_OGRE_RECIPES = {
@@ -159,15 +200,37 @@ export const HOLLOW_OGRE_RECIPES = {
     verb: 0.35,
     duck: 0.35,
     play(v) {
-      const D = 0.75;
-      // air around a big falling body: a low band whose centre DROPS (doppler) while it swells
-      sweep(v, 0, D, [1400, 900, 420], 0.5, { q: 1.1, kind: 'pink', peakAt: 0.85 });
-      sweep(v, 0.05, D - 0.05, [2600, 1800, 900], 0.16, { q: 1.6, kind: 'white', peakAt: 0.9 });
-      // a whistle through the open log top (a hollow tube): a breathy tone falling 620 → 340 Hz
-      v.noise('pink', { g: [[0, 0], [D * 0.6, 0.12], [D, 0.16]], to: v.filt('bandpass', [[0, 620], [D, 340, 'e']], 9) });
-      v.tone('sine', [[0, 610], [D, 330, 'e']], { g: [[0, 0], [D * 0.5, 0.025], [D, 0.04]] });
+      // round 2: timed to the REAL fall (≈ 0.35 s game time from release to the stake): the roar swells to its peak
+      // right into the stake instead of being cut at half level
+      const D = 0.38;
+      // air around a big falling body: a low band whose centre DROPS (doppler) while it swells hard
+      sweep(v, 0, D, [1500, 900, 380], 0.62, { q: 1.1, kind: 'pink', peakAt: 0.92 });
+      sweep(v, 0.02, D - 0.02, [2800, 1800, 800], 0.22, { q: 1.6, kind: 'white', peakAt: 0.94 });
+      // a whistle through the open log top (a hollow tube): a breathy tone falling 620 → 320 Hz
+      v.noise('pink', { g: [[0, 0.02], [D * 0.6, 0.14], [D, 0.2]], to: v.filt('bandpass', [[0, 640], [D, 320, 'e']], 9) });
+      v.tone('sine', [[0, 620], [D, 310, 'e']], { g: [[0, 0.01], [D * 0.5, 0.03], [D, 0.05]] });
+      // the low body of the log coming down: a sub swelling into the stake
+      v.tone('sine', [[0, 70], [D, 46, 'e']], { g: [[0, 0], [D * 0.85, 0.16], [D, 0.2]] });
       // the log turns once in the air: a creak
-      creak(v, 0.12, 0.3, 0.16, { f0: 190, f1: 160, rate: 30 });
+      creak(v, 0.04, 0.22, 0.16, { f0: 195, f1: 160, rate: 34 });
+    },
+  },
+  /** Summon (under the card's slam into the zone): the hole opens with a hollow "oom", and high above a whistle starts to fall. */
+  hoLogCall: {
+    cap: 1,
+    gap: 0.3,
+    verb: 0.55,
+    duck: 0.2,
+    play(v) {
+      trim(v, 1.3, () => {
+        // the hole opens: a soft hollow "oom" (the tok's cavity, no click)
+        v.tone('sine', [[0, midiHz(42)], [0.35, midiHz(42) * 0.92, 'e']], { g: perc(0.14, 0.4, 0.02) });
+        v.tone('sine', midiHz(42) * SLIT, { t: 0.01, g: perc(0.04, 0.25, 0.02) });
+        // high above: a thin air whistle falling toward us, swelling (the log is coming)
+        const D = 0.42;
+        v.noise('pink', { t: 0.08, g: [[0, 0], [D, 0.12]], to: v.filt('bandpass', [[0, 2400], [D, 900, 'e']], 7, { t: 0.08 }) });
+        v.tone('sine', [[0, 1500], [D, 700, 'e']], { t: 0.1, g: [[0, 0], [D - 0.02, 0.02]] });
+      });
     },
   },
   /** Summon 'land': the log stakes into the tile — a huge driven thump, the hollow booms, splinters, loam. */
@@ -366,7 +429,7 @@ export const HOLLOW_OGRE_RECIPES = {
       v.noise('pink', { t: 0.15, g: [[0, 0], [0.4, 0.05], [0.8, 0.0001, 'e']], to: v.filt('bandpass', [[0, 600], [0.8, 1400, 'e']], 3) });
     },
   },
-  /** Effect (per seed): a graveyard monster shrinks into a violet light seed — a hollow inhale closing to a point. */
+  /** Effect (per seed): the ghost collapses into a violet light seed — a hollow inhale closing to a point, a tik as the seed forms. */
   hoShrink: {
     cap: 4,
     gap: 0.01,
@@ -374,7 +437,9 @@ export const HOLLOW_OGRE_RECIPES = {
     duck: 0.25,
     play(v) {
       trim(v, 2.6, () => {
-        const D = 0.32;
+        // round 2: played at the START of the collapse (after the ghost's rise + hold), D = the shrink's game length,
+        // so the tik lands on the frame the seed appears
+        const D = 0.35;
         // the inhale: a band closing in from wide and low to a narrow high point
         v.noise('pink', { g: [[0, 0.0001], [D * 0.8, 0.22, 'e'], [D, 0.0001, 'e']], to: v.filt('bandpass', [[0, 500], [D, 2600, 'e']], [[0, 1], [D, 6]]) });
         v.tone('sine', [[0, 220], [D, 880, 'e']], { g: [[0, 0], [D * 0.85, 0.06], [D, 0.0001, 'e']] });
@@ -383,38 +448,10 @@ export const HOLLOW_OGRE_RECIPES = {
       });
     },
   },
-  /** Effect (per seed): the seed's arc through the air — the rising round sine "fiuuu" and a sparkling tail. */
-  hoSeed: {
-    cap: 4,
-    gap: 0.01,
-    verb: 0.55,
-    play(v) {
-      // +3 dB over round 0 (the critic: the seed was under-voiced next to the knot tok)
-      trim(v, 1.41, () => {
-        const D = 0.42;
-        // the arc: the round sine "fiuuu" (+ a detuned twin and a quiet fifth above = a living, breathing light)
-        seedArc(v, 0, D, 720, 1320, 0.2, { pan: [0.35, -0.1] });
-        seedArc(v, 0.01, D - 0.01, 720 * 1.5, 1320 * 1.5, 0.045, { pan: [0.3, -0.15] });
-        // a warm hollow body an octave under it (the seed is a piece of a creature, not a spark)
-        v.tone('triangle', [[0, 360], [D * 0.7, 660, 'e'], [D, 620, 'e']], { g: [[0, 0], [D * 0.3, 0.05], [D, 0.0001, 'e']], to: v.filt('lowpass', 1200, 0.8) });
-        // the sparks it sheds: tiny pentatonic plinks scattered along the arc, climbing with it
-        const notes = [78, 80, 82, 85, 87];
-        for (let i = 0; i < 6; i++) {
-          const t = 0.04 + (i / 6) * (D - 0.08) + v.r(-0.012, 0.012);
-          const f = midiHz(notes[Math.min(notes.length - 1, Math.floor((i / 6) * notes.length + v.rnd() * 1.5))]);
-          v.tone('sine', f, { t, g: perc(0.03, 0.12, 0.002), to: v.panner(0.3 - i * 0.08) });
-        }
-        // the sparkling tail that follows it in (the lingering trail): a quick shimmer of high pentatonic glints,
-        // falling a little and thinning out, panned to where the seed lands
-        const tail = [90, 87, 89, 85, 87, 82, 85];
-        tail.forEach((m, i) => {
-          const t = D - 0.06 + i * 0.026 + v.r(-0.006, 0.006);
-          v.tone('sine', midiHz(m), { t, g: perc(0.022 * (1 - i / 9), 0.09, 0.001), to: v.panner(-0.1 - i * 0.03) });
-          v.tone('triangle', midiHz(m) * 2.01, { t: t + 0.003, g: perc(0.006, 0.05, 0.001), to: v.panner(-0.1 - i * 0.03) });
-        });
-      });
-    },
-  },
+  /** Effect (per seed, sustained: started at launch, stopped at the catch): the seed's arc — a rising round sine "fiuuu", its sparkling tail. */
+  hoSeed: { cap: 4, gap: 0.01, verb: 0.55, play: (v) => seedVoice(v, 0.66, false) },
+  /** The first seed (sustained): the same arc stretched over its slow-motion flight, the apex hanging in a shimmer. */
+  hoSeedSlow: { cap: 4, gap: 0.01, verb: 0.6, play: (v) => seedVoice(v, 0.8, true) },
   /** Guard: a blow lands on the club barred across the belly — a dead charred-wood knock, chips, the roots plant. */
   hoBlock: {
     cap: 2,
@@ -452,7 +489,7 @@ export const HOLLOW_OGRE_RECIPES = {
       v.tone('sine', midiHz(99), { t: 0.05, g: perc(0.035, 0.09, 0.001) });
     },
   },
-  /** Effect (per seed): the seed lands on the root tip and the tendril wraps it — a soft high tok, a dry rustle. */
+  /** Effect (per seed): the seed lands in the root's cup and the three prongs snap shut on it — a soft high tok, a dry rustle. */
   hoCatch: {
     cap: 6,
     gap: 0.008,
@@ -521,6 +558,105 @@ export const HOLLOW_OGRE_RECIPES = {
       // the club's buds answer: two soft high plinks
       v.tone('sine', midiHz(85), { t: 0.32, g: perc(0.03, 0.4, 0.004) });
       v.tone('sine', midiHz(87), { t: 0.5, g: perc(0.025, 0.4, 0.004) });
+    },
+  },
+  /** Summon f2: the door seam glows — an ember hiss from inside the log, a low warm breath. */
+  hoEmber: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.4,
+    play(v) {
+      trim(v, 1.6, () => {
+        v.noise('white', { g: [[0, 0], [0.04, 0.05], [0.22, 0.03], [0.32, 0.0001, 'e']], to: v.filt('bandpass', [[0, 3800], [0.32, 5200, 'e']], 2) });
+        v.crackle({ t: 0.02, d: 0.28, n: 9, g: 0.06, f: 3200, q: 1.2, dec: 0.004 });
+        v.tone('sine', [[0, 90], [0.3, 96]], { g: [[0, 0], [0.08, 0.06], [0.32, 0.0001, 'e']] });
+      });
+    },
+  },
+  /** Summon f4: the ember eyes ignite in the hollow — two soft rising knot toks (left eye, right eye) and a glow. */
+  hoEyes: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.5,
+    play(v) {
+      trim(v, 1.8, () => {
+        tok(v, 0, midiHz(66), 0.07, { dec: 0.14, cavity: 0.3, pan: -0.1 });
+        tok(v, 0.07, midiHz(70), 0.08, { dec: 0.16, cavity: 0.3, pan: 0.1 });
+        v.tone('triangle', [[0, midiHz(70)], [0.3, midiHz(73), 'e']], { t: 0.08, g: perc(0.025, 0.3, 0.02) });
+        v.noise('white', { t: 0.06, g: perc(0.03, 0.12, 0.01), to: v.filt('bandpass', 4500, 2) });
+      });
+    },
+  },
+  /** Summon f11: the fallen bark slabs crumble into chips on the tile. */
+  hoCrumble: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.3,
+    play(v) {
+      trim(v, 1.4, () => {
+        v.crackle({ t: 0, d: 0.3, n: 16, g: 0.1, f: 2400, q: 1, kind: 'brown', curve: 1.6, dec: 0.01 });
+        tok(v, 0.01, midiHz(61), 0.06, { dec: 0.07, cavity: 0.1, pan: -0.2 });
+        tok(v, 0.06, midiHz(63), 0.05, { dec: 0.06, cavity: 0.1, pan: 0.2 });
+        puff(v, 0.01, 0.15, 0.25, 900, { kind: 'brown' });
+      });
+    },
+  },
+  /** Effect (per seed): the graveyard monster's ghost rises over the pile — a low hollow CALL from the log, answered by a breath. */
+  hoGhost: {
+    cap: 4,
+    gap: 0.01,
+    verb: 0.6,
+    duck: 0.2,
+    play(v) {
+      trim(v, 1.9, () => {
+        const D = 0.5;
+        // the hollow calls: an air-cavity tone (a blown jug) on F#3 bending up a hair, a fifth over it, soft vibrato
+        for (const [m, gg] of [
+          [54, 0.06],
+          [61, 0.025],
+        ] as const) {
+          const s = v.tone('sine', [[0, midiHz(m) * 0.97], [D * 0.5, midiHz(m), 'e']], { g: [[0, 0], [D * 0.3, gg], [D * 0.8, gg * 0.8], [D, 0.0001, 'e']] });
+          v.lfo(s.osc.detune, 5, [[0, 2], [D, 12]], { d: D });
+        }
+        v.noise('pink', { g: [[0, 0], [D * 0.4, 0.07], [D, 0.0001, 'e']], to: v.filt('bandpass', [[0, 500], [D, 900, 'e']], 4) });
+        // the ghost answers: a breathy rising violet shimmer
+        v.tone('sine', [[0, midiHz(78)], [D, midiHz(82), 'e']], { t: 0.12, g: [[0, 0], [0.2, 0.012], [D - 0.12, 0.0001, 'e']] });
+      });
+    },
+  },
+  /** Strike (direct): the rupture runs along the floor to the duelist (sustained, stopped on arrival). */
+  hoRupture: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.35,
+    duck: 0.3,
+    play(v) {
+      trim(v, 1.1, () => {
+        const D = 0.45;
+        // the crack running: brown-noise ripping through a band climbing as it races away, panned toward the duelist
+        const pan = v.panner([[0, 0.1], [D, 0.6]]);
+        const fl = v.flutter(30, 0.75, { d: D + 0.05, base: 0.3, to: v.filt('bandpass', [[0, 300], [D, 1300, 'e']], 1.2, { to: pan }) });
+        v.noise('brown', { g: [[0, 0.3], [D * 0.7, 0.5], [D, 0.2]], to: fl });
+        v.crackle({ t: 0, d: D, n: 20, g: 0.1, f: 3600, q: 1.3, dec: 0.006, to: pan });
+        creak(v, 0.02, D - 0.05, 0.12, { f0: 170, f1: 210, rate: 40, to: pan });
+        v.tone('sine', [[0, 52], [D, 44, 'e']], { g: [[0, 0.1], [D, 0.14]] });
+      });
+    },
+  },
+  /** Strike (direct): the rupture arrives — roots burst up under the duelist: a crack, a root tok, loam. */
+  hoRootBurst: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.4,
+    duck: 0.4,
+    play(v) {
+      trim(v, 0.9, () => {
+        crack(v, 0, 0.5, { hp: 1300, lp: 7000, n: 3, gap: 0.012, dec: 0.014 });
+        tok(v, 0.005, midiHz(58), 0.24, { dec: 0.22, cavity: 0.6 });
+        thump(v, 0, 160, 50, 0.4, 0.2, { drive: 1.8 });
+        snaps(v, 0.02, 0.2, 10, 0.1);
+        puff(v, 0.01, 0.3, 0.3, 800, { kind: 'brown' });
+      });
     },
   },
   /** Summon f5: the giant shrugs its shoulders free of the log — a deep two-step creak, bark crumbling, a leaf rustle. */

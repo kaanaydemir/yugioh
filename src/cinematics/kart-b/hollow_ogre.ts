@@ -243,7 +243,8 @@ async function logFallV3(S: Stage): Promise<void> {
   dustWall(sc, home, 26, R);
   floorCrack(sc, { x: home.x, y: home.y + 1 }, 28, S.ev.uid * 3 + 1, 700);
   floorRing(sc, home, 34, 340, [PAL.earth4, PAL.earth3, PAL.earth2]);
-  void lightFlash(sc, home.x, home.y - 6, PAL.earth3, 50, 320, { floorY: home.y, ring: true, intensity: 0.8 });
+  // (critic r2: an earth3 floor light is darker than the lit floor and stamped mud stains: a warm gold flash brightens)
+  void lightFlash(sc, home.x, home.y - 6, PAL.gold3, 44, 300, { floorY: home.y, intensity: 0.7 });
   await animate(sc, DRIVE_MS, (k) => {
     const e = 1 - (1 - k) * (1 - k);
     s.setPosition(rest.x, Math.round(lerp(rest.y - LOG_EXT, rest.y, e)));
@@ -260,6 +261,7 @@ async function logFallV3(S: Stage): Promise<void> {
   const ember = S.glow({ color: PAL.gold3, spill: PAL.gold2, radius: 16, intensity: 0, anim: 'flicker', fadeIn: 0, at: rint(pointOf(u, 'summon', 2, 'core')) });
   atFrame(u, 'summon', 2, () => {
     ember.setIntensity(1, 50);
+    play('hoEmber', { volume: 0.8, pan });
     emberCrack(sc, () => rint(livePoint(u, 'core')), s.depth + 0.3, u.frameMs('summon', 2) + 40);
     const spill = lightPool(sc, home.x + (u.flipX ? -10 : 10), home.y + 4, { color: PAL.gold3, spill: PAL.gold2, radius: 22, floorY: home.y + 4, intensity: 0.9, anim: 'flicker', fadeIn: 40 });
     void sleep(sc, 420).then(() => spill.fadeOut(260));
@@ -277,6 +279,7 @@ async function logFallV3(S: Stage): Promise<void> {
   // f4: the eyes ignite in the dark seam (a gold flare in the hollow), bark crumbs trickle off the opened doors
   atFrame(u, 'summon', 4, () => {
     const c = rint(pointOf(u, 'summon', 4, 'head'));
+    play('hoEyes', { volume: 0.85, pan });
     void lightFlash(sc, c.x, c.y, PAL.gold4, 16, 220, { floorY: home.y, air: 1, intensity: 1 });
     splinters(sc, { x: c.x - 6, y: c.y + 6 }, home.y, 5, R, { up: 0.3, dir: -1 });
     splinters(sc, { x: c.x + 6, y: c.y + 6 }, home.y, 5, R, { up: 0.3, dir: 1 });
@@ -307,6 +310,7 @@ async function logFallV3(S: Stage): Promise<void> {
   // f11: the fallen door slabs break into chips on the tile
   atFrame(u, 'summon', 11, () => {
     const c = rint(pointOf(u, 'summon', 11, 'core'));
+    play('hoCrumble', { volume: 0.75, pan });
     for (const dx of [-8, 8]) splinters(sc, { x: c.x + dx, y: home.y - 2 }, home.y, 9, R, { up: 0.6, dir: Math.sign(dx) });
   }, { late: false });
   atFrame(u, 'summon', 9, () => {
@@ -315,20 +319,23 @@ async function logFallV3(S: Stage): Promise<void> {
     play('hoClubSlam', { volume: 1, pan });
     const at = rint(pointOf(u, 'summon', 9, 'muzzle'));
     const g = { x: at.x, y: Math.min(home.y + 4, at.y + 1) };
-    rootStar(sc, g, 40, S.ev.uid * 5 + 2, 820);
-    sproutRing(sc, g, 22, 13, R, 950);
-    floorRing(sc, g, 30, 320);
-    loam(sc, g, 12, 70, R);
-    splinters(sc, g, home.y + 2, 12, R, { up: 1 });
+    // (critic r2: the debris spilled over the neighbour's badge — kept inside about one tile, its centre pulled back
+    // toward the giant's own tile)
+    const gd = { x: Math.round(lerp(at.x, home.x, 0.4)), y: g.y };
+    rootStar(sc, g, 32, S.ev.uid * 5 + 2, 820);
+    sproutRing(sc, gd, 16, 11, R, 950);
+    floorRing(sc, g, 24, 320);
+    loam(sc, gd, 10, 50, R);
+    splinters(sc, gd, home.y + 2, 9, R, { up: 1.1 });
     const hd = rint(pointOf(u, 'summon', 9, 'head'));
     leaves(sc, { x: hd.x, y: hd.y - 8 }, home.y, 9, R, s.depth + 0.3);
     void sleep(sc, 90).then(() => leaves(sc, { x: hd.x - 6, y: hd.y - 24 }, home.y, 7, R, s.depth + 0.3));
-    void lightFlash(sc, g.x, g.y, PAL.earth4, 48, 420, { floorY: home.y, ring: true, intensity: 1.2 });
+    void lightFlash(sc, g.x, g.y, PAL.gold3, 40, 420, { floorY: home.y, ring: true, intensity: 0.9 });
     void lightFlash(sc, g.x, g.y - 4, PAL.gold4, 26, 200, { floorY: home.y, intensity: 1.2 });
-    dustWall(sc, g, 16, R);
+    dustWall(sc, gd, 11, R);
     // a leaf burst off the crown: the whole canopy shakes loose
     const cr = rint(pointOf(u, 'summon', 9, 'head'));
-    leaves(sc, { x: cr.x - 4, y: cr.y - 14 }, home.y, 12, R, s.depth + 0.3);
+    leaves(sc, { x: cr.x - 4, y: cr.y - 14 }, home.y, 8, R, s.depth + 0.3);
     const moss = lightPool(sc, g.x, g.y, { color: PAL.leaf3, spill: PAL.leaf2, radius: 20, floorY: g.y, intensity: 0.6, anim: 'breathe', fadeIn: 60 });
     void sleep(sc, 500).then(() => moss.fadeOut(300));
     void shake(sc, 260, 3);
@@ -344,6 +351,9 @@ if (LOOK_V3)
     'summon',
     async (ctx) => {
       if (ctx.ev.from === 'field') return ctx.base();
+      // under the card's slam into the zone: the hole opens (a hollow "oom") and a whistle starts high above
+      const zx = zoneXY(ctx.ev.player, 'monster', ctx.ev.zone).x;
+      void sleep(ctx.scene, 170).then(() => play('hoLogCall', { volume: 0.85, pan: panAt(zx) }));
       await runSummon(ctx, async () => undefined, logFallV3);
     },
     { priority: 20, name: 'kart-b:hollow_ogre:summon' },
@@ -387,7 +397,7 @@ async function reachV3(ctx: Ctx<'activate'>, u: MonsterUnit): Promise<Reach> {
     floorCrack(sc, g, 12, ev.uid * 5 + 9, 900);
     loam(sc, g, 10, 50, R);
     splinters(sc, { x: g.x, y: g.y - 2 }, g.y, 8, R, { up: 0.8 });
-    void lightFlash(sc, g.x, g.y - 3, PAL.earth4, 22, 260, { floorY: g.y, ring: true, intensity: 0.8 });
+    void lightFlash(sc, g.x, g.y - 3, PAL.gold3, 22, 260, { floorY: g.y, intensity: 0.7 });
     void shake(sc, 140, 2);
   }, { late: false });
   await u.playRange('special', 0, RECEIVE_F);
@@ -395,9 +405,10 @@ async function reachV3(ctx: Ctx<'activate'>, u: MonsterUnit): Promise<Reach> {
   // the root bursts out of the club head and runs ALONG THE FLOOR toward the graveyard, rises and opens its cup
   const base = clubFloor(u, RECEIVE_F);
   const toward = { x: pAt.x, y: pAt.y + 2 };
-  const root = graveRoot(sc, base, toward, 0.6, unitDepth(lerp(base.y, toward.y, 0.6)) - 0.2, R);
+  // the root lies ON the floor (under every body: on P2 it used to be drawn over the opponent's heron)
+  const root = graveRoot(sc, base, toward, 0.6, DEPTH.SHADOW + 0.7, R);
   play('hoRootRun', { volume: 0.9, pan: panAt(lerp(base.x, toward.x, 0.3)) });
-  await root.grow(520);
+  await root.grow(400);
   play('hoCupOpen', { volume: 0.7, pan: panAt(root.cup().x) });
   const r: Reach = {
     uid: u.uid,
@@ -498,26 +509,64 @@ async function plantV3(ctx: Ctx<'banish'>): Promise<void> {
   const seedAt = (): XY => ({ x: pileFloor.x, y: pileFloor.y - 14 });
   const depth = DEPTH.FX + 2;
   const k = group.length;
-  // the receiving pose lives between seeds: the giant strains on the lever (f3 / f2 on uneven beats)
+  // the receiving loop (critic r2: an almost static f2/f3 for 2.4 s): a real STRAIN CYCLE on the planted lever — the
+  // giant hauls back (f4, the trunk leans a px away), settles (f3), presses forward onto the club (f2, a px in), with
+  // the hollow's warm light breathing and the root's sap pulse running home (graveRoot) between the seeds
+  const baseX = u.rest0.x;
+  const lean = u.flipX ? 1 : -1;
+  const CYCLE: readonly (readonly [number, number, number])[] = [
+    [RECEIVE_F, 150, 0],
+    [RECEIVE_F + 1, 120, 1],
+    [RECEIVE_F + 1, 90, 1],
+    [RECEIVE_F, 130, 0],
+    [RECEIVE_F - 1, 120, -1],
+    [RECEIVE_F, 110, 0],
+  ];
   let receiving = true;
+  const c0 = rint(livePoint(u, 'core'));
+  const breath = lightPool(sc, c0.x, c0.y, { color: PAL.gold3, spill: PAL.gold2, radius: 12, floorY: u.home.y + 2, intensity: 0.5, anim: 'breathe', fadeIn: 200 });
+  breath.follow(() => (live(u) ? livePoint(u, 'core') : null), { floorY: u.home.y + 2 });
   void (async () => {
     let n = 0;
     while (receiving && live(u)) {
-      await sleep(sc, n % 3 === 2 ? 90 : 160);
-      if (!receiving || u.frameInfo().anim !== 'special' || u.sprite.anims.isPlaying) {
-        n++;
-        continue;
+      const [f, ms, dx] = CYCLE[n % CYCLE.length];
+      if (receiving && u.frameInfo().anim === 'special' && !u.sprite.anims.isPlaying) {
+        u.pose('special', f);
+        u.sprite.x = baseX + lean * dx;
       }
-      u.pose('special', n % 3 === 2 ? RECEIVE_F - 1 : RECEIVE_F);
       n++;
+      await sleep(sc, ms);
     }
+    if (live(u)) u.sprite.x = baseX;
   })();
+  // the giant notices each ghost: its ember eyes flick toward the pile (a gold glint on the pile side of the eye), a creak
+  const eyeFlick = () => {
+    if (!live(u)) return;
+    play('hoIdleCreak', { volume: 0.55, pan });
+    const side = Math.sign(pileFloor.x - u.home.x) || 1;
+    const r = Raster.around(sc, u.home.x, u.home.y - 40, 60, 60, u.sprite.depth + 0.6);
+    void animate(sc, 300, (kk) => {
+      r.draw((g) => {
+        if (!live(u) || kk > 0.92) return;
+        const e = rint(livePoint(u, 'head'));
+        g.px(e.x + side, e.y, PAL.white);
+        g.px(e.x + side * 2, e.y, kk < 0.5 ? PAL.gold4 : PAL.gold3);
+        if (kk < 0.4) g.px(e.x + side, e.y - 1, PAL.gold4);
+      });
+    }).then(() => r.destroy());
+    const e = livePoint(u, 'head');
+    void lightFlash(sc, e.x, e.y, PAL.gold4, 12, 200, { floorY: u.home.y, air: 1, intensity: 0.8 });
+  };
   // one seed's ghost: it rises over the pile, stands, collapses into a light seed
   const form = async (i: number): Promise<void> => {
     const b = group[i];
     grave.splice(grave.indexOf(b.uid), 1);
     setPile();
-    play('hoShrink', { volume: 0.85, pan: pPan });
+    // the hollow CALLS as the ghost rises; the giant's eyes flick toward it and the log creaks
+    play('hoGhost', { volume: 0.85, pan: pPan });
+    eyeFlick();
+    // the inhale starts as the ghost collapses: its tik lands on the frame the seed appears
+    void sleep(sc, RISE_MS + HOLD_MS).then(() => play('hoShrink', { volume: 0.85, pan: pPan }));
     await shrinkToSeed(sc, b.cardId as MonsterId, pileFloor, owner === 1, seedAt(), depth, { riseMs: RISE_MS, holdMs: HOLD_MS, shrinkMs: SHRINK_MS });
   };
   let lastNum: { destroy(): void } | null = null;
@@ -525,6 +574,7 @@ async function plantV3(ctx: Ctx<'banish'>): Promise<void> {
   let climbed: () => void = () => undefined;
   const plant = async (i: number): Promise<void> => {
     receiving = false;
+    if (live(u)) u.sprite.x = baseX;
     root.snap();
     root.open = 0;
     play('hoCatch', { volume: 0.9, pan: panAt(root.cup().x) });
@@ -588,12 +638,14 @@ async function plantV3(ctx: Ctx<'banish'>): Promise<void> {
       await formed;
       await upInHollow;
       if (i === k - 1) reach.stir.destroy();
-      play('hoSeed', { volume: 1, pan: pPan });
       const first = i === 0;
+      // sustained: the whistle lives exactly as long as the flight (the first one over its slow-motion apex)
+      const whistle = start(first ? 'hoSeedSlow' : 'hoSeed', { volume: 1, pan: pPan });
       // the next ghost starts rising while this seed flies
       const flight = seedFlight(sc, seedAt(), () => root.cup(), FLIGHT_MS + (first ? 100 : 0), 28 + i * 6, depth + 0.5, R, { floorFrom: pileFloor.y, floorTo: root.base.y, slow: first ? SLOW_FIRST : 0 });
       if (i + 1 < k) formed = sleep(sc, 200).then(() => form(i + 1));
       await flight;
+      whistle.stop(45);
       await planted;
       upInHollow = new Promise<void>((res) => (climbed = res));
       planted = plant(i).then(() => {
@@ -605,6 +657,7 @@ async function plantV3(ctx: Ctx<'banish'>): Promise<void> {
     }
     await planted;
     receiving = false;
+    breath.fadeOut(500);
     // FINALE: the hollow blazes with its knot lights, the buds pulse, one deep hollow "tok"; the root sinks back
     reach.destroy();
     u.pose('special', 8);
@@ -634,6 +687,7 @@ async function plantV3(ctx: Ctx<'banish'>): Promise<void> {
   } catch (e) {
     console.error('[hollow_ogre plant] failed', e);
     receiving = false;
+    breath.destroy();
     reach.taken = false;
     reach.destroy();
     u.posed = false;
@@ -706,7 +760,8 @@ async function smashV3(s: StrikeArgs): Promise<void> {
   const nd = { x: dirv.x / dl, y: dirv.y / dl };
   // the contact frame's club head comes down on the target's UPPER BODY (its core), from in front of it: the giant
   // stands a few px nearer the camera than the target, so the club is drawn over the body for the hit-stop
-  const inset = s.blocked ? 6 : 2;
+  // (critic r2: stop short — daylight between the bodies, the club head visible ON the target's core)
+  const inset = s.blocked ? 8 : 7;
   const tc = s.target && !s.direct ? s.target.core() : null;
   const aim: XY = tc ? { x: tc.x - nd.x * inset, y: Math.min(tc.y, ground.y - 10) } : { x: ground.x - nd.x * 8, y: ground.y - 2 };
   let feet: XY = { x: aim.x - off.x, y: aim.y - off.y };
@@ -770,18 +825,31 @@ async function smashV3(s: StrikeArgs): Promise<void> {
     floorRing(sc, p, big ? 26 : 18, 280);
     splinters(sc, { x: p.x, y: p.y - 3 }, fy, big ? 12 : 8, R, { up: 1 });
     loam(sc, p, big ? 10 : 7, 60, R);
-    void lightFlash(sc, p.x, p.y - 4, PAL.earth4, big ? 36 : 28, 300, { floorY: fy, ring: true, intensity: 0.8 });
+    void lightFlash(sc, p.x, p.y - 4, PAL.gold3, big ? 32 : 26, 300, { floorY: fy, intensity: 0.7 });
   };
   // the body half: heartwood chips and bark (never green leaves: the target may be green) burst off the crushed body
   const bodyFx = (p: XY, fy: number, big: boolean) => {
     const sp = new Sparks(sc, DEPTH.FX + 1);
-    for (let i = 0; i < (big ? 16 : 10); i++) {
+    for (let i = 0; i < (big ? 26 : 12); i++) {
       const a = -Math.PI / 2 + (R() - 0.5) * 2.8;
-      const v = 60 + R() * 90;
-      sp.add({ x: p.x, y: p.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 20, ay: 420, floor: fy + (R() - 0.5) * 6, bounce: 0.3, life: 420 + R() * 220, colors: i % 2 ? [PAL.earth4, PAL.earth3, PAL.earth2] : [PAL.earth2, PAL.earth1, PAL.earth0], shape: i % 3 === 0 ? 'sq' : 'px', size: 2, fadeAt: 1, flicker: i % 5 === 0 });
+      const v = 60 + R() * 100;
+      // chunky bark slabs (3 px) among the 2-px chips: the club's own wood shattering on the body
+      const chunk = big && i % 4 === 0;
+      sp.add({ x: p.x, y: p.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 20, ay: 420, floor: fy + (R() - 0.5) * 6, bounce: 0.3, life: 420 + R() * 260, colors: i % 2 ? [PAL.earth4, PAL.earth3, PAL.earth2] : [PAL.earth2, PAL.earth1, PAL.earth0], shape: i % 3 === 0 || chunk ? 'sq' : 'px', size: chunk ? 3 : 2, fadeAt: 1, flicker: i % 5 === 0 });
     }
     sp.release();
-    void lightFlash(sc, p.x, p.y, PAL.earth4, big ? 30 : 22, 240, { floorY: fy, air: 1, intensity: 1 });
+    // the wood-flash at the club head: a white-hot 2-frame star of heartwood light where the blow lands
+    const star = Raster.around(sc, p.x, p.y, 40, 40, DEPTH.FX + 1.5);
+    void animate(sc, 110, (kk) => {
+      star.draw((g) => {
+        const L = kk < 0.5 ? (big ? 8 : 6) : big ? 5 : 4;
+        const c0 = kk < 0.5 ? PAL.white : PAL.earth4;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) for (let q = 1; q <= L; q++) g.px(p.x + dx * q, p.y + dy * Math.ceil(q * 0.6), q < L / 2 ? c0 : PAL.earth4);
+        for (const [dx, dy] of [[1, 1], [-1, -1], [1, -1], [-1, 1]] as const) for (let q = 1; q <= L >> 1; q++) g.px(p.x + dx * q, p.y + dy * q, PAL.earth4);
+        g.rect(p.x - 1, p.y - 1, 3, 3, c0);
+      });
+    }).then(() => star.destroy());
+    void lightFlash(sc, p.x, p.y, PAL.gold4, big ? 30 : 22, 240, { floorY: fy, air: 1, intensity: 1 });
     if (boosted && boost) {
       // the POLLEN fountain bursts up off the club's glowing sprouts
       boost.aura.flare();
@@ -802,25 +870,34 @@ async function smashV3(s: StrikeArgs): Promise<void> {
     floorFx(gAt, feet.y, false);
     bodyFx({ x: gAt.x, y: gAt.y - 6 }, feet.y, false);
     const ms = clamp(Math.round(Math.hypot(s.toGround.x - gAt.x, s.toGround.y - gAt.y) * 1.1), 110, 220);
+    // the crack is HEARD running to the duelist (sustained), and the roots burst up under them on arrival
+    const run = start('hoRupture', { volume: 0.85, pan: panAt(gAt.x) });
     await rupture(sc, gAt, s.toGround, ms, R);
+    run.stop(50);
+    play('hoRootBurst', { volume: 0.9, pan: panAt(s.toGround.x) });
     s.impact(s.to);
     loam(sc, s.toGround, 10, 70, R);
     splinters(sc, s.toGround, s.toGround.y, 10, R, { up: 1.2 });
-    void lightFlash(sc, s.to.x, s.to.y, PAL.earth4, 30, 320, { floorY: s.toGround.y, intensity: 0.9 });
+    void lightFlash(sc, s.to.x, s.to.y, PAL.gold3, 30, 320, { floorY: s.toGround.y, intensity: 0.8 });
   } else {
+    // contact ON the contact frame (club head at the target's core): the number, the hit-stop, the burst — and the
+    // frame is HELD through the hit-stop (critic r2: the fall-through frame used to replace it on the same tick)
     s.impact(at);
     play('hoImpact', { volume: s.blocked ? 0.7 : 0.95, pan: panAt(at.x) });
     bodyFx(at, floorY, !s.blocked);
-    atFrame(u, 'attack', CON + 1, () => {
-      const gp = rint(livePoint(u, 'muzzle'));
-      floorFx({ x: gp.x, y: Math.min(feet.y + 2, gp.y + 2) }, feet.y, !s.blocked);
-      if (!s.blocked) leaves(sc, { x: gp.x, y: gp.y - 14 }, feet.y, 3, R, DEPTH.FX + 1);
-    }, { late: false });
+    if (loses) return;
+    await sleep(sc, u.frameMs('attack', CON));
   }
   if (loses) return;
   // ---- the bounce, the club thrown onto the shoulder (f9), then the giant steps home on the recovery
   atFrame(u, 'attack', CON + 3, () => play('hoShoulder', { volume: 0.75, pan: panAt(u.sprite.x) }), { late: false });
   const rest = u.playRange('attack', CON + 1, undefined, { hold: false });
+  if (!s.direct) {
+    // the fall-through: the club goes on down to the floor after the hit-stop, the floor cracks
+    const gp = rint(livePoint(u, 'muzzle'));
+    floorFx({ x: gp.x, y: Math.min(feet.y + 2, gp.y + 2) }, feet.y, !s.blocked);
+    if (!s.blocked) leaves(sc, { x: gp.x, y: gp.y - 14 }, feet.y, 3, R, DEPTH.FX + 1);
+  }
   await sleep(sc, u.rangeMs('attack', CON + 1, REC + 1));
   const back = Math.max(120, u.rangeMs('attack', REC + 1, n) - 30);
   if (feet.x !== home.x || feet.y !== home.y) {
@@ -861,8 +938,11 @@ if (LOOK_V3)
     const onContact = (uid: Uid) => {
       if (uid !== attacker) return;
       off?.();
-      // its own beat lands 2 frames AFTER the contact, once the attacker's flash and the shared badge have cleared
-      void sleep(sc, 100).then(() => guardBeat());
+      // the knock is heard ON the contact (the card's identity at the block); the chips fly a beat later, out to the
+      // side away from the shared shield
+      const v = live(u);
+      play('hoBlock', { volume: 0.9, pan: panAt(v ? v.sprite.x : 320) });
+      void sleep(sc, 60).then(() => guardBeat());
     };
     const guardBeat = () => {
       const v = live(u);
@@ -879,15 +959,17 @@ if (LOOK_V3)
       });
       const g = livePoint(v, 'grip');
       const h = livePoint(v, 'staff');
-      const club = rint({ x: (g.x + h.x) / 2, y: (g.y + h.y) / 2 });
       const feet = rint(v.worldPoint('feet'));
-      guardChips(sc, club, feet, v.flipX ? -1 : 1, R);
+      // away from the attacker (the shared hex shield sits on the struck face): the chips spray off the club's far end
+      const av = live(ctx.unit(attacker));
+      const away = av ? Math.sign(v.sprite.x - av.sprite.x) || (v.flipX ? -1 : 1) : v.flipX ? -1 : 1;
+      // from the TOP of the barred club, above the shield, flung up and away (brown chips on the brown trunk vanished)
+      const club = rint({ x: (g.x + h.x) / 2 + away * 4, y: Math.min(g.y, h.y) - 8 });
+      guardChips(sc, club, feet, -away, R);
       rootGrip(sc, { x: feet.x - 7, y: feet.y }, R);
       rootGrip(sc, { x: feet.x + 7, y: feet.y }, R);
       const eye = livePoint(v, 'head');
       void lightFlash(sc, eye.x, eye.y, PAL.gold4, 18, 220, { floorY: feet.y, air: 1, intensity: 1 });
-      play('hoBlock', { volume: 0.85, pan: panAt(club.x) });
-      play('hoIdleCreak', { volume: 0.7, pan: panAt(club.x) });
     };
     sc.events.on('v3:contact', onContact);
     const timer = sc.time.delayedCall(6000, () => off?.());
@@ -959,13 +1041,15 @@ async function rootsDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
       u.asClaimant(() => void u.playRange('death', start0, undefined, { hold: true }));
     }
     const dissolveF = u.markFrame('death', 'dissolve', 4);
-    // f1: the root arms unravel (the club drops); the planted seeds leave the hollow as two violet motes
+    // f1: the root arms unravel (the club drops); the planted seeds leave the hollow as two violet motes. The shared
+    // posematch may already have started the death on the contact (critic r2: with late:false this beat was dropped
+    // in every battle death) — it fires as soon as the death shows f1 or later, once
     atFrame(u, 'death', 1, () => {
       play('hoUnravel', { volume: 0.85, pan });
       if (knots > 0) {
         // the planted knot lights leave the hollow as small SEEDS: they rise, dim, and fall back into the tile beside
         // the spot where the lone sprout will stand
-        const c = rint(pointOf(u, 'death', 1, 'core'));
+        const c = rint(livePoint(u, 'core'));
         const sx = home.x + (u.flipX ? -1 : 1);
         const r = new Raster(sc, 0, 0, 640, 360, DEPTH.FX + 1);
         void animate(sc, 760, (k) => {
@@ -976,13 +1060,15 @@ async function rootsDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
               const dn = k < 0.35 ? 0 : (k - 0.35) / 0.65;
               const x = Math.round(lerp(c.x + (i ? 2 : -2), tx, dn));
               const y = Math.round(c.y - 10 * up * (1 - dn) + dn * dn * (home.y - 1 - c.y));
-              drawSeed(g, { x, y }, k < 0.5 ? 2 : 1);
+              // a short falling trail behind it, then the seed itself (big while it rises, smaller as it dims)
+              if (dn > 0.05) for (let q = 1; q <= 3; q++) g.px(x, y - q * 2, q === 1 ? PAL.void3 : PAL.void2);
+              drawSeed(g, { x, y }, k < 0.45 ? 3 : k < 0.8 ? 2 : 1);
               if (k > 0.75) g.px(x, y, k > 0.9 ? PAL.void2 : PAL.void3);
             }
           });
         }).then(() => r.destroy());
       }
-    }, { late: false });
+    });
     // f2 …: root strands slither out along the floor and dig into the tile
     atFrame(u, 'death', 2, () => {
       roots = rootsIntoTile(sc, { x: home.x, y: home.y }, 9, R, DEPTH.SHADOW + 0.6);
@@ -996,13 +1082,13 @@ async function rootsDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
     atFrame(u, 'death', dissolveF, () => {
       retract = start('hoRootsRetract', { volume: 0.85, pan });
       loam(sc, home, 8, 40, R);
-    }, { late: false });
+    });
     // dissolve + 1: the trunk caves in (dust drawn inward)
     atFrame(u, 'death', Math.min(n - 1, dissolveF + 1), () => {
       play('hoCollapse', { volume: 0.85, pan });
       caveIn(sc, { x: home.x, y: home.y - 8 }, R);
       void shake(sc, 120, 1);
-    }, { late: false });
+    });
     // the lone sprout appears: a gold / violet light flicker on it (2 frames), and it HOLDS upright before it wilts
     const sproutF = Math.max(0, n - 4);
     atFrame(u, 'death', sproutF, () => {

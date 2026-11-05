@@ -722,56 +722,50 @@ function drawDoor(f: Frame): void {
   const q = layer();
   const fall = clamp(o.doorFall, 0, 1);
   const ph = sk.hry * 2 + 5;
-  const DW = 9;
-  // two thick bark slabs hinged on the hollow's sides, swinging OUT toward the viewer like shutters: closed they lie
-  // over the hollow (bark out), edge-on they are a thin plank, open they show their pale heartwood inner face; the
-  // free edge drops a little as it comes toward us (2:1 board). Then the SLAM shakes them loose and they fall.
-  const theta = lerp(Math.PI * 0.92, 0.55, k);
-  const proj = Math.cos(theta);
-  const inner = proj > 0.12;
+  const DW = 8;
+  // two thick bark slabs hinged on the hollow's sides swing OUTWARD past the trunk's silhouette like shutters thrown
+  // open (critic r2: the pale heartwood face read as a sheet of paper / a sign). What we see is the slab's OUTER bark
+  // face, foreshortened into a wedge that sticks out sideways (wide at the hinge, the free edge dropping 2:1 as it
+  // swings), with only a 1-px heartwood lip where the split tore it. The SLAM shakes them loose: they sag on the
+  // hinge, slide down behind the root feet and are gone (the cinematic breaks them into chips on the tile).
+  const theta = lerp(Math.PI * 0.92, 1.05, k);
+  const proj = Math.abs(Math.cos(theta));
   for (const s of [-1, 1]) {
     const hinge = hx + s * (sk.hrx + 1);
-    const free = hinge + s * DW * proj + s * fall * 4;
+    const reach = Math.max(2, DW * (k < 0.5 ? 1 - k * 1.2 : proj + 0.2) * (1 - fall * 0.5));
+    const free = hinge + s * reach;
     const x0 = Math.min(hinge, free);
     const x1 = Math.max(hinge, free);
-    // shaken loose, the slab tips forward and falls FLAT onto the tile: it drops and foreshortens to a plank lying
-    // on the floor (the cinematic breaks it into chips on the last frame)
-    const bot0 = rnd(hy + ph / 2);
-    const bot = bot0 + rnd(fall * fall * (GY - 1 - bot0));
-    const vis = Math.max(3, rnd(ph * (1 - fall * 0.85)));
-    for (let j = 0; j < vis; j++) {
-      const y0 = bot - vis + j;
-      for (let x = rnd(x0); x <= rnd(x1); x++) {
-        // a torn, splintered free edge
-        if (Math.abs(x - rnd(free)) === 0 && hash2(x, j, 31) > 0.62) continue;
-        // the free edge comes forward and down: rows shear by the swing
-        const u = Math.abs(x - hinge) / Math.max(1, DW);
-        const y = y0 + rnd(u * Math.sin(theta) * 2.2 * (inner ? 1 : 0));
-        if (y > GY) continue;
+    const sag = rnd(fall * fall * 10);
+    const vis = Math.max(2, rnd(ph * (1 - fall * 0.8)));
+    const top0 = rnd(hy - ph / 2) + sag;
+    for (let x = rnd(x0); x <= rnd(x1); x++) {
+      const u = Math.abs(x - hinge) / Math.max(1, reach);
+      // the wedge: the free edge is shorter (perspective) and drops as it comes round
+      const yt = top0 + rnd(u * (1.5 + k * 2) + u * fall * 6);
+      const yb = top0 + vis - rnd(u * (1 + k));
+      for (let y = yt; y <= yb; y++) {
+        if (y > GY - 2) continue;
+        if (Math.abs(x - rnd(free)) === 0 && hash2(x, y, 31) > 0.6) continue;
         q.set(x, y, BARK.M);
       }
     }
   }
-  if (inner) {
-    // the inner faces: heartwood with wavy grain lines and a knot, the slab's bark THICKNESS showing as a dark strip
-    // on the free edge, a charred hinge edge; the face turned from the light is one value down
-    const src = q.clone();
-    for (let y = 0; y < H; y++)
-      for (let x = 0; x < W; x++) {
-        if (!src.isOpaque(x, y)) continue;
-        const s = x < hx ? -1 : 1;
-        const hinge = hx + s * (sk.hrx + 1);
-        const d = Math.abs(x - hinge);
-        const outer = !src.isOpaque(x + s, y);
-        const edge = !src.isOpaque(x, y - 1) || !src.isOpaque(x, y + 1);
-        const lit = s === light.side;
-        const base = lit ? HEART : PAL.earth3;
-        const grain = lit ? PAL.earth3 : PAL.earth2;
-        const wav = (d + ((y + (d % 3)) >> 2)) % 4 === 0;
-        const knot = d === 4 && (y - hy) % 7 === 2;
-        q.set(x, y, d <= 0 ? CREASE : outer ? PAL.earth1 : edge ? (lit ? PAL.earth3 : PAL.earth2) : knot ? PAL.earth1 : wav ? grain : base);
-      }
-  } else bands(q, BARK, light, 1, 1, { top: 1, bottom: 1 });
+  bands(q, BARK, light, 1, 1, { top: 1, bottom: 1 });
+  // bark grain on the outer face (vertical seams one step down), the 1-px heartwood lip on the torn free edge
+  const src = q.clone();
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
+      if (!src.isOpaque(x, y)) continue;
+      const s = x < hx ? -1 : 1;
+      const hinge = hx + s * (sk.hrx + 1);
+      const d = Math.abs(x - hinge);
+      const freeEdge = !src.isOpaque(x + s, y);
+      if (d === 0) q.set(x, y, CREASE);
+      else if (freeEdge && k > 0.3) q.set(x, y, s === light.side ? PAL.earth3 : PAL.earth2);
+      else if (d % 3 === 1 && (y + d) % 5 !== 0) q.set(x, y, src.get(x, y) === BARK.L ? BARK.M : BARK.S);
+      else if (d === 2 && (y - hy) % 6 === 1) q.set(x, y, CREASE);
+    }
   f.comp.add(q, Part.door, { out: PAL.ink });
 }
 
