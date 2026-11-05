@@ -2,30 +2,37 @@
 // (?look=v3 only for everything new; v1 keeps the old placeholder vanish, moved here byte for byte from
 // src/cinematics/b2/placeholders.ts). Pieces: ./_straw_decoy_token-fx.ts; sounds: src/audio/v3/straw.ts.
 //
-// Summon (from:'token', ≈ 1.45 s per token; a batch of tokens from one Saman Korkuluklar is staged together, each
-// one 170 ms after the last, so 2–4 tokens take 1.6–2.0 s): the stake drops out of the sky — a thin falling
+// Summon (from:'token', ≈ 1.2 s per token; a batch of tokens from one Saman Korkuluklar is staged together, each
+// one 120 ms after the last, so 2–4 tokens take ≈ 1.3–1.6 s): the stake drops out of the sky — a thin falling
 // streak and its shadow growing on the tile (scarecrowFall) — and is planted on 'land' with a dry wood "tok"
-// (scarecrowStakeA / B / C: the three stakes of a batch have three pitches), dirt clods and one flat dirt ring;
-// straw stalks blow in from upwind on curling paths and wrap the stake (scarecrowWrap, held f3 → f6); the old
-// jacket flies on and snaps (f6, scarecrowJacket); the sack head drops (f8, scarecrowSack), the hat lands (f10,
-// scarecrowHat); the button eyes light ONCE (f11, scarecrowEye: two glints, a warm floor flash, the badge pops).
-// The last token of the batch sends a crow up off its shoulder and away out of the frame: a far "gak … gak"
-// (scarecrowCrow). Hologram: none (a stake is a thing, not a projection). Lane E's spell cinematic may play
-// the summons itself: ctx.play(i, { strawIndex: k, strawCount: n }) stages one token of a batch it times itself.
+// (scarecrowStakeA / B / C: the three stakes of a batch have three pitches; kept ≈ 6 dB under the spell), dirt
+// clods and one flat dirt ring; straw stalks blow in from upwind on curling paths and wrap the stake
+// (scarecrowWrap); the old jacket flies in from upwind with a cloth smear and snaps on (SU_F.jacketIn → jacket,
+// scarecrowJacket); the sack head drops from above and squashes on the stake (SU_F.sack, scarecrowSack); the hat
+// flips through the air in an arc and lands (SU_F.hat, scarecrowHat); the button eyes light ONCE (SU_F.eye,
+// scarecrowEye: the buttons themselves turn gold with a 1-px halo, then fade; a warm floor flash; the badge pops).
+// A token set in defense hunches into its guard straight from the last summon frame (scarecrowLower). The last
+// token of the batch sends a crow up off its shoulder and away out of the frame: a far "gak … gak"
+// (scarecrowCrow). Afterwards each token's loop runs at its own pace (desync) and one crow at a time visits one
+// token now and then (./_straw_decoy_token-crow.ts). Hologram: none (a stake is a thing, not a projection). Lane
+// E's spell cinematic may play the summons itself: ctx.play(i, { strawIndex: k, strawCount: n }).
 //
 // Strike "Saman Tokadı" (the token has 0 ATK; it only attacks once switched to attack position): it rocks back on
 // its stake (scarecrowCharge, from the declaration on) while it HOPS across the floor on its stake (a light "tok"
 // + dirt flick per landing, scarecrowHop), f5 the straw arm whips forward (scarecrowWhip), f6 contact: a straw
-// slap — chaff flies along the blow (scarecrowSlap). Blocked: the straw splays on the guard and the stake wobbles
-// back (scarecrowBounce), it hops home. Losing (a 0-ATK attack on an attack-position monster): the counter's blow
-// unties it right where it stands (the vanish below, no hop home). Direct: the slap lands on the duelist.
+// slap — chaff flies along the blow (scarecrowSlap). The striking token is drawn in front of every unit on its
+// way (never hidden behind a big monster). Blocked: the straw splays on the guard and the stake wobbles back
+// (scarecrowBounce), it hops home. Losing (a 0-ATK attack on an attack-position monster): the counter blow knocks it back one long hop
+// toward home, out in the open, and it comes undone there (the vanish below). Direct: the slap lands on the duelist.
 // Struck: a blow on the token (guard or upright) hands the token to its vanish ON the contact — the binding is
 // already coming undone while the attacker goes home (no "hit, stand, then die" beat).
 // Vanish (tokenVanish; never a graveyard): death f1 the rope binding comes undone (scarecrowUntie), f2 the sack
-// head drops (scarecrowSack), f3 the straw bundles spill to the floor (scarecrowSpill: stalks fly out and LIE on
-// the marble), f7 the stake topples onto the floor (scarecrowTopple: dust along the stake, 1 px shake); then the
-// wind takes the straw away (scarecrowScatter: the stalks lift and blow off in dither steps) while the remains
-// thin out in three steps and the token card dissolves. ≈ 1.15 s. Camera never moves (EF-8).
+// head tips, f3 the straw bundles spill to the floor (scarecrowSpill: stalks fly out and LIE on the marble) while
+// the head falls off in an arc (f3, f4; the hat flips off it), f5 it hits the floor and squashes (scarecrowSack),
+// bounces once (f6, the hat lands: scarecrowHat), f8 the stake topples onto the floor (scarecrowTopple: dust along
+// the stake, 1 px shake); then the wind takes the straw away (scarecrowScatter) while the remains thin out in two
+// steps and the token card dissolves. ≈ 1.2 s. A position change plays scarecrowLower / scarecrowRaise on the
+// transition pose. Camera never moves (EF-8).
 
 import Phaser from 'phaser';
 import { PAL, type Ramp } from '../../art/palette';
@@ -86,7 +93,7 @@ function entranceFor(k: number, n: number): (S: Stage) => Promise<void> {
     const snd: { wrap: ReturnType<typeof start> | null } = { wrap: null };
     atMark(u, 'summon', 'land', () => {
       // (a token is small: its "tok" sits ≈ 6 dB under the spell's activation, SE-7)
-      play(STAKES[k % STAKES.length], { volume: 0.45, pan });
+      play(STAKES[k % STAKES.length], { volume: 0.36, pan });
       plantBurst(sc, S.home, dir);
       pool.setIntensity(0.65, 40);
       void shake(sc, 50, 1);
@@ -153,7 +160,8 @@ function entranceFor(k: number, n: number): (S: Stage) => Promise<void> {
       );
     }
     await p.done;
-    await hunch;
+    // (the hunch plays out on its own: the duel goes on while the token settles into its guard)
+    void hunch;
     snd.wrap?.stop(40);
     void pool.fadeOut(300);
     desync(u);

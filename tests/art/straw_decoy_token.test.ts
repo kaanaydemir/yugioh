@@ -1,7 +1,7 @@
 // Saman Korkuluk (straw_decoy_token, v3 art, registered): every anim the v3 contract needs exists with holds and
 // marks, validateArt (normal tier, melee attack) is clean, a frame is deterministic, P2 is a relight of the SAME
-// silhouette, every frame keeps its 2-px margin, the scarecrow is a ~50-px figure on a planted stake, the crow
-// visits in idle AND guard (the token always stands in defense) but never in f0, the summon starts as a bare stake in
+// silhouette, every frame keeps its 2-px margin, the scarecrow is a small (≤ 52-px) figure on a planted stake, the
+// crow is never baked into the loops, the summon starts as a bare stake in
 // the air and ends dressed with its button eyes lit once, the death lies low on the floor, the card pictures paint
 // within budget.
 import { describe, expect, it } from 'vitest';
@@ -22,7 +22,7 @@ const count = (a: AnyMonsterAnim, f: number, cs: number[]) => {
   for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) if (cs.includes(p.get(x, y) as number)) n++;
   return n;
 };
-const CROW = [PAL.night1];
+const CROW = [PAL.night0];
 
 describe('straw_decoy_token', () => {
   it('is the registered v3 art of the token', () => {
@@ -37,11 +37,11 @@ describe('straw_decoy_token', () => {
     }
     expect(spec('attack').marks).toEqual({ charge: 1, release: 5, impact: 5, contact: 6, recover: 7 });
     expect(spec('summon').marks?.land).toBe(2);
-    expect(spec('death').marks?.dissolve).toBe(4);
+    expect(spec('death').marks?.dissolve).toBe(5);
     expect(spec('idle').frames).toBe(20);
     expect(spec('guard').frames).toBe(12);
     expect(art.p2).toBe('relight');
-    // 68×62×4 bytes × frames ≤ 2.2 MB (the small-class sheet budget)
+    // 68×59×4 bytes × frames ≤ 2.2 MB (the small-class sheet budget)
     const frames = ALL.reduce((n, a) => n + spec(a).frames, 0);
     expect(art.w * art.h * 4 * frames).toBeLessThanOrEqual(2.2e6);
   });
@@ -63,9 +63,9 @@ describe('straw_decoy_token', () => {
     }
   });
 
-  it('is a ~50-px scarecrow on a planted stake and every frame keeps a 2-px margin', { timeout: 60000 }, () => {
+  it('is a small scarecrow on a planted stake and every frame keeps a 2-px margin', { timeout: 60000 }, () => {
     const f = drawFrame(art, 'idle', 0, 'left').bounds()!;
-    expect(f.h).toBeGreaterThanOrEqual(48);
+    expect(f.h).toBeGreaterThanOrEqual(44);
     expect(f.h).toBeLessThanOrEqual(58);
     expect(f.y + f.h - 1).toBe(art.anchorY + 1); // the mound's outline row under the foot
     for (const a of ALL) {
@@ -77,12 +77,14 @@ describe('straw_decoy_token', () => {
     }
   });
 
-  it('the crow visits in idle and in guard, never on f0', () => {
-    // night1 = the crow's body (the button eyes use 6 px of it on every frame)
-    expect(count('idle', 0, CROW)).toBeLessThanOrEqual(6);
-    expect(count('guard', 0, CROW)).toBeLessThanOrEqual(6);
-    expect(count('idle', 11, CROW)).toBeGreaterThan(20);
-    expect(count('guard', 6, CROW)).toBeGreaterThan(20);
+  it('the crow is never baked into the loops (one crow visits one token at a time, cinematic side); the roar sends one off', () => {
+    // night0 = the crow's body
+    for (const a of ['idle', 'guard'] as const) for (let i = 0; i < spec(a).frames; i++) expect(count(a, i, CROW), `${a} f${i}`).toBe(0);
+    expect(count('roar', 4, CROW)).toBeGreaterThan(10);
+  });
+
+  it('is a small token: shorter than 52 px in idle', () => {
+    expect(drawFrame(art, 'idle', 0, 'left').bounds()!.h).toBeLessThanOrEqual(52);
   });
 
   it('summon: a bare stake in the air first, planted on land, dressed at the end with the eyes lit once', () => {
@@ -91,7 +93,9 @@ describe('straw_decoy_token', () => {
     expect(count('summon', 0, [PAL.night4, PAL.steel, PAL.crim2])).toBe(0); // no jacket yet
     const land = drawFrame(art, 'summon', 2, 'left').bounds()!;
     expect(land.y + land.h - 1).toBeGreaterThanOrEqual(art.anchorY);
-    expect(count('summon', 11, [PAL.gold4])).toBeGreaterThan(count('idle', 0, [PAL.gold4]));
+    // the buttons flash gold once (and fade) — on the buttons themselves, never a white bar
+    expect(count('summon', 12, [PAL.gold4])).toBeGreaterThan(count('idle', 0, [PAL.gold4]));
+    expect(count('summon', 12, [PAL.white])).toBe(count('idle', 0, [PAL.white]));
   });
 
   it('death: the stake topples and the last frame lies low on the floor', () => {

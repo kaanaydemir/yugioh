@@ -337,9 +337,9 @@ export const V3_STRAW_RECIPES = {
     verb: 0.3,
     duck: 0.05,
     play(v) {
-      v.bursts([0, 0.075, 0.15, 0.215], [0.13, 0.11, 0.07, 0.04], { dec: 0.022, f: 1500, q: 1.1, kind: 'white' });
-      sweep(v, 0, 0.3, [900, 2200, 1300], 0.05, { kind: 'pink', q: 1.6, peakAt: 0.3 });
-      v.crackle({ t: 0.01, d: 0.22, n: 10, g: 0.05, f: 3800, q: 0.9, dec: 0.005, curve: 1.2 });
+      v.bursts([0, 0.075, 0.15, 0.215], [0.55, 0.45, 0.3, 0.17], { dec: 0.028, f: 1300, q: 0.9, kind: 'white' });
+      sweep(v, 0, 0.3, [900, 2200, 1300], 0.16, { kind: 'pink', q: 1.4, peakAt: 0.3 });
+      v.crackle({ t: 0.01, d: 0.22, n: 10, g: 0.2, f: 3800, q: 0.9, dec: 0.005, curve: 1.2 });
     },
   },
   /** Position → defense: the scarecrow hunches on its stake — a falling straw rustle and a low wood creak. */

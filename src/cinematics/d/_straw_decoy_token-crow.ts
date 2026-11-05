@@ -7,7 +7,8 @@
 // their loop. The crow comes in from beyond the sprite's frame (high, from the foe's side), lands on the near
 // sleeve and rides its sway (it follows the sleeve's top on the frame on screen), looks round, pecks, caws once
 // (scarecrowCrow, quiet) and flies off out of view (scarecrowFlap). Whenever its scarecrow stops resting — a position
-// change, a strike, a blow, the vanish — it takes off at once from where it sits (never a pop).
+// change, a strike, a blow, the vanish — or anything on the field starts moving (a fight), it takes off at once from
+// where it sits (never a pop); a visit only starts while the whole field is quiet.
 
 import type Phaser from 'phaser';
 import type { FieldView } from '../../duel/FieldView';
@@ -73,10 +74,11 @@ class Visit {
     play('scarecrowFlap', { volume: 0.5, pan: panAt(this.pos.x) });
   }
 
-  tick(dt: number): void {
+  tick(dt: number, calm: boolean): void {
     if (this.done) return;
     this.el += dt;
-    const ok = resting(this.u);
+    // its own scarecrow moves, or anything on the field starts a fight: it takes off at once
+    const ok = calm && resting(this.u);
     if (this.phase !== 'out' && !ok) this.leave();
     let mode: CrowMode = 'perch';
     let wing = 0;
@@ -197,13 +199,18 @@ class Crows {
     return a + (b - a) * this.rnd();
   }
 
+  /** the field is quiet: every unit rests in its loop (no strike, blow, summon roar or death running) */
+  private calm(): boolean {
+    return this.field.units().every((u) => !u.sprite.active || u.retired || (!u.claimed && !u.posed && ['idle', 'guard'].includes(u.frameInfo().anim ?? '')));
+  }
+
   private tokens(): MonsterUnit[] {
     return this.field.units().filter((u) => u.cardId === ID && u.sprite.active && !u.retired);
   }
 
   private tick(dt: number): boolean {
     if (this.visit) {
-      this.visit.tick(dt);
+      this.visit.tick(dt, this.calm());
       if (this.visit.done) {
         this.visit = null;
         this.timer = this.range(GAP);
@@ -219,7 +226,7 @@ class Crows {
     this.idle = 0;
     this.timer -= dt;
     if (this.timer > 0) return true;
-    const free = all.filter(resting);
+    const free = this.calm() ? all.filter(resting) : [];
     if (!free.length) {
       this.timer = 1200;
       return true;

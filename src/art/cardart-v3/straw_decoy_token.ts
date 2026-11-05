@@ -3,7 +3,8 @@
 // bakan bir karga, rüzgarda saman").
 //
 // big (88×68)   the scarecrow in front of a low dusty sun, arms open, its button eyes lit; another scarecrow stands
-//               small on the far ridge, a crow sits on its arm and looks this way; straw blows past.
+//               small on the far ridge, a crow sits on its arm and looks this way, another wheels high in the sky;
+//               straw blows past.
 // small (44×34) the SAME picture, closer: a 1:1 crop of the sprite — hat, sack head with the lit buttons, the open
 //               arms — over the sun's upper arc.
 // Living (4 frames, 160 ms): the straw hands and skirt flutter, the hat lifts a pixel, a straw fleck drifts.
@@ -11,7 +12,7 @@
 
 import { PixelCanvas } from '../pixel';
 import { PAL } from '../palette';
-import { drawStraw, pose, H as SH, W as SW, RX, GY } from '../monsters-v3/straw_decoy_token-rig';
+import { drawStraw, pose, sy, H as SH, W as SW, RX, GY } from '../monsters-v3/straw_decoy_token-rig';
 import { ink, paintBackdrop, recolor } from './_kit';
 import type { ArtLayers, CardArtV3 } from './_types';
 
@@ -31,9 +32,9 @@ function sprite(f: number): PixelCanvas {
 const BIG_DX = 44 - RX;
 const BIG_DY = 65 - GY;
 /** the near button eye (head centre + 3, −2) in sprite px */
-const EYE: readonly [number, number] = [RX + 1 + 3, GY - 42 - 2];
+const EYE: readonly [number, number] = [RX + 1 + 3, GY + sy(-42) - 2];
 const FOCUS: readonly [number, number] = [EYE[0] + BIG_DX, EYE[1] + BIG_DY];
-const SMALL_CROP = [RX - 21, GY - 54, 44, 34] as const;
+const SMALL_CROP = [RX - 21, GY + sy(-54), 44, 34] as const;
 const FOCUS_SMALL: readonly [number, number] = [EYE[0] - SMALL_CROP[0], EYE[1] - SMALL_CROP[1]];
 
 /** A small far scarecrow on the ridge: stake, bar, head, hat (flat earth silhouette). */
@@ -59,6 +60,9 @@ function big(l: ArtLayers, f: number): void {
   paintBackdrop(l.backdrop, 'EARTH', { focus: [FOCUS[0] + 15, FOCUS[1] + 4], radius: 22 });
   const s = l.subject;
   farScarecrow(s, 13, 47, 1, true);
+  // a crow high over the field, a long way off, wheeling toward the scarecrows (wings beat with the frames)
+  const up = f % 2 ? 0 : -1;
+  for (const [dx, dy] of [[-3, up], [-2, up], [-1, 0], [0, 1], [1, 0], [2, up], [3, up]] as const) s.set(66 + dx, 8 + dy, PAL.ink);
   ink(s);
   s.blit(sprite(f), BIG_DX, BIG_DY);
   // straw blowing past (light layer: no outline)
