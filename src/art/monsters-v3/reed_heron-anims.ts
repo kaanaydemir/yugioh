@@ -152,28 +152,31 @@ export function attackPose(f: number): Pose {
 // identity — "still … glide … ta-ta-TAK": f5 / f6 hold 112 each = a 224-ms scene glide (≥ 20 px: a close target
 // gets the coil's half step back first), slower than any dash in the lane. The build-up is the heron's own: from the
 // declaration's held f1 the coil SNAPS to f3 and tightens there 110 ms while the battle's lock-on fades under it,
-// then the 200-ms freeze (≥ 270 game ms after the declaration's arc has gone). The thrusts show only their 40-ms
+// then the 200-ms freeze (the strike holds it 15 % longer: ≥ 270 game ms after the declaration's arc has gone). The thrusts show only their 40-ms
 // micro-stops, retract 1 is 40 and retract 2 is 50 (ta-ta…TAK); the release f7 rides the glide's braking tail.)
-const ATTACK_HOLDS = [80, 60, 40, 110, 230, 112, 112, 40, 40, 40, 40, 50, 80, 50, 50, 50, 50];
+const ATTACK_HOLDS = [80, 60, 40, 110, 200, 112, 112, 40, 40, 40, 40, 50, 80, 50, 50, 50, 50];
 
 // ------------------------------------------------------------------ roar (9 frames): the wings open once
 
 const R_N = 9;
+// A heron's threat display, not a rear-up roar: as the straw cloak fans open behind him the neck reaches FORWARD
+// and a little DOWN, the beak levelled at the opponent like a drawn sword, while the body rises a pixel; on the
+// close the neck draws home. (Roars lift the head; his lowers and points — and stays clear of the open wing.)
 const ROAR_KEYS: Partial<Pose>[] = [
   { },
-  { by: 1, wo: 0.15, n1x: 14, hx: 8, hy: -53, br: 1 },
-  { by: 0, wo: 0.55, hx: 9, hy: -57, n2y: -48, br: 1 },
-  { by: -1, wo: 1, hx: 10, hy: -59, n1y: -44, n2y: -50, ba: -0.12, br: 1, reedFlat: 1, mist: 0.5 },
-  { by: -1, wo: 1, hx: 10, hy: -59, n1y: -44, n2y: -50, ba: -0.12, br: 1, reedFlat: 0.35 },
-  { by: 0, wo: 0.6, hx: 10, hy: -57, n2y: -48, br: 1 },
-  { by: 0, wo: 0.25, hx: 9, hy: -56 },
+  { by: 0, wo: 0.15, n1x: 14, n1y: -39, n2x: 1, n2y: -47, hx: 9, hy: -55, br: 1 },
+  { by: -1, wo: 0.55, n1x: 15, n1y: -39, n2x: 3, n2y: -47, hx: 11, hy: -54, br: 1 },
+  { by: -1, wo: 1, n1x: 15, n1y: -40, n2x: 5, n2y: -47, hx: 13, hy: -53, ba: 0.08, br: 1, reedFlat: 1, mist: 0.5 },
+  { by: -1, wo: 1, n1x: 15, n1y: -40, n2x: 5, n2y: -47, hx: 13, hy: -53, ba: 0.08, br: 1, reedFlat: 0.35 },
+  { by: 0, wo: 0.6, n1x: 14, n1y: -39, n2x: 3, n2y: -47, hx: 11, hy: -54, br: 1 },
+  { by: 0, wo: 0.25, hx: 9, hy: -55 },
   { wo: 0.06 },
 ];
 export function roarPose(f: number): Pose {
   if (f >= R_N - 1) return home();
   return key(ROAR_KEYS[f], f, R_N);
 }
-const ROAR_HOLDS = [80, 120, 90, 60, 120, 100, 110, 120, 140];
+const ROAR_HOLDS = [80, 150, 110, 60, 140, 60, 70, 130, 150];
 
 // ------------------------------------------------------------------ hit / heavy / magic
 
