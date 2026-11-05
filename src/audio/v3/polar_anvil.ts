@@ -79,12 +79,13 @@ export const V3_POLAR_ANVIL_RECIPES = {
     verb: 0.35,
     duck: 0.55,
     play(v) {
-      clank(v, 410, 0, 0.26, 0.42, { ratio: 1.41, index: 2.6, click: 1.2 });
-      clank(v, 620, 0.012, 0.14, 0.3, { ratio: 2.76, index: 1.8, click: 0.6 });
-      thump(v, 0, 130, E2 * 0.55, 0.55, 0.22, { drive: 1.5 });
-      crack(v, 0.004, 0.22, { hp: 3000, n: 2, gap: 0.009 });
-      anvilRing(v, 0.01, 0.07, 0.9);
-      poleHum(v, 0, perc(0.14, 0.5, 0.005));
+      // raw peak trimmed to ≈ 0.85 (was 0.98): every layer × 0.87
+      clank(v, 410, 0, 0.226, 0.42, { ratio: 1.41, index: 2.6, click: 1.2 });
+      clank(v, 620, 0.012, 0.122, 0.3, { ratio: 2.76, index: 1.8, click: 0.6 });
+      thump(v, 0, 130, E2 * 0.55, 0.48, 0.22, { drive: 1.5 });
+      crack(v, 0.004, 0.19, { hp: 3000, n: 2, gap: 0.009 });
+      anvilRing(v, 0.01, 0.061, 0.9);
+      poleHum(v, 0, perc(0.122, 0.5, 0.005));
     },
   },
   /** Summon: the spark fountain — a bright sizzle with the sparks pinging as they fall. */
@@ -168,6 +169,10 @@ export const V3_POLAR_ANVIL_RECIPES = {
       clank(v, 760, 0.016, 0.14, 0.3, { ratio: 1.41, index: 2.2, click: 0.8 });
       anvilRing(v, 0.002, 0.085, 1.3);
       thump(v, 0, 140, E2 * 0.6, 0.42, 0.18, { drive: 1.3 });
+      // the anvil's own pitch rings through the DANG: a long E2 body partial with its octave (the card's 82 Hz
+      // identity must carry over the charge's 110/111 beat and the dust pings)
+      v.tone('sine', E2, { t: 0.004, g: perc(0.2, 0.75, 0.004) });
+      v.tone('sine', E2 * 2, { t: 0.004, g: perc(0.07, 0.45, 0.003) });
       v.noise('white', { g: perc(0.06, 0.12, 0.001), to: v.filt('highpass', 5000, 0.7) });
     },
   },

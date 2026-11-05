@@ -242,28 +242,46 @@ export function summonPose(f: number): Pose {
 }
 const SU_HOLDS = [140, 100, 80, 70, 70, 70, 110, 90, 140, 110, 110, 120, 130, 150];
 
-// ------------------------------------------------------------------ death (10): unwinds, thins, the empty spindle topples
+// ------------------------------------------------------------------ death (11): unwinds, thins, the empty spindle topples
+//
+// f0 the blow (the hit key) → f1–f6 the UNWIND (≈ 400 ms, the main beat): the wire peels off the TOP of the drum a
+// few rows per frame (the winding exists from the bottom up and shrinks), the drum's girth narrows like a ball of
+// yarn being pulled, the legs shorten and fold up into the wire (the hips sink, the boots go last), the whips
+// sag and are drawn in; the spools spin backwards, the loose wire flies off to the back and the heap grows on the
+// floor → f7–f10 the bare spindle wobbles on its pin and topples, ACCELERATING (holds 100 → 70 → 50 → 45), and hits
+// the marble on f10 (the cinematic takes that frame over as remains: the spool comes off, the break follows).
 
-const D_N = 10;
+const D_N = 11;
+/** The unwind stages f1…f6: winding share (from the bottom up), girth, legs, whips, loose wire, heap. */
+const D_UNWIND = [
+  { wind: 0.9, girth: 1, legs: 1, whips: 0.8, feed: 0.45, fex: -30, fey: -64, heap: 0 },
+  { wind: 0.77, girth: 0.92, legs: 0.86, whips: 0.6, feed: 0.85, fex: -36, fey: -56, heap: 0.12 },
+  { wind: 0.62, girth: 0.8, legs: 0.7, whips: 0.42, feed: 1, fex: -38, fey: -44, heap: 0.3 },
+  { wind: 0.46, girth: 0.64, legs: 0.52, whips: 0.26, feed: 1, fex: -37, fey: -30, heap: 0.5 },
+  { wind: 0.3, girth: 0.46, legs: 0.34, whips: 0.12, feed: 0.95, fex: -35, fey: -17, heap: 0.7 },
+  { wind: 0.14, girth: 0.26, legs: 0.16, whips: 0, feed: 0.7, fex: -33, fey: -7, heap: 0.88 },
+];
 export function deathPose(f: number): Pose {
   if (f === 0) return key({ ...HH_KEYS[0] }, f, D_N);
-  if (f === 1) return snap(key({ lid: 2, eye: 0.5, rattle: -1, hx: -2, hy: 1, dx: -1, nwx: 0, nwy: 14, nlag: 6, fwx: -10, fwy: 13, flag: -6, core: 1.2, wind: 0.9, fromTop: 1, girth: 1, feed: 0.6, fex: -34, fey: -62, floops: 2, spinN: -0.2, spinF: 0.2 }, f, D_N));
-  const st = [
-    { wind: 0.66, girth: 0.85, legs: 0.85, whips: 0.55, feed: 1, fex: -38, fey: -50, heap: 0.2 },
-    { wind: 0.42, girth: 0.6, legs: 0.55, whips: 0.25, feed: 1, fex: -36, fey: -30, heap: 0.45 },
-    { wind: 0.18, girth: 0.32, legs: 0.25, whips: 0, feed: 0.8, fex: -34, fey: -10, heap: 0.75 },
-    { wind: 0, girth: 0, legs: 0, whips: 0, feed: 0, heap: 1 },
-  ];
-  if (f <= 5) {
-    const s = st[f - 2];
-    return snap(key({ ...s, lid: 1, eye: f < 4 ? 1 : 0.5, hx: -1, nwx: -2, nwy: 12, nlag: 4, fwx: -8, fwy: 12, flag: -4, core: f < 5 ? 1.5 - (f - 2) * 0.4 : 0, rings: 0, fromTop: 1, floops: 3 + f, spinN: -f * 0.45, spinF: f * 0.45, reel: 1 - (f - 1) * 0.25, dust: -1 }, f, D_N));
+  if (f <= 6) {
+    const s = D_UNWIND[f - 1];
+    const k = (f - 1) / 5;
+    // the whips sag and swing in toward the drum as they are drawn into the wire
+    return snap(key({
+      ...s, fromTop: 0, lid: f < 3 ? 2 : 1, eye: f < 4 ? 0.9 : 0.5, rattle: f % 2 ? -1 : 0, hx: -1 - (f < 3 ? 1 : 0), hy: f < 3 ? 1 : 0, dx: f < 3 ? -1 : 0,
+      nwx: rnd(6 - 6 * k), nwy: rnd(15 - 3 * k), nlag: 5, fwx: rnd(-7 + 3 * k), fwy: rnd(14 - 3 * k), flag: -5,
+      core: Math.max(0, 1.4 - k * 1.6), rings: 0, floops: 2 + f, spinN: -f * 0.38, spinF: f * 0.38, reel: 0, dust: -1,
+    }, f, D_N));
   }
-  // the empty spindle wobbles on its pin and topples back; it lands clean and intact on its own tile (the cinematic
-  // keeps it as remains, rolls the empty spool off it and breaks it only in the last 150 ms)
-  const tilt = [0.06, 0.2, 0.4, 1][f - 6];
+  // the empty spindle wobbles on its pin and topples back, faster and faster; it lands clean and intact on its own
+  // tile (the cinematic keeps it as remains, rolls the empty spool off it and breaks it only at the very end)
+  const tilt = [0.05, 0.2, 0.5, 1][f - 7];
   return key({ legs: 0, whips: 0, wind: 0, girth: 0, eye: 0, core: 0, rings: 0, dust: -1, heap: 1, reel: 0, tilt, spinN: -f * 0.5, spinF: f * 0.5, diss: 0 }, f, D_N);
 }
-const D_HOLDS = [50, 60, 70, 80, 80, 90, 100, 110, 120, 130];
+const D_HOLDS = [40, 60, 65, 70, 70, 70, 65, 100, 70, 50, 45];
+/** The death's unwinding frames (f1 … f6) and the floor impact (the last frame). */
+export const DEATH_UNWIND: readonly [number, number] = [1, 6];
+export const DEATH_IMPACT = D_N - 1;
 
 // ------------------------------------------------------------------ revive (12): the spindle rights itself, the wire snaps back
 
@@ -313,7 +331,7 @@ export const ANIMS: Record<MonsterAnim, AnimSpec> = {
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
   summon: spec(SU_N, 10, false, SU_HOLDS, { land: SU_LAND }),
-  death: spec(D_N, 12, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 7 }),
+  death: spec(D_N, 12, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 5 }),
   revive: spec(RV_N, 10, false, RV_HOLDS, { land: RV_LAND }),
   hitHeavy: spec(HH_N, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 4 }),
   hitMagic: spec(HM_N, 12, false, HM_HOLDS, { impact: 0, contact: 0, recover: 4 }),

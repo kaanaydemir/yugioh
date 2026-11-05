@@ -101,7 +101,7 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   kite_fencer: { emissive: [T(PAL.gold4, 1), T(PAL.white, 0.6)], halo: 0.5, pool: 0.6 }, // C9: the lit indicator panel + the rapier tip (no leaf tones: C11's)
   mudgrasp_spirit: { emissive: [T(PAL.void4, 1), T(PAL.void3, 0.75), T(PAL.white, 0.7)], near: [T(PAL.void2, 0.3)], halo: 0.55, pool: 0.85, spill: PAL.void3 }, // C10: only the eyes, mouth glow, veins and vortex core (void2–4 / white are lights-only in the rig)
   steppe_spiralhorn: { emissive: [T(PAL.gold4, 1), T(PAL.leaf4, 0.5)], halo: 0.5, pool: 0.7 },
-  polar_needle: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
+  polar_needle: { emissive: [T(PAL.fire4, 1), T(PAL.water4, 0.8), T(PAL.gold4, 0.6)], halo: 0.5, pool: 0.8, spill: PAL.fire3 }, // = the recipe's glow (N fire / S water / gold pivot)
   polar_anvil: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
   polar_coil: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
   polar_sovereign: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },

@@ -32,7 +32,7 @@ import type { GameEvent } from '../../engine/types';
 import { DEPTH, LOOK_V3, type XY } from '../../view/layout';
 import { lightFlash } from '../../view/light';
 import { shake } from '../../vfx/core';
-import { sleep } from '../../vfx/combat';
+import { onFrame, sleep } from '../../vfx/combat';
 import { registerCardHook, registerEvent, registerStrike } from '../api';
 import type { CinematicContext, StrikeArgs } from '../_core/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
@@ -40,10 +40,13 @@ import type Phaser from 'phaser';
 import { strikeStartFrame } from '../_v3/clash';
 import { deathV3 } from '../_v3/death';
 import { summonPose } from '../_v3/summon';
-import { atFrame, atMark, panAt, play, start, takeCharge } from '../_v3/sound';
+import { atFrame, atMark, hush, panAt, play, start, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { runSummon, type Stage } from '../summon-a/_kit';
-import { coilPoint, coilRemains, convergeStar, coreSpill, emptySpool, seedFx, spikeVolley, spindleDust, splinter, spoolTrack, unwindGlints, whipSparks, type Remains } from './_polar_coil-fx';
+import { SPOOL_MS, coilPoint, coilRemains, convergeStar, coreSpill, emptySpool, seedFx, spikeVolley, spindleDust, splinter, spoolTrack, unwindGlints, whipSparks, type Remains } from './_polar_coil-fx';
+import { DEATH_UNWIND } from '../../art/monsters-v3/polar_coil-anims';
+import { contactFlash } from '../_v3/flash';
+import type { SfxName } from '../../audio/sfx';
 
 const ID = 'polar_coil';
 /** The hologram onset's tones: copper. */
@@ -252,7 +255,7 @@ registerStrike(
       if (released) return;
       released = true;
       charge.stop(30);
-      play('polarCoilFling', { volume: 0.9, pan });
+      play('polarCoilFling', { volume: 0.6, pan });
     };
     atFrame(u, 'attack', REL, release, { late: false });
     const anim = u.playRange('attack', f0);
@@ -277,15 +280,26 @@ registerStrike(
       plungeMs: 70,
       bodyDepth: depth,
       stopR: s.blocked ? 8 : 0,
-      onOrbit: () => (orbit = start('polarCoilOrbit', { volume: 0.8, pan: panAt(at.x) })),
+      onOrbit: () => (orbit = start('polarCoilOrbit', { volume: 0.5, pan: panAt(at.x) })),
+      // the last lap: the whirr hushes and the three "tşak" ticks lead in, so the thump + magnetic crack land ON
+      // the convergence frame (polarCoilTshak at onConverge)
+      preMs: s.blocked ? 40 : 110,
+      onPreHit: () => {
+        orbit?.stop(s.blocked ? 25 : 60);
+        orbit = null;
+        if (!s.blocked) play('polarCoilTicks', { volume: 0.85, pan: panAt(at.x) });
+      },
       onConverge: (dirs) => {
         orbit?.stop(25);
-        s.impact(at);
+        // the coil's "tşak" IS the contact: no generic body blow under it (a struck body with its own material
+        // keeps its material hit — hitSoundFor names are not hushed)
+        if (s.blocked) s.impact(at);
+        else hush(['impactHeavy', 'impactLight'], () => s.impact(at));
         if (s.blocked) {
           play('polarCoilDeflect', { volume: 0.85, pan: panAt(at.x) });
           splinter(sc, at, ground, { dirs, depth: DEPTH.FX + 1 });
         } else {
-          play('polarCoilTshak', { volume: 0.9, pan: panAt(at.x) });
+          play('polarCoilTshak', { volume: 1, pan: panAt(at.x) });
           convergeStar(sc, at, ground, { dirs, depth: DEPTH.FX + 1, big: s.direct });
           void shake(sc, 110, s.power >= 3 ? 3 : 2);
         }
@@ -305,16 +319,24 @@ registerStrike(
 // ================================================================ death
 
 /**
- * The unwinding beat (death f1 → f5): polarCoilUnwind, copper flicks off the top, the two-colour core light on the
- * floor stepping down to dark, and the spindle's head hitting the marble. Bound to the death POSE's frames and
- * armed as early as possible — before the blow lands (attack / defend hooks below), because the blow's reaction
+ * The unwinding beat (death f1 → f6): polarCoilUnwind, copper flicks off the top, the two-colour core light on the
+ * floor stepping down to dark, the spindle hitting the marble on the impact frame. Bound to the death POSE's frames
+ * and armed as early as possible — before the blow lands (attack / defend hooks below), because the blow's reaction
  * starts the death pose at the contact, ~130 ms before the destroy event reaches the 'destroyed' hook. Armed once
  * per unit; arming again is a no-op, and an arm that never sees the death pose expires on its own.
+ * `own`: the 'destroyed' hook took the death over (the delayed path below): the character's dissolve / after-
+ * dissolve sounds (slack, wobble, tok — CHARACTER_SOUNDS) are played here on their frames, since deathV3 joins
+ * only after the pose is over and would not play them.
  */
-const armed = new WeakMap<MonsterUnit, { fired: boolean }>();
-function armUnwind(sc: Phaser.Scene, u: MonsterUnit, maxMs: number): void {
-  if (armed.has(u)) return;
-  const st = { fired: false };
+interface Arm {
+  fired: boolean;
+  own: boolean;
+}
+const armed = new WeakMap<MonsterUnit, Arm>();
+function armUnwind(sc: Phaser.Scene, u: MonsterUnit, maxMs: number): Arm {
+  const had = armed.get(u);
+  if (had) return had;
+  const st: Arm = { fired: false, own: false };
   armed.set(u, st);
   const cancel = atFrame(
     u,
@@ -324,19 +346,27 @@ function armUnwind(sc: Phaser.Scene, u: MonsterUnit, maxMs: number): void {
       st.fired = true;
       const home = { ...u.home };
       const dir: 1 | -1 = u.flipX ? -1 : 1;
-      const dissolveF = u.markFrame('death', 'dissolve', 7);
+      const pan = panAt(home.x);
+      const [, unwindEnd] = DEATH_UNWIND;
+      const dissolveF = u.markFrame('death', 'dissolve', 5);
       const n = u.frameCount('death');
-      play('polarCoilUnwind', { volume: 0.9, pan: panAt(home.x) });
-      unwindGlints(sc, u, Math.max(120, u.rangeMs('death', 1, 6)));
-      // the core light dies with the winding: 4 steps down to dark (it starts lit, the pose's f1 core)
+      play('polarCoilUnwind', { volume: 0.9, pan });
+      unwindGlints(sc, u, Math.max(120, u.rangeMs('death', 1, unwindEnd + 1)));
+      // the core light dies with the winding: steps down to dark across the unwind (it starts lit, the pose's f1 core)
       const spill = coreSpill(sc, home, dir, 0.9);
-      atFrame(u, 'death', 2, () => spill.level(0.65, 30), { maxMs: 3000 });
-      atFrame(u, 'death', 3, () => spill.level(0.4, 30), { maxMs: 3000 });
-      atFrame(u, 'death', 4, () => spill.level(0.2, 30), { maxMs: 3000 });
-      atFrame(u, 'death', 5, () => spill.fadeOut(80), { maxMs: 3000 });
+      const steps = [0.7, 0.5, 0.32, 0.18];
+      for (let i = 0; i < steps.length; i++) atFrame(u, 'death', 2 + i, () => spill.level(steps[i], 30), { maxMs: 3000 });
+      atFrame(u, 'death', unwindEnd, () => spill.fadeOut(80), { maxMs: 3000 });
       void sleep(sc, 1600).then(() => spill.fadeOut(60));
-      // the spindle's head hits the marble on the last tilt frame (dissolve + 2: polarCoilTok via the voice)
-      atFrame(u, 'death', Math.min(n - 1, dissolveF + 2), () => {
+      // the delayed path: the character's sounds on their frames (the same frames CHARACTER_SOUNDS names)
+      const C: [number, SfxName, number][] = [
+        [dissolveF, 'polarCoilSlack', 1],
+        [dissolveF + 2, 'polarCoilWobble', 1],
+        [n - 1, 'polarCoilTok', 0.9],
+      ];
+      for (const [f, name, volume] of C) atFrame(u, 'death', Math.min(n - 1, f), () => st.own && play(name, { volume, pan }), { maxMs: 3000 });
+      // the spindle's head hits the marble on the impact frame (the last)
+      atFrame(u, 'death', n - 1, () => {
         spindleDust(sc, { x: home.x - dir * 18, y: home.y }, home.y);
         void shake(sc, 80, 1);
       }, { maxMs: 3000 });
@@ -350,6 +380,7 @@ function armUnwind(sc: Phaser.Scene, u: MonsterUnit, maxMs: number): void {
       armed.delete(u);
     }
   });
+  return st;
 }
 
 /** A battle the coil is in (attacking or attacked): arm the unwinding before the blow lands. */
@@ -363,10 +394,34 @@ function armForBattle(ctx: CinematicContext<BattleEv>, uid: number | null): Prom
 registerCardHook(ID, 'attack', (ctx) => armForBattle(ctx as CinematicContext<BattleEv>, (ctx.ev as BattleEv).attackerUid), { priority: 30, name: 'd:polar_coil:arm-attack' });
 registerCardHook(ID, 'defend', (ctx) => armForBattle(ctx as CinematicContext<BattleEv>, (ctx.ev as BattleEv).targetUid), { priority: 30, name: 'd:polar_coil:arm-defend' });
 
+/** Resolve once `cond` holds, or after `ms` of scene time. */
+function until(sc: Phaser.Scene, cond: () => boolean, ms: number): Promise<void> {
+  if (cond()) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    onFrame(sc, (_dt, el) => {
+      if (cond() || el >= ms) {
+        resolve();
+        return false;
+      }
+      return true;
+    });
+  });
+}
+
+/**
+ * Death. The coil's final material (§5.2 "tel çözülür, makara boş döner") must be READ before the card leaves, so
+ * the coil owns the order: the pose plays (unwind → topple); its last frame (the bare spindle hitting the marble) is
+ * taken over as remains (the sprite hides); the empty spool comes off the shoulder at its own size, rolls down the
+ * tile's diagonal spinning free and runs down; the remains and the spool break as copper curls and steel grit —
+ * and only then deathV3 joins (its burst = the card born from the now-empty tile and flown to the graveyard). The
+ * pose is already running when the battle's destroy arrives (the blow's reaction hands over to it); an effect
+ * destroy (no blow) starts it here. A coil dying from its guard keeps the shared guard break (deathV3 at once; the
+ * remains then break under the card's flight).
+ */
 registerCardHook(
   ID,
   'destroyed',
-  (ctx) => {
+  async (ctx) => {
     if (!LOOK_V3) return ctx.base();
     if (ctx.ev.location !== 'monster' || sourceOwnsDeath(ctx)) return ctx.base();
     const sc = ctx.scene;
@@ -375,36 +430,67 @@ registerCardHook(
     seedFx(u.uid * 59 + 11);
     const home = { ...u.home };
     const dir: 1 | -1 = u.flipX ? -1 : 1;
+    const inDeath = () => u.frameInfo().anim === 'death';
+    const guarded = () => {
+      const a = u.frameInfo().anim;
+      return a === 'guard' || a === 'toGuard' || a === 'fromGuard';
+    };
+    // a battle death: the reaction may still be on its way to the death pose — give it its time
+    const battle = armed.has(u);
+    if (battle && !inDeath() && !guarded()) await until(sc, inDeath, 500);
+    if (!u.sprite.active || u.retired) return ctx.base();
     // a death with no blow (an effect destroy): arm the unwinding now (it fires on the pose's f1)
-    armUnwind(sc, u, 3000);
-    // the last frame (the bare spindle lying clean on its own tile) becomes the remains as soon as it shows: the
-    // sprite hides, so deathV3 holds on the remains and no generic material break follows — the final material is
-    // the coil's own (the empty spool rolling off, copper curls, a 150-ms break of the spindle at the very end)
+    const arm = armUnwind(sc, u, 3000);
     const lastF = u.frameCount('death') - 1;
     let remains: Remains | null = null;
-    atFrame(
-      u,
-      'death',
-      lastF,
-      () => {
-        if (remains || !u.sprite.active || !u.sprite.visible || u.retired) return;
-        remains = coilRemains(sc, u);
-        u.sprite.setVisible(false);
-      },
-      { maxMs: 3000 },
-    );
-    return deathV3(ctx, {
-      fallback: () => ctx.base(),
-      onBurst: () => {
-        const r = remains as Remains | null;
-        emptySpool(sc, home, dir, DEPTH.FX - 1, r?.spoolAt);
-        // the shatter (and its burst cue) was skipped: the coil's own burst sound (the spool spinning free)
-        if (r) {
-          play('polarCoilBurst', { pan: panAt(home.x) });
-          r.burst(380);
-        }
-      },
-    });
+    const takeRemains = () => {
+      if (remains || !u.sprite.active || !u.sprite.visible || u.retired) return;
+      remains = coilRemains(sc, u);
+      u.sprite.setVisible(false);
+    };
+    const own = inDeath() || !guarded();
+    if (!own) {
+      // the guard break path: deathV3 at once (its own C sounds), the remains under the card's flight
+      atFrame(u, 'death', lastF, takeRemains, { maxMs: 3000 });
+      return deathV3(ctx, {
+        fallback: () => ctx.base(),
+        onBurst: () => {
+          const r = remains as Remains | null;
+          void emptySpool(sc, home, dir, DEPTH.FX - 1, r?.spoolAt);
+          if (r) {
+            play('polarCoilBurst', { pan: panAt(home.x) });
+            r.burst(SPOOL_MS);
+          }
+        },
+      });
+    }
+    // ---- the coil owns the death until its final material is over
+    arm.own = true;
+    u.posed = true;
+    u.badge.setVisible(false);
+    if (!inDeath()) {
+      // an effect destroy: the blow is the effect's; the pose starts here, from the recoil frame
+      if (ctx.hints.hit !== false) contactFlash(sc, u.sprite, ctx.hints.push as XY | undefined ?? { x: u.player === 0 ? -1 : 1, y: 0 }, { frames: 2, coverage: 0.4 });
+      u.asClaimant(() => void u.playRange('death', 0, undefined, { hold: true }));
+    }
+    await until(sc, () => !u.sprite.active || (inDeath() && u.frameInfo().frame >= lastF), u.animMs('death') * 1.6 + 300);
+    if (!u.sprite.active || u.retired) return ctx.base();
+    takeRemains();
+    const r = remains as Remains | null;
+    if (r) {
+      play('polarCoilBurst', { pan: panAt(home.x) });
+      r.burst(SPOOL_MS);
+      await emptySpool(sc, home, dir, DEPTH.FX - 1, r.spoolAt);
+    }
+    // the final material is over: the card is born from the empty tile. deathV3 needs a live unit — the sprite is
+    // made visible for its synchronous check only (alpha 0, its last frame), then hidden again; the blow's flash
+    // and the accent were the coil's own (hit: false)
+    if (!u.sprite.active || u.retired) return ctx.base();
+    u.sprite.setAlpha(0).setVisible(true);
+    const c2 = Object.create(ctx, { hints: { value: { ...ctx.hints, hit: false } } }) as typeof ctx;
+    const done = deathV3(c2, { fallback: () => ctx.base() });
+    if (u.sprite.active) u.sprite.setVisible(false).setAlpha(1);
+    await done;
   },
   { priority: 20, name: 'd:polar_coil:death' },
 );

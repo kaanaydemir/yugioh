@@ -316,8 +316,10 @@ export function skeleton(o: Pose): Skel {
     const sy = Math.sin((o.yaw + o.syaw) * DEG) * 0.42;
     const m = Math.hypot(cx, sy) || 1;
     sd = [cx / m, sy / m];
-    sN = SPEAR_N * m;
-    sS = SPEAR_S * m;
+    // closed: the card is the whole read of the turn at board size — it rides 20 % longer on the pivot pin
+    const kc = cl >= 0.9 ? 1.2 : 1;
+    sN = SPEAR_N * m * kc;
+    sS = SPEAR_S * m * kc;
     sc = grip;
   } else {
     sd = [Math.cos(o.sa * DEG), Math.sin(o.sa * DEG)];

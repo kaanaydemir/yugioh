@@ -156,6 +156,8 @@ export interface WaveOpts {
   /** Flight of the first front (scene ms). */
   ms: number;
   depth: number;
+  /** Depth just behind the struck body: a front that touches it passes behind it (only its 1-px tips wrap in front). */
+  backDepth?: number;
   /** A big front (a direct attack: the wave crosses the whole field). */
   big?: boolean;
   /** The first front lands (call the impact here). */
@@ -186,6 +188,8 @@ export function pushWave(sc: Phaser.Scene, o: WaveOpts): Promise<void> {
   const x1 = Math.max(o.from.x, o.to.x, o.g0.x, o.g1.x) + pad;
   const y1 = Math.max(o.from.y, o.to.y) + pad;
   const air = new Raster(sc, x0, y0, x1 - x0, y1 - y0, o.depth);
+  // the column of a front that touches the body is drawn behind it, so the struck body reads its hit first
+  const back = o.backDepth !== undefined ? new Raster(sc, x0, y0, x1 - x0, y1 - y0, o.backDepth) : null;
   const gy0 = Math.min(o.g0.y, o.g1.y) - 30;
   const gy1 = Math.max(o.g0.y, o.g1.y) + 30;
   const floor = new Raster(sc, x0, gy0, x1 - x0, gy1 - gy0, FLOOR_DEPTH);
@@ -199,7 +203,8 @@ export function pushWave(sc: Phaser.Scene, o: WaveOpts): Promise<void> {
   const H0 = 8;
   const H1 = o.big ? 30 : 20;
   const R0 = 14;
-  const R1 = o.big ? 30 : 22;
+  // a direct front's floor arc keeps growing with the distance it has crossed
+  const R1 = o.big ? Math.max(30, Math.min(46, Math.round(Math.hypot(gdx, gdy) * 0.22))) : 22;
   let acc = 0;
   return new Promise<void>((resolve) => {
     onFrame(
@@ -207,6 +212,7 @@ export function pushWave(sc: Phaser.Scene, o: WaveOpts): Promise<void> {
       (dt, el) => {
         let alive = 0;
         air.begin();
+        back?.begin();
         floor.begin();
         for (let i = 0; i < N; i++) {
           const local = el - i * GAP;
@@ -222,9 +228,9 @@ export function pushWave(sc: Phaser.Scene, o: WaveOpts): Promise<void> {
             if (i === 0) o.onArrive();
             else o.onEcho?.(i, o.to);
           }
-          // after landing a ring lives ~2 more steps (flattening on the body), then it is gone
+          // after landing a front collapses at once onto its floor ring (two steps), so the shove is seen
           const after = raw - 1;
-          if (after > 0.3) {
+          if (after > (back ? 0.2 : 0.3)) {
             if (poolOn[i]) {
               poolOn[i] = false;
               void pools[i]?.fadeOut(90);
@@ -240,9 +246,13 @@ export function pushWave(sc: Phaser.Scene, o: WaveOpts): Promise<void> {
           let h = Math.round((H0 + (H1 - H0) * grow) * sz);
           let bulge = Math.round((2 + 4 * grow) * sz);
           if (after > 0) {
-            h += 2;
+            // landed: the column folds down into a short ring stub on the floor in two steps
+            h = back ? (after < 0.07 ? Math.max(3, Math.round(h * 0.4)) : 2) : h + 2;
             bulge = 0;
           }
+          // touching the body (the last stretch, or landed): the column goes behind it
+          const touch = back !== null && (raw > (i === 0 ? 0.82 : 0.6) || after > 0);
+          const col = touch && back ? back : air;
           const p = { x: Math.round(o.from.x + dx * e), y: Math.round(o.from.y + dy * e) };
           const g = { x: Math.round(o.g0.x + gdx * e), y: Math.round(o.g0.y + gdy * e) };
           lp.setPosition(g.x, g.y);
@@ -256,6 +266,8 @@ export function pushWave(sc: Phaser.Scene, o: WaveOpts): Promise<void> {
           floor.ring(g.x, g.y, R, ry, i === 0 ? PAL.water4 : PAL.water3, 1, -Math.PI / 2, Math.PI / 2);
           floor.ring(g.x, g.y, R, ry, PAL.water2, i === 0 ? 1 : 0.5, Math.PI / 2, (3 * Math.PI) / 2);
           if (i === 0) floor.ring(g.x, g.y, R - 4, ry - 2, PAL.water1, 0.5, 0, TAU);
+          // a direct front's floor arc is doubled: a water4 rim over a water2 band
+          if (o.big) floor.ring(g.x, g.y, R - 2, ry - 1, i === 0 ? PAL.water4 : PAL.water3, 1, -Math.PI / 2.4, Math.PI / 2.4);
           // the leading lip of the floor ring is 2 px (the field bites the marble)
           floor.ring(g.x + sgn, g.y, R, ry, i === 0 ? PAL.water3 : PAL.water2, 1, -Math.PI / 3, Math.PI / 3);
           // ---- the standing front ")": a 2-px leading band, then the tail (water3 → water2, dithered last)
@@ -264,11 +276,17 @@ export function pushWave(sc: Phaser.Scene, o: WaveOpts): Promise<void> {
             const ak = Math.abs(k);
             const xx = p.x + sgn * Math.round(bulge * (1 - k * k));
             const edge = ak > 0.82;
-            air.px(xx, p.y + yy, edge ? lead2 : lead);
-            air.px(xx - sgn, p.y + yy, edge ? tail : lead2);
-            air.px(xx - 2 * sgn, p.y + yy, tail);
-            if (ak < 0.85) air.px(xx - 3 * sgn, p.y + yy, PAL.water2);
-            if (ak < 0.6 && ((yy + i) & 1) === 0) air.px(xx - 4 * sgn, p.y + yy, PAL.water1);
+            // a direct front is a 2-band arc: a 2-px water4 rim over a 3-px water2 body
+            const w = o.big ? 1 : 0;
+            col.px(xx, p.y + yy, edge ? lead2 : lead);
+            if (w) col.px(xx - sgn, p.y + yy, edge ? lead2 : PAL.water4);
+            col.px(xx - (1 + w) * sgn, p.y + yy, edge ? tail : lead2);
+            col.px(xx - (2 + w) * sgn, p.y + yy, tail);
+            if (ak < 0.85) col.px(xx - (3 + w) * sgn, p.y + yy, PAL.water2);
+            if (w && ak < 0.85) col.px(xx - (4 + w) * sgn, p.y + yy, PAL.water2);
+            if (ak < 0.6 && ((yy + i) & 1) === 0) col.px(xx - (4 + 2 * w) * sgn, p.y + yy, PAL.water1);
+            // in front of the body only the thin 1-px rim of the arc's tips (it wraps round the body)
+            if (touch && ak > 0.78) air.px(xx, p.y + yy, lead2);
           }
           // the front's foot meets its floor ring: a short bright tick on the marble
           air.px(p.x + sgn * bulge, p.y + h + 1, lead2);
@@ -282,11 +300,13 @@ export function pushWave(sc: Phaser.Scene, o: WaveOpts): Promise<void> {
           }
         }
         air.end();
+        back?.end();
         floor.end();
         return alive > 0;
       },
       () => {
         air.destroy();
+        back?.destroy();
         floor.destroy();
         dust.release();
         pools.forEach((lp, i) => {
@@ -631,13 +651,32 @@ function remainsKey(sc: Phaser.Scene, i: number, right: boolean): string {
 /**
  * The death's last beat (§5.2 C13 "kutup titreşimi, parçalar dışa iter"): the body's final frame — the two
  * half-anvils apart with the arms lying by them — is taken over as remains on the floor; the poles keep
- * swapping orange / blue as they die, the halves twitch apart twice (the field's last kicks), and only the
- * last 150 ms break the remains up (stepped blink). Call with the sprite still showing its last frame; the
+ * swapping orange / blue as they die, the halves twitch apart twice (the field's last kicks) and creep 1 px
+ * apart, and the last 150 ms break the two plates up one after the other (slide out, palette steps, gone). Call with the sprite still showing its last frame; the
  * caller hides the sprite right after. `heel` / `horn`: world points of the two pole glyphs on that frame.
  */
 export function anvilRemains(sc: Phaser.Scene, spr: Phaser.GameObjects.Sprite, home: XY, heel: XY, horn: XY, ms = 560): void {
   const right = spr.texture.key.includes(':p2');
+  // two plates, cut at the seam between the poles: each creeps, slides and steps out on its own
   const img = sc.add.image(spr.x, spr.y, spr.texture.key, spr.frame.name).setOrigin(spr.originX, spr.originY).setFlipX(spr.flipX).setDepth(spr.depth);
+  const img2 = sc.add.image(spr.x, spr.y, spr.texture.key, spr.frame.name).setOrigin(spr.originX, spr.originY).setFlipX(spr.flipX).setDepth(spr.depth);
+  const fw = img.frame.width;
+  const left = spr.x - spr.originX * fw;
+  const mx = (heel.x + horn.x) / 2;
+  const seamTex = Math.max(1, Math.min(fw - 1, Math.round(spr.flipX ? left + fw - mx : mx - left)));
+  const cropAll = () => {
+    img.setCrop(0, 0, seamTex, img.frame.height);
+    img2.setCrop(seamTex, 0, fw - seamTex, img2.frame.height);
+  };
+  cropAll();
+  // world side of each plate: the texture's left part lies left of the seam unless flipped
+  const sideA = spr.flipX ? 1 : -1;
+  const plates = [
+    { im: img, side: sideA, x0: spr.x },
+    { im: img2, side: -sideA, x0: spr.x },
+  ];
+  /** Steps of one plate's break (25 ms each): slide 1, slide 2, cold iron (stone1), ash (stone0), gone. */
+  const BREAK_TONES = [0, 0, PAL.stone1, PAL.stone0] as const;
   const glow = Raster.around(sc, home.x, home.y - 20, 120, 70, spr.depth + 0.2);
   const floor = Raster.around(sc, home.x, home.y, 100, 40, FLOOR_DEPTH);
   const pool = lightPool(sc, home.x, home.y, { color: PAL.water3, radius: 22, intensity: 0.7, fadeIn: 0 });
@@ -660,8 +699,8 @@ export function anvilRemains(sc: Phaser.Scene, spr: Phaser.GameObjects.Sprite, h
       }
       if (fi !== shown) {
         shown = fi;
-        img.setTexture(remainsKey(sc, fi, right));
-        img.setOrigin(spr.originX, spr.originY);
+        for (const pl of plates) pl.im.setTexture(remainsKey(sc, fi, right)).setOrigin(spr.originX, spr.originY);
+        cropAll();
         const r = REMAINS[fi];
         const lv = r.pole >= 2 ? 0 : r.pole >= 1 ? 1 : 2;
         const O = [PAL.fire4, PAL.fire3, PAL.fire1][lv];
@@ -689,20 +728,34 @@ export function anvilRemains(sc: Phaser.Scene, spr: Phaser.GameObjects.Sprite, h
           g.ring(home.x, home.y, R, R * 0.5, b, lv === 0 ? 1 : 0.5, Math.PI / 2, (3 * Math.PI) / 2);
         });
       }
-      // the last 150 ms: the remains blink out in steps
-      if (el >= ms - BREAK) {
-        const k = Math.floor((el - (ms - BREAK)) / 50);
-        img.setVisible(k % 2 === 1);
+      // the hold: the halves creep 1 px apart (the dying field still repels them)
+      const hold = ms - BREAK;
+      const creep = el >= hold * 0.45 ? 1 : 0;
+      // the last 150 ms break the remains up plate by plate (EF-7 palette steps, the far plate 2 steps late):
+      // each slides 1 → 2 px further out, goes cold (stone1), to ash (stone0), and is gone
+      for (let pi = 0; pi < plates.length; pi++) {
+        const pl = plates[pi];
+        const k = el >= hold ? Math.floor((el - hold) / 25) - pi * 2 : -1;
+        const slide = k < 0 ? 0 : Math.min(2, k + 1);
+        pl.im.setX(pl.x0 + pl.side * (creep + slide));
+        if (k >= BREAK_TONES.length) pl.im.setVisible(false);
+        else if (k >= 2) pl.im.setTintFill(BREAK_TONES[k]);
+      }
+      if (el >= hold) {
+        const k = Math.floor((el - hold) / 50);
         if (k !== last) {
           last = k;
-          glow.draw(() => undefined);
-          floor.draw(() => undefined);
+          if (k >= 1) {
+            glow.draw(() => undefined);
+            floor.draw(() => undefined);
+          }
         }
       }
       return el < ms;
     },
     () => {
       if (img.active) img.destroy();
+      if (img2.active) img2.destroy();
       glow.destroy();
       floor.destroy();
       void pool.fadeOut(80);

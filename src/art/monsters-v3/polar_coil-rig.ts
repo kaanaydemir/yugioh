@@ -287,8 +287,8 @@ function drawLeg(f: Frame, near: boolean): void {
     for (let x = 0; x < W; x++) if (q.isOpaque(x, y)) q.set(x, y, near ? COPPER.S : COPPER_FAR.S);
   }
   f.comp.add(q, near ? Part.legN : Part.legF, { out: near ? PAL.fire0 : PAL.ink });
-  // the magnetite boot (toe forward), a gold ankle ring
-  if (o.legs > 0.3) {
+  // the magnetite boot (toe forward), a gold ankle ring (the boots fold into the wire last)
+  if (o.legs > 0.12) {
     const b = layer();
     const x0 = near ? ank[0] - 3 : ank[0] - 4;
     b.poly([[x0, GY - 2], [x0 + 6, GY - 2], [x0 + 8, GY - 1], [x0 + 8, GY], [x0, GY]], m.M);
@@ -811,7 +811,7 @@ function dissolvePass(f: Frame): void {
     p.erase(gone[i], gone[i + 1]);
     comp.id[gone[i + 1] * W + gone[i]] = Part.none;
   }
-  for (let i = 0; i < mark.length; i += 2) p.set(mark[i], mark[i + 1], (fl((mark[i] - RX) / 2) + fl((mark[i + 1] - GY) / 2)) & 1 ? PAL.skin2 : PAL.steel);
+  for (let i = 0; i < mark.length; i += 2) p.set(mark[i], mark[i + 1], (fl((mark[i] - RX) / 2) + fl((mark[i + 1] - GY) / 2)) & 1 ? PAL.fire2 : PAL.stone3);
 }
 
 // ---------------------------------------------------------------- draw

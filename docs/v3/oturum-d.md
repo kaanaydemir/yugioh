@@ -28,6 +28,7 @@ Kanıtlar: `shots/v3/d/<kart>/`.
 
 ## Günlük
 
+- 2026-11-05 polar_needle fix r1: çağırma artık KAPALI iğne (uzuvlar pastilde, mavi S ucu karo merkezinde, mızrak pivotta pusula kartı) ile iki tur + kilit + 4 karelik açılma; ölüm sonu kendi levhaları (miğfer, iki omuzluk, bacaklar tek tek düşer, polarNeedlePlate ×4, kalıntı son 150 ms'de söner, taş kırılması yok); saldırı-pozisyonundaki rakibe kaybedince 'itilme' varyantı (polarNeedleRepel, shieldBlock susturuldu — altıgen hâlâ ortak battle.ts blockClang'dan geliyor); savunmaya geçiş kendi kancası (polarNeedleGuard, genel altıgen yok). Hit-stop: ortak tablo (mediumHeavy contactStopMs 80/95/110, güç 1/2/3); İğne'nin tipik vuruşu (hasar ≥ 600 veya doğrudan 1500) güç 2 = 95 ms, blok (hasar 0) güç 1 = 80 ms — kart başına durdurma API'si yok, bilinçli olarak tablo değerinde bırakıldı. Kanıt: shots/v3/d/polar_needle/fix1b/.
 - 2026-11-01 ikinci limit duraklaması: crit1 + fix1 turları polar parçaları, archer, jester için kısmen bitti; sovereign başlamadı. Workflow yeniden sürdürüldü.
 - 2026-10-31 WIP kontrol noktası (orkestratör isteği: kullanım limiti yaklaşıyor). Workflow `wf_ec97f149-c20` sürüyor:
   el kitabı `docs/v3/oturum-d-rehber.md` yazıldı; yedi kartın rig + kart görseli + art testleri, polar parçalarının ve

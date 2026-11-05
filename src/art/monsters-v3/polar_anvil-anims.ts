@@ -90,13 +90,16 @@ const GUARD_HOLDS = [170, 150, 160, 170, 150, 160, 170, 150];
 
 // ------------------------------------------------------------------ attack (12): "İtme Dalgası"
 
-const A_N = 12;
+const A_N = 13;
+// the wind-up travels every frame (no held pose): the mauls climb and cock back, the body squashes 1 → 2 px,
+// the dust stream along the field lines thickens frame to frame, and the full draw (f5) trembles 1 px
 const ATTACK_KEYS: Partial<Pose>[] = [
   {},
-  { tx: -1, nx: 7, ny: -44, fx: -10, fy: -44, eye: 1.3, face: 2, pole: 2 },
-  { tx: -2, py: 1, nx: 2, ny: -47, fx: -13, fy: -47, eye: 1.5, face: 2, pole: 2, ring: 2 },
-  { tx: -3, py: 1, nx: -2, ny: -49, fx: -16, fy: -48, eye: 1.8, lid: 1, face: 3, pole: 3, ring: 2 },
-  { tx: -3, py: 2, nx: -4, ny: -50, fx: -18, fy: -48, eye: 2, lid: 1, face: 3, pole: 3, ring: 2, spark: 0.08 },
+  { tx: -1, nx: 6, ny: -44, fx: -10, fy: -44, eye: 1.3, face: 2, pole: 2, dustK: 1.3 },
+  { tx: -2, py: 1, nx: 1, ny: -48, fx: -14, fy: -47, eye: 1.5, face: 2, pole: 2, ring: 2, dustK: 1.6 },
+  { tx: -3, py: 1, nx: -4, ny: -51, fx: -18, fy: -50, eye: 1.8, lid: 1, face: 3, pole: 3, ring: 2, dustK: 2 },
+  { tx: -4, py: 2, nx: -8, ny: -53, fx: -22, fy: -52, eye: 2, lid: 1, face: 3, pole: 3, ring: 2, spark: 0.06, dustK: 2.4 },
+  { tx: -5, py: 3, nx: -12, ny: -52, fx: -26, fy: -51, eye: 2, lid: 1, face: 3, pole: 3, ring: 3, spark: 0.12, dustK: 2.8, shake: 1 },
   // release: DANG — both mauls on the face
   { tx: 1, py: 2, nx: 10, ny: -35, fx: -13, fy: -35, eye: 2, lid: 1, face: 3, pole: 3, ring: 3, flashN: 1, flashF: 1, spark: 0.2, shake: 1 },
   // contact: the push wave rolls out of the horn
@@ -106,11 +109,11 @@ const ATTACK_KEYS: Partial<Pose>[] = [
 ];
 export function attackPose(f: number): Pose {
   if (f >= A_N - 1) return home();
-  if (f <= 8) return snap(key(ATTACK_KEYS[f], f, A_N));
-  const k8 = key(ATTACK_KEYS[8], 8, A_N);
-  return snap(key({ ...mix(k8, IDLE0, f === 9 ? 0.45 : 0.8), spark: 0, wave: 0, shake: 0, flashN: 0, flashF: 0 }, f, A_N));
+  if (f <= 9) return snap(key(ATTACK_KEYS[f], f, A_N));
+  const k9 = key(ATTACK_KEYS[9], 9, A_N);
+  return snap(key({ ...mix(k9, IDLE0, f === 10 ? 0.45 : 0.8), spark: 0, wave: 0, shake: 0, flashN: 0, flashF: 0 }, f, A_N));
 }
-const ATTACK_HOLDS = [80, 120, 150, 170, 200, 60, 70, 90, 100, 120, 130, 150];
+const ATTACK_HOLDS = [80, 110, 120, 130, 120, 130, 60, 70, 90, 100, 120, 130, 150];
 
 // ------------------------------------------------------------------ roar (10): the double strike, poles blaze
 
@@ -218,26 +221,28 @@ export function fromGuardPose(f: number): Pose {
 }
 const FG_HOLDS = [60, 65, 70, 75, 80];
 
-// ------------------------------------------------------------------ summon (12): two half-anvils slide in, KLAK, fountain
+// ------------------------------------------------------------------ summon (14): two half-anvils slide in, KLAK, fountain
 
-const SU_N = 12;
-const SU_LAND = 4;
+const SU_N = 14;
+const SU_LAND = 6;
+/** The slide: the halves start at the canvas' edge (margin 2) and accelerate shut through 6 short frames (ease-in). */
+const SU_SPLIT = [10, 10, 9, 7, 5, 2];
+const SU_ARC = [0.35, 0.5, 0.6, 0.7, 0.85, 1];
 export function summonPose(f: number): Pose {
   if (f >= SU_N - 1) return home();
   const dark = { eye: 0, face: 0, pole: 0, ring: 0, dust: -1, arms: 0 };
-  if (f < SU_LAND) {
-    const split = [10, 7, 4, 1][f];
-    return key({ ...dark, split, arc: f === 0 ? 0.4 : f === 3 ? 1 : 0.7, pole: f >= 2 ? 1 : 0 }, f, SU_N);
-  }
-  if (f === SU_LAND) return key({ ...dark, py: 1, weld: 1, fount: 0.3, flashN: 0, pole: 3, ring: 3, shake: 2 }, f, SU_N);
-  if (f === 5) return key({ ...dark, py: 1, weld: 0.7, fount: 0.5, pole: 3, ring: 2, eye: 1.2, arms: 0 }, f, SU_N);
-  if (f === 6) return key({ ...dark, weld: 0.45, fount: 0.7, pole: 2, ring: 2, eye: 2, arms: 0.6, nx: 24, ny: -33, fx: -26, fy: -35, dust: -1 }, f, SU_N);
-  if (f === 7) return key({ ...dark, weld: 0.2, fount: 0.9, pole: 2, ring: 2, eye: 2, arms: 1, nx: 20, ny: -44, fx: -22, fy: -46, face: 2, dust: -1 }, f, SU_N);
-  if (f === 8) return key({ weld: 0, pole: 2, ring: 2, eye: 1.6, nx: 15, ny: -45, fx: -15, fy: -46, face: 2 }, f, SU_N);
-  if (f === 9) return snap(key({ ...mix(key({ nx: 15, ny: -45, fx: -15, fy: -46 }, 8, SU_N), IDLE0, 0.55), face: 2, eye: 1.3 }, f, SU_N));
-  return snap(key({ ...mix(key({ nx: 15, ny: -45, fx: -15, fy: -46 }, 8, SU_N), IDLE0, 0.85) }, f, SU_N));
+  if (f < SU_LAND) return key({ ...dark, split: SU_SPLIT[f], arc: SU_ARC[f], pole: f >= 3 ? 1 : 0 }, f, SU_N);
+  // after the weld: the frames of the former 12-frame table, two later
+  const g = f - (SU_LAND - 4);
+  if (g === 4) return key({ ...dark, py: 1, weld: 1, fount: 0.3, flashN: 0, pole: 3, ring: 3, shake: 2 }, f, SU_N);
+  if (g === 5) return key({ ...dark, py: 1, weld: 0.7, fount: 0.5, pole: 3, ring: 2, eye: 1.2, arms: 0 }, f, SU_N);
+  if (g === 6) return key({ ...dark, weld: 0.45, fount: 0.7, pole: 2, ring: 2, eye: 2, arms: 0.6, nx: 24, ny: -33, fx: -26, fy: -35, dust: -1 }, f, SU_N);
+  if (g === 7) return key({ ...dark, weld: 0.2, fount: 0.9, pole: 2, ring: 2, eye: 2, arms: 1, nx: 20, ny: -44, fx: -22, fy: -46, face: 2, dust: -1 }, f, SU_N);
+  if (g === 8) return key({ weld: 0, pole: 2, ring: 2, eye: 1.6, nx: 15, ny: -45, fx: -15, fy: -46, face: 2 }, f, SU_N);
+  if (g === 9) return snap(key({ ...mix(key({ nx: 15, ny: -45, fx: -15, fy: -46 }, f - 1, SU_N), IDLE0, 0.55), face: 2, eye: 1.3 }, f, SU_N));
+  return snap(key({ ...mix(key({ nx: 15, ny: -45, fx: -15, fy: -46 }, SU_LAND + 4, SU_N), IDLE0, 0.85) }, f, SU_N));
 }
-const SU_HOLDS = [110, 100, 90, 70, 140, 110, 100, 100, 120, 120, 130, 150];
+const SU_HOLDS = [70, 60, 60, 55, 55, 50, 140, 110, 100, 100, 120, 120, 130, 150];
 
 // ------------------------------------------------------------------ death (9): poles swap wildly, pieces repel outwards
 
@@ -294,12 +299,12 @@ const V_HOLDS = [100, 120, 70, 110, 140, 200, 110, 150];
 
 const spec = (frames: number, fps: number, loop: boolean, holds: number[], marks?: AnimSpec['marks']): AnimSpec => ({ frames, fps, loop, holds, ...(marks ? { marks } : {}) });
 
-export const IMPACT = 5;
+export const IMPACT = 6;
 export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   idle: spec(IDLE_N, 8, true, IDLE_HOLDS),
   guard: spec(GUARD_N, 6, true, GUARD_HOLDS),
   roar: spec(R_N, 10, false, ROAR_HOLDS, { charge: 1, release: 2, impact: 2, recover: 6 }),
-  attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: 5, impact: 5, contact: 6, recover: 8 }),
+  attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: 6, impact: 6, contact: 7, recover: 9 }),
   hit: spec(HIT_N, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 4 }),
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {

@@ -7,10 +7,13 @@
 // attack "Kıskaç Hamlesi" = a fencer's lunge with the needle-spear: the spear is drawn back level, the body coils,
 // a long locked aim (the point trembles, the field loops light), a 50 ms swing, the 60 ms lunge (front foot lands
 // forward, far arm thrown back), contact with a two-colour flare, slow retraction.
-// summon = drops vertical on its point, spins TWICE on the tip like a compass (the spear is the needle, sweeping an
-// iso circle with its trail), wobbles past the opponent and back, locks with a tick, then unfolds.
+// summon = the CLOSED needle (limbs folded into the lozenge, standing on its blue S point, the spear balanced on the
+// pivot as the compass card) drops vertical, spins TWICE on the tip (the card's fire / water points swap sides,
+// sweeping an iso circle with its trail), swings past the opponent and back, locks with a tick, then unfolds (the
+// body rises out of a plié as the legs drop, the arms open). CLOSED is exported for the sovereign.
 // death = an invisible force seizes the needle-torso and RIPS it out of the armour shell: it spins away end over end
-// (gone off the top), the helm and pauldrons drop, the legs fold, the spear falls flat, plates crumble.
+// (gone off the top), then the shell's plates land one by one — helm, near pauldron, far pauldron, the legs fold
+// flat — and lie still (no dissolve: the cinematics blink the remains out in the last 150 ms).
 // Every one-shot ends on idle f0.
 
 import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
@@ -177,7 +180,7 @@ const HIT_N = 6;
 // the compass knocked off its bearing: the needle torso recoils 2–3 px (the N tip thrown back), the head snaps
 // after it, and the rose crown whirls fast for two frames before it settles back
 const HIT_KEYS: Partial<Pose>[] = [
-  { hx: -2, tx: -1, lean: -2, lid: 2, eye: 0.5, sa: 8, py: 1, poleN: 0.5, rose: 0.3, roseG: 2 },
+  { hx: -1, lid: 2, eye: 0.5, lean: -1, sa: 6, rose: 0.12 }, // (the contact frame stays near idle f0: HA-21)
   { hx: -3, tx: -2, lean: -3, lid: 2, eye: 0.5, sa: 14, py: 1, ny: -36, nfx: -1, poleN: 0.5, spark: 0.3, fy: -56, fx: -17, rose: 0.68, roseG: 2, shake: 1 },
   { hx: -2, tx: -2, lean: -2, lid: 1, eye: 0.8, sa: 8, ny: -37, spark: 0.7, fy: -57, fx: -16, rose: 0.86 },
 ];
@@ -270,7 +273,7 @@ export function summonPose(f: number): Pose {
   // f16: the stance settles (the spear eases off the bearing to its idle carry)
   return snap({ ...IDLE0, sa: -6, ny: -39, rose: 0.92, tip: 1.5, poleN: 1.5, eye: 1.4, dust: -1, t: ph });
 }
-const SU_HOLDS = [70, 80, 55, 55, 55, 60, 65, 75, 90, 105, 100, 80, 190, 75, 75, 85, 95, 120];
+const SU_HOLDS = [70, 80, 55, 55, 55, 60, 65, 75, 80, 90, 85, 80, 160, 75, 75, 85, 80, 100];
 
 // ------------------------------------------------------------------ death (10): seized → ripped out → spins away → the shell falls
 

@@ -222,7 +222,8 @@ export const V3_POLAR_NEEDLE_RECIPES = {
       ] as const) {
         const p = v.panner(pan);
         // (fix r1: −21 dB was too quiet for the storyboard's L / R "tşk" — +5 dB, hard panned)
-        v.noise('white', { t, g: [[0, 0], [0.004, 0.22], [0.07, 0.0001, 'e']], to: v.filt('bandpass', [[0, f * 1.6], [0.06, f, 'e']], 2, { t, to: p }) });
+        v.noise('white', { t, g: [[0, 0], [0.004, 0.34], [0.07, 0.0001, 'e']], to: v.filt('bandpass', [[0, f * 1.6], [0.06, f, 'e']], 2, { t, to: p }) });
+        clank(v, f * 0.4, t, 0.06, 0.08, { ratio: 1.17, index: 1.2, click: 0.6, to: p });
         v.noise('white', { t, g: perc(0.08, 0.01, 0.0003), to: v.filt('highpass', 5200, 0.7, { to: p }) });
         v.tone('sine', [[0, f * 0.3], [0.05, f * 0.4, 'e']], { t, g: perc(0.05, 0.12, 0.002), to: p });
       }
@@ -385,11 +386,12 @@ export const V3_POLAR_NEEDLE_RECIPES = {
     verb: 0.4,
     duck: 0.2,
     play(v) {
-      sweep(v, 0, 0.14, [900, 2600, 1500], 0.05, { kind: 'pink', q: 1.4, pan: [0.3, -0.2], peakAt: 0.6 });
-      pivotClick(v, 0.13, 0.2, 4800);
-      pivotClick(v, 0.142, 0.1, 3400);
-      needleTone(v, 0.135, [[0, 0], [0.006, 0.12], [0.2, 0.06], [0.6, 0.0001, 'e']]);
-      poleHum(v, 0, [[0, 0], [0.16, 0.35], [0.3, 0.3], [0.75, 0.0001, 'e']]);
+      sweep(v, 0, 0.19, [900, 2600, 1500], 0.05, { kind: 'pink', q: 1.4, pan: [0.3, -0.2], peakAt: 0.7 });
+      // the click lands with the art's toGuard f3 (55 + 60 + 65 ms: the spear upright, the field ward up)
+      pivotClick(v, 0.18, 0.2, 4800);
+      pivotClick(v, 0.192, 0.1, 3400);
+      needleTone(v, 0.185, [[0, 0], [0.006, 0.12], [0.2, 0.06], [0.6, 0.0001, 'e']]);
+      poleHum(v, 0, [[0, 0], [0.16, 0.16], [0.3, 0.14], [0.75, 0.0001, 'e']]);
     },
   },
   /** Death: a magnetite plate drops onto the marble (a dull stone-metal clack and a tiny bounce). */

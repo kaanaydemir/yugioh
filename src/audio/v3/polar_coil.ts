@@ -16,13 +16,15 @@
 //   charge  polarCoilCharge        the dust gathers into three spikes orbiting the coil (circular pan, rising, sustained → release)
 //   release polarCoilFling         the whips crack forward, the three spikes are flung (crack + three whooshes)
 //           polarCoilOrbit         the spikes orbit the target: a circling three-voice whirr, faster (sustained → converge)
-//   impact  polarCoilTshak         the three converge: "tşak-tşak-tşak" 52 ms apart, each brighter, then the magnetic thump
+//           polarCoilTicks         the last lap's lead-in (converge − 110 ms): "tşak-tşak-tşak" 37 ms apart, each brighter
+//   impact  polarCoilTshak         the three converge ON the contact frame: magnetic crack + thump at t = 0, the hum bursts
 //   (flip)  polarCoilFlipWind      flip summon: the card turns, a fast 3-turn wind on the bare spindle (→ polarCoilSnap)
 //   (toGuard) polarCoilWrap        position change: the whips wrap the drum (twang + lug ticks)
 //           polarCoilDeflect       blocked: the spikes splinter on the guard into dust
 //   (death f1) polarCoilUnwind     the wire unwinds (played by the hook, see cinematics/d/polar_coil.ts), the spools spin backwards: buzz falling, ticks slowing
-//   dissolve   polarCoilWobble     the empty spindle wobbles on its pin (creak + the hum dying)
-//   afterDissolve polarCoilTok     the spindle topples: "tok"
+//   dissolve   polarCoilSlack      the last turns slip off: slack twang + the empty spools rattling free (to the tok)
+//   (+2)       polarCoilWobble     the empty spindle wobbles on its pin (creak + the hum dying)
+//   (+5)       polarCoilTok        the spindle hits the marble (the impact frame): "tok"
 //   burst   polarCoilBurst         the empty spool spins free and runs down, loose wire springs off, dust settles
 //   reviveGather polarCoilReviveGather  the wire snaps back onto the spindle (reverse wind, sustained → land)
 //   reviveLand   polarCoilReviveSnap    a lighter snap
@@ -230,8 +232,30 @@ export const V3_POLAR_COIL_RECIPES = {
     },
   },
   /**
-   * The converge: three spikes meet in the body — "tşak-tşak-tşak" 52 ms apart (three hits, not a flam), each a
-   * step brighter (higher band, a little louder), then the magnetic thump AFTER the third, the hum bursts.
+   * The last lap's lead-in (onConverge − 110 ms, the orbit hushed): "tşak-tşak-tşak" — three magnetised ticks
+   * 37 ms apart, each brighter and a step louder, panning L → R → centre as the spikes turn in. They END where the
+   * contact begins: polarCoilTshak lands the thump + crack on the convergence frame.
+   */
+  polarCoilTicks: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.3,
+    duck: 0.3,
+    play(v) {
+      const pans = [-0.45, 0.45, 0];
+      for (let i = 0; i < 3; i++) {
+        const t = i * 0.037;
+        const p = v.panner(pans[i]);
+        crack(v, t, 0.2 + i * 0.05, { hp: 2600 + i * 700, n: 1, dec: 0.012, to: p });
+        clank(v, 1180 + i * 220, t, 0.05 + i * 0.012, 0.09, { ratio: 2.76, index: 1.8, click: 0.8 + i * 0.25, to: p });
+      }
+      // the field drawing in: a short rising sine under the ticks
+      v.tone('sine', [[0, D3 * 2], [0.11, D3 * 4, 'e']], { g: [[0, 0], [0.02, 0.05], [0.1, 0.07], [0.12, 0.0001, 'e']] });
+    },
+  },
+  /**
+   * The converge (on the convergence frame): the three spikes meet in the body — the heavy magnetic crack and the
+   * thump AT ONCE (t = 0, the loudest beat of the strike), the hum bursts, a falling buzz and the dust rain off it.
    */
   polarCoilTshak: {
     cap: 2,
@@ -239,19 +263,13 @@ export const V3_POLAR_COIL_RECIPES = {
     verb: 0.35,
     duck: 0.6,
     play(v) {
-      const pans = [-0.45, 0.45, 0];
-      const GAP = 0.052;
-      for (let i = 0; i < 3; i++) {
-        const t = i * GAP;
-        const p = v.panner(pans[i]);
-        crack(v, t, 0.38 + i * 0.06, { hp: 2400 + i * 700, n: 2, gap: 0.006, dec: 0.018, to: p });
-        clank(v, 1180 + i * 220, t, 0.08 + i * 0.015, 0.16, { ratio: 2.76, index: 1.8, click: 1 + i * 0.25, to: p });
-      }
-      const T3 = 2 * GAP + 0.03;
-      thump(v, T3, 110, 44, 0.26, 0.2, { drive: 1.4 });
-      poleHum(v, T3, perc(0.22, 0.4, 0.003));
-      v.tone('sawtooth', [[0, D3 * 2], [0.25, D3, 'e']], { t: T3, g: perc(0.05, 0.25, 0.002), to: v.filt('lowpass', 1400, 1) });
-      glassRain(v, { t: T3 + 0.01, d: 0.35, n: 8, g: 0.026, notes: DUST, dec: [0.03, 0.1], curve: 1.6, modes: 2 });
+      crack(v, 0, 0.55, { hp: 2200, n: 3, gap: 0.004, dec: 0.022 });
+      clank(v, 1420, 0, 0.13, 0.2, { ratio: 2.76, index: 2, click: 1.6 });
+      clank(v, 940, 0.003, 0.09, 0.26, { ratio: 2.4, index: 1.5, click: 0.8 });
+      thump(v, 0.002, 120, 42, 0.42, 0.22, { drive: 1.5 });
+      poleHum(v, 0, perc(0.26, 0.42, 0.003));
+      v.tone('sawtooth', [[0, D3 * 2], [0.25, D3, 'e']], { g: perc(0.07, 0.26, 0.002), to: v.filt('lowpass', 1400, 1) });
+      glassRain(v, { t: 0.02, d: 0.35, n: 8, g: 0.026, notes: DUST, dec: [0.03, 0.1], curve: 1.6, modes: 2 });
     },
   },
   /** Blocked: the spikes splinter on the guard — three bent tinks scattering, dust raining off. */
@@ -272,23 +290,46 @@ export const V3_POLAR_COIL_RECIPES = {
       glassRain(v, { t: 0.06, d: 0.45, n: 12, g: 0.03, notes: DUST, dec: [0.03, 0.1], curve: 1.4, modes: 2 });
     },
   },
-  /** Death f1: the wire unwinds, the spools spin backwards — the buzz falls D4 → D2, the turn ticks slow down. */
+  /**
+   * Death f1 → f6 (≈ 0.4 s) and on: the wire unwinds, the spools spin backwards — the buzz falls D4 → D2, the turn
+   * ticks slow down; the ratchet keeps running (slower and slower) through the wobble, so the death is one sound
+   * gesture up to the "tok" (≈ 0.62 s after f1).
+   */
   polarCoilUnwind: {
     cap: 1,
     gap: 0.2,
     verb: 0.35,
     duck: 0.45,
     play(v) {
-      const D = 0.62;
-      const env: Pt[] = [[0, 0], [0.02, 0.17], [D * 0.6, 0.12], [D, 0.0001, 'e']];
-      windBuzz(v, 0, D, [[0, D3 * 2], [D, D3 * 0.5, 'e']], [[0, 40], [D, 5, 'e']], [[0, 2800], [D, 300, 'e']], env);
-      spoolTicks(v, 0, turnTimes(D, 36, 5), 0.07, 2600);
+      const D = 0.5;
+      const E = 0.72;
+      const env: Pt[] = [[0, 0], [0.02, 0.17], [0.3, 0.13], [D, 0.07], [E, 0.0001, 'e']];
+      windBuzz(v, 0, E, [[0, D3 * 2], [D, D3 * 0.6, 'e'], [E, D3 * 0.5]], [[0, 40], [D, 7, 'e'], [E, 4]], [[0, 2800], [D, 420, 'e'], [E, 300]], env);
+      spoolTicks(v, 0, turnTimes(E, 36, 5), 0.07, 2600);
       // the loose wire whipping off: an outgoing swish
       sweep(v, 0, 0.45, [2600, 1800, 500], 0.1, { kind: 'pink', q: 1.6, pan: [0, -0.6], peakAt: 0.25 });
-      poleHum(v, 0, [[0, 0], [0.02, 0.16], [D, 0.0001, 'e']]);
+      poleHum(v, 0, [[0, 0], [0.02, 0.16], [D, 0.06], [E, 0.0001, 'e']]);
     },
   },
-  /** Death 'dissolve': the bare spindle wobbles on its pin — a metal creak, the field's last breath. */
+  /**
+   * Death 'dissolve' (f5): the last turns slip off the bare rod — a slack copper twang falling, and the empty spools
+   * rattling free on the spindle (a low, slowing ratchet that runs on under the wobble to the "tok").
+   */
+  polarCoilSlack: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.35,
+    duck: 0.25,
+    play(v) {
+      twang(v, 0, D3 * 1.5, 0.07, 0.35);
+      sweep(v, 0, 0.18, [1800, 900, 300], 0.05, { kind: 'pink', q: 1.4, pan: [0, -0.4], peakAt: 0.3 });
+      // the free-running spools: low pawl rattle, slowing (two spools, slightly apart)
+      spoolTicks(v, 0.02, turnTimes(0.42, 26, 7), 0.05, 1500);
+      spoolTicks(v, 0.03, turnTimes(0.4, 22, 6), 0.035, 1150);
+      v.tone('sine', [[0, D3], [0.42, D3 * 0.7, 'e']], { g: [[0, 0], [0.03, 0.05], [0.3, 0.035], [0.44, 0.0001, 'e']] });
+    },
+  },
+  /** Death 'dissolve' + 2 (f7): the bare spindle wobbles on its pin — a metal creak, the field's last breath. */
   polarCoilWobble: {
     cap: 1,
     gap: 0.2,

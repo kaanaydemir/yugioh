@@ -65,7 +65,7 @@ export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
   kite_fencer: { material: 'plant', accent: 'light' },
   mudgrasp_spirit: { material: 'water', accent: 'shadow' }, // C10 liquefies back into its puddle (stone/ash endings are reserved, §5.2)
   steppe_spiralhorn: { material: 'light', accent: 'plant' },
-  polar_needle: { material: 'stone', accent: 'crystal' },
+  polar_needle: { material: 'crystal', accent: 'crystal' }, // fallback only: the needle's own fallen plates replace the break (C12, §5.2)
   polar_anvil: { material: 'stone', accent: 'crystal' },
   polar_coil: { material: 'stone', accent: 'crystal' },
   polar_sovereign: { material: 'stone', accent: 'crystal' },

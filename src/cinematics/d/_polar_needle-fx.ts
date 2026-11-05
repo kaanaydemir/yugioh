@@ -14,11 +14,14 @@
 //                                          target; appear() → clamp() (the lock) → shatter() | bounce()
 //   lungeTrail(sc, from, to, depth)        the lunge's two-colour track (stepped fade)
 //   pierceFlash(sc, at, dir, depth)        contact: the needle's line of light through the target, a star, sparks
+//   repelFlash(sc, at, dir, depth, floorY) lost to an attack-position foe: like poles repel ")(" (no shield)
 //   forceGrip(sc, u, home, ms)             death f1: the invisible force — iron dust is sucked up to a point above
 //                                          the head and the field lines bend up toward it
 //   ripBurst(sc, at, floorY)               death f2: the needle tears out of the shell (steel / gold shards)
 //   flyingNeedle(sc, o)                    death: the torn needle spins madly up and off the screen (pixel frames)
-//   shellPlates(sc, home, dir, depth)      death burst: magnetite plates drop and clack on the marble
+//   plateClink(sc, at, depth)              death: a plate lands — steel / gold chips hop off it
+//   needleRemains(sc, spr, home, ms)       death: the fallen plates lie still, then blink out (last 150 ms)
+//   shellPlates(sc, home, dir, depth)      death burst: the last magnetite chips skitter off the heap
 //
 // Pixel language (REHBER EF-6 / EF-7): 1-px lines, palette steps instead of alpha, whole-pixel positions, no
 // sprite rotation or scale (the flying needle is drawn per angle), stepped light on the floor.
@@ -565,6 +568,46 @@ export function pierceFlash(sc: Phaser.Scene, at: XY, dir: XY, depth: number, fl
   void lightFlash(sc, at.x, at.y, PAL.fire4, big ? 38 : 28, 320, { floorY, intensity: 1 });
 }
 
+/**
+ * Lost to an attack-position foe: like poles REPEL. Two pairs of curved field lines ")(" bulge apart from the
+ * contact point (fire toward the needle, water toward the foe) in three stepped frames, and the iron dust on the
+ * line is blown both ways. `dir`: from the needle toward the target.
+ */
+export function repelFlash(sc: Phaser.Scene, at: XY, dir: XY, depth: number, floorY: number): void {
+  const r = Raster.around(sc, at.x, at.y, 70, 60, depth);
+  void (async () => {
+    for (let s = 0; s < 4; s++) {
+      if (!r.alive) return;
+      r.draw((g) => {
+        const off = 2 + s * 4;
+        const h = 9 + s * 2;
+        for (const side of [-1, 1] as const) {
+          // side −1: the needle's own field (fire), +1: the foe's (water) — they bow AWAY from each other
+          const cx = at.x + dir.x * off * side;
+          for (let k = -h; k <= h; k++) {
+            const bow = Math.round((1 - (k * k) / (h * h)) * (3 + s)) * side;
+            const c = s === 0 ? PAL.white : side < 0 ? [PAL.fire4, PAL.fire3, PAL.fire2][s - 1] : [PAL.water4, PAL.water3, PAL.water2][s - 1];
+            if (s < 3 || (k & 1) === 0) g.px(Math.round(cx + bow * Math.sign(dir.x || 1)), at.y + k, c);
+          }
+        }
+        if (s === 0) for (let k = -3; k <= 3; k++) g.px(at.x, at.y + k, PAL.white);
+      });
+      await sleep(sc, 50);
+    }
+    r.destroy();
+  })();
+  const sp = new Sparks(sc, depth + 0.1);
+  for (let i = 0; i < 12; i++) {
+    const side = i % 2 ? 1 : -1;
+    const v = RR(70, 150);
+    sp.add({ x: at.x, y: at.y + RR(-8, 8), vx: dir.x * side * v, vy: RR(-30, 10), ay: 200, drag: 2.4, life: RR(200, 340), colors: side < 0 ? [PAL.white, PAL.fire4, PAL.fire3] : [PAL.white, PAL.water4, PAL.water3], shape: i % 3 === 0 ? 'streak' : 'px', len: 0.02, fadeAt: 1 });
+  }
+  for (let i = 0; i < 6; i++) sp.add({ x: at.x + RR(-3, 3), y: at.y + RR(-4, 4), vx: RR(-50, 50), vy: RR(-40, -10), ay: 300, life: RR(260, 420), colors: DUST, shape: 'px', floor: floorY, bounce: 0.2, fadeAt: 0.8 });
+  sp.release();
+  void lightFlash(sc, at.x - dir.x * 6, at.y, PAL.fire4, 22, 240, { floorY, intensity: 0.8 });
+  void lightFlash(sc, at.x + dir.x * 6, at.y, PAL.water4, 22, 240, { floorY, intensity: 0.8 });
+}
+
 // ================================================================ death
 
 /**
@@ -697,18 +740,49 @@ export function flyingNeedle(sc: Phaser.Scene, o: { from: XY; deg: number; back:
   });
 }
 
+/**
+ * Death: the plates have landed (the art's last frames) — the shell lies still on the tile as the needle's own
+ * remains (a copy of the last frame; the sprite hides so no generic material break follows). Each landed plate
+ * kicks a 1-px steel glint; the last 150 ms the remains blink out in whole steps (§5.2: "the plates fall").
+ */
+export function needleRemains(sc: Phaser.Scene, spr: Phaser.GameObjects.Sprite, home: XY, ms: number): void {
+  const img = sc.add.image(spr.x, spr.y, spr.texture.key, spr.frame.name).setOrigin(spr.originX, spr.originY).setFlipX(spr.flipX).setDepth(spr.depth);
+  const BREAK = 150;
+  onFrame(
+    sc,
+    (_dt, el) => {
+      if (!img.active) return false;
+      if (el >= ms - BREAK) img.setVisible(Math.floor((el - (ms - BREAK)) / 50) % 2 === 1);
+      return el < ms;
+    },
+    () => {
+      if (img.active) img.destroy();
+    },
+  );
+  void home;
+}
+
+/** Death: a plate strikes the marble — a few steel / gold chips hop off it and lie still (no dust cloud). */
+export function plateClink(sc: Phaser.Scene, at: XY, depth: number): void {
+  const sp = new Sparks(sc, depth);
+  for (let i = 0; i < 4; i++) {
+    const side = i % 2 ? 1 : -1;
+    sp.add({ x: at.x + side * RR(1, 4), y: at.y - 1, vx: side * RR(14, 36), vy: RR(-60, -30), ay: 520, life: RR(260, 380), colors: i === 0 ? [PAL.white, PAL.gold4, PAL.gold3] : [PAL.steel, PAL.stone4, PAL.stone3], shape: 'px', floor: at.y + 1, bounce: 0.3, fadeAt: 0.8 });
+  }
+  sp.release();
+}
+
 /** Death burst: the magnetite plates drop off the shell and clack down onto the marble (whole px, gold rings). */
 export function shellPlates(sc: Phaser.Scene, home: XY, dir: 1 | -1, depth: number): void {
+  // the shell gives up: a last few magnetite chips (steel faces, gold rims) skitter off the heap and lie still;
+  // no stone dust — the plates themselves already lie on the tile (the remains)
   const sp = new Sparks(sc, depth);
-  for (let i = 0; i < 10; i++) {
-    const side = i % 2 ? 1 : -1;
-    sp.add({ x: home.x + side * RR(2, 12), y: home.y - RR(8, 30), vx: side * RR(8, 40), vy: RR(-40, 10), ay: 640, drag: 1.2, life: RR(620, 900), colors: [PAL.stone3, PAL.stone2, PAL.stone1], shape: 'sq', size: i % 3 === 0 ? 3 : 2, floor: home.y + RR(-3, 4), bounce: 0.25, fadeAt: 0.85 });
-  }
   for (let i = 0; i < 6; i++) {
-    sp.add({ x: home.x + RR(-8, 8), y: home.y - RR(10, 26), vx: RR(-30, 30) - dir * 10, vy: RR(-50, -10), ay: 520, life: RR(420, 640), colors: [PAL.gold4, PAL.gold3, PAL.gold2], shape: 'px', floor: home.y + RR(-2, 3), bounce: 0.35, fadeAt: 0.8 });
+    const side = i % 2 ? 1 : -1;
+    sp.add({ x: home.x + side * RR(2, 12), y: home.y - RR(2, 8), vx: side * RR(10, 34), vy: RR(-50, -20), ay: 640, drag: 1.2, life: RR(380, 560), colors: [PAL.steel, PAL.stone4, PAL.stone3], shape: 'sq', size: 2, floor: home.y + RR(-3, 3), bounce: 0.3, fadeAt: 0.8 });
   }
-  for (let i = 0; i < 10; i++) {
-    sp.add({ x: home.x + RR(-14, 14), y: home.y - RR(0, 4), vx: RR(-20, 20), vy: RR(-14, -4), life: RR(400, 700), colors: DUST, shape: 'px', fadeAt: 0.6 });
+  for (let i = 0; i < 5; i++) {
+    sp.add({ x: home.x + RR(-10, 10), y: home.y - RR(2, 10), vx: RR(-30, 30) - dir * 8, vy: RR(-60, -20), ay: 520, life: RR(320, 520), colors: [PAL.white, PAL.gold4, PAL.gold3], shape: 'px', floor: home.y + RR(-2, 3), bounce: 0.35, fadeAt: 0.75 });
   }
   sp.release();
 }

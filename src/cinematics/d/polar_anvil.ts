@@ -5,7 +5,7 @@
 // the art's two half-anvils slide in with a blue arc buzzing between them (polarAnvilSlide, held to 'land');
 // on 'land' — KLAK: the weld cracks, the half rings become one blue ring that rolls out, a spark fountain
 // bursts out of the seam and bounces on the marble, hit-stop 40 ms, shake 2 (polarAnvilKlak); the fountain
-// sizzles (f5), the hammer-arms unfold and tap the face "tık tık" (f7).
+// sizzles (land + 1), the hammer-arms unfold and tap the face "tık tık" (land + 3; the ATK/DEF badge pops with them).
 // Strike "İtme Dalgası" (ranged; the anvil never leaves its tile): the mauls rise while iron dust streams
 // heel (N) → horn (S) along three field arcs and the floor ring draws in (polarAnvilCharge, from the
 // declaration); 'release' DANG — sparks off the face, the anvil's long ring (polarAnvilDang); 'contact' — three
@@ -23,6 +23,8 @@
 // shatter. Camera never moves (EF-8).
 
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
+import { artFrame } from '../../art/textures';
+import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { GameEvent } from '../../engine/types';
 import { DEPTH, LOOK_V3, type XY } from '../../view/layout';
 import { lightFlash } from '../../view/light';
@@ -50,6 +52,19 @@ const norm = (p: XY): XY => {
   return { x: p.x / l, y: p.y / l };
 };
 
+/**
+ * Where a front touches the struck body: its idle silhouette's near half-width back from the aim point along
+ * the flight (at least 9 px, at most 22), so the column meets the body's edge instead of standing on it.
+ */
+function nearEdge(t: MonsterUnit | null, aim: XY, dir: XY): XY {
+  let off = 9;
+  if (t && t.sprite.active) {
+    const b = artFrame(t.art, 'idle', 0).bounds();
+    if (b) off = Math.max(9, Math.min(22, Math.round(b.w / 2) + 1));
+  }
+  return { x: Math.round(aim.x - dir.x * off), y: Math.round(aim.y - dir.y * Math.min(off, 9)) };
+}
+
 // ================================================================ summon
 
 async function entranceV3(S: Stage): Promise<void> {
@@ -62,8 +77,8 @@ async function entranceV3(S: Stage): Promise<void> {
   const pool = S.glow({ color: PAL.water3, radius: 26, intensity: 0.55, anim: 'flicker', fadeIn: 120 });
   // the field draws itself a beat before the halves come in
   await S.wait(90);
-  // a short onset (160 ms): the dark iron halves are seen sliding in, not a long scan
-  const p = summonPose(sc, u, { ramp: FIELD, holoMs: 160 });
+  // a short onset (100 ms, the first frame only): the dark iron halves are seen sliding in, not a scan
+  const p = summonPose(sc, u, { ramp: FIELD, holoMs: 100 });
   if (!p) {
     slide.stop(60);
     seam.destroy();
@@ -77,13 +92,16 @@ async function entranceV3(S: Stage): Promise<void> {
     sparkFountain(sc, { x: face.x, y: face.y - 2 }, S.home.y, S.depth + 0.5);
     pool.setIntensity(1.1, 40);
     S.finale({ ring: 56, ramp: RAMPS.water, shake: 2, sfx: null, freezeMs: 40, playerRing: false });
+    // the ATK/DEF badge waits for the arms (it pops with the "tık tık" on land + 3; the kit shows it if that frame is skipped)
+    u.badge.setVisible(false);
   });
-  // f3, the halves touching: the arc is pinched into the seam (the art) and the floor flashes blue under it —
+  // the frame before 'land', the halves touching: the arc is pinched into the seam (the art) and the floor flashes blue under it —
   // the tension right before the KLAK
+  const LAND = u.markFrame('summon', 'land', 6);
   atFrame(
     u,
     'summon',
-    3,
+    LAND - 1,
     () => {
       void lightFlash(sc, S.home.x, S.home.y - 16, PAL.water4, 30, 180, { floorY: S.home.y, intensity: 1, air: 0.5 });
       pool.setIntensity(0.9, 30);
@@ -91,8 +109,17 @@ async function entranceV3(S: Stage): Promise<void> {
     },
     { late: false },
   );
-  atFrame(u, 'summon', 5, () => play('polarAnvilFount', { volume: 0.7, pan }), { late: false });
-  atFrame(u, 'summon', 7, () => play('polarAnvilArms', { volume: 0.85, pan }), { late: false });
+  atFrame(u, 'summon', LAND + 1, () => play('polarAnvilFount', { volume: 0.7, pan }), { late: false });
+  atFrame(
+    u,
+    'summon',
+    LAND + 3,
+    () => {
+      play('polarAnvilArms', { volume: 0.85, pan });
+      void u.badge.pop();
+    },
+    { late: false },
+  );
   await p.done;
   void pool.fadeOut(260);
 }
@@ -159,7 +186,8 @@ registerStrike(
       if (released) return;
       released = true;
       charge.stop(30);
-      play('polarAnvilDang', { volume: 0.9, pan });
+      // a step under the impact (the WaveHit lands 2–3 dB above the release)
+      play('polarAnvilDang', { volume: 0.78, pan });
       const face = poleOf(u, 'face');
       if (face) faceSparks(sc, face, sgn, u.home.y);
       void shake(sc, 90, 1);
@@ -174,8 +202,8 @@ registerStrike(
     const from: XY = { x: horn.x + sgn * 5, y: horn.y };
     const aim = s.to;
     const dir = norm({ x: aim.x - from.x, y: aim.y - from.y });
-    // the fronts land on the body's near side, not in its core
-    const to: XY = s.direct ? { x: Math.round(aim.x), y: Math.round(aim.y) } : { x: Math.round(aim.x - dir.x * 9), y: Math.round(aim.y - dir.y * 9) };
+    // the fronts land on the body's near edge, not in its core (the struck body must be read reacting, KK-4)
+    const to: XY = s.direct ? { x: Math.round(aim.x), y: Math.round(aim.y) } : nearEdge(s.target, aim, dir);
     const dist = Math.hypot(to.x - from.x, to.y - from.y);
     // a readable flight even next door (three rings must be seen growing), longer across the field
     const ms = Math.round(Math.max(240, Math.min(s.direct ? 420 : 340, dist * 2.1)));
@@ -183,6 +211,8 @@ registerStrike(
     let arrived!: () => void;
     const arrival = new Promise<void>((r) => (arrived = r));
     const depth = s.target && s.target.sprite.active ? Math.max(DEPTH.FX - 1, s.target.sprite.depth + 0.5) : DEPTH.FX;
+    // a front touching the body passes behind it (the hit flash and the shove stay readable, KK-4 / HA-21)
+    const backDepth = s.target && s.target.sprite.active ? s.target.sprite.depth - 0.5 : undefined;
     const ground = s.target ? s.target.home : s.toGround;
     const wave = pushWave(sc, {
       from,
@@ -191,6 +221,7 @@ registerStrike(
       g1: { x: ground.x - Math.round(dir.x * 10), y: ground.y },
       ms,
       depth,
+      backDepth,
       big: s.direct,
       blocked: s.blocked,
       onArrive: () => {
@@ -198,13 +229,13 @@ registerStrike(
         s.impact(to);
         // the anvil loses: no rebound rolling home while it dies — the struck body and the death's pole swap
         // carry the beat (and four sound layers on one frame would mask each other)
-        if (s.blocked && loses) waveContact(sc, to, ground, { dir, depth, small: true });
-        else play(s.blocked ? 'polarAnvilRebound' : 'polarAnvilWaveHit', { volume: s.blocked ? 0.8 : 0.85, pan: panAt(to.x) });
+        if (s.blocked && loses) waveContact(sc, to, ground, { dir, depth: backDepth ?? depth, small: true });
+        else play(s.blocked ? 'polarAnvilRebound' : 'polarAnvilWaveHit', { volume: s.blocked ? 0.8 : 0.95, pan: panAt(to.x) });
         if (s.blocked && !loses) {
-          waveContact(sc, to, ground, { dir, depth, small: true });
+          waveContact(sc, to, ground, { dir, depth: backDepth ?? depth, small: true });
           void waveRebound(sc, { from, to, depth });
         } else if (!s.blocked) {
-          waveContact(sc, to, ground, { dir, depth, small: false });
+          waveContact(sc, to, ground, { dir, depth: backDepth ?? depth, small: false });
           // "İtme Dalgası": the field shoves the body a full 4 px back (the kit's knock is sized by weight)
           const t = s.target;
           if (t && t.sprite.active && t.position === 'attack') {

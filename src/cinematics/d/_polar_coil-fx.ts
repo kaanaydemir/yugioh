@@ -29,7 +29,7 @@ import { DEPTH, type XY } from '../../view/layout';
 import { lightFlash, lightPool, type LightHandle } from '../../view/light';
 import { Raster } from '../../vfx/setpieces';
 import { Sparks, onFrame, sleep } from '../../vfx/combat';
-import { framePose } from '../../art/monsters-v3/polar_coil-anims';
+import { DEATH_IMPACT, framePose } from '../../art/monsters-v3/polar_coil-anims';
 import { H as RIG_H, SPOOL_N_LOCAL, W, drawCoil, skeleton, toppleRot, type Pose } from '../../art/monsters-v3/polar_coil-rig';
 import { PixelCanvas } from '../../art/pixel';
 
@@ -246,6 +246,9 @@ export interface VolleyOpts {
   /** Blocked: the spikes stop on the guard (radius `stopR`) instead of meeting in the core. */
   stopR?: number;
   onOrbit?(): void;
+  /** `preMs` (scene ms) before the convergence (the plunge's lead-in): e.g. the sound's pre-roll. */
+  preMs?: number;
+  onPreHit?(): void;
   onConverge(dirs: XY[]): void;
 }
 
@@ -274,6 +277,7 @@ export function spikeVolley(sc: Phaser.Scene, o: VolleyOpts): Promise<void> {
   const pool: LightHandle = lightPool(sc, o.ground.x, o.ground.y, { color: PAL.water3, spill: PAL.water2, radius: o.R + 6, intensity: 0, fadeIn: 0 });
   let orbited = false;
   let lastLap = -1;
+  let pre = false;
   const stopR = o.stopR ?? 0;
   return new Promise<void>((resolve) => {
     onFrame(
@@ -378,6 +382,10 @@ export function spikeVolley(sc: Phaser.Scene, o: VolleyOpts): Promise<void> {
         back.end();
         front.end();
         floor.end();
+        if (!pre && el >= T3 - (o.preMs ?? 0)) {
+          pre = true;
+          o.onPreHit?.();
+        }
         if (el >= T3) {
           o.onConverge(dirs);
           return false;
@@ -557,7 +565,7 @@ const REMAINS = [
 function remainsKey(sc: Phaser.Scene, i: number, right: boolean): string {
   const key = `pc:remains:${right ? 'r' : 'l'}:${i}`;
   if (sc.textures.exists(key)) return key;
-  const base = framePose('death', 9);
+  const base = framePose('death', DEATH_IMPACT);
   const p = new PixelCanvas(W, RIG_H);
   const o: Pose = { ...base, spoolOff: REMAINS[i].spoolOff, diss: REMAINS[i].diss };
   drawCoil(p, o, right ? 'right' : 'left');
@@ -582,7 +590,7 @@ export function coilRemains(sc: Phaser.Scene, u: MonsterUnit): Remains {
   const spr = u.sprite;
   const right = spr.texture.key.includes(':p2');
   const img = sc.add.image(spr.x, spr.y, remainsKey(sc, 0, right)).setOrigin(spr.originX, spr.originY).setFlipX(spr.flipX).setDepth(spr.depth);
-  const lp = toppleRot(framePose('death', 9))(SPOOL_N_LOCAL);
+  const lp = toppleRot(framePose('death', DEATH_IMPACT))(SPOOL_N_LOCAL);
   const spoolAt = rx(u.framePoint(Math.floor(lp[0]) + 0.5, Math.floor(lp[1]) + 0.5));
   let stop: (() => void) | null = null;
   const destroy = () => {
@@ -594,7 +602,7 @@ export function coilRemains(sc: Phaser.Scene, u: MonsterUnit): Remains {
     burst(ms) {
       if (!img.active) return;
       img.setTexture(remainsKey(sc, 1, right));
-      const BREAK = 150;
+      const BREAK = SPOOL_BREAK;
       let shown = 1;
       stop = onFrame(
         sc,
@@ -609,8 +617,9 @@ export function coilRemains(sc: Phaser.Scene, u: MonsterUnit): Remains {
               const sp = new Sparks(sc, img.depth + 0.2);
               const home = u.home;
               const dir = u.flipX ? -1 : 1;
-              for (let i = 0; i < 12; i++)
-                sp.add({ x: home.x - dir * RR(-14, 30), y: home.y - RR(2, 9), vx: RR(-25, 25), vy: RR(-50, -15), ay: 320, drag: 1, life: RR(200, 360), colors: i % 2 ? [PAL.skin3, PAL.fire3, PAL.fire2] : [PAL.stone3, PAL.stone2, PAL.stone1], shape: 'px', floor: home.y + RR(-2, 3), bounce: 0.2, fadeAt: 0.7 });
+              // copper curls spring up off the spindle (the last of the wire), steel grit drops
+              for (let i = 0; i < 16; i++)
+                sp.add({ x: home.x - dir * RR(-14, 30), y: home.y - RR(2, 10), vx: RR(-35, 35), vy: i % 3 === 0 ? RR(-95, -55) : RR(-50, -15), ay: 340, drag: 1, life: RR(220, 380), colors: i % 3 === 2 ? [PAL.stone3, PAL.stone2, PAL.stone1] : [PAL.skin3, PAL.fire3, PAL.fire2], shape: i % 3 === 0 ? 'ring' : 'px', size: 2, floor: home.y + RR(-2, 3), bounce: 0.25, fadeAt: 0.7 });
               sp.release();
             }
           }
@@ -625,81 +634,170 @@ export function coilRemains(sc: Phaser.Scene, u: MonsterUnit): Remains {
   };
 }
 
-/** Paints the empty spool as a wheel on its rim: back flange, the bare hub barrel, the front flange with 3 spokes. */
-function paintReel(g: Raster, x: number, y: number, step: number, side: number, lv: number): void {
-  const R = 5.5;
-  const bx = x - side * 3;
-  // the back flange (dark gold), the barrel between (the bare copper-stained hub)
-  g.disc(bx, y, R + 1, PAL.ink, lv);
-  g.disc(bx, y, R, PAL.gold1, lv);
-  g.rect(Math.min(x, bx) - 0, y - 3, Math.abs(x - bx) + 1, 7, PAL.ink, lv);
-  g.rect(Math.min(x, bx), y - 2, Math.abs(x - bx) + 1, 5, PAL.fire1, lv);
-  g.rect(Math.min(x, bx), y - 2, Math.abs(x - bx) + 1, 1, PAL.fire2, lv);
-  // the front flange: ink rim, gold face lit top-left, shadowed bottom-right
-  g.disc(x, y, R + 1, PAL.ink, lv);
-  g.disc(x, y, R, PAL.gold2, lv);
-  g.disc(x - 1, y - 1, R - 1.5, PAL.gold3, lv);
-  g.ring(x, y, R, R, PAL.gold1, lv, 0, Math.PI / 2);
-  g.dpx(x - 3, y - 4, PAL.gold4, lv);
-  g.dpx(x - 4, y - 3, PAL.gold4, lv);
-  // three spokes from the hub, turned in whole 15° steps (8 per third of a turn)
-  for (let k = 0; k < 3; k++) {
-    const a = (step / 8) * (TAU / 3) * side + (k * TAU) / 3;
-    g.line(x, y, x + Math.cos(a) * 4.4, y + Math.sin(a) * 4.4, PAL.gold1, lv);
-    g.dpx(x + Math.cos(a) * 4.4, y + Math.sin(a) * 4.4, PAL.gold4, lv);
-  }
-  // the hub: an iron boss with the empty bore
-  g.disc(x, y, 1.6, PAL.stone2, lv);
-  g.dpx(x, y, PAL.ink, lv);
-}
+// ---------------------------------------------------------------- the empty spool (death end)
+
+/** The shoulder spool's radius on the rig (polar_coil-rig SP_N_R): the spool leaves the spindle at this size. */
+const SPOOL_R = 5;
+type SpoolPx = readonly (readonly [number, number, number])[];
+const spoolCache = new Map<string, SpoolPx>();
 
 /**
- * Death burst: loose copper curls spring out of the wire heap, and the EMPTY SPOOL pops off the fallen spindle,
- * lands on its rim and rolls away over the marble spinning free (its spokes turn in whole steps, faster than it
- * travels: a reel with nothing on it), slows, rocks and settles, then fades in dither steps.
+ * The empty spool's pixels (relative to its centre) — the rig's shoulder spool exactly (paintSpool, reel 0:
+ * magnetite flange rim lit top-left, the dark empty well, the gold-ringed hub), seen with its face squashed to
+ * `k` of its width (1 = face on, as on the shoulder; < 1 = turning side-on: the back flange and the bare barrel
+ * show beside it), with three spokes turned to `step` (of 9 per third of a turn). Ink outline (the rig's stone0).
  */
-export function emptySpool(sc: Phaser.Scene, home: XY, dir: 1 | -1, depth: number, from?: XY): void {
+function spoolPixels(k: number, step: number, side: 1 | -1): SpoolPx {
+  const id = `${k.toFixed(2)}:${step % 9}:${side}`;
+  const hit = spoolCache.get(id);
+  if (hit) return hit;
+  const S = 17;
+  const C = 8;
+  const q = new PixelCanvas(S, S);
+  const r = SPOOL_R;
+  const rx = Math.max(1.2, r * k);
+  // the back flange and the barrel (only while it turns side-on): offset away from the light side
+  const depth = Math.round((1 - k) * 4);
+  const face = (cx: number, back: boolean) => {
+    for (let y = 0; y < S; y++)
+      for (let x = 0; x < S; x++) {
+        const dx = (x + 0.5 - cx) / rx;
+        const dy = (y + 0.5 - C) / r;
+        const n = Math.hypot(dx, dy);
+        if (n > 1 + 0.35 / r) continue;
+        const d = n * r;
+        if (back) {
+          q.set(x, y, d > r - 1.6 ? PAL.stone1 : PAL.stone0);
+          continue;
+        }
+        // facing toward the key light (top-left on screen)
+        const f = (-dx * rx - (y + 0.5 - C) * 0.9) / Math.max(1, d);
+        let c: number;
+        if (d > r - 1.6) c = f > 0.35 ? PAL.stone3 : f < -0.45 ? PAL.stone1 : PAL.stone2;
+        else if (d < 1.6) c = f > 0 ? PAL.gold3 : PAL.gold2;
+        else c = d < 2.6 ? PAL.gold1 : PAL.stone0;
+        q.set(x, y, c);
+      }
+  };
+  if (depth > 0) {
+    face(C + side * depth, true);
+    // the bare barrel between the flanges: an iron band with one copper-stained row (the wire is gone)
+    for (let i = 1; i < depth; i++) for (let y = C - 2; y <= C + 1; y++) q.set(Math.floor(C + side * i), y, y === C - 2 ? PAL.fire1 : PAL.stone1);
+  }
+  face(C, false);
+  // three spokes from the hub to the rim (lit magnetite on the dark well), turned in 13⅓° steps; the rim notch
+  const a0 = (step / 9) * (TAU / 3);
+  for (let i = 0; i < 3; i++) {
+    const b = a0 + (i * TAU) / 3;
+    for (let t = 1.6; t <= r - 1.2; t += 0.5) {
+      const x = Math.floor(C + Math.cos(b) * t * k);
+      const y = Math.floor(C + Math.sin(b) * t);
+      if (q.isOpaque(x, y)) q.set(x, y, i === 0 ? PAL.stone4 : PAL.stone3);
+    }
+    const nx = Math.floor(C + Math.cos(b) * (r - 0.8) * k);
+    const ny = Math.floor(C + Math.sin(b) * (r - 0.8));
+    if (q.isOpaque(nx, ny)) q.set(nx, ny, PAL.ink);
+  }
+  q.set(C, C, PAL.ink);
+  q.outline(PAL.stone0);
+  const out: [number, number, number][] = [];
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const c = q.get(x, y);
+    if (c !== null) out.push([x - C, y - C, c]);
+  }
+  spoolCache.set(id, out);
+  return out;
+}
+
+/** The spool's timeline (scene ms): pop + side-on wobble, the roll, the run-down wobble, the break. */
+export const SPOOL_POP = 110;
+export const SPOOL_ROLL = 260;
+export const SPOOL_RUNDOWN = 70;
+export const SPOOL_BREAK = 130;
+export const SPOOL_MS = SPOOL_POP + SPOOL_ROLL + SPOOL_RUNDOWN + SPOOL_BREAK;
+
+/**
+ * Death end (§5.2 "tel çözülür, makara boş döner"): the EMPTY SPOOL comes off the fallen spindle at the very size it
+ * had on the shoulder (from = its centre there), turns side-on as it drops to its rim (2 wobble frames: the back
+ * flange and the bare barrel show), rolls ~18 px down the tile's 2:1 diagonal toward the front with its three spokes
+ * turning faster than it travels (an empty reel spinning free), runs down with a coin-like wobble, and in the last
+ * SPOOL_BREAK ms breaks with the remains: copper curls spring off it and it goes in two dither steps. Loose copper
+ * curls spring out of the wire heap as it leaves. Resolves when it is gone.
+ */
+export function emptySpool(sc: Phaser.Scene, home: XY, dir: 1 | -1, depth: number, from?: XY): Promise<void> {
   const sp = new Sparks(sc, depth);
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 10; i++) {
     const side = i % 2 ? 1 : -1;
-    sp.add({ x: home.x + RR(-8, 8), y: home.y - RR(2, 8), vx: side * RR(30, 80), vy: RR(-90, -40), ay: 420, drag: 1.4, life: RR(520, 820), colors: COPPER, shape: i % 3 === 0 ? 'ring' : 'streak', size: 2, len: 0.03, floor: home.y + RR(-4, 5), bounce: 0.35, fadeAt: 0.75 });
+    sp.add({ x: home.x - dir * RR(6, 20), y: home.y - RR(1, 5), vx: side * RR(25, 70), vy: RR(-80, -35), ay: 420, drag: 1.4, life: RR(380, 560), colors: COPPER, shape: i % 3 === 0 ? 'ring' : 'streak', size: 2, len: 0.03, floor: home.y + RR(-4, 5), bounce: 0.35, fadeAt: 0.75 });
   }
   sp.release();
-  // it rolls toward the front of its own tile, down the tile's near edge (iso: x and y/2 together)
   const start = from ?? { x: home.x - dir * 14, y: home.y - 6 };
-  const land = { x: start.x + dir * 4, y: home.y + 2 };
-  const roll = { x: dir * 22, y: 9 };
-  const r = Raster.around(sc, home.x, home.y - 16, 120, 100, depth);
-  const MS = 1000;
-  onFrame(
-    sc,
-    (_dt, el) => {
-      if (el >= MS) return false;
-      let x: number;
-      let y: number;
-      let spin: number;
-      if (el < 160) {
-        // the pop: off the spindle in a short arc, spinning
-        const k = el / 160;
-        x = start.x + (land.x - start.x) * k;
-        y = start.y + (land.y - 6 - start.y) * k - Math.sin(k * Math.PI) * 7 + 6 * k * k;
-        spin = Math.floor(el / 30);
-      } else {
-        const t = Math.min(1, (el - 160) / 640);
-        const e = 1 - (1 - t) ** 2;
-        x = land.x + roll.x * e;
-        y = land.y + roll.y * e - (el < 220 ? 2 : 0);
-        // free spin: fast at first, slowing with the roll, a last rock back and forth
-        spin = Math.floor(5 + e * 14) + (t >= 1 ? Math.round(Math.sin((el - 800) / 40)) : 0);
-      }
-      const lv = el < MS - 150 ? 1 : el < MS - 75 ? 0.6 : 0.3;
-      r.draw((g) => {
-        // the floor shadow under the rim
-        g.ell(Math.round(x) - dir, Math.round(Math.max(y, land.y)) + 6, 5, 1.2, PAL.night1, lv);
-        paintReel(g, Math.round(x), Math.round(y), spin, dir, lv);
-      });
-      return true;
-    },
-    () => r.destroy(),
-  );
+  const restY = home.y + 1 - SPOOL_R;
+  const land = { x: start.x + dir * 5, y: restY };
+  const roll = { x: dir * 18, y: 9 };
+  const r = Raster.around(sc, home.x, home.y - 10, 140, 90, depth);
+  const T1 = SPOOL_POP;
+  const T2 = T1 + SPOOL_ROLL;
+  const T3 = T2 + SPOOL_RUNDOWN;
+  return new Promise<void>((resolve) => {
+    let broke = false;
+    onFrame(
+      sc,
+      (_dt, el) => {
+        if (el >= SPOOL_MS || !r.alive) return false;
+        let x: number;
+        let y: number;
+        let k: number;
+        let step: number;
+        if (el < T1) {
+          // off the shoulder in a short hop; it turns side-on as it drops onto its rim
+          const t = el / T1;
+          x = start.x + (land.x - start.x) * t;
+          y = start.y + (land.y - start.y) * t * t - Math.sin(t * Math.PI) * 4;
+          k = el < T1 * 0.4 ? 1 : el < T1 * 0.75 ? 0.6 : 0.4;
+          step = Math.floor(el / 40);
+        } else if (el < T2) {
+          const t = (el - T1) / SPOOL_ROLL;
+          const e = 1 - (1 - t) ** 2;
+          x = land.x + roll.x * e;
+          y = land.y + roll.y * e;
+          // on its rim, the face a little turned; a wobble every other beat (an empty reel is light)
+          k = Math.floor((el - T1) / 65) % 2 ? 0.7 : 0.82;
+          // the spokes turn faster than the reel travels (spinning free), slowing with the roll
+          step = 3 + Math.floor(e * 16);
+        } else {
+          x = land.x + roll.x;
+          y = land.y + roll.y;
+          const t = el - T2;
+          // the run-down: a coin's settling wobble, then it rests leaning
+          k = t < SPOOL_RUNDOWN ? [0.5, 0.86, 0.45][Math.min(2, Math.floor(t / (SPOOL_RUNDOWN / 3)))] : 0.55;
+          step = 19;
+        }
+        const lv = el < T3 ? 1 : el < T3 + SPOOL_BREAK / 2 ? 0.6 : 0.3;
+        if (el >= T3 && !broke) {
+          broke = true;
+          // the break: copper curls spring off the reel, steel grit drops
+          const b = new Sparks(sc, depth + 0.1);
+          for (let i = 0; i < 9; i++) {
+            const a = -Math.PI / 2 + RR(-1.3, 1.3);
+            const v = RR(30, 75);
+            b.add({ x: x + RR(-3, 3), y: y + RR(-3, 3), vx: Math.cos(a) * v, vy: Math.sin(a) * v, ay: 380, drag: 1.2, life: RR(240, 380), colors: i % 3 === 2 ? [PAL.stone3, PAL.stone2, PAL.stone1] : COPPER, shape: i % 3 === 0 ? 'ring' : 'px', size: 2, floor: home.y + RR(-1, 6), bounce: 0.3, fadeAt: 0.7 });
+          }
+          b.release();
+        }
+        const X = Math.round(x);
+        const Y = Math.round(y);
+        r.draw((g) => {
+          // the floor contact shadow under the rim
+          g.ell(X - dir, Math.round(restY + (y - land.y > 0 ? y - land.y : 0)) + SPOOL_R + 1, Math.max(2, Math.round(SPOOL_R * k)), 1, PAL.night1, lv);
+          for (const [dx, dy, c] of spoolPixels(k, step, dir === 1 ? -1 : 1)) g.dpx(X + dx, Y + dy, c, lv);
+        });
+        return true;
+      },
+      () => {
+        r.destroy();
+        resolve();
+      },
+    );
+  });
 }
