@@ -128,9 +128,9 @@ export function cutPlan(home: XY, aim: XY, front: number, sgn: number, reachX: n
     const t = Math.abs(dir.x) > 0.05 ? (x - home.x) / dir.x : 0;
     return { x: home.x + dir.x * t, y: home.y + dir.y * t };
   };
-  // the head bites 3 px short of the footprint (its 6-px crescent then touches the target's toes); blocked: 9 px short,
-  // so the seam runs on to the guard's front edge and dies there
-  const gap = o.blocked ? 9 : 3;
+  // the head bites 3 px short of the footprint (its 6-px crescent then touches the target's toes); blocked: the stroke
+  // falls a stride short (16 px), so a readable seam runs on to the guard's front edge and dies there in its "Y"
+  const gap = o.blocked ? 16 : 3;
   const b = along(front - sgn * gap);
   const bite = { x: Math.round(b.x), y: Math.round(b.y) };
   const land = along(bite.x - reachX);
@@ -187,7 +187,6 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     land = plan.land;
     SP = plan.steps;
     const dir = plan.dir;
-    console.log('CAXDBG', JSON.stringify({home: homeFeet, aim, front, bo, bite, land, SP, blocked: s.blocked}));
     seamTo = s.blocked ? { x: Math.round(front - sgn * 1), y: Math.round(homeFeet.y + dir.y * ((front - sgn - homeFeet.x) / (Math.abs(dir.x) > 0.05 ? dir.x : 1))) } : { x: aim.x + dir.x * 12, y: aim.y + dir.y * 12 };
   }
   const back = norm(sub(homeFeet, land.x === homeFeet.x && land.y === homeFeet.y ? { x: homeFeet.x + sgn, y: homeFeet.y } : land));
@@ -210,6 +209,8 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
   let lastF = -1;
   let fStart = 0;
   let driving = true;
+  /** the bite's 1-frame squash: the whole weight driven into the floor (the sprite pressed 1 px down) */
+  let squash = 0;
   let at: XY = { ...homeFeet };
   const glide = (a: XY, b: XY, t: number, from: number): { p: XY; lift: number } => {
     if (t <= from) return { p: a, lift: 0 };
@@ -252,7 +253,7 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
       lift = g.lift;
     } else if (f >= stepF[2]) at = SP[3];
     else at = homeFeet;
-    if (!u.locked) placeAt(u, at, lift);
+    if (!u.locked) placeAt(u, at, lift - squash);
     return f < conF || driving;
   });
 
@@ -270,6 +271,12 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     }
     // ---- the BITE
     play('caxBite', { volume: 1, pan: panAt(bite.x) });
+    squash = 1;
+    if (!u.locked) placeAt(u, at, -1);
+    void sleep(sc, 50).then(() => {
+      squash = 0;
+      if (u.sprite.active && !u.locked && driving) placeAt(u, at, 0);
+    });
     void shake(sc, 110, 2);
     void lightFlash(sc, bite.x, bite.y - 2, PAL.white, 16, 240, { floorY: bite.y, intensity: 0.85 });
     biteChips(sc, bite, back, 9);

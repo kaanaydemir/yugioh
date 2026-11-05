@@ -197,10 +197,10 @@ async function boulderEntrance(S: Stage): Promise<void> {
   });
   await u.playRange('summon', 4, landF);
   await sleep(sc, u.frameMs('summon', landF));
-  // ---- the NARA: the roar's own drawn frames (build, the axe raised one-handed with the mouth open held ~300 ms, the
-  // release) — the shout lasts as long as its picture
+  // ---- the NARA: the roar's own drawn frames (build, the axe raised one-handed with the mouth open held ~460 ms, the
+  // mouth closing with the axe still up, the release) — the shout (~0.8 s) lasts as long as its picture
   if (u.has('roar') && u.sprite.active) {
-    const beats: [number, number][] = [[2, 100], [3, 90], [4, 150], [5, 150], [7, 90], [8, 90]];
+    const beats: [number, number][] = [[2, 100], [3, 90], [4, 170], [5, 170], [6, 120], [7, 90], [8, 90]];
     for (const [f, ms] of beats) {
       if (!u.sprite.active) break;
       u.pose('roar', f);

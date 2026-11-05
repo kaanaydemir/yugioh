@@ -165,8 +165,8 @@ export const V3_AXEMAN_RECIPES = {
     gap: 0.05,
     verb: 0.18,
     play(v) {
-      // f 83: the dominants land at 90 / 95 / 100 Hz with the run-up's pitches 1 / 1.055 / 1.11
-      gravel(v, 0, 0.7, { f: 83, dec: 0.09, n: 10 });
+      // f 77: the dominants land at ~90 / 95 / 100 Hz with the run-up's pitches 1 / 1.055 / 1.11 (probe: f 77 → 86 Hz, f 83 → 97 Hz)
+      gravel(v, 0, 0.7, { f: 80, dec: 0.09, n: 10 });
       // a pebble hops off the boot
       v.noise('white', { t: 0.05, g: perc(0.06, 0.006, 0.0002), to: v.filt('bandpass', 3600, 2) });
       fur(v, 0.006, 0.1);
@@ -296,11 +296,16 @@ export const V3_AXEMAN_RECIPES = {
     gap: 0.05,
     verb: 0.2,
     play(v) {
-      v.noise('pink', { g: perc(0.42, 0.08, 0.002), to: v.filt('lowpass', 900, 0.8) });
-      thump(v, 0, 110, 60, 0.5, 0.07, { drive: 1.2 });
-      v.noise('white', { t: 0.002, g: perc(0.4, 0.02, 0.0004), to: v.filt('bandpass', 1200, 2.2) });
+      // (kept ≥ 9 dB LSD from C11's hide + horn: the weight is in the chest knock and the fur brush, no keratin tick)
+      v.noise('pink', { g: perc(0.34, 0.08, 0.002), to: v.filt('lowpass', 900, 0.8) });
+      thump(v, 0, 110, 58, 0.72, 0.09, { drive: 1.4 });
+      // the leather slap: the jerkin struck flat (a sharp 1.2 kHz smack with a 2nd crack of the hide 15 ms on)
+      v.noise('white', { t: 0.002, g: perc(0.55, 0.02, 0.0004), to: v.filt('bandpass', 1200, 2.2) });
+      v.noise('white', { t: 0.017, g: perc(0.2, 0.012, 0.0003), to: v.filt('bandpass', 1700, 2.6) });
+      // the fur of the mantle brushed flat by the blow (a soft high hiss, 60 ms)
+      v.noise('pink', { t: 0.006, g: perc(0.14, 0.06, 0.006), to: v.filt('bandpass', 2600, 0.9) });
       // the beads clack on the chest
-      for (const t of [0.03, 0.055]) v.noise('white', { t, g: perc(0.05, 0.006, 0.0002), to: v.filt('bandpass', 3300, 3) });
+      for (const t of [0.03, 0.055]) v.noise('white', { t, g: perc(0.09, 0.006, 0.0002), to: v.filt('bandpass', 3300, 3) });
     },
   },
   /** Heavy: the same body blow, deeper and longer, the cloak flopping, and the baritone grunt (breath knocked out). */
@@ -418,9 +423,9 @@ export const V3_AXEMAN_RECIPES = {
     play(v) {
       // "H": a burst of breath, then the open "AA" from the chest, pitch rising to the top and falling off
       v.noise('white', { g: env([[0, 0], [0.03, 0.12], [0.07, 0.0001, 'e']]), to: v.filt('bandpass', 1300, 1.2) });
-      vox(v, 0.04, 0.86, [[0, 140], [0.18, 165, 'e'], [0.5, 150, 'e'], [0.75, 120, 'e'], [0.86, 100, 'e']], 0.5, { formants: [700, 1150, 2600], breath: 0.12, grit: 1.3, vib: 18, att: 0.05, ring: 1.4, chest: 0.08 });
-      // the breath at the end
-      v.noise('pink', { t: 0.62, g: env([[0, 0], [0.08, 0.05], [0.3, 0.0001, 'e']]), to: v.filt('bandpass', 1100, 1.5) });
+      vox(v, 0.04, 0.74, [[0, 140], [0.16, 165, 'e'], [0.44, 150, 'e'], [0.64, 120, 'e'], [0.74, 100, 'e']], 0.5, { formants: [700, 1150, 2600], breath: 0.12, grit: 1.3, vib: 18, att: 0.05, ring: 1.4, chest: 0.08 });
+      // the breath at the end (it closes with the mouth: the picture's f6)
+      v.noise('pink', { t: 0.56, g: env([[0, 0], [0.06, 0.05], [0.22, 0.0001, 'e']]), to: v.filt('bandpass', 1100, 1.5) });
     },
   },
   /** Guard: the haft slaps across the chest — a short knock (160 → 110) and a dry wood "tok" (bp 700). */

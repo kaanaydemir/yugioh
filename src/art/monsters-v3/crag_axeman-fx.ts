@@ -77,13 +77,17 @@ function halfPts(s: number, roll: number): Pt[] {
 }
 
 /** The cut face's light band: within 2 px of the cut line (white at the face's very edge, earth4 behind it). */
-function cutFaceLight(h: PixelCanvas, toLocal: (x: number, y: number) => Pt, s: number, k: number): void {
+function cutFaceLight(h: PixelCanvas, toLocal: (x: number, y: number) => Pt, s: number, k: number, deg = 0): void {
+  // the flat cut face is the brightest plane of the stone: it turns toward the viewer as the half tips out, so the lit
+  // band widens with the tilt (white at the cut, the face stone4, its far edge earth4) — a clean plane, never a hinge
   const LIT = [PAL.white, PAL.earth4, PAL.stone3, PAL.stone2];
+  const face = 2.6 + deg / 12;
   planes(h, (x, y) => {
     const [lx] = toLocal(x, y);
     const d = (lx - BCX) * s; // 0 at the cut, growing into the half
     if (d < 1) return LIT[Math.min(3, k)];
-    if (d < 2.6) return LIT[Math.min(3, k + 1)];
+    if (d < face - 1.2) return k === 0 ? PAL.stone4 : LIT[Math.min(3, k + 1)];
+    if (d < face) return LIT[Math.min(3, k + 1)];
     return null;
   });
 }
@@ -102,7 +106,7 @@ function halvesFalling(f: Frame, deg: number, roll: number): void {
     const shown = halfPts(s, roll).map(rot);
     h.poly(shown, PAL.stone2);
     stoneFacets(h, f, BCX + s * 8, GY - 8, roll + (s > 0 ? 1 : 2), 0);
-    cutFaceLight(h, inv, s, 0);
+    cutFaceLight(h, inv, s, 0, deg);
     f.comp.add(h, 14, { out: PAL.stone0 });
   }
 }
@@ -113,9 +117,9 @@ function halvesLying(f: Frame, sink: number, roll: number): void {
     // staggered on the floor (the left half fell back-left, the right half front-right): two separate slabs clear of
     // his boots, never one bar through them
     const cx = BCX + s * (s < 0 ? 25 : 26);
-    const hh = Math.max(2, 7 - sink * 2);
+    const hh = Math.max(3, 9 - sink * 2);
     const cy = s < 0 ? GY - 5 : GY - 1;
-    const w = 8;
+    const w = 7;
     // a low dome on its round back, the cut face up (its top 2 rows)
     h.poly([[cx - w, cy - hh], [cx + w, cy - hh], [cx + w + 1, cy - hh + 3], [cx + w - 3, cy], [cx - w + 3, cy], [cx - w - 1, cy - hh + 3]], PAL.stone2);
     stoneFacets(h, f, cx, GY - 4, roll + (s > 0 ? 1 : 2), Math.min(2, sink));

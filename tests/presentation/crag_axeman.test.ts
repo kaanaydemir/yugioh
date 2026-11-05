@@ -17,6 +17,7 @@ import { MONSTER_GLOW } from '../../src/view/light/profiles';
 import { PAL } from '../../src/art/palette';
 import scenarios from '../../src/duel/scenarios/crag_axeman';
 import { linePts } from '../../src/cinematics/kartc/crag_axeman-yarik';
+import { cutPlan } from '../../src/cinematics/kartc/crag_axeman';
 
 describe('crag_axeman presentation', () => {
   it('has no recipe (its strike, summon and death are its own files; the shared table rows carry the rest)', () => {
@@ -57,5 +58,21 @@ describe('crag_axeman presentation', () => {
       expect(Math.abs(pts[i].x - pts[i - 1].x)).toBeLessThanOrEqual(1);
       expect(Math.abs(pts[i].y - pts[i - 1].y)).toBeLessThanOrEqual(1);
     }
+  });
+
+  it('the run-up travels: the facing pair (P1 z2 → P2 z2) gives ≥ 20 px over the three steps, long-then-shorter', () => {
+    // measured in game: home (288,176), aim (352,144), the target's footprint front 329, the contact frame's reach 23
+    const home = { x: 288, y: 176 };
+    const aim = { x: 352, y: 144 };
+    const plan = cutPlan(home, aim, 329, 1, 23);
+    const d = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+    expect(d(plan.steps[0], plan.steps[3])).toBeGreaterThanOrEqual(20);
+    expect(d(plan.land, home)).toBeGreaterThanOrEqual(15);
+    const legs = [d(plan.steps[0], plan.steps[1]), d(plan.steps[1], plan.steps[2]), d(plan.steps[2], plan.steps[3])];
+    expect(legs[0]).toBeGreaterThan(legs[1]);
+    expect(legs[1]).toBeGreaterThan(legs[2]);
+    // the bite sits just in front of the footprint; blocked, a stride short (the seam then runs to the guard)
+    expect(329 - plan.bite.x).toBeLessThanOrEqual(4);
+    expect(329 - cutPlan(home, aim, 329, 1, 23, { blocked: true }).bite.x).toBeGreaterThanOrEqual(14);
   });
 });
