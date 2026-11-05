@@ -257,16 +257,24 @@ const HIT: Table = {
   ],
 };
 
+// (FIX critic r3) hitHeavy is a real TUMBLE, not a bigger flinch: thrown back with the hood rolled
+// away and the skirt flung up over it, an edge-on "spin" frame (narrow and tall, the tail whipped the
+// other way), a ring of six-plus feathers shed round it, the float DROPPED 3–4 px with a squashed
+// floor bounce, a dizzy bob, then the shake-off. (hit stays the short flinch.)
 const HIT_HEAVY: Table = {
   marks: { impact: 0, contact: 0, recover: 3 },
   keys: [
     [50, { ...STRUCK_HEAVY }],
-    [60, { ...STRUCK_HEAVY, bx: -4, hx: -2, by: -1, drift: 6, free: [Fe(-13, -9, 230, 6, 1), Fe(10, 5, 15, 5.5, -1), Fe(-2, -11, 280, 5.5, 1), Fe(-15, 4, 190, 5.5, -1)], sw: 2, sh: -2, fluff: 2, eyes: 'x', handN: Hd(-2, -3, -60, 20), handF: Hd(-2, -3, 60, 20), tailSwing: 4, tailCurl: 0.2, rippleAmp: 1.5, ripple: 0.2, loose: Fe(-12, -1, 200, 6, 1), bursts: [burst(0, 6, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
-    [130, { free: [Fe(-16, -11, 205, 6, -1), Fe(12, 9, 70, 5.5, 1), Fe(-4, -12, 250, 5.5, -1), Fe(-17, 8, 160, 5.5, 1)], hx: -1, bx: -3, by: 3, drift: 2, sw: 1, sh: -2, fluff: 1.5, eyes: 'dizzy', hollow: -1, crestX: -1, crestY: 2, handN: Hd(-1, 2, 50), handF: Hd(-1, 2, -40), tailSwing: 1, tailCurl: 0.4, rippleAmp: 1.2, ripple: 0.45, loose: Fe(-14, 3, 170, 6, -1), bursts: [burst(1, 6, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
-    [100, { free: [Fe(-17, -8, 175, 6, 1), Fe(13, 14, 110, 5.5, -1), Fe(-18, 13, 140, 5.5, -1)], bx: -2, by: 2, drift: 0, sw: 1, sh: -1, fluff: 1, eyes: 'dizzy', crestX: 1, handN: Hd(0, 1, 30), handF: Hd(0, 1, -20), tailSwing: -1, tailCurl: 0.5, rippleAmp: 1, ripple: 0.7, loose: Fe(-11, 2, 158, 6.5, -1.2), bursts: [burst(3, 5, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
-    [110, { bx: -1, by: -1, sw: -1, sh: 1, fluff: 0.5, eyes: 'blink', crestX: 1.5, crestY: -1, handN: Hd(0, -1, -10), handF: Hd(0, -1, 10), tailSwing: 1, tailCurl: 0.6, rippleAmp: 0.6, ripple: 0.95 }],
+    // thrown: the hood rolls back, the skirt swings up and forward under it, the tail flung
+    [70, { ...STRUCK_HEAVY, bx: -5, hx: -3, by: -1, drift: 8, len: -2, sw: 3, sh: -3, fluff: 2.4, eyes: 'x', hollow: -1, handN: Hd(-1, -5, -95, 26, 1), handF: Hd(-1, -5, 95, 26, 1), crestX: -5, crestY: 3, tailSwing: 6, tailCurl: 0, tailLift: 3, rippleAmp: 1.5, ripple: 0.2, loose: null, free: [Fe(-14, -10, 235, 6.5, 1), Fe(11, 4, 10, 6, -1), Fe(-4, -9, 275, 5.5, 1), Fe(-15, 3, 195, 6, -1), Fe(7, -9, 320, 5.5, 1), Fe(-8, 14, 140, 5.5, -1)], bursts: [burst(0, 8, 2, 2, Math.PI, TAU, 1.0, 71, 0.18)] }],
+    // the spin: edge-on — narrow and tall, the skirt whipped back the other way, eyes squeezed
+    [120, { bx: -4, hx: 1, by: 0, drift: -6, sw: -5, sh: 2, len: 2, fluff: 2, eyes: 'squeeze', hollow: -1, handN: Hd(2, -2, 120, 10), handF: Hd(2, -2, -120, 10), crestX: 4, crestY: 1, tailSwing: -4, tailCurl: 1, tailLift: 1, rippleAmp: 1.4, ripple: 0.55, loose: null, free: [Fe(-15, -12, 250, 6.5, -1), Fe(15, 2, 355, 6, 1), Fe(-6, -9, 260, 5.5, -1), Fe(-17, 6, 175, 6, 1), Fe(11, -11, 305, 5.5, -1), Fe(-9, 19, 120, 5.5, 1)], bursts: [burst(1, 8, 2, 2, Math.PI, TAU, 1.0, 71, 0.18)] }],
+    // the drop: the float fails, it falls 4 px and squashes flat on the bounce
+    [90, { bx: -3, hx: -1, by: 4, drift: 2, sw: 3, sh: -3, len: -3, fluff: 1.6, eyes: 'dizzy', hollow: -1, handN: Hd(-1, 3, 70, 10), handF: Hd(-1, 3, -60, 10), crestX: -2, crestY: 3, tailSwing: 2, tailCurl: 0.6, rippleAmp: 1.2, ripple: 0.8, loose: null, free: [Fe(-16, -6, 200, 6.5, 1), Fe(16, 9, 60, 6, -1), Fe(-5, -12, 240, 6, 1), Fe(-17, 13, 150, 6, -1), Fe(13, -6, 330, 5.5, 1)], bursts: [burst(3, 6, 2, 2, Math.PI, TAU, 1.0, 71, 0.18)] }],
+    // the bounce back up, dizzy, still low
+    [110, { bx: -2, by: 1, drift: -1, sw: -1, sh: 2, len: 1, fluff: 1, eyes: 'dizzy', handN: Hd(0, 1, 30), handF: Hd(0, 1, -20), crestX: 2, crestY: -1, tailSwing: -1, tailCurl: 0.5, rippleAmp: 1, ripple: 0.1, free: [Fe(-16, 4, 175, 6, -1), Fe(16, 15, 110, 5.5, 1), Fe(-17, 17, 140, 5.5, -1)] }],
     // it shakes the dizziness off: a head-shake left (hood, cowlick, tail all swung) …
-    [120, { hx: -1, bx: 0, by: 0, sw: 1, sh: -1, eyes: 'squeeze', lookX: -1, crestX: 3, crestY: 1, handN: Hd(0, 0, 40, 6), handF: Hd(0, 0, -35), tailSwing: 3, tailCurl: 0.5, drift: 1.5, rippleAmp: 1, ripple: 0.4 }],
+    [120, { hx: -1, bx: -1, by: 0, sw: 1, sh: -1, eyes: 'squeeze', lookX: -1, crestX: 3, crestY: 1, handN: Hd(0, 0, 40, 6), handF: Hd(0, 0, -35), tailSwing: 3, tailCurl: 0.5, drift: 1.5, rippleAmp: 1, ripple: 0.4 }],
     // … and right, eyes open again
     [130, PRE_IDLE({ hx: 1, eyes: 'open', lookX: 1, crestX: -3, tailSwing: -2 })],
     [140, {}],
@@ -310,7 +318,8 @@ function whirl(n: number, t: number, r: number, yTop: number, yBot: number): Fea
   }
   return out;
 }
-const BIG_FALL = (x: number, y: number, ang: number, bow: number): Feather => ({ x, y, ang, len: 11, bow, w: 4.6 });
+// (FIX critic r3) a bigger hero feather for the opening beat (14 px, a broad lit vane): it reads at 1×
+const BIG_FALL = (x: number, y: number, ang: number, bow: number): Feather => ({ x, y, ang, len: 14, bow, w: 5.8 });
 const SUMMON: Table = {
   marks: { land: 10 },
   keys: [

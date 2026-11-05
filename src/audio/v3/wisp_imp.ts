@@ -453,8 +453,8 @@ export const WISP_IMP_RECIPES = {
       v.lfo(trem.gain, [[0, 8], [D, 10]], [[0, 0.22], [D, 0.36]], { d: D + 0.1 });
       ghostVoice(v, 0.02, D, [470, 455, 500], 0.1, { from: 'u', breath: 0.7, vib: 18, out: trem });
       // a second, octave-down hum (the hollow shivering) that only joins late
-      ghostVoice(v, 0.5, D - 0.5, [235, 230, 250], 0.05, { from: 'u', breath: 0.4, vib: 10, out: trem });
-      rustle(v, 0, [[0, 0], [0.25, 0.06], [D * 0.8, 0.12], [D, 0.09], [D + 0.1, 0.0001, 'e']], { rate: 62, f: 5000, fTo: 5400 });
+      ghostVoice(v, 0.5, D - 0.5, [235, 230, 250], 0.08, { from: 'u', breath: 0.4, vib: 10, out: trem });
+      rustle(v, 0, [[0, 0], [0.25, 0.06], [D * 0.8, 0.15], [D, 0.12], [D + 0.1, 0.0001, 'e']], { rate: 62, f: 5000, fTo: 5400 });
       // the escaping feathers: one tick + a tiny breath each, panned a little off the body
       for (let t = 0.12, i = 0; t < D - 0.05; t += 0.17, i++) {
         const out = v.panner(i % 2 ? 0.25 : -0.1, { t });

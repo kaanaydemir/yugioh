@@ -57,7 +57,7 @@ import { monsterFrame } from '../../art/textures';
 import type { MonsterId } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { DEPTH, GAME_H, GAME_W, LOOK_V3, duelistXY, panelRect, type XY, zoneXY } from '../../view/layout';
+import { DEPTH, GAME_H, GAME_W, LOOK_V3, duelistXY, panelRect, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { lightFlash, lightPool } from '../../view/light';
 import { shake } from '../../vfx/core';
 import { Raster } from '../../vfx/setpieces';
@@ -564,6 +564,10 @@ async function summonV3(S: Stage): Promise<void> {
     return u.framePoint(c.x, c.y);
   });
   S.own({ destroy: () => trail.end() });
+  // (FIX critic r3) a soft moonlight pool on the tile that brightens as the feather comes down (the
+  // opening beat had nothing on the board but a speck); the touch takes it to full
+  const tile = S.glow({ color: PAL.void4, spill: PAL.void3, radius: 26, intensity: 0, anim: 'breathe', fadeIn: 0 });
+  tile.setIntensity(0.5, PRE + 120);
   let lastF = -1;
   await animate(sc, PRE, (t) => {
     if (!spr.active) return;
@@ -588,7 +592,6 @@ async function summonV3(S: Stage): Promise<void> {
   });
   spr.setPosition(rest.x, rest.y);
   // ---- the summon pose: it keeps falling to the tile, touches, the fountain builds it
-  const tile = S.glow({ color: PAL.void4, spill: PAL.void3, radius: 26, intensity: 0, anim: 'breathe', fadeIn: 0 });
   const n = u.frameCount('summon');
   const LAND = u.markFrame('summon', 'land', 9);
   const TOUCH = Math.max(1, Math.min(4, LAND - 5));
@@ -832,6 +835,41 @@ function volley(s: StrikeArgs, from: XY, rnd: Rnd, onHit: (i: number, at: XY) =>
 }
 
 /** The strike (see the header). */
+/**
+ * (FIX critic r3) The card's own glance-off on a guard that holds the volley: a lilac ring of down
+ * opens on the shield face (white first frame, then lilac stepping down the ramp, broken into arcs),
+ * and a fan of white down specks sprays back off it toward the wisp. Whole pixels, no alpha.
+ */
+function glance(sc: Phaser.Scene, at: XY, rnd: Rnd): void {
+  const ras = new Raster(sc, at.x - 24, at.y - 24, 48, 48, DEPTH.FX + 4);
+  const sp = new Plumes(sc, at.x - 60, at.y - 60, 120, 120, DEPTH.FX + 4);
+  for (let i = 0; i < 9; i++) {
+    const a = Math.PI + rr(rnd, -1.1, 1.1);
+    sp.add({ x: at.x, y: at.y, vx: Math.cos(a) * rr(rnd, 50, 110), vy: Math.sin(a) * rr(rnd, 40, 90) - 40, len: i % 3 === 0 ? 6 : 2, grav: 90, drag: 3, life: rr(rnd, 320, 520), ang: a, ink: i % 3 === 0, swing: 1, hz: 2 }, rnd);
+  }
+  sp.close();
+  onFrame(sc, (_dt, el) => {
+    if (el > 300) {
+      ras.destroy();
+      return false;
+    }
+    const t = el / 300;
+    const r = 4 + Math.round(14 * (1 - (1 - t) * (1 - t)));
+    const col = el < 40 ? PAL.white : t < 0.45 ? PAL.void4 : t < 0.75 ? PAL.void3 : PAL.void2;
+    ras.begin();
+    const cx = at.x;
+    const cy = at.y;
+    // an upright ellipse (the shield face is seen edge-on-ish), broken into four arcs
+    for (let k = 0; k < 48; k++) {
+      const a = (k / 48) * TAU;
+      if (Math.floor((a / TAU) * 8 + t * 2) % 2 === 1 && t > 0.3) continue;
+      ras.px(cx + Math.round(Math.cos(a) * r * 0.55), cy + Math.round(Math.sin(a) * r), col);
+    }
+    ras.end();
+    return true;
+  });
+}
+
 async function strikeV3(s: StrikeArgs): Promise<void> {
   const u = s.attacker;
   const sc = s.scene;
@@ -896,7 +934,20 @@ async function strikeV3(s: StrikeArgs): Promise<void> {
       first = false;
       // (FIX critic r2) no shared heavy body blow under a 300-ATK feather dart: the dart's own
       // thump-and-tsk scores the contact
+      // (FIX critic r3) a blocked volley: the shared ranged counter-shock (a thick white-hot jagged
+      // line from the guard back to the wisp, _v3/clash backlash) drowned the six darts — the card's
+      // signature. Its raster is born synchronously inside impact(); it is hidden here (this strike
+      // only) and the card answers with its own glance-off: the darts ricochet (volley) and a lilac
+      // ring of down opens on the guard's face (below). The shield clang itself stays.
+      const before = s.blocked ? new Set(sc.children.list) : null;
       hush(['impactHeavy'], () => s.impact(at));
+      if (before) {
+        for (const o of sc.children.list) {
+          if (before.has(o) || !(o instanceof Phaser.GameObjects.Image)) continue;
+          if (o.depth === DEPTH.FX + 3 && o.blendMode === Phaser.BlendModes.ADD && o.texture.key.startsWith('fx:set:')) o.setVisible(false);
+        }
+        glance(sc, at, rnd);
+      }
       play('wiImpact', { volume: s.blocked ? 0.7 : 0.9, pan: panAt(at.x) });
       if (selfPillow && live(u)) holdClutch(sc, u, true);
       void stopTime(sc, 60);
@@ -904,7 +955,8 @@ async function strikeV3(s: StrikeArgs): Promise<void> {
     } else {
       // (FIX critic r2) the five micro jabs climb in pitch, one step each: a little rhythm
       jab++;
-      play('wiTsk', { volume: 0.95, pan: panAt(at.x), pitch: 1 + jab * 0.06 });
+      // (FIX critic r3) the last two jabs land on the shared LP roll: +3 dB so the climb still reads
+      play('wiTsk', { volume: jab >= 4 ? 1.35 : 0.95, pan: panAt(at.x), pitch: 1 + jab * 0.06 });
     }
     void i;
   }, () => play('wiShed', { volume: 0.75, pan }));
@@ -1034,11 +1086,13 @@ function gust(scene: Phaser.Scene, u: MonsterUnit, dir: number, ms: number, rnd:
       const hx = ri(head);
       if (Math.abs(hx - c.x) < W / 2 - 4 && dir * (hx - c.x) <= REACH) {
         const hy = ri(g.y + Math.sin((hx - c.x) / 7 + g.delay) * g.amp);
-        r.px(hx + dir, hy - 1, PAL.white);
-        r.px(hx + dir, hy - 2, PAL.white);
+        // (FIX critic r3) the crest rolls FORWARD, downwind (a breaking wave), so the ribbon reads
+        // as blowing the same way the feathers stream; its tail tapers behind it
+        r.px(hx - dir, hy - 1, PAL.white);
+        r.px(hx - dir, hy - 2, PAL.white);
         r.px(hx, hy - 3, PAL.white);
-        r.px(hx - dir, hy - 3, PAL.void4);
-        r.px(hx - 2 * dir, hy - 2, PAL.void4);
+        r.px(hx + dir, hy - 3, PAL.void4);
+        r.px(hx + 2 * dir, hy - 2, PAL.void4);
       }
     }
     for (const l of lines) {
@@ -1361,7 +1415,12 @@ function flock(scene: Phaser.Scene, from: XY, to: XY, rnd: Rnd, ms: number, rim 
     r.begin();
     for (const f of fs) {
       const lt = clamp((el - f.delay) / Math.max(1, ms - f.delay), 0, 1);
-      if (lt <= 0 || lt >= 1) continue;
+      if (lt <= 0) continue;
+      if (lt >= 1) {
+        // arrived: it settles on the panel (packing into the pillow) until the flock is cleared
+        feather(r, f.d.x, f.d.y, f.ph, Math.min(4, f.len), 0);
+        continue;
+      }
       const e = lt * lt * (3 - 2 * lt);
       let p = cbez(f.p0, f.c1, f.c2, f.d, e);
       const wob = Math.sin(f.ph + el * 0.03) * 2.5 * (1 - lt);
@@ -1382,7 +1441,7 @@ function flock(scene: Phaser.Scene, from: XY, to: XY, rnd: Rnd, ms: number, rim 
  * rises the whole time (it never lies on the floor). `onLift` fires when the cloud lifts off (the
  * flock leaves). World space, on the field.
  */
-function burstCloud(scene: Phaser.Scene, at: XY, depth: number, rnd: Rnd, onLift: (rim: number, c: XY) => void): Promise<void> {
+function burstCloud(scene: Phaser.Scene, at: XY, depth: number, rnd: Rnd, onLift: (rim: number, c: XY) => void, face: 1 | -1 = 1): Promise<void> {
   const r = new Raster(scene, at.x - 60, at.y - 80, 120, 120, depth);
   const tumble = new Plumes(scene, at.x - 90, at.y - 110, 180, 170, depth + 0.1);
   // the body's own shape: hood, chest, skirt toward the tail
@@ -1398,11 +1457,25 @@ function burstCloud(scene: Phaser.Scene, at: XY, depth: number, rnd: Rnd, onLift
     const k = Math.floor(el / BEAT);
     r.begin();
     if (k === 0) {
-      // the flash: the body shape, all white, inked
+      // (FIX critic r3) the burst frame is the GHOST lit up, not a flat white egg: the body shape
+      // with its own inked, banded planes, every value one step up (the lit pass), and its face —
+      // the dark hollow with two white-hot eyes — still on it for this one frame
       cumulus(r, at.x, at.y, BODY);
+      const UP = new Map<number, number>([[PAL.void1, PAL.void2], [PAL.void2, PAL.void3]]);
       for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
         const c = r.pc.get(x, y);
-        if (c !== null && c !== PAL.ink) r.pc.set(x, y, PAL.white);
+        const v = c === null ? undefined : UP.get(c);
+        if (v !== undefined) r.pc.set(x, y, v);
+      }
+      const hx = ri(at.x + face * 4);
+      const hy = ri(at.y - 7);
+      for (let y = -3; y <= 3; y++)
+        for (let x = -3; x <= 3; x++) if ((x * x) / 11 + (y * y) / 12 <= 1) r.px(hx + x, hy + y, y <= -2 ? PAL.ink : PAL.void0);
+      for (const ex of [hx - 2, hx + 1]) {
+        r.px(ex, hy - 1, PAL.white);
+        r.px(ex + 1, hy - 1, PAL.white);
+        r.px(ex, hy, PAL.gold4);
+        r.px(ex + 1, hy, PAL.white);
       }
     } else {
       const j = Math.min(5, k) - 1; // 0..4
@@ -1520,7 +1593,7 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   void lightFlash(sc, burstAt.x, burstAt.y, PAL.white, 26, 300, { floorY: home.y, air: 0.8, intensity: 0.75 });
   let lift!: (v: { rim: number; c: XY }) => void;
   const lifted = new Promise<{ rim: number; c: XY }>((res) => (lift = res));
-  const cloudDone = burstCloud(sc, burstAt, (u?.sprite.depth ?? DEPTH.FX) + 0.5, rnd, (rim, c) => lift({ rim, c }));
+  const cloudDone = burstCloud(sc, burstAt, (u?.sprite.depth ?? DEPTH.FX) + 0.5, rnd, (rim, c) => lift({ rim, c }), u?.flipX ? -1 : 1);
   // the flash covers the body: it is gone from this frame on
   L?.finish();
   const lf = await lifted;
@@ -1532,14 +1605,20 @@ async function pillowDeath(ctx: Ctx<'destroy'>, L: Leave | null, amount: number,
   const at = { x: ri(lp.x), y: ri(lp.y) };
   const flight = start('wiFlock', { volume: 0.85, pan: panAt(at.x) });
   const FLY = 420;
-  await flock(sc, from, at, rnd, FLY, lf.rim);
+  // (FIX critic r3) the hand-off overlaps: the pillow starts packing 3 frames BEFORE the flock is
+  // cleared (and the feathers that already arrived stay on the panel until then), so there is never
+  // a frame with neither feathers nor pillow on the LP panel
+  const flockDone = flock(sc, from, at, rnd, FLY, lf.rim);
+  await sleep(sc, FLY - 50);
   void cloudDone;
-  flight.stop(80);
   // ---- it packs into a pillow (the ghost's face on it)
   play('wiStuff', { volume: 0.9, pan: panAt(at.x) });
   // its tail hangs off the side away from the field (the panel's outer side)
   // (the lower panel's digit run sits 3 px right of its LP point: centre the pillow on the digits)
   const P = pillowView(sc, { x: at.x + (top ? 0 : 3), y: at.y }, at.x < GAME_W / 2 ? -1 : 1);
+  P.set(15, 5, 'open');
+  await flockDone;
+  flight.stop(80);
   // it packs in with a plump overshoot (whole-pixel sizes, one per beat)
   const sizes: [number, number, number][] = [
     [19, 6, 30],
@@ -1797,7 +1876,7 @@ function holdClutch(sc: Phaser.Scene, u: MonsterUnit, now: boolean): void {
     // sending it back to idle); the loop below poses every frame from here on
     void u.asClaimant(() => u.playRange('special', CLUTCH_FRAME, CLUTCH_FRAME + 1));
     u.pose('special', CLUTCH_FRAME);
-    clutchVoice.set(u, start('wiClutch', { volume: 0.7, pan: panAt(u.home.x) }));
+    if (!clutchVoice.has(u)) clutchVoice.set(u, start('wiClutch', { volume: 0.7, pan: panAt(u.home.x) }));
   };
   if (now && live(u)) grab(0);
   onFrame(sc, (dt, el) => {
@@ -1905,10 +1984,20 @@ if (LOOK_V3)
             featherPop(sc, u, 5, away, rnd);
             // (the shared recoil starts on this same contact frame, after this call: the stagger
             // takes over on the next frame, then the hug waits for it to let go)
-            void sleep(sc, 17).then(() => {
+            // (FIX critic r3) the stagger never recovers when the pillow is coming: hitHeavy plays
+            // only through its tumble (thrown → spin → drop → dizzy bounce, f1…f4) and the hug grabs
+            // it straight out of the dizzy pose — no "shakes it off and idles alive" gap. The hug's
+            // hum starts under the stagger, so there is no silent window either.
+            if (!clutchVoice.has(u)) clutchVoice.set(u, start('wiClutch', { volume: 0.6, pan }));
+            void sleep(sc, 17).then(async () => {
               if (!live(u) || clutched.has(u)) return;
-              if (u.has('hitHeavy')) void u.asClaimant(() => u.playRange('hitHeavy', 1));
-              holdClutch(sc, u, false);
+              if (u.has('hitHeavy')) {
+                await u.asClaimant(() => u.playRange('hitHeavy', 1, 4));
+                await sleep(sc, 70);
+              }
+              if (!live(u)) return endClutchVoice(u, 200);
+              if (clutched.has(u)) return;
+              holdClutch(sc, u, true);
             });
             return;
           } else if (lethal) {
@@ -1931,5 +2020,111 @@ if (LOOK_V3)
       void sleep(sc, 8000).then(() => sc.events.off('v3:contact', onContact));
     }
   });
+
+
+// ================================================================ revive (soul_recall brings it back)
+
+/**
+ * (FIX critic r3) The revive is the wind's death played BACKWARDS, and it must read as the wisp's
+ * own: the shared soul_recall presentation runs (the spell, the cyan soul flying from the grave, the
+ * sigil, the landing ring), but its cyan COLUMN — which stabbed straight through the sprite's own
+ * revive pose (feathers carried back by the wind → crumple → fill) — is hidden for this card, and
+ * in its place a breeze of whole feathers spirals in from behind the ghost and packs into the body
+ * while the pose gathers (half of the spiral behind the sprite, half in front).
+ * A higher-priority soul_recall hook (gated), that only watches when the card coming back is
+ * wisp_imp and otherwise just hands over.
+ */
+function featherBreeze(sc: Phaser.Scene, at: XY, back: number, ms: number, rnd: Rnd): void {
+  const N = 16;
+  const cx = at.x;
+  const cy = at.y - 18;
+  const front = new Raster(sc, cx - 70, cy - 60, 140, 100, unitDepth(at.y) + 0.6);
+  const behind = new Raster(sc, cx - 70, cy - 60, 140, 100, unitDepth(at.y) - 0.6);
+  const fs = Array.from({ length: N }, (_, i) => ({
+    a0: rr(rnd, -0.9, 0.9) + (back < 0 ? Math.PI : 0),
+    r0: rr(rnd, 40, 58),
+    y0: rr(rnd, -26, 8),
+    delay: (i / N) * ms * 0.55 + rr(rnd, 0, 30),
+    turns: rr(rnd, 0.9, 1.3),
+    len: i % 3 === 0 ? 9 : i % 3 === 1 ? 7 : 5,
+    ph: rr(rnd, 0, TAU),
+  }));
+  onFrame(sc, (_dt, el) => {
+    front.begin();
+    behind.begin();
+    let alive = false;
+    for (const f of fs) {
+      const t = clamp((el - f.delay) / (ms * 0.45), 0, 1);
+      if (t <= 0) {
+        alive = true;
+        continue;
+      }
+      if (t >= 1) continue;
+      alive = true;
+      // a tightening spiral round the body's axis, sinking onto it (ease-in: it is SUCKED in)
+      const e = t * t;
+      const a = f.a0 + f.turns * TAU * e * (back < 0 ? -1 : 1);
+      const rad = f.r0 * (1 - e);
+      const x = cx + Math.cos(a) * rad;
+      const y = cy + f.y0 * (1 - e) + Math.sin(a) * rad * 0.32;
+      const r = Math.sin(a) < 0 ? behind : front;
+      const step = t > 0.85 ? 1 : 0;
+      if (f.len >= 7) stamp(r, x, y, a + Math.PI / 2 + Math.sin(f.ph + el * 0.01) * 0.5, f.len, step, Math.abs(Math.cos(f.ph + el * 0.006)));
+      else feather(r, x, y, a + Math.PI / 2, f.len, step);
+    }
+    front.end();
+    behind.end();
+    if (!alive && el > 200) {
+      front.destroy();
+      behind.destroy();
+      return false;
+    }
+    return true;
+  });
+}
+
+if (LOOK_V3)
+  registerCardHook(
+    'soul_recall',
+    'activate',
+    async (ctx) => {
+      let sEv: Extract<GameEvent, { type: 'summon' }> | null = null;
+      for (let i = ctx.index + 1; i < ctx.events.length; i++) {
+        const e = ctx.events[i];
+        if (e.type === 'summon') {
+          sEv = e;
+          break;
+        }
+      }
+      if (!sEv || sEv.cardId !== ID) return ctx.base();
+      const sc = ctx.scene;
+      const dest = zoneXY(sEv.player, 'monster', sEv.zone);
+      const pillarDepth = unitDepth(dest.y) - 0.5;
+      const seen = new Set(sc.children.list);
+      const rnd = mulberry32(sEv.uid * 53 + 9);
+      let breezed = false;
+      // the column is a 16-px-wide Raster image born at the arrival, right behind the tile's unit
+      const stop = onFrame(sc, (_dt, el) => {
+        for (const o of sc.children.list) {
+          if (seen.has(o)) continue;
+          seen.add(o);
+          if (!(o instanceof Phaser.GameObjects.Image) || o.depth !== pillarDepth || !o.texture.key.startsWith('fx:set:') || o.width !== 16) continue;
+          o.setVisible(false);
+          o.setAlpha(0);
+          if (!breezed) {
+            breezed = true;
+            featherBreeze(sc, dest, sEv!.player === 0 ? -1 : 1, 900, rnd);
+          }
+        }
+        return el < 6000;
+      });
+      try {
+        await ctx.base();
+      } finally {
+        stop();
+      }
+    },
+    { priority: 20, name: 'kart-b:wisp_imp:revive' },
+  );
 
 export type { GameEvent };
