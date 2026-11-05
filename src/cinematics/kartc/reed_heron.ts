@@ -408,13 +408,18 @@ async function beakTriple(s: StrikeArgs): Promise<void> {
     charge.stop(20);
     fade(['attackDeclare', 'lockOn'], 30);
     if (DBG) console.warn(`[rhr] freeze @${Math.round(sc.time.now)} loop ${Math.round(sc.game.loop.time)}`);
-    marshOf(u)?.freeze(u.frameMs('attack', freezeF));
+    // (the sheet holds f4 its 200 ms — HA-2's ceiling for one frame; the strike holds the stillness 15 % longer, so
+    // it outlasts the declaration's fading arc by ≥ 270 game ms)
+    const freezeMs = Math.round(u.frameMs('attack', freezeF) * 1.15);
+    marshOf(u)?.freeze(freezeMs);
     if (!alive()) return done();
-    await sleep(sc, u.frameMs('attack', freezeF));
+    await sleep(sc, freezeMs);
     if (!alive()) return done();
     // ---- the glide: strides that match the distance (12–13 px each, the feet planted: f5 / f6 alternate), no
     // vertical bob; a ripple dot under each planted foot; mist bands trail behind
-    const glideMs = u.rangeMs('attack', glideF, relF);
+    // (a far target — the duelist, a lane away — is reached in the same long gliding strides, not a scurry: the
+    // glide time grows with the distance, ×1 up to 45 px, ×2.2 from 100 px, so the strides stay long and slow)
+    const glideMs = Math.round(u.rangeMs('attack', glideF, relF) * clamp(Math.hypot(feet.x - from.x, feet.y - from.y) / 45, 1, 2.2));
     if (DBG) console.warn(`[rhr] glide @${Math.round(sc.time.now)} loop ${Math.round(sc.game.loop.time)}`);
     const dist = Math.hypot(feet.x - from.x, feet.y - from.y);
     const strides = clamp(2 * Math.round(dist / 25), 2, 6);
