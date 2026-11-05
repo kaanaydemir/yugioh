@@ -15,33 +15,27 @@
 //        during an attack: the ATK is recalculated before damage — the statChange plays right after the pierce).
 //   spell_seal answered the activation: the target arrives in a later batch too — the target hook plays it.
 //
-// Beat list (scene ms; tempo 1.35 in game time; budget REHBER §5 "Büyü" 1.2–2.0 s → ≤ 2.9 s game):
-//   opening  hand ≈ 200 (+ hold 100) / set ≈ 180 (+ hold 100) — the common v3 opening (≤ 0.7 s)
-//   T+0      RELEASE: a teal orb leaves the card's top edge for the sky over the target (170 ms, line);
-//            the LOCK: a spiral reticle of three teal arcs closes round the target's tile, four corner ticks
-//            snap in, the tile flashes teal (e_augerLock at +40)
-//   T+170    the orb bursts into a star in the sky — the LANCE pokes out of it, spinning (its grooves scroll), and
-//            SCREWS DOWN, accelerating (320 ms): e_augerDescend (the 1 → 8 kHz whistle over the 120 Hz rotor)
-//            starts on this frame; its shadow grows on the floor under it (ink checker); teal motion arcs orbit
-//            the bit
-//   T+340    ANTICIPATION: the vortex of the spinning lance tears the target card off its tile — it tilts up onto
-//            ONE CORNER (150 ms) and starts turning slowly (a face-down card shows its face as it turns)
-//   T+490    BITE (contact): the tip meets the card's top corner — 50 ms freeze, white star, e_augerBite (steel
-//            clank + crack), 1 px shake; the card now spins like a TOP (accelerating 6 → 34 rad/s, a precession
-//            wobble), the lance sinks 5 px into it; e_augerDrill (start; the rotor climbing 120 → 165 Hz) and
-//            e_augerCurls (+30: dry ticks rising in pitch) — SHAVINGS curl out of the grooves (little steel/teal
-//            spirals flung outwards along the spin, falling), chips spark at the contact, the floor light flickers
-//            teal, the card tints teal as it heats
-//   T+930    PIERCE: drill stops; e_augerPierce (crack + deep punch + steel ring); a 70 ms freeze; the card goes
-//            white for 2 frames, the lance punches 10 px THROUGH it, a burst of card shards + a last spray of
-//            curls, a white floor flash, 2 px shake; a HOLE stays punched through the card's centre
-//   T+1000   RETRACT: the lance pulls straight back up and out of frame (220 ms, ease-in): e_augerRetract
-//            ("vuuş") with speed streaks; the drilled card falls flat onto its tile (140 ms, dust), face up,
-//            the hole through it
-//   T+1180   the drilled card leaves for its owner's graveyard from its tile (card continuity, _v3/card
-//            cardLeaves); the spent Burgu Mızrağı card lies down / drops and leaves too (op.leave, +60)
-//   T+1240   the rest of the resolution (statChange of an equip's monster, a field spell going out, …) plays
-//   ≈ T+1.9 s everything landed. Signature ≈ 1.25 s + the card flights (storyboard: 1.8 s).
+// Beat list (scene ms; tempo 1.35 in game time; the §7 storyboard length wins over REHBER §5 — see TEMPO.md):
+//   opening  hand / own set card: the common v3 opening (≤ 0.7 s). Quick answer: no opening here — the reveal
+//            played in the activate batch, quickFire snaps the cocked card up (90 ms, one zig-zag tick, e_quickFire)
+//   T+0      RELEASE + LOCK: a 7-px teal orb with a twin spiral trail flies to the sky over the target (170 ms, its
+//            own light); a spiral reticle closes round the target's tile, corner ticks snap in (e_augerLock +40)
+//   T+170    the orb bursts into a star; the LANCE (13 px shaft / 17 px collar, a deep two-tone helical flute)
+//            screws down (300 ms, e_augerDescend: the 1 → 8 kHz whistle over the 120 Hz rotor), its shadow grows;
+//            150 ms before contact the vortex tears the card up onto ONE CORNER, turning (a face-down card shows
+//            its face as it turns)
+//   T+470    BITE: 50 ms freeze, star, e_augerBite, 1 px shake; the card spins like a TOP (6 → 36 rad/s, precession)
+//   T+520    DRILL (480 ms): a teal vortex helix wraps the bit, the lance shudders 1 px, sinks 6 px; shavings
+//            (solid 1-px spirals) are flung along the spin, chips spark, grinding rings ripple, the card heats teal;
+//            e_augerDrill (rotor 120 → 165 Hz, ends on the pierce frame) + e_augerCurls (metal pings 3.5 → 9 kHz)
+//   T+1000   PIERCE: e_augerPierce (rotor surge + hard cut, burr rip, steel ting); the card goes white, the lance
+//            punches through, a floor shock ring, a big light, 2 px shake, card shards; 70 ms freeze
+//   T+1070   THE BORE (130 ms): a 6-px hole with a glowing lip, a helical FOUNTAIN of big curls out of it
+//   T+1200   CRACK (100 ms): three cracks run out of the bore; the lance RETRACTS (240 ms, e_augerRetract, streaks)
+//   T+1300   the broken card falls flat (150 ms), its pieces drifting apart; the SLAP (e_augerSlap): dust, a teal
+//            scorch spiral burns into the tile; a field spell: cracks run along the floor tiles (e_augerRift)
+//   T+1570   the drilled card and the spent lance card leave (card continuity); the rest of the resolution plays
+//   Signature ≈ 1.6 s scene (storyboard 1.8 s) + the card flights.
 //
 // Pixel rules: the lance, the reticle, the shavings and the proxy card are whole-pixel rasters (Raster), palette
 // only (night / steel / mist / white / teal / ink); the proxy card is rendered by the tiny 3-D card renderer of
