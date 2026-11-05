@@ -187,7 +187,7 @@ registerStrike(
       released = true;
       charge.stop(30);
       // a step under the impact (the WaveHit lands 2–3 dB above the release)
-      play('polarAnvilDang', { volume: 0.78, pan });
+      play('polarAnvilDang', { volume: 0.7, pan });
       const face = poleOf(u, 'face');
       if (face) faceSparks(sc, face, sgn, u.home.y);
       void shake(sc, 90, 1);
@@ -207,7 +207,7 @@ registerStrike(
     const dist = Math.hypot(to.x - from.x, to.y - from.y);
     // a readable flight even next door (three rings must be seen growing), longer across the field
     const ms = Math.round(Math.max(240, Math.min(s.direct ? 420 : 340, dist * 2.1)));
-    const waveSnd = start('polarAnvilWave', { volume: 0.85, pan });
+    const waveSnd = start('polarAnvilWave', { volume: 0.6, pan });
     let arrived!: () => void;
     const arrival = new Promise<void>((r) => (arrived = r));
     const depth = s.target && s.target.sprite.active ? Math.max(DEPTH.FX - 1, s.target.sprite.depth + 0.5) : DEPTH.FX;

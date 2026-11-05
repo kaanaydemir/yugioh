@@ -6,7 +6,8 @@
 //               the two-colour core slit white-hot (the card's brightest point, the EARTH sun sits behind it), three
 //               iron-dust spikes orbiting it on an ellipse, their grain wake strung out behind them.
 // small (44×34) the SAME picture, closer: a 1:1 crop of the sprite — helm and visor, the shoulder spools, the upper
-//               winding and the core slit, one spike crossing in front.
+//               winding and the core slit — with the three spikes drawn close in on a tilted orbit round the drum
+//               (N crossing in front, S off the side, gold behind), the core slit still the brightest point.
 // Living (4 frames, 160 ms): the spikes advance on their orbit, the rings climb a row, the spools turn.
 // Colours only from PAL (the sprite's tones folded to the card budget).
 
@@ -50,9 +51,9 @@ const FOLD: Readonly<Record<number, number>> = {
   [PAL.cyan4]: PAL.white,
 };
 
-function sprite(f: number): PixelCanvas {
+function sprite(f: number, spikes = true): PixelCanvas {
   const p = new PixelCanvas(SW, SH);
-  drawCoil(p, cardPose(f), 'left');
+  drawCoil(p, spikes ? cardPose(f) : { ...cardPose(f), sg: 0 }, 'left');
   return recolor(p, FOLD);
 }
 
@@ -119,11 +120,65 @@ function big(l: ArtLayers, f: number): void {
   l.light.set(fx, fy, PAL.white).set(fx - 1, fy, PAL.white).set(fx + 1, fy, PAL.white);
 }
 
+/** The spikes' pole colours: S (water: the one crossing the copper in front), N (fire), the gold binder — [head, lit, mid]. */
+const SPIKE = [
+  [PAL.water4, PAL.water4, PAL.water2],
+  [PAL.fire4, PAL.fire3, PAL.fire2],
+  [PAL.gold4, PAL.gold3, PAL.gold2],
+] as const;
+
+/**
+ * An iron-dust spike for the small picture: a 7-px dart along (dx, dy) — mid body, a lit upper facet, an ink outline,
+ * the hot head in the light layer (never outlined). `behind`: only where the subject is empty (the far half of the orbit).
+ */
+function dart(subject: PixelCanvas, light: PixelCanvas, x: number, y: number, dx: number, dy: number, i: number, behind: boolean): void {
+  const q = new PixelCanvas(subject.w, subject.h);
+  const l = Math.hypot(dx, dy) || 1;
+  const ux = dx / l;
+  const uy = dy / l;
+  const [head, lit, mid] = SPIKE[i];
+  const tip: [number, number] = [x + ux * 5, y + uy * 5];
+  const back: [number, number] = [x - ux * 4, y - uy * 4];
+  const nx = -uy * 2;
+  const ny = ux * 2;
+  q.poly([tip, [x + nx, y + ny], back, [x - nx, y - ny]], mid);
+  q.poly([tip, [x + (ny < 0 ? nx : -nx), y + (ny < 0 ? ny : -ny)], [x, y]], lit);
+  q.outline(PAL.ink);
+  for (let yy = 0; yy < q.h; yy++)
+    for (let xx = 0; xx < q.w; xx++) {
+      const c = q.get(xx, yy);
+      if (c === null || (behind && subject.get(xx, yy) !== null)) continue;
+      subject.set(xx, yy, c);
+    }
+  if (!behind) {
+    light.set(Math.round(tip[0] - ux), Math.round(tip[1] - uy), head);
+    light.set(Math.round(tip[0]), Math.round(tip[1]), PAL.white);
+  }
+}
+
 function small(l: ArtLayers, f: number): void {
   paintBackdrop(l.backdrop, 'EARTH', { focus: FOCUS_SMALL, horizon: 26, radius: 14 });
   const sk = skeleton(cardPose(f));
   fieldLines(l.backdrop, sk.cx - SMALL_CROP[0], sk.core[1] - SMALL_CROP[1], f);
-  l.subject.blit(sprite(f).crop(SMALL_CROP[0], SMALL_CROP[1], SMALL_CROP[2], SMALL_CROP[3]), 0, 0);
+  // the body without the rig's spikes (they orbit outside this crop): the card draws its own three, close in
+  l.subject.blit(sprite(f, false).crop(SMALL_CROP[0], SMALL_CROP[1], SMALL_CROP[2], SMALL_CROP[3]), 0, 0);
+  // "yörüngede dikenler": a tilted orbit round the drum at the core's height; its dust ellipse, then three spikes on
+  // it a third of a turn apart — S (blue: it reads on the copper) crossing in front, N off the left side, gold off
+  // the right shoulder behind — turning a step per frame
+  const ox = sk.cx - SMALL_CROP[0];
+  const oy = FOCUS_SMALL[1] + 1;
+  const RX = 19;
+  const RY = 6;
+  dustOrbit(l.subject, l.light, ox, oy, RX, RY, f);
+  for (let i = 0; i < 3; i++) {
+    const a = Math.PI * 0.42 + (i * Math.PI * 2) / 3 - (f % 4) * 0.08;
+    const x = Math.round(ox + Math.cos(a) * RX);
+    const y = Math.round(oy + Math.sin(a) * RY);
+    // heading along the orbit (counter-clockwise on screen) with a little tilt into it
+    const dx = Math.sin(a);
+    const dy = -Math.cos(a) * 0.45;
+    dart(l.subject, l.light, x, y, dx, dy, i, Math.sin(a) < -0.1);
+  }
   const [fx, fy] = FOCUS_SMALL;
   l.light.set(fx, fy, PAL.white).set(fx - 1, fy, PAL.white);
 }

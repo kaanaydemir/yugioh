@@ -16,14 +16,17 @@
 // shadows and a dashed track on the floor, the floor light warming each lap — circle it faster
 // (polarCoilOrbit, a three-voice whirr panning round), then plunge in together: the contact (hit-stop of the
 // mediumHeavy class, the struck body's material) with a three-rayed star in the spikes' colours (N / S / gold)
-// shooting back out where they came from, one ring, iron dust (polarCoilTshak: "tşak-tşak-tşak"). Blocked: the
+// shooting back out where they came from, one ring, iron dust (polarCoilTicks: "tşak-tşak-tşak" leads in over the
+// last lap, polarCoilTshak lands the crack + thump ON the convergence; no generic body blow under it). Blocked: the
 // spikes stop on the guard and splinter into tumbling grains (polarCoilDeflect), the coil jolts. Direct: a wider
 // orbit round the duelist.
-// Death: the art's pose — the wire unwinds from the top, the spools spin backwards, the body thins like a ball
-// of yarn, the empty spindle wobbles and topples. Copper flicks fly off the unwinding top and the two-colour core
-// light on the floor steps down to dark (polarCoilUnwind); 'dissolve' the bare spindle wobbles
-// (polarCoilWobble); it hits the marble — "tok", a dust puff (polarCoilTok); on the burst frame loose copper
-// curls spring out and an EMPTY SPOOL rolls away spinning free and runs down (polarCoilBurst). Camera never
+// Death: the art's pose — the wire unwinds from the top a few rows per frame (≈ 0.4 s), the body thins like a ball of
+// yarn, the legs fold into the wire, the spools spin backwards; copper flicks fly off and the two-colour core light
+// on the floor steps down (polarCoilUnwind, then polarCoilSlack: the empty spools rattling free); the bare spindle
+// wobbles (polarCoilWobble) and topples faster and faster onto the marble — "tok" (polarCoilTok), a dust puff. That
+// frame becomes the remains: the EMPTY SPOOL comes off at its shoulder size, turns side-on, rolls down the tile's
+// diagonal spinning free (polarCoilBurst) and runs down; remains and spool break as copper curls and steel grit
+// (polarCoilBreak) — and only then is the card born from the empty tile and flown to the graveyard. Camera never
 // moves (EF-8).
 
 import { PAL, PLAYER_COLOR, RAMPS, type Ramp } from '../../art/palette';
@@ -73,9 +76,16 @@ async function entranceV3(S: Stage): Promise<void> {
   let wind = null as SfxHandle | null;
   atFrame(u, 'summon', 1, () => (wind = start('polarCoilWind', { volume: 0.85, pan })), { late: false });
   // the core light steps up with the turns (stepped light, EF-6)
-  atFrame(u, 'summon', 3, () => spill.level(0.3), { late: false });
-  atFrame(u, 'summon', 5, () => spill.level(0.6), { late: false });
-  atFrame(u, 'summon', 7, () => spill.level(0.85), { late: false });
+  // each step also blinks the winding's warm light onto the marble (a stepped flash at the core, warmer and wider
+  // with every step: the board reads "faster and brighter" at 1×)
+  const stepUp = (k: number, c: number, r: number, it: number) => {
+    spill.level(k);
+    const core = coilPoint(u, 'core');
+    if (core) void lightFlash(sc, core.x, core.y, c, r, 200, { floorY: S.home.y, intensity: it, air: 0.3 });
+  };
+  atFrame(u, 'summon', 3, () => stepUp(0.5, PAL.fire3, 20, 0.45), { late: false });
+  atFrame(u, 'summon', 5, () => stepUp(0.85, PAL.gold3, 24, 0.6), { late: false });
+  atFrame(u, 'summon', 7, () => stepUp(1.15, PAL.gold4, 28, 0.75), { late: false });
   atMark(u, 'summon', 'land', () => {
     wind?.stop(25);
     play('polarCoilSnap', { volume: 0.95, pan });
@@ -86,7 +96,7 @@ async function entranceV3(S: Stage): Promise<void> {
     if (core) void lightFlash(sc, core.x, core.y, PAL.gold4, 34, 380, { floorY: S.home.y, intensity: 0.9, air: 0.6 });
     S.finale({ ring: 54, ramp: RAMPS.fire, shake: 2, sfx: null, freezeMs: 40, playerRing: false });
   });
-  atFrame(u, 'summon', 10, () => {
+  atFrame(u, 'summon', 11, () => {
     play('polarCoilSpools', { volume: 0.8, pan });
     spill.level(0.5, 200);
   }, { late: false });
@@ -159,7 +169,7 @@ registerCardHook(
       u.pose('summon', 2);
       u.showSprite();
       atFrame(u, 'summon', 4, () => spill.level(0.5), { maxMs: 1500 });
-      atFrame(u, 'summon', 6, () => spill.level(0.8), { maxMs: 1500 });
+      atFrame(u, 'summon', 6, () => spill.level(1.0), { maxMs: 1500 });
       atMark(u, 'summon', 'land', () => {
         play('polarCoilSnap', { volume: 0.8, pan });
         track.snap();
@@ -172,7 +182,7 @@ registerCardHook(
         void u.badge.pop();
       });
       // f2 → f8 at 1.4× (the bare spindle takes its wind fast, then the snap), f9 / f10 settle into idle
-      await u.playRange('summon', 2, 10, { timeScale: 1.4 });
+      await u.playRange('summon', 2, 11, { timeScale: 1.4 });
       spill.fadeOut(240);
     } finally {
       track.destroy();
@@ -249,13 +259,13 @@ registerStrike(
     const REL = u.markFrame('attack', 'release', 5);
     const CON = u.markFrame('attack', 'contact', REL + 1);
     // ---- charge: the spikes gather and orbit the coil (the declaration's whirr goes on)
-    const charge = takeCharge(u, 'polarCoilCharge', { volume: 0.85, pan });
+    const charge = takeCharge(u, 'polarCoilCharge', { volume: 0.7, pan });
     let released = false;
     const release = () => {
       if (released) return;
       released = true;
       charge.stop(30);
-      play('polarCoilFling', { volume: 0.6, pan });
+      play('polarCoilFling', { volume: 0.5, pan });
     };
     atFrame(u, 'attack', REL, release, { late: false });
     const anim = u.playRange('attack', f0);
@@ -287,7 +297,7 @@ registerStrike(
       onPreHit: () => {
         orbit?.stop(s.blocked ? 25 : 60);
         orbit = null;
-        if (!s.blocked) play('polarCoilTicks', { volume: 0.85, pan: panAt(at.x) });
+        if (!s.blocked) play('polarCoilTicks', { volume: 1, pan: panAt(at.x) });
       },
       onConverge: (dirs) => {
         orbit?.stop(25);
@@ -480,7 +490,7 @@ registerCardHook(
     if (r) {
       play('polarCoilBurst', { pan: panAt(home.x) });
       r.burst(SPOOL_MS);
-      await emptySpool(sc, home, dir, DEPTH.FX - 1, r.spoolAt);
+      await emptySpool(sc, home, dir, Math.max(DEPTH.FX - 1, u.sprite.depth + 0.6), r.spoolAt, () => play('polarCoilBreak', { volume: 1, pan: panAt(home.x) }));
     }
     // the final material is over: the card is born from the empty tile. deathV3 needs a live unit — the sprite is
     // made visible for its synchronous check only (alpha 0, its last frame), then hidden again; the blow's flash

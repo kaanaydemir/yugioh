@@ -25,7 +25,8 @@
 //   dissolve   polarCoilSlack      the last turns slip off: slack twang + the empty spools rattling free (to the tok)
 //   (+2)       polarCoilWobble     the empty spindle wobbles on its pin (creak + the hum dying)
 //   (+5)       polarCoilTok        the spindle hits the marble (the impact frame): "tok"
-//   burst   polarCoilBurst         the empty spool spins free and runs down, loose wire springs off, dust settles
+//   burst   polarCoilBurst         the empty spool spins free and rolls on its rim (ratchet + rolling rumble), runs down
+//           polarCoilBreak         the remains and the spool break: copper curls spring off, steel grit patters down
 //   reviveGather polarCoilReviveGather  the wire snaps back onto the spindle (reverse wind, sustained → land)
 //   reviveLand   polarCoilReviveSnap    a lighter snap
 // Levels follow the slice (pre-chain linear amplitudes); big beats duck ≥ 0.55, small ≤ 0.3 (SE-7).
@@ -182,11 +183,12 @@ export const V3_POLAR_COIL_RECIPES = {
         pan.push([t, 0.7 * Math.sin(ph * Math.PI * 2)]);
       }
       const out = v.panner(pan);
-      const env: Pt[] = [[0, 0], [0.12, 0.05], [D, 0.13], [H, 0.13], [E, 0.0001, 'e']];
+      // (−4 dB from the first cut: the contact, not the charge, is the loudest beat of the strike — §5 "Darbe kutsaldır")
+      const env: Pt[] = [[0, 0], [0.12, 0.03], [D, 0.08], [H, 0.08], [E, 0.0001, 'e']];
       windBuzz(v, 0, E, [[0, D3], [D, D3 * 1.5, 'e'], [E, D3 * 1.5]], [[0, 3.6], [D, 15, 'e']], [[0, 300], [D, 1800, 'e'], [E, 1800]], env, { pan: out });
-      sweep(v, 0, H, [400, 1600, 2000], 0.05, { kind: 'pink', q: 2.5, peakAt: 0.9, to: out });
-      poleHum(v, 0, [[0, 0], [D, 0.18], [H, 0.18], [E, 0.0001, 'e']]);
-      glassRain(v, { t: 0.04, d: H, n: 14, g: 0.026, notes: DUST, dec: [0.03, 0.07], curve: 0.6, fade: 0, modes: 2 });
+      sweep(v, 0, H, [400, 1600, 2000], 0.032, { kind: 'pink', q: 2.5, peakAt: 0.9, to: out });
+      poleHum(v, 0, [[0, 0], [D, 0.11], [H, 0.11], [E, 0.0001, 'e']]);
+      glassRain(v, { t: 0.04, d: H, n: 14, g: 0.017, notes: DUST, dec: [0.03, 0.07], curve: 0.6, fade: 0, modes: 2 });
     },
   },
   /** Strike release: the whips crack forward and fling the three spikes — a crack and three quick whooshes. */
@@ -263,11 +265,11 @@ export const V3_POLAR_COIL_RECIPES = {
     verb: 0.35,
     duck: 0.6,
     play(v) {
-      crack(v, 0, 0.55, { hp: 2200, n: 3, gap: 0.004, dec: 0.022 });
-      clank(v, 1420, 0, 0.13, 0.2, { ratio: 2.76, index: 2, click: 1.6 });
-      clank(v, 940, 0.003, 0.09, 0.26, { ratio: 2.4, index: 1.5, click: 0.8 });
-      thump(v, 0.002, 120, 42, 0.42, 0.22, { drive: 1.5 });
-      poleHum(v, 0, perc(0.26, 0.42, 0.003));
+      crack(v, 0, 0.8, { hp: 2200, n: 3, gap: 0.004, dec: 0.026 });
+      clank(v, 1420, 0, 0.18, 0.24, { ratio: 2.76, index: 2, click: 1.6 });
+      clank(v, 940, 0.003, 0.13, 0.3, { ratio: 2.4, index: 1.5, click: 0.8 });
+      thump(v, 0.002, 120, 42, 0.62, 0.26, { drive: 1.6 });
+      poleHum(v, 0, perc(0.32, 0.45, 0.003));
       v.tone('sawtooth', [[0, D3 * 2], [0.25, D3, 'e']], { g: perc(0.07, 0.26, 0.002), to: v.filt('lowpass', 1400, 1) });
       glassRain(v, { t: 0.02, d: 0.35, n: 8, g: 0.026, notes: DUST, dec: [0.03, 0.1], curve: 1.6, modes: 2 });
     },
@@ -323,10 +325,14 @@ export const V3_POLAR_COIL_RECIPES = {
     play(v) {
       twang(v, 0, D3 * 1.5, 0.07, 0.35);
       sweep(v, 0, 0.18, [1800, 900, 300], 0.05, { kind: 'pink', q: 1.4, pan: [0, -0.4], peakAt: 0.3 });
-      // the free-running spools: low pawl rattle, slowing (two spools, slightly apart)
-      spoolTicks(v, 0.02, turnTimes(0.42, 26, 7), 0.05, 1500);
-      spoolTicks(v, 0.03, turnTimes(0.4, 22, 6), 0.035, 1150);
-      v.tone('sine', [[0, D3], [0.42, D3 * 0.7, 'e']], { g: [[0, 0], [0.03, 0.05], [0.3, 0.035], [0.44, 0.0001, 'e']] });
+      // the free-running spools: low pawl rattle, slowing (two spools, slightly apart), over a continuous whirr bed
+      // (a band of noise chopped at the spools' falling turn rate) that carries on under the wobble to the "tok"
+      spoolTicks(v, 0.02, turnTimes(0.5, 26, 6), 0.08, 1500);
+      spoolTicks(v, 0.03, turnTimes(0.48, 22, 5), 0.06, 1150);
+      const bed = v.filt('bandpass', [[0, 1700], [0.52, 650, 'e']], 2.2);
+      const chop = v.ring([[0, 28], [0.52, 8, 'e']], { d: 0.56, mix: 0.85, to: bed });
+      v.noise('pink', { g: [[0, 0], [0.04, 0.2], [0.4, 0.24], [0.5, 0.14], [0.56, 0.0001, 'e']], to: chop });
+      v.tone('sine', [[0, D3], [0.52, D3 * 0.7, 'e']], { g: [[0, 0], [0.03, 0.08], [0.45, 0.06], [0.55, 0.0001, 'e']] });
     },
   },
   /** Death 'dissolve' + 2 (f7): the bare spindle wobbles on its pin — a metal creak, the field's last breath. */
@@ -365,12 +371,34 @@ export const V3_POLAR_COIL_RECIPES = {
     verb: 0.45,
     duck: 0.35,
     play(v) {
-      spoolTicks(v, 0, turnTimes(0.75, 22, 2.5), 0.06, 2900);
+      spoolTicks(v, 0, turnTimes(0.75, 22, 2.5), 0.07, 2900);
+      // the empty spool rolling on its rim over the marble: a low rumble chopped at its slowing turn rate
+      const roll = v.filt('bandpass', [[0, 520], [0.62, 260, 'e']], 1.6);
+      const turn = v.ring([[0, 18], [0.62, 5, 'e']], { d: 0.66, mix: 0.7, to: roll });
+      v.noise('pink', { g: [[0, 0], [0.06, 0.2], [0.45, 0.15], [0.62, 0.0001, 'e']], to: turn });
       twang(v, 0.02, D3 * 3, 0.05, 0.3);
       twang(v, 0.12, D3 * 2.5, 0.04, 0.3);
       v.tone('sine', [[0, 110], [0.8, 66, 'e']], { g: [[0, 0], [0.02, 0.1], [0.8, 0.0001, 'e']] });
       v.tone('sine', [[0, 111], [0.8, 65, 'e']], { g: [[0, 0], [0.02, 0.09], [0.8, 0.0001, 'e']] });
       glassRain(v, { t: 0.04, d: 0.7, n: 14, g: 0.028, notes: DUST, dec: [0.04, 0.14], curve: 1.6, modes: 2 });
+    },
+  },
+  /**
+   * Death end: the remains and the empty spool break (the last ≈ 150 ms) — copper curls spring off (three bright
+   * little twangs, rising), steel grit patters down, a dry crumble under it.
+   */
+  polarCoilBreak: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.35,
+    duck: 0.25,
+    play(v) {
+      twang(v, 0, D3 * 4, 0.1, 0.2);
+      twang(v, 0.035, D3 * 5, 0.09, 0.18);
+      twang(v, 0.07, D3 * 6, 0.08, 0.16);
+      v.noise('white', { g: [[0, 0], [0.01, 0.12], [0.12, 0.05], [0.24, 0.0001, 'e']], to: v.filt('bandpass', 2400, 1.2) });
+      v.bursts([0.02, 0.05, 0.07, 0.11, 0.14, 0.19, 0.23], [0.12, 0.1, 0.1, 0.08, 0.07, 0.06, 0.04], { dec: 0.006, f: 3600, q: 3 });
+      puff(v, 0, 0.16, 0.18, 900);
     },
   },
   /** Flip summon: the card turns, the bare spindle takes a fast 3-turn wind — a short buzz whipping up D3 → D4, quickening ticks. */

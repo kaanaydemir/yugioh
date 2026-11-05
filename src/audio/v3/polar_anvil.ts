@@ -171,7 +171,7 @@ export const V3_POLAR_ANVIL_RECIPES = {
       thump(v, 0, 140, E2 * 0.6, 0.42, 0.18, { drive: 1.3 });
       // the anvil's own pitch rings through the DANG: a long E2 body partial with its octave (the card's 82 Hz
       // identity must carry over the charge's 110/111 beat and the dust pings)
-      v.tone('sine', E2, { t: 0.004, g: perc(0.2, 0.75, 0.004) });
+      v.tone('sine', E2, { t: 0.004, g: perc(0.3, 0.75, 0.004) });
       v.tone('sine', E2 * 2, { t: 0.004, g: perc(0.07, 0.45, 0.003) });
       v.noise('white', { g: perc(0.06, 0.12, 0.001), to: v.filt('highpass', 5000, 0.7) });
     },

@@ -24,9 +24,9 @@
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
 import type { GameEvent } from '../../engine/types';
 import { DEPTH, LOOK_V3, unitDepth, type XY } from '../../view/layout';
-import { lightFlash } from '../../view/light';
+import { lightFlash, lightPool } from '../../view/light';
 import { shake } from '../../vfx/core';
-import { Sparks, animate, sleep } from '../../vfx/combat';
+import { Sparks, animate, onFrame, sleep } from '../../vfx/combat';
 import { registerCardHook, registerStrike } from '../api';
 import type { StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
@@ -34,8 +34,10 @@ import { deathV3 } from '../_v3/death';
 import { summonPose } from '../_v3/summon';
 import { atFrame, atMark, panAt, play, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath, worldBox } from '../strikes-b/_kit';
+import type { MonsterUnit } from '../../duel/MonsterUnit';
+import { unitFrame } from '../../duel/unit-variant';
 import { runSummon, type Stage } from '../summon-a/_kit';
-import { FLOOR_DEPTH, bounceDust, clockStamp, crankSparks, flipTrail, gearsAndSprings, jesterOffset, jesterPoint, popBurst, seedFx, tileDial } from './_dial_jester-fx';
+import { FLOOR_DEPTH, bounceDust, clockStamp, crankSparks, flipTrail, gearsAndSprings, jesterOffset, jesterPoint, popBurst, seedFx, summonDial } from './_dial_jester-fx';
 
 const ID = 'dial_jester';
 /** The hologram onset's tones: brass. */
@@ -55,7 +57,8 @@ async function entranceV3(S: Stage): Promise<void> {
   const u = S.unit;
   const pan = panAt(S.home.x);
   seedFx(u.uid * 29 + 11);
-  const dial = S.own(tileDial(sc, S.home, FLOOR_DEPTH, 1.2));
+  const dial = S.own(summonDial(sc, S.home, FLOOR_DEPTH));
+  const spill = lightPool(sc, S.home.x, S.home.y, { color: PAL.gold3, spill: PAL.gold2, radius: 46, floorY: S.home.y, air: 0.2, intensity: 0.55, fadeIn: 120 });
   const pool = S.glow({ color: PAL.gold3, radius: 24, intensity: 0.45, anim: 'breathe', fadeIn: 140 });
   // the dial is reflected on the tile; its hands race BACKWARDS to midnight (accelerating, they slam on 12)
   play('jesterDialRewind', { volume: 0.85, pan });
@@ -69,6 +72,7 @@ async function entranceV3(S: Stage): Promise<void> {
   const p = summonPose(sc, u, { ramp: BRASS, holoMs: 90 });
   if (!p) {
     dial.destroy();
+    void spill.fadeOut(120);
     return;
   }
   // f1 midnight: the bell
@@ -108,7 +112,10 @@ async function entranceV3(S: Stage): Promise<void> {
         play('jesterBounce', { volume: vol, pitch, pan });
         bounceDust(sc, S.home, vol, S.depth + 0.4);
         if (f === 4) dial.set({ k: 0.3, hour: 0, min: 0 });
-        if (f === 6) dial.destroy();
+        if (f === 6) {
+          dial.destroy();
+          void spill.fadeOut(220);
+        }
         if (f === 8) S.finale({ ring: 44, ramp: RAMPS.gold, shake: 0, sfx: null, playerRing: false });
       },
       { late: false },
@@ -132,6 +139,7 @@ async function entranceV3(S: Stage): Promise<void> {
   );
   await p.done;
   dial.destroy();
+  void spill.fadeOut(200);
   void pool.fadeOut(260);
 }
 
@@ -148,6 +156,27 @@ registerCardHook(
 
 // ================================================================ strike "Kurmalı Takla"
 
+/** The coin's face radius (rig COIN_R). */
+const COIN_R = 6;
+
+/** The world x of the target's outermost opaque pixel on the `side` (−1 left, +1 right) within ±5 rows of `y`. */
+function silhouetteEdge(t: MonsterUnit, y: number, side: 1 | -1): number | null {
+  if (!t.sprite.active) return null;
+  const fi = t.frameInfo();
+  const pc = unitFrame(t, fi.anim ?? 'idle', fi.frame);
+  let best: number | null = null;
+  for (let fy = 0; fy < pc.h; fy++) {
+    for (let fx = 0; fx < pc.w; fx++) {
+      if (!pc.isOpaque(fx, fy)) continue;
+      const w = t.framePoint(fx + 0.5, fy + 0.5);
+      if (Math.abs(w.y - y) > 5) continue;
+      const x = Math.round(w.x);
+      if (best === null || (side < 0 ? x < best : x > best)) best = x;
+    }
+  }
+  return best;
+}
+
 registerStrike(
   ID,
   async (s: StrikeArgs) => {
@@ -162,8 +191,10 @@ registerStrike(
     const pan = panAt(u.home.x);
     const f0 = strikeStartFrame(u);
     const LAUNCH = 5;
-    const REL = u.markFrame('attack', 'release', 6);
-    const CON = u.markFrame('attack', 'contact', 7);
+    const REL = u.markFrame('attack', 'release', 9);
+    const CON = u.markFrame('attack', 'contact', 13);
+    /** the somersault's drawn turns: LAUNCH … CON − 1 (20° → 330°), the contact frame lands it upright */
+    const TURNS = Math.max(1, CON - LAUNCH);
     const home: XY = { ...u.rest0 };
     // ---- the wind-up: three turns of the key, the watch ticking faster (the declaration's tick goes on)
     const charge = takeCharge(u, 'jesterCharge', { volume: 0.8, pan });
@@ -175,6 +206,18 @@ registerStrike(
     if (f0 >= 1 && f0 <= 3) crank();
     for (const f of [1, 2, 3]) if (f > f0) atFrame(u, 'attack', f, crank, { late: false });
     if (f0 < LAUNCH) await u.playRange('attack', f0, LAUNCH - 1, { hold: true });
+    // f4: locked, trembling — the spring held a beat before it lets go (its own hold, never skipped)
+    if (spr.active && !u.retired && !u.claimed) {
+      if (u.frameInfo().anim !== 'attack' || u.frameInfo().frame !== LAUNCH - 1) u.pose('attack', LAUNCH - 1);
+      const shiver = onFrame(sc, (_dt, el) => {
+        if (!spr.active || u.retired) return false;
+        spr.x = Math.round(u.rest0.x) + (Math.floor(el / 34) % 2 ? 1 : 0);
+        return true;
+      });
+      await sleep(sc, u.frameMs('attack', LAUNCH - 1));
+      shiver();
+      if (spr.active) spr.x = Math.round(u.rest0.x);
+    }
     if (!spr.active || u.retired) {
       charge.stop(40);
       return;
@@ -186,14 +229,18 @@ registerStrike(
     let aim: XY;
     if (s.direct || !box) aim = { x: Math.round(s.to.x - dir.x * 6), y: Math.round(s.to.y) };
     else {
-      const edge = Math.round(box.w / 2) - 3 + (s.blocked ? 5 : 0);
-      aim = { x: Math.round(box.cx - sgn * edge), y: Math.round(clamp(s.to.y, box.y + 6, box.y + box.h - 4)) };
+      // the coin's EDGE (radius 6) touches the target's silhouette at the strike height, never its body (a guard
+      // keeps it a px further off: it glances)
+      const ay = Math.round(clamp(s.to.y, box.y + 6, box.y + box.h - 4));
+      const near = s.target ? silhouetteEdge(s.target, ay, -sgn as 1 | -1) : null;
+      const edgeX = near ?? Math.round(box.cx - sgn * (box.w / 2));
+      aim = { x: Math.round(edgeX - sgn * (COIN_R + (s.blocked ? 2 : 0))), y: ay };
     }
     const feetHome: XY = { x: home.x, y: home.y + u.hover };
     const feet: XY = { x: Math.round(aim.x - off.x), y: Math.round(aim.y - off.y) };
     // the feet stay on the floor line between the tiles (the arc carries the body)
     const dist = Math.hypot(feet.x - feetHome.x, feet.y - feetHome.y);
-    const flyMs = Math.round(clamp(dist * 1.25, 230, s.direct ? 420 : 360));
+    const flyMs = Math.round(clamp(dist * 1.4, 300, s.direct ? 500 : 440));
     const H = Math.round(clamp(22 + dist * 0.12, 26, 44));
     const tDepth = s.target && s.target.sprite.active ? s.target.sprite.depth + 0.5 : 0;
     const place = (p: XY, lift = 0) => {
@@ -205,15 +252,17 @@ registerStrike(
     play('jesterSpring', { volume: 0.9, pan });
     u.pose('attack', LAUNCH);
     flipTrail(sc, () => jesterPoint(u, 'coin'), flyMs, DEPTH.FX - 3);
-    let released = false;
+    let turn = -1;
     await animate(sc, flyMs, (t) => {
       const e = t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t);
       const lift = Math.sin(Math.PI * Math.min(1, t * 1.05)) * H;
       place({ x: feetHome.x + (feet.x - feetHome.x) * e, y: feetHome.y + (feet.y - feetHome.y) * e }, lift);
-      if (!released && t >= 0.4) {
-        released = true;
-        if (!u.claimed) u.pose('attack', REL);
-        play('jesterFlip', { volume: 0.85, pan: panAt(spr.x) });
+      // one full turn over the flight: every drawn turn gets its share of the travel (never one frame held)
+      const k = Math.min(TURNS - 1, Math.floor(t * TURNS));
+      if (k !== turn) {
+        turn = k;
+        if (!u.claimed) u.pose('attack', LAUNCH + k);
+        if (LAUNCH + k === REL) play('jesterFlip', { volume: 0.85, pan: panAt(spr.x) });
       }
     });
     place(feet);
@@ -263,12 +312,21 @@ registerCardHook(
     seedFx(u.uid * 53 + 7);
     const home = { ...u.home };
     const dir: 1 | -1 = u.flipX ? -1 : 1;
+    // f1: the glass cracks (jesterCrack, the death's first beat; f2 if the pose joins late)
+    let cracked = false;
+    const crack = () => {
+      if (cracked) return;
+      cracked = true;
+      play('jesterCrack', { volume: 0.9, pan: panAt(home.x) });
+    };
+    atFrame(u, 'death', 1, crack, { maxMs: 3000 });
     // f2: the glass splits — a white glint on the dial
     atFrame(
       u,
       'death',
       2,
       () => {
+        crack();
         const h = jesterPoint(u, 'head');
         if (h) void lightFlash(sc, h.x, h.y, PAL.white, 14, 160, { floorY: home.y, intensity: 0.6 });
       },

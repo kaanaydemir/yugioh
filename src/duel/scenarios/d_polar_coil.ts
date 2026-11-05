@@ -62,6 +62,16 @@ const scenarios: Record<string, Scenario> = {
     stage: { zones: 5, phase: 'battle', active: 1, p0: { monsters: five(N, N, { id: 'polar_coil', position: 'attack' }) }, p1: { monsters: five(N, N, 'ember_wolf') } },
     steps: [attack(2, 2, 1)],
   },
+  pcBolt: {
+    desc: 'Yıldırım Hükmü Kutup Bobini’ni etkiyle yok eder (darbesiz ölüm: tel çözülür, makara boş döner)',
+    stage: { zones: 5, p0: { hand: ['judgment_bolt'] }, p1: { monsters: five(N, N, { id: 'polar_coil', position: 'attack' }) } },
+    steps: [(D) => ({ type: 'activateSpell', player: 0, uid: D.uid('judgment_bolt', 0), target: { kind: 'monster', ref: { player: 1, zone: 'monster', index: 2 } } })],
+  },
+  pcKillSet: {
+    desc: 'Kapalı Kutup Bobini savaşta yok edilir (kart çevrilir, ortak kapalı ölüm)',
+    stage: { zones: 5, phase: 'battle', p0: { monsters: five(N, N, 'volt_lizard') }, p1: { monsters: five(N, N, { id: 'polar_coil', position: 'defense', faceUp: false }) } },
+    steps: [attack(2, 2)],
+  },
   pcGuard: {
     desc: 'Kutup Bobini savunmada (DEF 1400) Fırtına Atmacası’nı karşılar',
     stage: { zones: 5, phase: 'battle', p0: { monsters: five(N, N, 'storm_hawk') }, p1: { monsters: five(N, N, { id: 'polar_coil', position: 'defense' }) } },

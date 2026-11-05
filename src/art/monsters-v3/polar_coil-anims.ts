@@ -96,12 +96,13 @@ const ATTACK_KEYS: Partial<Pose>[] = [
   { hx: -1, dx: -1, nwx: 8, nwy: -5, nlag: 4, fwx: -8, fwy: -5, flag: -4, core: 2.4, ringB: 2, sg: 0.65, orb: 0.24, dustK: 0.2, eye: 1.6 },
   { hx: -2, dx: -1, nwx: 3, nwy: -11, nlag: 3, fwx: -4, fwy: -11, flag: -3, core: 2.8, ringB: 3, sg: 1, orb: 0.52, dust: -1, eye: 1.8, lid: 1 },
   { hx: -2, dx: -2, nwx: -2, nwy: -12, nlag: 3, fwx: 1, fwy: -12, flag: -3, core: 3, ringB: 3, sg: 1, orb: 0.86, dust: -1, eye: 2, lid: 1 },
-  // release: the whips crack forward, the spikes are flung
-  { hx: 2, dx: 2, nwx: 15, nwy: 3, nlag: -4, fwx: 10, fwy: 6, flag: 3, core: 3, flash: 1, ringB: 3, sg: 1, orb: 0.97, fly: 0.6, dust: -1, eye: 2 },
+  // release: the near whip cracks forward, the far whip snaps back out behind (a counter-swing: both stay in the
+  // silhouette), the spikes are flung
+  { hx: 2, dx: 2, nwx: 15, nwy: 3, nlag: -4, fwx: -13, fwy: 1, flag: 5, core: 3, flash: 1, ringB: 3, sg: 1, orb: 0.97, fly: 0.6, dust: -1, eye: 2 },
   // contact: the three meet at the front
-  { hx: 2, dx: 2, nwx: 14, nwy: 6, nlag: -1, fwx: 8, fwy: 9, flag: 1, core: 2.6, flash: 0.4, ringB: 2, sg: 1, orb: 1, fly: 1, conv: 1, dust: -1, eye: 2 },
-  { hx: 1, dx: 1, nwx: 12, nwy: 9, nlag: 2, fwx: 5, fwy: 11, flag: -1, core: 2.2, ringB: 2, sg: 1, fly: 1, conv: 0.5, dust: -1, eye: 1.6 },
-  { hx: 0, dx: 1, nwx: 10, nwy: 11, nlag: 4, fwx: 0, fwy: 13, flag: -3, core: 2, eye: 1.3 },
+  { hx: 2, dx: 2, nwx: 14, nwy: 6, nlag: -1, fwx: -12, fwy: 6, flag: 4, core: 2.6, flash: 0.4, ringB: 2, sg: 1, orb: 1, fly: 1, conv: 1, dust: -1, eye: 2 },
+  { hx: 1, dx: 1, nwx: 12, nwy: 9, nlag: 2, fwx: -10, fwy: 10, flag: 1, core: 2.2, ringB: 2, sg: 1, fly: 1, conv: 0.5, dust: -1, eye: 1.6 },
+  { hx: 0, dx: 1, nwx: 10, nwy: 11, nlag: 4, fwx: -7, fwy: 14, flag: -3, core: 2, eye: 1.3 },
 ];
 export function attackPose(f: number): Pose {
   if (f >= A_N - 1) return home();
@@ -217,30 +218,33 @@ export function fromGuardPose(f: number): Pose {
 }
 const FG_HOLDS = [60, 65, 70, 75, 80];
 
-// ------------------------------------------------------------------ summon (14): the empty spindle, wire winds in, limbs open
+// ------------------------------------------------------------------ summon (15): the empty spindle, wire winds in, limbs open
 
-const SU_N = 14;
-const SU_LAND = 8;
+const SU_N = 15;
+const SU_LAND = 9;
 export function summonPose(f: number): Pose {
   if (f >= SU_N - 1) return home();
   const bare = { legs: 0, whips: 0, eye: 0, core: 0, rings: 0, dust: -1, reel: 0 };
   if (f === 0) return key({ ...bare, wind: 0, girth: 1 }, f, SU_N);
   if (f <= 6) {
-    // the wire flies in from the top-left and winds bottom → top, faster and brighter
+    // the wire flies in from the top-left and winds bottom → top, faster and brighter: every step lights one more
+    // warm band on the turns (rings 1 → 2, brightness 2 → 3) and the core window opens
     const wind = [0, 0.08, 0.25, 0.45, 0.66, 0.86, 1][f];
     return key({
       ...bare, wind, fromTop: 0, feed: f === 6 ? 0.5 : 1, fex: -44 + f * 2, fey: -66 + f, floops: 3 + f * 0.6,
-      core: f >= 3 ? 0.6 + (f - 3) * 0.6 : 0, rings: f >= 4 ? 1 : 0, ringB: f >= 5 ? 3 : 2, climb: wind * 0.85,
+      core: f >= 3 ? 0.9 + (f - 3) * 0.6 : f === 2 ? 0.4 : 0, rings: f >= 5 ? 2 : f >= 3 ? 1 : 0, ringB: f >= 5 ? 3 : 2, climb: wind * 0.85,
       reel: f / 6, spinN: f * 0.35, spinF: -f * 0.35, eye: f >= 5 ? 0.6 : 0,
     }, f, SU_N);
   }
-  if (f === 7) return key({ legs: 0.5, whips: 0.45, nwx: 10, nwy: 8, fwx: -9, fwy: 8, eye: 1.3, core: 2.6, rings: 2, ringB: 3, dust: -1 }, f, SU_N);
+  // the wire's free ends peel off the drum: thin strands lengthen into the legs and the whips (f7), thicken (f8)
+  if (f === 7) return key({ legs: 0.2, whips: 0.3, nwx: 7, nwy: 15, nlag: 2, fwx: -6, fwy: 15, flag: -2, feed: 0.25, fex: -30, fey: -36, floops: 2, eye: 1, core: 2.3, rings: 2, ringB: 3, dust: -1 }, f, SU_N);
+  if (f === 8) return key({ legs: 0.55, whips: 0.62, nwx: 10, nwy: 9, nlag: 4, fwx: -9, fwy: 9, flag: -4, eye: 1.3, core: 2.6, rings: 2, ringB: 3, dust: -1 }, f, SU_N);
   if (f === SU_LAND) return key({ legs: 1, whips: 1, nwx: 15, nwy: 2, nlag: 4, fwx: -13, fwy: 3, flag: -4, eye: 2, core: 3, flash: 0.6, rings: 2, ringB: 3, pulse: 0.3, dust: -1 }, f, SU_N);
-  if (f === 9) return key({ whips: 1, nwx: 13, nwy: 7, nlag: 5, fwx: -11, fwy: 8, flag: -5, eye: 1.8, core: 2.6, ringB: 2, pulse: 0.7, dustK: 1.6 }, f, SU_N);
-  const k9 = key({ nwx: 13, nwy: 7, nlag: 5, fwx: -11, fwy: 8, flag: -5, eye: 1.8, core: 2.6, dustK: 1.6 }, 9, SU_N);
-  return snap(key({ ...mix(k9, IDLE0, [0.4, 0.7, 0.9][f - 10]) }, f, SU_N));
+  if (f === 10) return key({ whips: 1, nwx: 13, nwy: 7, nlag: 5, fwx: -11, fwy: 8, flag: -5, eye: 1.8, core: 2.6, ringB: 2, pulse: 0.7, dustK: 1.6 }, f, SU_N);
+  const k10 = key({ nwx: 13, nwy: 7, nlag: 5, fwx: -11, fwy: 8, flag: -5, eye: 1.8, core: 2.6, dustK: 1.6 }, 10, SU_N);
+  return snap(key({ ...mix(k10, IDLE0, [0.4, 0.7, 0.9][f - 11]) }, f, SU_N));
 }
-const SU_HOLDS = [140, 100, 80, 70, 70, 70, 110, 90, 140, 110, 110, 120, 130, 150];
+const SU_HOLDS = [140, 100, 80, 70, 70, 70, 80, 60, 60, 140, 110, 110, 120, 130, 150];
 
 // ------------------------------------------------------------------ death (11): unwinds, thins, the empty spindle topples
 //
@@ -275,7 +279,7 @@ export function deathPose(f: number): Pose {
   }
   // the empty spindle wobbles on its pin and topples back, faster and faster; it lands clean and intact on its own
   // tile (the cinematic keeps it as remains, rolls the empty spool off it and breaks it only at the very end)
-  const tilt = [0.05, 0.2, 0.5, 1][f - 7];
+  const tilt = [0.05, 0.2, 0.42, 1][f - 7];
   return key({ legs: 0, whips: 0, wind: 0, girth: 0, eye: 0, core: 0, rings: 0, dust: -1, heap: 1, reel: 0, tilt, spinN: -f * 0.5, spinF: f * 0.5, diss: 0 }, f, D_N);
 }
 const D_HOLDS = [40, 60, 65, 70, 70, 70, 65, 100, 70, 50, 45];

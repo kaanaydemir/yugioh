@@ -130,9 +130,21 @@ export function fromGuardPose(f: number): Pose {
 }
 const FG_HOLDS = [60, 65, 70, 70, 75];
 
-// ------------------------------------------------------------------ attack (13 frames): Kurmalı Takla
+// ------------------------------------------------------------------ attack (19 frames): Kurmalı Takla
 
-const A_N = 13;
+const A_N = 19;
+/** The flight: a full forward somersault in eight drawn turns (f5 … f12, 20° → 330°; the contact f13 lands it at 360°).
+ *  The coin and the key lead; the body tucks hardest over the top and opens out into the strike. */
+const FLIP: Partial<Pose>[] = [
+  { air: 6, tuck: 0.5, spin: 20, bx: 1, nx: 9, ny: -16, fx: 1, fy: -16, cw: 0.3, mouth: 3 },
+  { air: 10, tuck: 0.8, spin: 62, bx: 2, nx: 9, ny: -16, fx: 1, fy: -16, cw: 0.15, mouth: 3, arc: 0.3 },
+  { air: 13, tuck: 1, spin: 105, bx: 3, nx: 10, ny: -15, fx: 2, fy: -15, cw: -0.2, mouth: 3, arc: 0.6 },
+  { air: 14, tuck: 1, spin: 150, bx: 4, nx: 10, ny: -15, fx: 2, fy: -15, cw: -0.6, mouth: 3, arc: 0.8 },
+  { air: 14, tuck: 1, spin: 195, bx: 5, nx: 10, ny: -15, fx: 2, fy: -15, cw: -1, mouth: 3, smear: 1, arc: 1 },
+  { air: 12, tuck: 1, spin: 240, bx: 6, nx: 10, ny: -15, fx: 2, fy: -15, cw: -0.6, mouth: 3, arc: 1 },
+  { air: 9, tuck: 0.8, spin: 285, bx: 7, nx: 11, ny: -16, fx: 1, fy: -16, cw: 0.1, mouth: 3, arc: 0.7 },
+  { air: 5, tuck: 0.45, spin: 330, bx: 8, nx: 15, ny: -18, fx: -1, fy: -19, cw: 0.3, mouth: 3, arc: 0.4, eye: 2 },
+];
 const ATTACK_KEYS: Partial<Pose>[] = [
   {},
   // the far hand finds the key; turn one ("cırt")
@@ -143,25 +155,24 @@ const ATTACK_KEYS: Partial<Pose>[] = [
   { py: 3, lean: -1, hx: -1, neck: -1, fx: -6, fy: -18, key: 250, look: 1, hour: 285, min: 75, eye: 1.6, keyFx: 1, nx: 7, ny: -14, cw: 0.45, h1x: -1, h2x: -1 },
   // locked, trembling
   { py: 3, lean: -1, hx: -1, neck: -1, fx: -4, fy: -16, key: 250, look: 1, hour: 285, min: 75, eye: 2, shake: 1, nx: 7, ny: -14, cw: 0.3, glint: 1 },
-  // launch (swing): off the ground, tucking, turning
-  { air: 6, tuck: 0.7, spin: 70, bx: 2, nx: 9, ny: -16, fx: 1, fy: -16, cw: 0.2, key: 250, eye: 2, mouth: 3, arc: 0.4 },
-  // release: upside down at the top of the somersault
-  { air: 11, tuck: 1, spin: 205, bx: 5, nx: 10, ny: -15, fx: 2, fy: -15, cw: 0.15, key: 250, eye: 2, mouth: 3, smear: 1, arc: 1 },
+  // f5 … f12: the somersault
+  ...FLIP.map((k) => ({ key: 250, eye: 2, ...k })),
   // contact: full reach, the coin's edge strikes, both hands frozen at 12
   { air: 2, bx: 8, lean: 2, hx: 1, nx: 22, ny: -21, fx: -4, fy: -24, cw: 0.35, hour: 0, min: 0, eye: 2, mouth: 3, flare: 1, glint: 2, h1x: -2, h2x: -1, h1y: 1 },
   // after-contact
   { air: 2, bx: 8, lean: 2, hx: 1, nx: 21, ny: -20, fx: -4, fy: -23, cw: 0.45, hour: 0, min: 0, eye: 1.6, mouth: 3, flare: 0.5, spark: 0.3, h1x: -1, h1y: 1 },
 ];
+const A_CON = 13;
 export function attackPose(f: number): Pose {
   if (f >= A_N - 1) return home();
-  if (f <= 8) return snap(key(ATTACK_KEYS[f], f, A_N, IDLE0, 2));
+  if (f <= A_CON + 1) return snap(key(ATTACK_KEYS[f], f, A_N, IDLE0, 2));
   // bounce back home: up, land (squash), settle
-  const k8 = key(ATTACK_KEYS[8], 8, A_N, IDLE0, 2);
-  if (f === 9) return snap(key({ ...mix(k8, IDLE0, 0.35), air: 5, tuck: 0.25, bx: 4, flare: 0, spark: 0.7, cw: 0.6, mouth: 0, hour: 320, min: 40 }, f, A_N, IDLE0, 2));
-  if (f === 10) return snap(key({ ...mix(k8, IDLE0, 0.75), air: 0, tuck: 0, bx: 1, py: 2, neck: -1, flare: 0, spark: 0, cw: 0.85, mouth: 0, hour: 310, min: 50 }, f, A_N, IDLE0, 2));
-  return toward(key({ ...k8, air: 0, bx: 0, py: 1 }, 8, A_N), 0.85, f, A_N, { flare: 0, spark: 0, cw: 1, hour: 300, min: 60 });
+  const k8 = key(ATTACK_KEYS[A_CON + 1], A_CON + 1, A_N, IDLE0, 2);
+  if (f === A_CON + 2) return snap(key({ ...mix(k8, IDLE0, 0.35), air: 5, tuck: 0.25, bx: 4, flare: 0, spark: 0.7, cw: 0.6, mouth: 0, hour: 320, min: 40 }, f, A_N, IDLE0, 2));
+  if (f === A_CON + 3) return snap(key({ ...mix(k8, IDLE0, 0.75), air: 0, tuck: 0, bx: 1, py: 2, neck: -1, flare: 0, spark: 0, cw: 0.85, mouth: 0, hour: 310, min: 50 }, f, A_N, IDLE0, 2));
+  return toward(key({ ...k8, air: 0, bx: 0, py: 1 }, A_CON + 1, A_N), 0.85, f, A_N, { flare: 0, spark: 0, cw: 1, hour: 300, min: 60 });
 }
-const ATTACK_HOLDS = [80, 120, 140, 180, 110, 50, 60, 70, 90, 100, 110, 120, 140];
+const ATTACK_HOLDS = [80, 120, 140, 180, 130, 40, 40, 40, 45, 45, 40, 40, 40, 70, 90, 100, 110, 120, 140];
 
 // ------------------------------------------------------------------ roar (10 frames): "ta-da!" — midnight on the brows
 
@@ -312,7 +323,7 @@ const SP_HOLDS = [80, 110, 130, 170, 50, 60, 90, 100, 110, 120, 140];
 
 // ------------------------------------------------------------------ victory (6): the jester's bow, coin flipped high and caught
 
-const V_N = 6;
+const V_N = 8;
 export function victoryPose(f: number): Pose {
   const keys: Partial<Pose>[] = [
     { py: 1, nx: 10, ny: -22, cw: 1 },
@@ -322,20 +333,23 @@ export function victoryPose(f: number): Pose {
     { lean: 3, hx: 2, hy: 3, py: 1, nx: 9, ny: -11, fx: -8, fy: -25, lid: 2, cw: 1, h1x: 2, h2x: 2, h1y: 2, h2y: 2 },
     { lean: 3, hx: 2, hy: 3, py: 1, nx: 9, ny: -11, fx: -8, fy: -25, lid: 2, cw: 1, h1x: 2, h2x: 2, h1y: 2, h2y: 2, tick: 1 },
   ];
+  if (f >= 7) return home();
+  // f6: the settle — the bow unfolds back toward the rest pose
+  if (f === 6) return blend(snap(key(keys[5], 5, V_N)), IDLE0, 0.7);
   return snap(key(keys[Math.min(f, 5)], f, V_N));
 }
-const V_HOLDS = [100, 110, 120, 130, 140, 400];
+const V_HOLDS = [100, 110, 120, 130, 140, 320, 120, 140];
 
 // ------------------------------------------------------------------ tables
 
 const spec = (frames: number, fps: number, loop: boolean, holds: number[], marks?: AnimSpec['marks']): AnimSpec => ({ frames, fps, loop, holds, ...(marks ? { marks } : {}) });
 
-export const IMPACT = 6;
+export const IMPACT = 9;
 export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   idle: spec(IDLE_N, 8, true, IDLE_HOLDS),
   guard: spec(GUARD_N, 7, true, GUARD_HOLDS),
   roar: spec(R_N, 10, false, ROAR_HOLDS, { charge: 1, release: 4, impact: 4, recover: 6 }),
-  attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: 6, impact: 6, contact: 7, recover: 9 }),
+  attack: spec(A_N, 14, false, ATTACK_HOLDS, { charge: 1, release: 9, impact: 9, contact: 13, recover: 15 }),
   hit: spec(HIT_N, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 3 }),
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {

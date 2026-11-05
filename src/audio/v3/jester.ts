@@ -485,11 +485,11 @@ export const V3_JESTER_RECIPES = {
       let t = 0;
       while (t < 0.55) {
         times.push(t);
-        gains.push(0.11 * (1 - t / 0.7));
+        gains.push(0.22 * (1 - t / 0.7));
         t += Math.max(0.012, 0.075 * (1 - t / 0.6));
       }
       v.bursts(times, gains, { dec: 0.008, f: 3000, q: 5 });
-      v.tone('sine', [[0, 2950], [0.6, 3080, 'e']], { g: [[0, 0.03], [0.6, 0.0001, 'e']] });
+      v.tone('sine', [[0, 2950], [0.6, 3080, 'e']], { g: [[0, 0.06], [0.6, 0.0001, 'e']] });
     },
   },
   /** The face shows: one hard tick. */
@@ -583,8 +583,83 @@ export const V3_JESTER_RECIPES = {
       const D = 0.45;
       const bp = v.filt('bandpass', [[0, 1400], [D, 2600, 'e']], 2.5);
       const am = v.ring([[0, 16], [D, 24, 'e']], { d: D, mix: 0.8, to: bp });
-      v.noise('white', { g: [[0, 0], [0.04, 0.1], [D, 0.0001, 'e']], to: am });
-      for (let i = 0; i < 4; i++) revTick(v, i * 0.1, 0.035, TICK, 0.015);
+      v.noise('white', { g: [[0, 0], [0.04, 0.3], [D, 0.0001, 'e']], to: am });
+      for (let i = 0; i < 4; i++) revTick(v, i * 0.1, 0.1, TICK, 0.015);
+    },
+  },
+  /** Lose: a card rides the clock hand into the LP panel — a rising whoosh with a fluttering edge, quickening ticks. */
+  jesterLpWhoosh: {
+    cap: 2,
+    gap: 0.06,
+    verb: 0.3,
+    duck: 0.35,
+    play(v) {
+      const D = 0.5;
+      sweep(v, 0, D, [600, 1800, 4800], 0.2, { q: 1.8, peakAt: 0.92 });
+      const bp = v.filt('bandpass', [[0, 900], [D, 3200, 'e']], 2);
+      const am = v.ring([[0, 14], [D, 30, 'e']], { d: D, mix: 0.7, to: bp });
+      v.noise('white', { g: [[0, 0], [0.1, 0.12], [D * 0.95, 0.26], [D, 0.0001, 'e']], to: am });
+      let t = 0;
+      let i = 0;
+      while (t < D - 0.02) {
+        tick(v, t, 0.04 + 0.08 * (t / D), i % 2 ? TOCK : TICK);
+        t += Math.max(0.03, 0.11 * (1 - t / D));
+        i++;
+      }
+    },
+  },
+  /** Win: the cheer — the coin is caught ("ting-ting"), a springy "hup", a bright little brass fanfare (G C E G). */
+  jesterCheer: {
+    cap: 1,
+    gap: 0.3,
+    verb: 0.5,
+    duck: 0.45,
+    play(v) {
+      boing(v, 0, 330, 0.16, 0.3, { rate: 17, depth: 0.12, bend: 1.4 });
+      coin(v, 0.05, 3400, 0.12, 0.8, { click: 0.9 });
+      coin(v, 0.14, 4100, 0.08, 0.6, { click: 0.5 });
+      [79, 84, 88, 91].forEach((m, i) => {
+        const t = 0.2 + i * 0.06;
+        v.tone('square', midiHz(m), { t, g: perc(0.035 - i * 0.004, 0.01, 0.16), to: v.filt('lowpass', 3800, 0.8) });
+        coin(v, t, midiHz(m) * 2, 0.02, 0.3, { click: 0.2 });
+      });
+      tick(v, 0.46, 0.14, TICK);
+    },
+  },
+  /** To guard: the key cranks one notch ("tık") and the jester ducks behind its coin ("tok" on the brass). */
+  jesterGuard: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.25,
+    duck: 0.15,
+    play(v) {
+      ratchet(v, 0, 3, 46, 0.14);
+      tick(v, 0.1, 0.16, TOCK);
+      coin(v, 0.12, 2300, 0.06, 0.35, { click: 0.8 });
+    },
+  },
+  /** Out of guard: the spring unwinds a notch, a tick. */
+  jesterUnguard: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.25,
+    duck: 0.15,
+    play(v) {
+      boing(v, 0, 360, 0.08, 0.18, { rate: 19, depth: 0.1, bend: 1.15 });
+      tick(v, 0.07, 0.13, TICK);
+    },
+  },
+  /** The flip reveal: the card's dial hands snap to 12 — a whir, a hard tick and a high brass "ting". */
+  jesterFlipDial: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.45,
+    duck: 0.35,
+    play(v) {
+      const run = ratchet(v, 0, 8, (i) => 30 + i * 6, 0.12, { rise: 0.5 });
+      tick(v, run, 0.24, TICK);
+      coin(v, run + 0.01, 3600, 0.12, 1.0, { click: 0.8 });
+      glassBell(v, 1760, run + 0.02, 0.05, 0.8, { modes: 2 });
     },
   },
   /** Lose: the cards slam the own LP panel along the clock hand — brass thunk, a spray of ticks. */

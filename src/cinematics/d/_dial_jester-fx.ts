@@ -22,7 +22,7 @@
 import Phaser from 'phaser';
 import type { CardId } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
-import { PAL, RAMPS } from '../../art/palette';
+import { PAL } from '../../art/palette';
 import { PixelCanvas } from '../../art/pixel';
 import { ISO_CX, ISO_CY, ISO_TEX_H, ISO_TEX_W, cardIsoKey } from '../../art/cards';
 import type { AnyMonsterAnim } from '../../art/types';
@@ -33,8 +33,7 @@ import { coin as drawCoin, cog, floorDial } from '../../art/monsters-v3/dial_jes
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { sfx } from '../../audio/sfx';
 import { BOARD_CENTER, DEPTH, zoneXY, LANE_MID, type XY } from '../../view/layout';
-import { lightBeam, lightFlash } from '../../view/light';
-import { clearHologram, holoRamp, setHologram } from '../../vfx/hologram';
+import { lightFlash } from '../../view/light';
 import type { TileCard } from '../../view/TileCard';
 import { Raster } from '../../vfx/setpieces';
 import { Sparks, animate, onFrame } from '../../vfx/combat';
@@ -153,6 +152,64 @@ export function tileDial(sc: Phaser.Scene, home: XY, depth: number = FLOOR_DEPTH
   return {
     set(s) {
       r.draw((g) => floorDial(g.pc, { cx: home.x - g.x, cy: home.y - g.y, rx: RXD, ry: RYD, hour: s.hour, min: s.min, k: s.k, hot: s.hot ?? 0 }));
+    },
+    destroy() {
+      r.destroy();
+    },
+  };
+}
+
+/**
+ * The summon's giant dial reflected on the floor (§C2 "karoya dev kadran yansır"): spills ~1.7× past the tile — a
+ * 2-px brass bezel (lit gold3 near side, gold2 far, an ink lip inside), 12 ticks (the 12 / 3 / 6 / 9 long white bars,
+ * the rest gold), a long 2-px GOLD minute hand and a shorter 2-px WHITE hour hand with ink undersides, a brass hub.
+ * `k` presence 0..1 (the ring opens out from the centre), `hot` the midnight flash (everything white).
+ */
+export function summonDial(sc: Phaser.Scene, home: XY, depth: number = FLOOR_DEPTH): { set(s: DialState): void; destroy(): void } {
+  const RXD = 52;
+  const RYD = 26;
+  const r = Raster.around(sc, home.x, home.y, RXD * 2 + 14, RYD * 2 + 12, depth, Phaser.BlendModes.NORMAL);
+  const c = rx(home);
+  return {
+    set(d) {
+      r.draw((g) => {
+        if (d.k <= 0.01) return;
+        const e = Math.min(1, 0.35 + d.k * 0.65);
+        const ax = RXD * e;
+        const ay = RYD * e;
+        const hot = (d.hot ?? 0) > 0.5;
+        const at = (deg: number, k: number): XY => {
+          const a = (deg * Math.PI) / 180;
+          return { x: Math.round(c.x + Math.sin(a) * ax * k), y: Math.round(c.y - Math.cos(a) * ay * k) };
+        };
+        const n = 420;
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * TAU;
+          const x = Math.round(c.x + Math.cos(a) * ax);
+          const y = Math.round(c.y + Math.sin(a) * ay);
+          g.px(x, y, hot ? PAL.white : Math.sin(a) > 0 ? PAL.gold3 : PAL.gold2);
+          g.px(Math.round(c.x + Math.cos(a) * (ax - 1.6)), Math.round(c.y + Math.sin(a) * (ay - 0.8)), hot ? PAL.gold4 : Math.sin(a) > 0 ? PAL.gold2 : PAL.gold1);
+          if ((i & 3) === 0) g.px(Math.round(c.x + Math.cos(a) * (ax - 3.2)), Math.round(c.y + Math.sin(a) * (ay - 1.6)), PAL.ink);
+        }
+        if (d.k < 0.3) return;
+        for (let i = 0; i < 12; i++) {
+          const big = i % 3 === 0;
+          const p0 = at(i * 30, 0.9);
+          const p1 = at(i * 30, big ? 0.72 : 0.82);
+          g.line(p0.x, p0.y, p1.x, p1.y, hot ? PAL.white : big ? PAL.white : PAL.gold3, 1, big ? 2 : 1);
+        }
+        const hand = (deg: number, k: number, col: number) => {
+          const e2 = at(deg, k);
+          g.line(c.x, c.y + 1, e2.x, e2.y + 1, PAL.ink, 1, 2);
+          g.line(c.x, c.y, e2.x, e2.y, col, 1, 2);
+          g.px(e2.x, e2.y, PAL.white);
+        };
+        hand(d.hour, 0.45, hot ? PAL.white : PAL.white);
+        hand(d.min, 0.74, hot ? PAL.white : PAL.gold4);
+        g.disc(c.x, c.y, 3, PAL.gold2);
+        g.ring(c.x, c.y, 3, 3, PAL.ink);
+        g.px(c.x - 1, c.y - 1, PAL.gold4);
+      });
     },
     destroy() {
       r.destroy();
@@ -547,63 +604,101 @@ export function foldRect(sc: Phaser.Scene, box: { x: number; y: number; w: numbe
 }
 
 /**
- * The rewind of a body with NO summon pose (an old art) — its entrance played backwards: the body runs back
- * through its own idle frames fast (time unwinding, gold echoes peeling off), turns to a gold hologram in three
- * palette steps, and is drawn back DOWN into the tile from the head to the feet in whole-px steps while the light
- * column it came out of stands on the tile again and pinches out. Resolves when the body is gone (hidden).
+ * The rewind of a body with NO summon pose (an old art): what it does have runs BACKWARDS fast — its attack from the
+ * last frame to the first, then its idle — while crisp 1-px gold rims tick round it (every third frame); then it
+ * folds DOWN into its card in three whole-px crops with a 1-px gold seam on the cut, and is hidden.
+ * No hologram, no tint silhouette, no alpha blob, no dust. Resolves when the body is hidden.
  */
-export async function drainBody(sc: Phaser.Scene, u: MonsterUnit, home: XY, ms: number): Promise<void> {
+export async function rewindBody(sc: Phaser.Scene, u: MonsterUnit, ms: number): Promise<void> {
   const s = u.sprite;
   if (!s.active) return;
-  const P = setHologram(s, { reveal: 1, scan: 0, glitch: 0, tint: PAL.gold4, ramp: holoRamp(RAMPS.gold), tintMix: 0, gain: 0.7, flicker: 0, alpha: 1, white: 0, clipY: null });
-  const beam = lightBeam(sc, { x: home.x, y: Math.max(-10, home.y - 150) }, { x: home.x, y: home.y }, PAL.gold3, 0, { width: 10, depth: s.depth - 1.5, intensity: 0.6, shimmer: 0.3 });
-  const n = u.has('idle') ? u.frameCount('idle') : 0;
-  let f = n ? Math.max(0, u.frameInfo().frame) : 0;
-  let lastStep = -1;
-  const TINT = Math.round(ms * 0.3);
-  await new Promise<void>((resolve) => {
-    onFrame(
-      sc,
-      (_dt, el) => {
-        if (!s.active) return false;
-        // backwards through the idle, one frame every 30 ms, a gold echo on every third
-        const step = Math.floor(el / 30);
-        if (n && step !== lastStep) {
-          lastStep = step;
-          f = (f - 1 + n) % n;
-          u.pose('idle', f);
-          if (step % 3 === 1) afterEcho(sc, s, step % 2 ? PAL.gold3 : PAL.gold2);
-        }
-        if (el < TINT) {
-          const k = (1 + Math.floor((el / TINT) * 3)) / 3;
-          P.tintMix = 0.8 * k;
-          P.scan = k;
-          P.glitch = 0.04 * k;
-        } else {
-          P.tintMix = 0.8;
-          P.scan = 1;
-          // drawn down into the tile, head first, in 8 whole steps
-          const k = Math.min(1, (el - TINT) / Math.max(1, ms - TINT));
-          P.reveal = 1 - Math.ceil(k * 8) / 8;
-        }
-        return el < ms;
-      },
-      () => {
-        if (s.active) {
-          clearHologram(s);
-          s.setVisible(false);
-        }
-        void beam.fadeOut(140);
-        resolve();
-      },
-    );
-  });
+  const seq: [AnyMonsterAnim, number][] = [];
+  if (u.has('attack')) for (let f = u.frameCount('attack') - 1; f >= 0; f--) seq.push(['attack', f]);
+  if (u.has('idle')) {
+    const n = u.frameCount('idle');
+    for (let i = 1; i <= Math.min(n, 8); i++) seq.push(['idle', (n - i) % n]);
+  }
+  const step = seq.length ? Math.max(14, Math.round((ms - 60) / seq.length)) : 0;
+  for (let i = 0; i < seq.length; i++) {
+    if (!s.active) return;
+    u.pose(seq[i][0], seq[i][1]);
+    if (i % 3 === 1) rimEcho(sc, s, i % 2 ? PAL.gold3 : PAL.gold4, 60);
+    await sleepMs(sc, step);
+  }
+  // it folds down into its card: three whole-px crops from the top, a 1-px gold seam on the cut
+  const fr = s.frame;
+  const seam = new Raster(sc, 0, 0, 640, 360, s.depth + 0.1);
+  for (const k of [0.4, 0.65, 0.85]) {
+    if (!s.active) break;
+    const cut = Math.round(fr.height * k);
+    s.setCrop(0, cut, fr.width, fr.height - cut);
+    const b = s.getBounds();
+    const y = Math.round(b.y + (s.flipY ? 0 : cut));
+    seam.draw((g) => g.line(Math.round(b.x) + 2, y, Math.round(b.x + b.width) - 3, y, k > 0.8 ? PAL.white : PAL.gold4));
+    await sleepMs(sc, 26);
+  }
+  seam.destroy();
+  if (!s.active) return;
+  s.setCrop();
+  s.setVisible(false);
 }
 
-/** A still gold echo of a sprite's current frame that steps out (palette tint, alpha steps; never scaled). */
-function afterEcho(sc: Phaser.Scene, s: Phaser.GameObjects.Sprite, color: number): void {
-  const g = sc.add.image(Math.round(s.x), Math.round(s.y), s.texture.key, s.frame.name).setOrigin(s.originX, s.originY).setFlipX(s.flipX).setDepth(s.depth - 0.2).setTintFill(color).setAlpha(0.4);
-  void animate(sc, 120, (t) => g.active && g.setAlpha(t < 0.5 ? 0.4 : 0.2)).then(() => g.destroy());
+function sleepMs(sc: Phaser.Scene, ms: number): Promise<void> {
+  return animate(sc, ms, () => undefined);
+}
+
+/** A crisp 1-px rim of a sprite's current frame (four flat-tinted copies offset by a pixel, under the sprite). */
+function rimCopies(sc: Phaser.Scene, s: Phaser.GameObjects.Sprite, color: number, depth: number): Phaser.GameObjects.Image[] {
+  return ([[-1, 0], [1, 0], [0, -1], [0, 1]] as const).map(([dx, dy]) =>
+    sc.add.image(Math.round(s.x) + dx, Math.round(s.y) + dy, s.texture.key, s.frame.name).setOrigin(s.originX, s.originY).setFlipX(s.flipX).setDepth(depth).setTintFill(color),
+  );
+}
+
+/** One gold rim tick round a sprite's current frame, gone after `ms`. */
+function rimEcho(sc: Phaser.Scene, s: Phaser.GameObjects.Sprite, color: number, ms: number): void {
+  const imgs = rimCopies(sc, s, color, s.depth - 0.2);
+  void animate(sc, ms, () => undefined).then(() => imgs.forEach((g) => g.destroy()));
+}
+
+/**
+ * The jester in the spotlight (the coin toss): a copy of its current frame drawn at `depth` (over the units round it
+ * — the toss is its moment; the unit's own sprite and depth are left alone) inside a 1-px gold rim that follows the
+ * frame and pulses gold4 / gold2 on a 120-ms beat. Returns its stop.
+ */
+export function rimLight(sc: Phaser.Scene, u: MonsterUnit, depth: number): () => void {
+  const s = u.sprite;
+  let imgs = rimCopies(sc, s, PAL.gold4, depth - 0.1);
+  let body: Phaser.GameObjects.Image | null = sc.add.image(Math.round(s.x), Math.round(s.y), s.texture.key, s.frame.name).setOrigin(s.originX, s.originY).setFlipX(s.flipX).setDepth(depth);
+  const off = [[-1, 0], [1, 0], [0, -1], [0, 1]] as const;
+  const kill = () => {
+    imgs.forEach((g) => g.destroy());
+    imgs = [];
+    body?.destroy();
+    body = null;
+  };
+  const stop = onFrame(
+    sc,
+    (_dt, el) => {
+      if (!s.active || u.retired) return false;
+      const on = s.visible && s.alpha > 0.5;
+      const col = Math.floor(el / 120) % 2 ? PAL.gold2 : PAL.gold4;
+      imgs.forEach((g, i) => {
+        g.setVisible(on);
+        if (!on) return;
+        g.setTexture(s.texture.key, s.frame.name).setFlipX(s.flipX).setPosition(Math.round(s.x) + off[i][0], Math.round(s.y) + off[i][1]).setTintFill(col);
+      });
+      if (body) {
+        body.setVisible(on);
+        if (on) body.setTexture(s.texture.key, s.frame.name).setFlipX(s.flipX).setPosition(Math.round(s.x), Math.round(s.y));
+      }
+      return true;
+    },
+    kill,
+  );
+  return () => {
+    stop();
+    kill();
+  };
 }
 
 /** A small floor dial ring under a rewinding body: its hands race BACKWARDS for `ms`, then it shrinks away. */
@@ -634,6 +729,8 @@ export interface SpinCardOpts {
   trail?: readonly number[];
   /** without `land`: at the end the card shows its edge (flattened against what it hit) for this many ms */
   hold?: number;
+  /** the spin never shows the back (face / edge / face / edge): its picture and ATK stay readable in flight */
+  faceUp?: boolean;
 }
 
 /**
@@ -643,7 +740,10 @@ export interface SpinCardOpts {
 export async function spinCard(ctx: AnyCtx, o: SpinCardOpts): Promise<void> {
   const sc = ctx.scene;
   const from = rx(o.from);
-  const keys = [cardIsoKey(o.cardId, 'up', o.owner), cardIsoKey(o.cardId, 'side', o.owner), cardIsoKey('back', 'up', o.owner), cardIsoKey('back', 'side', o.owner)].map((k) => (sc.textures.exists(k) ? k : cardIsoKey(o.cardId, 'up', o.owner)));
+  const keys = (o.faceUp
+    ? [cardIsoKey(o.cardId, 'up', o.owner), cardIsoKey(o.cardId, 'side', o.owner), cardIsoKey(o.cardId, 'up', o.owner), cardIsoKey(o.cardId, 'side', o.owner)]
+    : [cardIsoKey(o.cardId, 'up', o.owner), cardIsoKey(o.cardId, 'side', o.owner), cardIsoKey('back', 'up', o.owner), cardIsoKey('back', 'side', o.owner)]
+  ).map((k) => (sc.textures.exists(k) ? k : cardIsoKey(o.cardId, 'up', o.owner)));
   const img = sc.add.image(from.x, from.y, keys[0]).setOrigin(ISO_CX / ISO_TEX_W, ISO_CY / ISO_TEX_H).setDepth(o.depth ?? DEPTH.FX + 5);
   if (o.tile && o.tile.active) o.tile.destroy();
   const trail = new Sparks(sc, (o.depth ?? DEPTH.FX + 5) - 0.1);

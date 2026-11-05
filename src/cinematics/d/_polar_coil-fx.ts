@@ -104,8 +104,8 @@ export interface Spill {
 
 /** The coil's two-colour core light on the floor: N orange spilling behind it, S blue in front. */
 export function coreSpill(sc: Phaser.Scene, home: XY, dir: 1 | -1, k0 = 0): Spill {
-  const n = lightPool(sc, home.x - dir * 7, home.y, { color: PAL.fire3, spill: PAL.fire2, radius: 18, intensity: k0, fadeIn: 60 });
-  const s = lightPool(sc, home.x + dir * 7, home.y, { color: PAL.water3, spill: PAL.water2, radius: 18, intensity: k0, fadeIn: 60 });
+  const n = lightPool(sc, home.x - dir * 7, home.y, { color: PAL.fire3, spill: PAL.fire2, radius: 22, intensity: k0, fadeIn: 60 });
+  const s = lightPool(sc, home.x + dir * 7, home.y, { color: PAL.water3, spill: PAL.water2, radius: 22, intensity: k0, fadeIn: 60 });
   return {
     level(k, ms = 60) {
       n.setIntensity(k, ms);
@@ -505,11 +505,21 @@ export function splinter(sc: Phaser.Scene, at: XY, ground: XY, o: { dirs: XY[]; 
   })();
   for (let i = 0; i < 3; i++) {
     const d = o.dirs[i] ?? { x: 1, y: 0 };
-    // the grains bounce back out along where the spike came from
-    for (let k = 0; k < 5; k++) {
-      const a = Math.atan2(-d.y, -d.x) + RR(-0.7, 0.7);
-      const v = RR(50, 120);
-      sp.add({ x: at.x - d.x * 8, y: at.y - d.y * 6, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 40, ay: 380, drag: 1, life: RR(320, 560), colors: k === 0 ? [PAL.white, TIPS[i], TIPS_DIM[i]] : [PAL.stone3, PAL.stone2, PAL.stone1], shape: k === 0 ? 'px' : 'sq', size: 1, floor: ground.y + RR(-3, 4), bounce: 0.3, fadeAt: 0.8 });
+    const hx = at.x - d.x * 9;
+    const hy = at.y - d.y * 6;
+    // the spike breaks in two: its hot head and its shaft tumble back off the guard as 2-px shards in its own pole
+    // colour (N fire / S water / gold), then its iron dust rains down IN FRONT of the guard and lies a beat
+    const back = Math.atan2(-d.y, -d.x);
+    for (let k = 0; k < 2; k++) {
+      const a = back + RR(-0.5, 0.5);
+      const v = RR(60, 110);
+      sp.add({ x: hx, y: hy, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 70, ay: 420, drag: 0.8, life: RR(620, 820), colors: k === 0 ? [PAL.white, TIPS[i], TIPS_DIM[i], SHAFT_MD[i]] : [TIPS_DIM[i], SHAFT_MD[i], SHAFT_DK[i]], shape: 'streak', size: 2, len: 0.025, floor: ground.y + RR(3, 9), bounce: 0.35, fadeAt: 0.85 });
+    }
+    for (let k = 0; k < 7; k++) {
+      const a = back + RR(-0.9, 0.9);
+      const v = RR(35, 95);
+      const tint = k % 3 === 0;
+      sp.add({ x: hx + RR(-2, 2), y: hy + RR(-2, 2), vx: Math.cos(a) * v, vy: Math.sin(a) * v - 45, ay: 400, drag: 1, life: RR(560, 900), colors: tint ? [TIPS_DIM[i], SHAFT_MD[i], SHAFT_DK[i]] : [PAL.mist, PAL.stone3, PAL.stone2], shape: 'sq', size: 2, floor: ground.y + RR(2, 10), bounce: 0.25, fadeAt: 0.8 });
     }
   }
   sp.release();
@@ -710,10 +720,10 @@ function spoolPixels(k: number, step: number, side: 1 | -1): SpoolPx {
 }
 
 /** The spool's timeline (scene ms): pop + side-on wobble, the roll, the run-down wobble, the break. */
-export const SPOOL_POP = 110;
-export const SPOOL_ROLL = 260;
-export const SPOOL_RUNDOWN = 70;
-export const SPOOL_BREAK = 130;
+export const SPOOL_POP = 90;
+export const SPOOL_ROLL = 220;
+export const SPOOL_RUNDOWN = 60;
+export const SPOOL_BREAK = 110;
 export const SPOOL_MS = SPOOL_POP + SPOOL_ROLL + SPOOL_RUNDOWN + SPOOL_BREAK;
 
 /**
@@ -724,7 +734,7 @@ export const SPOOL_MS = SPOOL_POP + SPOOL_ROLL + SPOOL_RUNDOWN + SPOOL_BREAK;
  * SPOOL_BREAK ms breaks with the remains: copper curls spring off it and it goes in two dither steps. Loose copper
  * curls spring out of the wire heap as it leaves. Resolves when it is gone.
  */
-export function emptySpool(sc: Phaser.Scene, home: XY, dir: 1 | -1, depth: number, from?: XY): Promise<void> {
+export function emptySpool(sc: Phaser.Scene, home: XY, dir: 1 | -1, depth: number, from?: XY, onBreak?: () => void): Promise<void> {
   const sp = new Sparks(sc, depth);
   for (let i = 0; i < 10; i++) {
     const side = i % 2 ? 1 : -1;
@@ -733,8 +743,10 @@ export function emptySpool(sc: Phaser.Scene, home: XY, dir: 1 | -1, depth: numbe
   sp.release();
   const start = from ?? { x: home.x - dir * 14, y: home.y - 6 };
   const restY = home.y + 1 - SPOOL_R;
-  const land = { x: start.x + dir * 5, y: restY };
-  const roll = { x: dir * 18, y: 9 };
+  // it leaves the fallen spindle's head end and rolls AWAY from the body (−dir: past the head, toward the front of
+  // the tile down the 2:1 diagonal), so the spool reads clear of the remains
+  const land = { x: start.x - dir * 5, y: restY };
+  const roll = { x: -dir * 18, y: 9 };
   const r = Raster.around(sc, home.x, home.y - 10, 140, 90, depth);
   const T1 = SPOOL_POP;
   const T2 = T1 + SPOOL_ROLL;
@@ -776,6 +788,7 @@ export function emptySpool(sc: Phaser.Scene, home: XY, dir: 1 | -1, depth: numbe
         const lv = el < T3 ? 1 : el < T3 + SPOOL_BREAK / 2 ? 0.6 : 0.3;
         if (el >= T3 && !broke) {
           broke = true;
+          onBreak?.();
           // the break: copper curls spring off the reel, steel grit drops
           const b = new Sparks(sc, depth + 0.1);
           for (let i = 0; i < 9; i++) {
@@ -789,7 +802,7 @@ export function emptySpool(sc: Phaser.Scene, home: XY, dir: 1 | -1, depth: numbe
         const Y = Math.round(y);
         r.draw((g) => {
           // the floor contact shadow under the rim
-          g.ell(X - dir, Math.round(restY + (y - land.y > 0 ? y - land.y : 0)) + SPOOL_R + 1, Math.max(2, Math.round(SPOOL_R * k)), 1, PAL.night1, lv);
+          g.ell(X + dir, Math.round(restY + (y - land.y > 0 ? y - land.y : 0)) + SPOOL_R + 1, Math.max(2, Math.round(SPOOL_R * k)), 1, PAL.night1, lv);
           for (const [dx, dy, c] of spoolPixels(k, step, dir === 1 ? -1 : 1)) g.dpx(X + dx, Y + dy, c, lv);
         });
         return true;

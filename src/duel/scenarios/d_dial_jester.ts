@@ -92,6 +92,11 @@ const scenarios: Record<string, Scenario> = {
     },
     steps: coin(0, 1, 'tails'),
   },
+  djCoinWinGrown: {
+    desc: 'Yazı-tura: bildi — rakibin büyümüş Bulut Yavrusu kendi büyümesini geri sararak yavruya döner, sonra kartına katlanır',
+    stage: { zones: 5, p0: { monsters: five(N, 'dial_jester') }, p1: { monsters: five(N, { id: 'cloud_hatchling', permAtk: 1200, permDef: 800 }, 'magma_titan') } },
+    steps: coin(0, 1, 'tails'),
+  },
   djCoinWinP2: {
     desc: 'Yazı-tura (oyuncu 2): bildi',
     stage: { zones: 5, active: 1, p0: { monsters: five('magma_titan', N, 'reed_heron') }, p1: { monsters: five(N, 'dial_jester', 'cloud_hatchling') } },

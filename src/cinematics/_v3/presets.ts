@@ -67,7 +67,7 @@ export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
   steppe_spiralhorn: { material: 'light', accent: 'plant' },
   polar_needle: { material: 'crystal', accent: 'crystal' }, // fallback only: the needle's own fallen plates replace the break (C12, §5.2)
   polar_anvil: { material: 'stone', accent: 'crystal' },
-  polar_coil: { material: 'stone', accent: 'crystal' },
+  polar_coil: { material: 'stone', accent: 'stone' },
   polar_sovereign: { material: 'stone', accent: 'crystal' },
   straw_decoy_token: { material: 'plant', accent: 'plant' },
 };
