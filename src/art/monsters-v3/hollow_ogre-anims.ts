@@ -53,10 +53,10 @@ function snap(p: Pose): Pose {
 
 // the club head hangs here in idle (held low and forward, just clear of the feet band: HA-9 — the guard lifts it
 // across the chest, so nothing of the club may sit in the bottom 6 rows while resting)
-const PLANT: readonly [number, number] = [AX + 34, GY - 13];
+const PLANT: readonly [number, number] = [AX + 33, GY - 15];
 /** the pose tables name club angles on a "hang" scale: the club lies at (a − CA_OFF)° (idle ≈ 32°: forward and low,
  *  well off the forearm's line so arm and club read as two shapes) */
-const CA_OFF = 33;
+const CA_OFF = 15;
 /** near-hand target that keeps the club head planted at PLANT for a (hang-scale) club angle `a` (deg) */
 function planted(a: number): Partial<Pose> {
   const ca = a - CA_OFF;
@@ -187,12 +187,13 @@ const ATTACK_KEYS: Partial<Pose>[] = [
   { ...hand(57, 35, -95), crouch: 1, lean: -2, eye: 1.6, mane: 0.3, fx: -17, fy: -20, fc: 0.8, probe: -1, fly: -1 },
   // full wind-up: club behind the shoulder, the log leaning back (the long hold)
   { ...hand(50, 9, 162), nb: -1, crouch: 3, lean: -8, bob: 1, eye: 2, mane: 0.7, fx: -20, fy: -28, fc: 1, fs: 30, maneSway: -6, probe: -1, fly: -1 },
-  // swing: overhead
-  { ...hand(52, 20, -15), nb: -1, crouch: 1, lean: -3, eye: 2, mane: 0.5, fx: -18, fy: -24, fc: 1, maneSway: -10, probe: -1, fly: -1 },
-  // release: the club comes down forward, the log pitching over
-  { ...hand(57, 38, 35), crouch: 2, lean: 8, eye: 2, mane: 0.2, fx: -15, fy: -18, fc: 0.8, maneSway: -4, probe: -1, fly: -1 },
-  // contact: the head CRUSHES the target's upper body from above (chest height in front of the giant)
-  { ...hand(56, 40, 22), crouch: 3, lean: 10, bob: 1, eye: 2, fx: -15, fy: -17, fc: 0.7, maneSway: 4, probe: -1, fly: -1 },
+  // swing: the club comes OVER the top, straight up above the crown
+  { ...hand(50, 22, -32), nb: -1, crouch: 1, lean: -3, eye: 2, mane: 0.5, fx: -18, fy: -24, fc: 1, maneSway: -10, probe: -1, fly: -1 },
+  // release: the club whips forward over the head (a smear crescent behind it), the log pitching over
+  { ...hand(54, 24, 8), crouch: 2, lean: 6, eye: 2, mane: 0.2, fx: -15, fy: -18, fc: 0.8, maneSway: -4, smear: 44, probe: -1, fly: -1 },
+  // contact (critic r3: not a horizontal jab): the head comes DOWN at about 45° from above onto the target's head /
+  // shoulder line, the club clear of the body, the arm high
+  { ...hand(55, 27, 46), crouch: 3, lean: 10, bob: 1, eye: 2, fx: -15, fy: -17, fc: 0.7, maneSway: 4, probe: -1, fly: -1 },
   // … and falls through to the floor: the ground cracks (splinters, leaves, dust)
   { ...hand(60, 51, 45), crouch: 4, lean: 11, bob: 2, eye: 1.9, maneSway: 8, splinter: 0.4, leaves: 0.25, sx: 38, sy: -3, dust: 0.5, probe: -1, fly: -1 },
   // recover: the club lifts

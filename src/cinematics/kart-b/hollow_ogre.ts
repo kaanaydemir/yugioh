@@ -762,7 +762,12 @@ async function smashV3(s: StrikeArgs): Promise<void> {
   // stands a few px nearer the camera than the target, so the club is drawn over the body for the hit-stop
   // (critic r2: stop short — daylight between the bodies, the club head visible ON the target's core)
   const inset = s.blocked ? 8 : 7;
-  const tc = s.target && !s.direct ? s.target.core() : null;
+  // critic r3: the club comes DOWN (contact f6, ≈45°) onto the target's head / shoulder line, not into its belly
+  const tc = s.target && !s.direct ? (() => {
+    const c = s.target!.core();
+    const h = s.target!.worldPoint('top');
+    return { x: c.x, y: Math.round(lerp(c.y, h.y, 0.4)) };
+  })() : null;
   const aim: XY = tc ? { x: tc.x - nd.x * inset, y: Math.min(tc.y, ground.y - 10) } : { x: ground.x - nd.x * 8, y: ground.y - 2 };
   let feet: XY = { x: aim.x - off.x, y: aim.y - off.y };
   if (s.target && !s.direct) feet.y = Math.max(feet.y, s.target.home.y + 3);
@@ -835,31 +840,85 @@ async function smashV3(s: StrikeArgs): Promise<void> {
       const v = 60 + R() * 100;
       // chunky bark slabs (3 px) among the 2-px chips: the club's own wood shattering on the body
       const chunk = big && i % 4 === 0;
-      sp.add({ x: p.x, y: p.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 20, ay: 420, floor: fy + (R() - 0.5) * 6, bounce: 0.3, life: 420 + R() * 260, colors: i % 2 ? [PAL.earth4, PAL.earth3, PAL.earth2] : [PAL.earth2, PAL.earth1, PAL.earth0], shape: i % 3 === 0 || chunk ? 'sq' : 'px', size: chunk ? 3 : 2, fadeAt: 1, flicker: i % 5 === 0 });
+      // spawned already OUT on a ring (critic r3: during the hit-stop a burst born on one point is one dot — the frozen
+      // frame shows the first ring of splinters)
+      const r0 = 4 + R() * (big ? 9 : 6);
+      sp.add({ x: p.x + Math.cos(a) * r0, y: p.y + Math.sin(a) * r0, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 20, ay: 420, floor: fy + (R() - 0.5) * 6, bounce: 0.3, life: 420 + R() * 260, colors: i % 2 ? [PAL.earth4, PAL.earth3, PAL.earth2] : [PAL.earth2, PAL.earth1, PAL.earth0], shape: i % 3 === 0 || chunk ? 'sq' : 'px', size: chunk ? 3 : 2, fadeAt: 1, flicker: i % 5 === 0 });
     }
     sp.release();
-    // the wood-flash at the club head: a white-hot 2-frame star of heartwood light where the blow lands
-    const star = Raster.around(sc, p.x, p.y, 40, 40, DEPTH.FX + 1.5);
-    void animate(sc, 110, (kk) => {
-      star.draw((g) => {
-        const L = kk < 0.5 ? (big ? 8 : 6) : big ? 5 : 4;
-        const c0 = kk < 0.5 ? PAL.white : PAL.earth4;
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) for (let q = 1; q <= L; q++) g.px(p.x + dx * q, p.y + dy * Math.ceil(q * 0.6), q < L / 2 ? c0 : PAL.earth4);
-        for (const [dx, dy] of [[1, 1], [-1, -1], [1, -1], [-1, 1]] as const) for (let q = 1; q <= L >> 1; q++) g.px(p.x + dx * q, p.y + dy * q, PAL.earth4);
-        g.rect(p.x - 1, p.y - 1, 3, 3, c0);
-      });
-    }).then(() => star.destroy());
+    // the wood-flash at the club head (critic r3: the payoff lives ON the frozen contact frame): a big white-hot star
+    // of heartwood light, gold4 tips, a jagged split-wood corona — drawn on the first tick, held through the hit-stop
+    // (game time frozen: el stays 0), then two shrinking steps once the world moves again
+    frozenStar(p, big);
     void lightFlash(sc, p.x, p.y, PAL.gold4, big ? 30 : 22, 240, { floorY: fy, air: 1, intensity: 1 });
     if (boosted && boost) {
       // the POLLEN fountain bursts up off the club's glowing sprouts
       boost.aura.flare();
       const b0 = boost.aura.bud(0) ?? livePoint(u, 'staff');
       const b1 = boost.aura.bud(1);
+      frozenPollen(b0);
+      if (b1) frozenPollen(b1);
       pollen(sc, { x: b0.x, y: b0.y - 1 }, 44, R, DEPTH.FX + 2, fy);
       if (b1) pollen(sc, { x: b1.x, y: b1.y - 1 }, 30, R, DEPTH.FX + 2, fy);
       play('hoPollen', { volume: 0.95, pan: panAt(b0.x) });
     }
   };
+  function frozenStar(p: XY, big: boolean): void {
+    const star = Raster.around(sc, p.x, p.y, 64, 56, DEPTH.FX + 1.5);
+    const rays: [number, number, number][] = [];
+    for (let i = 0; i < 10; i++) rays.push([(i / 10) * TAU + R() * 0.3, (big ? 9 : 6) + R() * (big ? 7 : 4), R()]);
+    void animate(sc, 120, (_k, el) => {
+      const st = el < 25 ? 0 : el < 70 ? 1 : 2;
+      star.draw((g) => {
+        const s0 = [1, 0.62, 0.32][st];
+        for (const [a, L0, j] of rays) {
+          const L = Math.round(L0 * s0);
+          for (let q = 1; q <= L; q++) {
+            const x = Math.round(p.x + Math.cos(a) * q);
+            const y = Math.round(p.y + Math.sin(a) * q * 0.8);
+            const c = q === L ? PAL.gold4 : st === 0 && q < L * 0.55 ? PAL.white : PAL.earth4;
+            g.px(x, y, c);
+            if (q < L * 0.4 && st === 0) g.px(x + 1, y, c);
+          }
+          // split-wood shards flung off the tips (2 px, heartwood / bark)
+          if (st < 2) {
+            const d = L + 2 + Math.round(j * 3);
+            const x = Math.round(p.x + Math.cos(a) * d);
+            const y = Math.round(p.y + Math.sin(a) * d * 0.8);
+            g.rect(x, y, 2, j > 0.5 ? 2 : 1, j > 0.5 ? PAL.earth4 : PAL.earth3);
+          }
+        }
+        const cr = st === 0 ? (big ? 3 : 2) : 1;
+        g.disc(p.x, p.y, cr + 1, PAL.gold4);
+        g.disc(p.x, p.y, cr, PAL.white);
+      });
+    }).then(() => star.destroy());
+  }
+  // boosted: the buds' first violet bloom, on the frozen frame (the pollen fountain flies once the world moves)
+  function frozenPollen(b: XY): void {
+    const r = Raster.around(sc, b.x, b.y - 8, 44, 40, DEPTH.FX + 2.2);
+    const pts: [number, number, number][] = [];
+    for (let i = 0; i < 14; i++) {
+      const a = -Math.PI / 2 + (R() - 0.5) * 2.2;
+      const d = 3 + R() * 11;
+      pts.push([Math.round(b.x + Math.cos(a) * d), Math.round(b.y + Math.sin(a) * d), i]);
+    }
+    void animate(sc, 110, (_k, el) => {
+      const st = el < 25 ? 0 : el < 70 ? 1 : 2;
+      r.draw((g) => {
+        for (const [x, y, i] of pts) {
+          const yy = y - st * 2;
+          if (st === 2 && i % 2) continue;
+          if (i % 3 === 0) g.rect(x, yy, 2, 2, st === 0 ? PAL.void4 : PAL.void3);
+          else g.px(x, yy, i % 5 === 0 ? PAL.white : PAL.void4);
+        }
+        if (st === 0) {
+          for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0], [0, 0]] as const) g.px(b.x + dx, b.y + dy, PAL.white);
+          for (const [dx, dy] of [[0, -3], [0, 3], [-3, 0], [3, 0], [0, -2], [0, 2], [-2, 0], [2, 0]] as const) g.px(b.x + dx, b.y + dy, PAL.void4);
+        }
+      });
+    }).then(() => r.destroy());
+  }
   if (s.direct) {
     // the club comes all the way down in front, then the floor ruptures to the duelist
     const fall = u.frameMs('attack', CON);
@@ -982,8 +1041,93 @@ if (LOOK_V3)
 
 // ================================================================ death: the roots into the tile, one sprout wilts
 
-/** Ms the lone sprout stands (upright) before it wilts. */
-const SPROUT_HOLD = 260;
+/**
+ * The death's last beat, drawn (ink-edged, flat bands): a 6-px sprout with a violet bud on a turned-soil mound and a
+ * gold3 light pool; it stands (the bud breathes), the stem bends, the bud droops and greys, a leaf falls (onWilt), the
+ * pool steps down, and it sinks into the soil in two steps (onSink: the card is born). ≈ 620 ms.
+ */
+function sproutEnd(sc: Phaser.Scene, at: XY, dir: 1 | -1, onWilt: () => void, onSink: () => void): Promise<void> {
+  const r = Raster.around(sc, at.x, at.y - 6, 30, 24, unitDepth(at.y) + 0.1);
+  const pool = lightPool(sc, at.x, at.y - 4, { color: PAL.gold3, spill: PAL.gold2, radius: 14, floorY: at.y, intensity: 0.9, anim: 'flicker', fadeIn: 0 });
+  // [ms, step]: 0 upright · 1 upright (bud glint) · 2 bends · 3 droops · 4 leaf gone · 5/6 sinking
+  const T = [90, 90, 100, 110, 110, 60, 60];
+  const draw = (st: number) =>
+    r.draw((g) => {
+      const x = at.x;
+      const y = at.y;
+      const sink = st >= 5 ? (st - 4) * 2 : 0;
+      // the mound of turned soil (lit top row)
+      g.rect(x - 4, y, 9, 1, PAL.earth1);
+      g.rect(x - 3, y - 1, 7, 1, PAL.earth2);
+      g.px(x - 2, y - 1, PAL.earth3);
+      if (st >= 6) return;
+      const wilt = st <= 1 ? 0 : st - 1; // 0 … 3
+      const green = wilt < 2;
+      const stemL = green ? PAL.leaf2 : PAL.earth2;
+      const stemD = green ? PAL.leaf1 : PAL.earth1;
+      const H = 6 - sink;
+      // stem, 2 px wide (lit / shade), its top bending over by wilt
+      const bendAt = (i: number) => Math.round(dir * (wilt >= 1 ? (i / H) ** 2 * [0, 1, 2, 3][wilt] : 0));
+      let top = { x, y: y - 1 };
+      for (let i = 0; i < H; i++) {
+        const xx = x + bendAt(i);
+        const yy = y - 2 - i + (wilt >= 3 && i > H - 3 ? i - (H - 3) : 0);
+        g.px(xx - 1, yy, PAL.ink);
+        g.px(xx + 2, yy, PAL.ink);
+        g.px(xx, yy, stemL);
+        g.px(xx + 1, yy, stemD);
+        top = { x: xx, y: yy };
+      }
+      // two leaves off the lower stem (the far one gone once it fell)
+      const ly = y - 4;
+      const droop = wilt >= 2 ? 1 : 0;
+      g.rect(x - 3, ly + droop, 3, 2, PAL.ink);
+      g.rect(x - 3, ly + droop, 2, 1, green ? PAL.leaf2 : PAL.earth2);
+      g.px(x - 1, ly + droop + 1, green ? PAL.leaf1 : PAL.earth1);
+      if (st < 4) {
+        g.rect(x + 2, ly - 1 + droop, 3, 2, PAL.ink);
+        g.rect(x + 3, ly - 1 + droop, 2, 1, green ? PAL.leaf1 : PAL.earth1);
+      }
+      // the bud: 3×3 ink-edged, a violet heart (a gold4 glint while it stands), drooping to the side and greying
+      const bx = top.x + (wilt >= 2 ? dir : 0);
+      const by = top.y - 2 + (wilt >= 2 ? wilt : 0);
+      g.rect(bx - 1, by - 1, 4, 4, PAL.ink);
+      const live = wilt < 2;
+      g.rect(bx, by, 2, 2, live ? PAL.void3 : PAL.void1);
+      g.px(bx, by, live ? (st === 1 ? PAL.white : PAL.void4) : PAL.void2);
+      if (st === 1) g.px(bx + 1, by - 2, PAL.gold4);
+    });
+  return new Promise<void>((resolve) => {
+    let st = -1;
+    let acc = 0;
+    let i = 0;
+    onFrame(sc, (_dt, el) => {
+      while (i < T.length && el >= acc + T[i]) {
+        acc += T[i];
+        i++;
+      }
+      if (i !== st) {
+        st = i;
+        if (st === 3) {
+          onWilt();
+          lastLeaf(sc, { x: at.x + 4 * dir, y: at.y - 5 }, at.y, dir);
+          pool.setIntensity(0.5, 0);
+        }
+        if (st === 4) pool.setIntensity(0.25, 0);
+        if (st === 5) {
+          pool.fadeOut(120);
+          onSink();
+        }
+        if (st < T.length) draw(st);
+      }
+      return i < T.length;
+    }, () => {
+      r.destroy();
+      pool.destroy();
+      resolve();
+    });
+  });
+}
 
 async function rootsDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
   const ev = ctx.ev;
@@ -1020,7 +1164,10 @@ async function rootsDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
     else leave = Promise.resolve();
   };
   ctx.scene.events.emit('v3:dying', u);
-  const pan = panAt(home.x);
+  // critic r3 (blocker): every floor beat of the death happens where the BODY stands — after its own losing strike the
+  // sprite is in front of the enemy, two tiles from its card tile (only the card leaves from the home tile)
+  const foot = (): XY => (u.sprite.active ? rint({ x: u.sprite.x, y: u.sprite.y + u.hover }) : home);
+  const pan = panAt(foot().x);
   let roots: ReturnType<typeof rootsIntoTile> | null = null;
   let retract: ReturnType<typeof start> | null = null;
   try {
@@ -1050,7 +1197,8 @@ async function rootsDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
         // the planted knot lights leave the hollow as small SEEDS: they rise, dim, and fall back into the tile beside
         // the spot where the lone sprout will stand
         const c = rint(livePoint(u, 'core'));
-        const sx = home.x + (u.flipX ? -1 : 1);
+        const ft = foot();
+        const sx = ft.x + (u.flipX ? -1 : 1);
         const r = new Raster(sc, 0, 0, 640, 360, DEPTH.FX + 1);
         void animate(sc, 760, (k) => {
           r.draw((g) => {
@@ -1059,7 +1207,7 @@ async function rootsDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
               const up = k < 0.35 ? k / 0.35 : 1;
               const dn = k < 0.35 ? 0 : (k - 0.35) / 0.65;
               const x = Math.round(lerp(c.x + (i ? 2 : -2), tx, dn));
-              const y = Math.round(c.y - 10 * up * (1 - dn) + dn * dn * (home.y - 1 - c.y));
+              const y = Math.round(c.y - 10 * up * (1 - dn) + dn * dn * (ft.y - 1 - c.y));
               // a short falling trail behind it, then the seed itself (big while it rises, smaller as it dims)
               if (dn > 0.05) for (let q = 1; q <= 3; q++) g.px(x, y - q * 2, q === 1 ? PAL.void3 : PAL.void2);
               drawSeed(g, { x, y }, k < 0.45 ? 3 : k < 0.8 ? 2 : 1);
@@ -1071,7 +1219,7 @@ async function rootsDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
     });
     // f2 …: root strands slither out along the floor and dig into the tile
     atFrame(u, 'death', 2, () => {
-      roots = rootsIntoTile(sc, { x: home.x, y: home.y }, 9, R, DEPTH.SHADOW + 0.6);
+      roots = rootsIntoTile(sc, foot(), 9, R, DEPTH.SHADOW + 0.6);
       const span = Math.max(240, u.rangeMs('death', Math.max(2, u.frameInfo().frame), n - 2));
       void animate(sc, span, (k) => roots?.set(k)).then(() => {
         roots?.destroy();
@@ -1081,39 +1229,40 @@ async function rootsDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
     // dissolve: the roots are pulled into the tile (sustained, ends with the sprout)
     atFrame(u, 'death', dissolveF, () => {
       retract = start('hoRootsRetract', { volume: 0.85, pan });
-      loam(sc, home, 8, 40, R);
+      loam(sc, foot(), 8, 40, R);
     });
     // dissolve + 1: the trunk caves in (dust drawn inward)
     atFrame(u, 'death', Math.min(n - 1, dissolveF + 1), () => {
       play('hoCollapse', { volume: 0.85, pan });
-      caveIn(sc, { x: home.x, y: home.y - 8 }, R);
+      const ft = foot();
+      caveIn(sc, { x: ft.x, y: ft.y - 8 }, R);
       void shake(sc, 120, 1);
     });
-    // the lone sprout appears: a gold / violet light flicker on it (2 frames), and it HOLDS upright before it wilts
-    const sproutF = Math.max(0, n - 4);
+    // the lone sprout (critic r3: a 3-px sprout and a colour-change wilt read as dead air): the sprite's sprout frame
+    // hands over to a drawn sprout — 6 px, a violet bud, a gold3 pool under it — that WILTS over three steps (the stem
+    // bends, the bud droops, a leaf falls), then sinks into the soil; the card is born as it sinks
+    const sproutF = Math.max(0, n - 2);
+    let ending: Promise<void> | null = null;
     atFrame(u, 'death', sproutF, () => {
-      const sp = { x: home.x + (u.flipX ? -1 : 1), y: home.y - 5 };
-      void lightFlash(sc, sp.x, sp.y, PAL.gold3, 14, 120, { floorY: home.y, air: 0.8, intensity: 0.9 });
-    }, { late: false });
-    atFrame(u, 'death', n - 2, () => {
       if (!u.sprite.active) return;
       u.sprite.anims.pause();
-      void sleep(sc, SPROUT_HOLD).then(() => {
-        if (u.sprite.active) u.sprite.anims.resume();
-      });
+      const ft = foot();
+      const dir: 1 | -1 = u.flipX ? -1 : 1;
+      ending = sproutEnd(sc, { x: ft.x + dir, y: ft.y }, dir, () => {
+        retract?.stop(120);
+        play('hoWilt', { volume: 0.8, pan });
+      }, burst);
+      u.sprite.setVisible(false);
     }, { late: false });
-    // the last frame: the lone sprout wilts, one leaf drops
-    atFrame(u, 'death', n - 1, () => {
-      retract?.stop(120);
-      play('hoWilt', { volume: 0.8, pan });
-      lastLeaf(sc, { x: home.x + (u.flipX ? -1 : 1), y: home.y - 5 }, home.y, u.flipX ? -1 : 1);
-    }, { late: false });
-    await until(sc, () => !u.sprite.active || (inDeath() && u.frameInfo().frame >= n - 1), u.animMs('death') + SPROUT_HOLD + 300);
-    if (u.sprite.active) await sleep(sc, u.frameMs('death', n - 1) + 60);
+    await until(sc, () => !u.sprite.active || ending !== null || (inDeath() && u.frameInfo().frame >= n - 1), u.animMs('death') + 400);
+    // (the ending may have started this frame)
     if (boost) u.setAura('ogreBoost', null);
-    // the last 150 ms: the wilted sprout goes out in four bayer steps (the card is born on that frame)
-    burst();
-    if (u.sprite.active) await knockOut(sc, u, 150, 4);
+    const end = ending as Promise<void> | null;
+    if (end) await end;
+    else {
+      burst();
+      if (u.sprite.active) await knockOut(sc, u, 150, 4);
+    }
   } catch (e) {
     console.error('[ogre death] failed', e);
   } finally {

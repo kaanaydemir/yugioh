@@ -550,3 +550,76 @@ snd-hoImpact.png, snd-hoRootRun.png.
 - Guard chips still share the frame with the shared BLOK badge (now readable after the beam).
 - Summon stake → SLAM ≈ 1.2 s (busy with beats now, but not the 1.6 s total the critic floated).
 - `measure` / camera gate / v1 filmdiff not re-run this round.
+
+## Stage: FIX — round 2 (independent critic round 2, `critic-r2/`)
+
+Evidence: `shots/v3/kart-b/hollow_ogre/fix-r2/`, clips `shots/v3/kart-b/clips/{hoEat2,hoSummon,hoEatAttack,hoEatDie}.mp4`
+(+ .wav/.json). Measure (`--look v3`, 7 scenarios) in scratch `…/scratchpad/hollow_ogre/r2/m.json`.
+
+### Findings → what changed
+1. **BLOCKER — hoUnravel / boosted death branch dropped.** `rootsDeathV3`: the f1 beat (and the dissolve / cave-in beats)
+   no longer use `late:false` — `atFrame` fires once as soon as the death shows f1 or later (the shared posematch
+   starts the death on the contact). The knot-seed raster now starts from the LIVE core point; the seeds are drawn
+   size 3 → 2 → 1 with a short falling violet trail. measure: hoKill `death:1@1100 … hoUnravel@1233`; hoEatDie
+   `death:1@7833 hoUnravel@7883`. New scenario **hoEatDie** (eat ×2 → 2200, attack Kristal Ejder 2800, the ogre dies):
+   `fix-r2/hoEatDie-death.png` (two seeds leave the hollow, fall beside the lone sprout).
+2. **MAJOR — hoShrink early.** New `hoGhost` (the hollow's low blown-jug call + a violet breath) plays when the ghost
+   rises; `hoShrink` (D 0.35 = SHRINK_MS game) now plays after RISE + HOLD so its tik lands on the seed: hoEat2
+   `hoShrink@1517 → seed launch 1900` (was 560 ms early). The ghost's appearance also gets an eye-flick (gold glint on
+   the pile side of the eye, a quiet creak).
+3. **MAJOR — hoSeed short.** `hoSeed` / `hoSeedSlow` are sustained (`start` at launch, `stop(45)` at the catch), built by
+   `seedVoice(D)` with the arc following the picture (apex ≈ 45–50 %, gentle fall to the catch), D 0.66 / 0.80 s
+   (measured flights 666 / 783 ms), the tail +6 dB and spread from the apex to the catch.
+4. **MAJOR — hoLogFall cut.** Re-timed to the real fall (D 0.38, peak 92 %, a sub swelling into the stake). New
+   `hoLogCall` 170 ms into the card slam: the hole's hollow "oom" + a thin whistle starting high above (fills the
+   480 ms gap: `cardSlam@17 hoLogCall@250 hoLogFall@500 hoStake@850`).
+5. **MAJOR — contact on the fall-through frame.** The strike now holds the contact frame f6 through the hit-stop
+   (`await sleep(frameMs(CON))` on the frozen show clock) and plays f7 + the floor crack / ring / loam only after it:
+   hoAttack `attack:6@1200 (number 1200) → attack:7@1500`. Inset 2 → 7 px (daylight between the bodies), the body burst
+   26 chips with 3-px bark slabs, plus a 2-frame white→heartwood wood-flash star at the club head
+   (`fix-r2/hoAttack-contact.png`).
+6. **MAJOR — paper doors.** Rig `drawDoor` rewritten: the open slabs show their OUTER bark face (BARK bands + vertical
+   grain seams, a dark hinge crease) as a foreshortened wedge swinging out past the hollow's edge, only a 1-px earth3/2
+   lip on the torn edge (no earth4 face anywhere); on the SLAM they sag on the hinge and slide down, never a plank lying
+   in front of the legs (the cinematic chips them on f11). `fix-r2/hoSummon-zoom.png` #10–#17.
+7. **MAJOR — stake stains.** Every earth floor light of the card became gold3 (stake: no ring, 0.7; SLAM ring gold3;
+   stab, floorFx, direct arrival gold3; bodyFx air flash gold4). `fix-r2/hoSummon-zoom.png` #5–#9: no dark dither.
+8. **MAJOR — sprouts read as "+" crosses.** `boostAura` sprouts: a curved stem leaning outward off the club and bending
+   up, a low leaf drooping on one side and a high blade reaching up on the other (never a symmetric pair), the ink-edged
+   violet bud stays the brightest cluster. Knot lights: charred corners, a breathing void3/void2 ember ring, a 2×2 void4
+   heart with a white flicker. `fix-r2/hoEatAttack-sprouts.png`.
+9. **MAJOR — static giant.** The receiving loop is a 6-step strain cycle (f3 → f4 haul, the trunk a px back → f3 →
+   f2 press, a px in), a breathing gold3 light pool following the hollow, the eye flick + creak on each ghost, and a sap
+   PULSE running home along the root every ~0.55 s while the cup waits. Root grow 520 → 400 ms (first ghost earlier).
+   measure hoEat2: `special:4@1233 3@1533 2@1717 3@1883 4@2250 …`. (No new rig frames: the sheet is at 127 frames /
+   3.58 MB of 3.6.)
+10. **MAJOR — root a pipe / over the heron.** `graveRoot` run tapers 4 → 2 px, three tone bands (earth3 lit top /
+   earth2 / earth1 shade), a twist seam stepping across it, rootlets on both sides, the sap bulge; the stalk tapers
+   3 → 2. The root raster is now on the FLOOR (`DEPTH.SHADOW + 0.7`): bodies stand over it (P2: the heron's neck covers
+   it, `fix-r2/hoEat2P2-zoom.png`).
+11. minor — guard: `hoBlock` plays ON `v3:contact` (hoGuard `hoBlock@1617` with the shared shieldBlock); the creak
+   doubling removed; the chips start at the top of the barred club, above the shared shield, flung away from the
+   attacker with a white/gold first beat (brown chips over the brown trunk were invisible). `fix-r2/hoGuard-zoom.png`.
+12. minor — direct: new sustained `hoRupture` (brown crack run, fibre ticks, creak, panned toward the duelist) from the
+   floor smash, stopped on arrival, + `hoRootBurst` (crack + root tok) on arrival: hoDirect `hoRupture@1333
+   hoRootBurst@1483`.
+13. minor — summon silent beats: `hoEmber` (f2 hiss), `hoEyes` (f4 two rising toks), `hoCrumble` (f11 chips). SLAM
+   debris kept to about one tile: centre pulled 40 % back toward the giant, root star 40 → 32, sprout ring 22 → 16, dust
+   wall 16 → 11, fewer leaves — the neighbour's badge stays readable (`fix-r2/hoSummon-slam.png`).
+14. minor — process: hoEatDie added; clips rendered (peaks hoEat2 −1.9, hoSummon −1.9, hoEatAttack −1.9, hoEatDie −1.8
+   dBFS, 0 clipped samples); stale hoCatch / header comments updated (`knotFlare` was already gone).
+
+### Gates
+- monster-gates `--class medium` P1|P2: **21 ok, 0 FAIL** (`gates.txt`, sheets regenerated). `tsc` clean for our files;
+  `vitest tests/art/hollow_ogre*` 14/14.
+- measure (hoKill, hoEatDie, hoEat2, hoSummon, hoAttack, hoDirect, hoGuard): zoom 1 everywhere, number − contact 0,
+  errors 0. Effect k = 2 ≈ 5.9 s total scenario, summon 2.75 s.
+- v1 filmdiff (`--set v1 --base shots/v3/a3/baseline/v1films`): **all 17 IDENTICAL**. card-hash not re-run.
+
+### Open issues
+- Sameness / blind test still owed (not run this round).
+- The contact read against a tall target is better (held f6, daylight, wood-flash) but the hawk's reaction still
+  overlaps the club arm for a few frames; a further step would be a rig contact frame with the club more horizontal.
+- Struck-wood material sound when the ogre is hit: unchanged (decision 4). Root fingers on the handle: unchanged.
+- In the losing strike (hoTrade / hoEatDie) the shared battle claims the attacker on the contact (hitMagic / counter):
+  the held f6 applies to wins only.

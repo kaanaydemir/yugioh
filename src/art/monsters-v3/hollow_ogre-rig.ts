@@ -139,6 +139,8 @@ export interface Pose {
   glint: number;
   /** global phase 0…1 */
   t: number;
+  /** the swing smear: the club head's arc (deg) swept behind the club this frame (0 = none) */
+  smear: number;
 }
 
 export const NEUTRAL: Pose = {
@@ -199,6 +201,7 @@ export const NEUTRAL: Pose = {
   fly: -1,
   glint: 0,
   t: 0,
+  smear: 0,
 };
 export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
 
@@ -209,7 +212,7 @@ const FAR: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0 };
 const ROOT: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1 };
 const CLUB: Tones = { L: PAL.earth2, M: PAL.earth1, S: PAL.earth0 };
 const MOSS: Tones = { L: PAL.leaf2, M: PAL.leaf1, S: PAL.leaf0 };
-const MOSS_NEAR: Tones = { L: PAL.leaf2, M: PAL.leaf0, S: PAL.leaf0 };
+const MOSS_NEAR: Tones = { L: PAL.leaf2, M: PAL.leaf1, S: PAL.leaf0 };
 const MOSS_FAR: Tones = { L: PAL.leaf1, M: PAL.leaf0, S: PAL.leaf0 };
 const CREASE = PAL.earth0;
 const HEART = PAL.earth4;
@@ -422,13 +425,19 @@ function mossClump(f: Frame, at: Pt, rx: number, t: Tones, part: Part, drips: nu
     q.rect(x0 + dx + (i % 2 ? rnd(o.moss * 0.5) : 0), y0 + 1, 2, len, t.M);
   }
   // flat moss planes: a lit lip on top (toward the light), the body, a dark underside and drips
+  // a scalloped cushion top (2-px bumps), so the clump reads as moss and not a helmet
+  for (let i = -rx + 1; i < rx; i += 2) q.rect(x0 + i, y0 - 3 - (i & 2 ? 1 : 0), 2, 1, t.M);
+  // critic r3 (an unbanded blob): clean bands from the top — a lit lip (wider on the light side), the body, a dark
+  // underside only on the last rows and the drips
   const src = q.clone();
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       if (!src.isOpaque(x, y)) continue;
-      const up = !src.isOpaque(x, y - 1) || (!src.isOpaque(x + light.side * -1, y) && !src.isOpaque(x, y - 2));
-      const dn = !src.isOpaque(x, y + 1) || !src.isOpaque(x, y + 2) && y > y0;
-      q.set(x, y, up && !dn ? t.L : dn || y > y0 + 1 ? t.S : t.M);
+      let d = 0;
+      while (d < 4 && src.isOpaque(x, y - d - 1)) d++;
+      const litSide = (x - x0) * light.side < 0;
+      const drip = y > y0 + 2;
+      q.set(x, y, drip ? t.S : d === 0 || (d === 1 && litSide) ? t.L : y >= y0 + 2 ? t.S : t.M);
     }
   f.comp.add(q, part, { out: far ? undefined : PAL.leaf0 });
 }
@@ -436,13 +445,14 @@ function mossClump(f: Frame, at: Pt, rx: number, t: Tones, part: Part, drips: nu
 function mushroom(q: PixelCanvas, at: Pt, w: number, light: Light, stem = 3): void {
   const x = rnd(at[0]);
   const y = rnd(at[1]) - (stem - 3);
-  // stem
-  q.rect(x, y - 2, 2, stem, PAL.earth3);
-  // cap: a dome, lit top rows, the rim / gill row one step down; the dome's crown sits toward the light
+  // critic r3 (pale pegs / a '+'): a clear toadstool — a 1-px stem, a dark gill underside, a domed heartwood cap
+  // whose crown leans toward the light
+  q.rect(x, y - 2, 1, stem, PAL.earth3);
   const hw = Math.floor(w / 2);
-  for (let i = -hw; i <= hw + 1; i++) q.set(x + i, y - 3, PAL.earth3);
-  for (let i = -hw + 1; i <= hw; i++) q.set(x + i, y - 4, PAL.earth4);
-  if (w >= 5) for (let i = -hw + 2; i <= hw - 1; i++) q.set(x + i + light.lx(-1) * 0, y - 5, PAL.earth4);
+  for (let i = -hw; i <= hw; i++) q.set(x + i, y - 3, PAL.earth1);
+  for (let i = -hw; i <= hw; i++) q.set(x + i, y - 4, i * light.side > hw - 1 ? PAL.earth3 : PAL.earth4);
+  for (let i = -hw + 1; i <= hw - 1; i++) q.set(x + i, y - 5, PAL.earth4);
+  if (w >= 5) q.set(x, y - 6, PAL.earth4);
 }
 
 function drawFarMoss(f: Frame): void {
@@ -510,6 +520,10 @@ function drawTrunk(f: Frame): void {
       if (sb.get(xr, y) === BARK.S && sb.get(xr + (light.side < 0 ? -1 : 1), y) === BARK.S) q.set(xr, y, BARK.M);
       // a single highlight column inside the lit plane (the cylinder's specular ridge), skipping every 5th row
       const xl = rnd(light.side < 0 ? l + (r - l) * 0.12 : r - (r - l) * 0.12);
+      // critic r3: the lit edge of the log (inside the ink, toward the key light) is pushed to heartwood on the upper
+      // trunk — a stronger value read of the silhouette at 1×
+      const xe = light.side < 0 ? l : r;
+      if (sb.get(xe, y) === BARK.L && y < sk.base[1] - 8 && y > sk.top[1] + 2 && (y & 3) !== 3) q.set(xe, y, HEART);
       if (HILITE && sb.get(xl, y) === BARK.L && (y - rnd(sk.base[1]) + 82) % 5 !== 0 && y > sk.top[1] + 4) q.set(xl, y, HEART);
     }
   }
@@ -772,6 +786,26 @@ function drawDoor(f: Frame): void {
 function drawClub(f: Frame): void {
   const { sk, o, light } = f;
   if (o.unfurl < 0.35 && o.clubFree <= 0) return;
+  if (o.smear > 0) {
+    // the swing SMEAR (one frame): a banded crescent where the club head just was — heartwood on the leading edge,
+    // bark behind it, ink-edged (a drawn arc of matter, never a transparent blur)
+    const sm = layer();
+    const gr = sk.grip;
+    const n = Math.max(12, rnd(o.smear / 1.2));
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const a = o.ca - 10 - o.smear * t;
+      const w = (1 - t) * 4.5 + 1;
+      for (let r = CLUB_LEN - w; r <= CLUB_LEN + 3; r += 0.5) {
+        const c = polar(gr, a, r);
+        const x = rnd(c[0]);
+        const y = rnd(c[1]);
+        if (y >= GY - 1) continue;
+        sm.set(x, y, r > CLUB_LEN + 2 && t < 0.6 ? PAL.earth4 : t < 0.55 ? PAL.earth3 : PAL.earth2);
+      }
+    }
+    f.comp.add(sm, Part.club, { out: PAL.ink });
+  }
   const q = layer();
   const a = sk.clubButt;
   const g = sk.grip;
@@ -787,7 +821,7 @@ function drawClub(f: Frame): void {
   limb(q, [st, polar(st, o.ca - 58, 4)], 2.4, 2, CLUB.M);
   bands(q, CLUB, light, 1, 3);
   // knot holes (dark eyes in the wood) on the mid plane; the sawn end shows pale rings
-  for (const [t, off] of [[0.5, 0], [0.82, -1]] as const) {
+  for (const [t, off] of [[0.5, 0]] as const) {
     const c = polar(polar(g, o.ca, CLUB_LEN * t), o.ca + 90, off);
     const x = rnd(c[0]);
     const y = rnd(c[1]);
@@ -799,7 +833,7 @@ function drawClub(f: Frame): void {
   for (const [dx, dy] of [[0, 0], [0, -1], [-1, 0], [-1, -1]] as const) {
     const x = rnd(end[0]) + dx;
     const y = rnd(end[1]) + dy;
-    if (q.isOpaque(x, y) && q.isOpaque(x + 1, y) && q.isOpaque(x, y + 1)) q.set(x, y, dx === 0 && dy === 0 ? HEART : PAL.earth3);
+    if (q.isOpaque(x, y) && q.isOpaque(x + 1, y) && q.isOpaque(x, y + 1)) q.set(x, y, dx === 0 && dy === 0 ? PAL.earth3 : PAL.earth2);
   }
   f.comp.add(q, Part.club, { out: PAL.ink });
 }
@@ -848,7 +882,7 @@ function drawNearMoss(f: Frame): void {
   mossClump(f, [sk.shN[0] + 3, sk.shN[1] - 3], 2, MOSS_NEAR, Part.nearMoss, 0, false);
   const q = layer();
   // two pale toadstools on long stems rise out of the moss, clear of the log top (they read against the sky)
-  mushroom(q, [sk.shN[0] + 6, sk.shN[1] + 1], 5, light, 4);
+  mushroom(q, [sk.shN[0] + 6, sk.shN[1] + 1], 7, light, 4);
   mushroom(q, [sk.shN[0] + 2, sk.shN[1] + 0], 3, light, 2);
   f.comp.add(q, Part.nearMoss, { out: PAL.earth1 });
 }
@@ -858,15 +892,15 @@ function drawFungi(f: Frame): void {
   const { sk, o } = f;
   if (o.collapse > 0.35 || (o.door >= 0 && o.door < 0.2 && o.legs < 0.1 && o.unfurl < 0.05 && false)) return;
   const q = layer();
-  for (const [t, w] of [[0.44, 6], [0.3, 4]] as const) {
+  for (const [t, w] of [[0.44, 5], [0.3, 4]] as const) {
     const c = sk.sp(t);
     const x1 = rnd(c[0] - sk.rad(t)) + 2;
     const y = rnd(c[1]);
     // the shelf: a fat half disc jutting back from the bark — lit cap, a mid rim, the dark gill underside
-    for (let i = 1; i < w; i++) q.set(x1 - i, y - 1, PAL.earth4);
-    for (let i = 0; i <= w; i++) q.set(x1 - i, y, PAL.earth4);
-    for (let i = 0; i <= w; i++) q.set(x1 - i, y + 1, PAL.earth3);
-    for (let i = 0; i < w - 1; i++) q.set(x1 - i, y + 2, PAL.earth2);
+    // a rounded bracket: a domed lit cap, the rim, and a DARK gill underside (critic r3: flat pale pegs read as stubs)
+    for (let i = 1; i < w - 1; i++) q.set(x1 - i, y - 1, PAL.earth4);
+    for (let i = 0; i < w; i++) q.set(x1 - i, y, i === w - 1 ? PAL.earth3 : PAL.earth4);
+    for (let i = 0; i < w; i++) q.set(x1 - i, y + 1, PAL.earth1);
   }
   f.comp.add(q, Part.nearMoss, { out: PAL.earth1 });
 }
@@ -1053,27 +1087,27 @@ function eyeLight(f: Frame): void {
   const look = clamp(rnd(o.look), -1, 1);
   const [hx, hy] = sk.hollow;
   const yN = hy - 2;
-  // near eye (2×2, the front) and far eye (1×2, foreshortened), set in the upper hollow
+  // critic r3: both eyes 2×2 embers with a gold2 lower lid each (a gap between them: never one line = a mouth) — the
+  // brightest focus of the sprite at 1×
   const nX = hx + 1 + look;
-  const fX = hx - 2 + look;
+  const fX = hx - 3 + look;
   if (o.lid >= 2) {
-    put(nX, yN + 1, PAL.gold1);
-    put(nX + 1, yN + 1, PAL.gold1);
-    put(fX, yN + 1, PAL.gold1);
+    for (const ex of [nX, fX]) {
+      put(ex, yN + 1, PAL.gold2);
+      put(ex + 1, yN + 1, PAL.gold1);
+    }
     return;
   }
-  if (o.lid === 0) {
-    put(nX, yN, core);
-    put(nX + 1, yN, lit);
-    put(fX, yN, lit);
-  }
-  put(nX, yN + 1, lit);
-  put(nX + 1, yN + 1, o.lid === 0 ? lit : core);
-  put(fX, yN + 1, o.eye > 0.6 ? PAL.gold2 : PAL.gold1);
-  if (hot) {
-    // blazing: the embers flare taller (no spill row: a lit line under the eyes would read as a mouth)
-    put(nX, yN + 2, PAL.gold2);
-    put(nX + 1, yN + 2, PAL.gold2);
+  for (const [ex, near] of [[nX, true], [fX, false]] as const) {
+    if (o.lid === 0) {
+      put(ex, yN, near ? core : lit);
+      put(ex + 1, yN, near ? lit : o.eye > 0.6 ? PAL.gold3 : PAL.gold2);
+    }
+    put(ex, yN + 1, near ? lit : o.eye > 0.6 ? PAL.gold3 : PAL.gold2);
+    put(ex + 1, yN + 1, near ? (o.lid === 0 ? lit : core) : PAL.gold2);
+    // the lower lid
+    put(ex, yN + 2, o.eye > 0.6 ? PAL.gold2 : PAL.gold1);
+    put(ex + 1, yN + 2, PAL.gold1);
   }
 }
 
