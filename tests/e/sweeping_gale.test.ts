@@ -36,6 +36,20 @@ describe('e_sweeping_gale stages', () => {
       expect(state.players[victim].fieldSpell, key).toBeNull();
     }
   });
+  it('a spell_seal window: the activation batch ends on the decision (the gale card is kept for the answer)', () => {
+    for (const key of ['eGaleWindow', 'eGaleSealed', 'eGaleVolcano']) {
+      const sc = PACK[key];
+      let state = buildStage(sc.stage);
+      const step = sc.steps[0];
+      const a = (typeof step === 'function' ? step({ uid: (id: CardId, p?: PlayerId) => uidOf(state, id, p) }) : step) as Action;
+      const r = apply(state, a);
+      state = r.state;
+      expect(r.events.map((e) => e.type), key).toEqual(['activate', 'decision']);
+    }
+    // sealed: the gale's own arrival comes from 'resolved' (the 'toGraveyard' hook takes the waiting card)
+    const { events } = runStage('eGaleSealed');
+    expect(events.some((e) => e.type === 'toGraveyard' && e.cardId === 'sweeping_gale' && e.from === 'resolved')).toBe(true);
+  });
   it('the sealed stage never sweeps', () => {
     const { events } = runStage('eGaleSealed');
     expect(events.some((e) => e.type === 'massDestroy')).toBe(false);

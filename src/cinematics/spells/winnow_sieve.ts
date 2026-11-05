@@ -7,44 +7,53 @@
 //  taneler hafifçe kayar → seçilen 2 kart elekte samana dönüşür ve bir rüzgar onları sap saman hâlinde mezarlığa
 //  savurur."
 //
-// BEAT LIST (scene ms at 1×; × 1.35 in game time with the v3 tempo). Activation signature ≈ 1.5 s after the opening,
-// the discard ≈ 1.15 s after the choice (§7: 3.0 s + the choice). Measured (game ms): activation 3.22 s, discard 1.58 s.
+// BEAT LIST (scene ms at 1×; × 1.35 in game time with the v3 tempo). Activation signature ≈ 2.0 s after the opening,
+// the discard ≈ 1.3 s after the choice (§7: 3.0 s + the choice; the owner allows the card its own lengths).
 //   0      common v3 spell opening (spells/_kit): the hand card flies beside its owner (a set card stands up on its
 //          own tile), "HARMAN ELEĞİ" plate, short hover (hold 220)
-//   ~380   RELEASE: the card pours into a golden orb at its bottom edge that drops to the sieve's floor point (the
-//          free spell/trap tile nearest the cast spot, a set card: its own tile) — the hand is never covered
-//   S+0    LAND: a gold ring runs out on the floor, the warm light pool comes on — e_sieveWeave
-//   S+0    THE HOOP bends itself round from the front in 8 stepped arcs (both ways at once), straw lashings pop on
+//   ~380   RELEASE: the card pours into a golden orb that drops to the sieve's floor point — near the middle of the
+//          caster's side (P1: its middle spell/trap tile; P2: between its middle spell/trap and monster tiles), a set
+//          card's orb flows there from its own tile; the hand is never covered
+//   S+0    LAND: a wide gold ring runs out on the floor, the warm light pool comes on — e_sieveWeave
+//   S+0    THE HOOP (a GIANT sieve, ~100 px across) bends itself round from the front in 8 stepped arcs, lashings pop on
 //   S+90   THE MESH weaves itself in from the back rim to the front, row by row (a basket weave of straw strands)
 //   S+150  THE POUR: a golden column of wheat falls into the bowl, the heap swells in 4 steps — e_sievePour; the sieve
-//          rises to its working height (24 px over its shadow) with a 1-px overshoot
-//   S+320  THE SHAKE: 3 cycles at 6 Hz (8 stepped offsets each: 0 2 3 2 0 −2 −3 −2 px); the grain heap lags the hoop
-//          a step (it sloshes), chaff sifts through the mesh as a fine golden curtain lit by the pool, and three
-//          card backs WORK THEIR WAY UP out of the grain — e_sieveShake on EVERY cycle (left/right strokes)
-//   S+830  TOSS 1 / S+990 TOSS 2 / S+1150 TOSS 3: the sieve dips 3 px (anticipation) and flicks up 4 px; a card
-//          leaves the grain tumbling end over end (stepped heights, native sizes 8×11 → 24×34, never scaled) inside
-//          a fountain of grains that rain back into the bowl; at the apex the hand takes it — e_sieveToss ×3 (the
-//          third pitched up, the biggest spray); the deck pile gives a card up each time
-//   ~S+1240 the grains rain back — e_sieveFall; the spent spell card is born on the floor beside the sieve and
+//          rises to its working height (24 px over its opaque shadow) with a 1-px overshoot
+//   S+320  THE SHAKE: 4 cycles at 6 Hz (12 stepped offsets each, ±6 px) with a 1-frame squash at each stroke's end;
+//          the heap lags and piles up against the rim it is thrown to, grains fly over that side, chaff sifts through
+//          the mesh as a golden curtain lit by the pool, three card backs WORK THEIR WAY UP out of the grain —
+//          e_sieveShake on EVERY cycle (hard-panned left / right strokes)
+//   S+1040 TOSS 1 / S+1220 TOSS 2: the sieve dips 3 px and flicks up 4 px, the rim flashes gold, a golden burst
+//          (40–48 grains, 2-px crest grains among 1-px ones) leaves the grain; the card tumbles end over end, hops
+//          ~20 px and falls along ONE parabola toward the hand, growing through native sizes 8×11 → 24×34 with grains
+//          riding behind it; it is handed to the hand's own sprite only ~40 px over its slot (the hand sprite starts
+//          at that very size) — e_sieveToss; the deck pile gives a card up each time
+//   S+1440 TOSS 3, the climax: a deeper 5-px dip with a squash, a 6-px flick, a hit-stop, the rim flashes WHITE, a
+//          70-grain burst, grains over both sides — e_sieveTossBig
+//   ~S+1600 the grains rain back — e_sieveFall; the spent spell card is born on the floor beside the sieve and
 //          leaves for the graveyard (cardLeaves)
-//   S+1300 SETTLE: the sieve sinks to its waiting height (7 px), the heap flattens — e_sieveSettle
-//   WAIT   (the choice, unbounded): the sieve hangs low and still; its grains slide slowly side to side, a glint
-//          wanders over them, motes float up in the pool; e_sieveIdle at each turn of the slide (very quiet)
+//   S+1700 SETTLE: the sieve sinks to its waiting height (7 px), the heap flattens — e_sieveSettle
+//   WAIT   (the choice, unbounded): the sieve hangs low; its grains slide slowly side to side, a glint wanders over
+//          them, motes float up in the pool; e_sieveIdle at each turn of the slide (very quiet)
 // THE DISCARD (registerEvent 'discard', only while this sieve waits for that player):
 //   D+0    the chosen cards leave the hand (their faces: discards are public) and fall into the sieve on arcs,
-//          shrinking through native sizes; the sieve rises to meet them — e_sieveDrop each
-//   D+340  one hard shake cycle (e_sieveShake) …
-//   D+540  STRAW: each card dries (its face recoloured to straw tones), splits into stalks (every third column
-//          drops out), then breaks into 1-px straw stalks — e_sieveStraw
-//   D+640  THE GUST: wind curls sweep from the sieve to the graveyard; the stalks lift, tumble (stepped angles) and
-//          ride it into the pile; the pile takes each card when its last stalk lands — e_sieveGust, e_sieveGrave
-//   D+940  UNRAVEL: the mesh rows pull out from the front back, the hoop opens into loose strands blown after the
+//          shrinking through native sizes from 48×68 to 16×23; the sieve rises to meet them — e_sieveDrop each. On
+//          landing a card becomes part of the sieve's own drawing: half sunk in the grain, behind the front band
+//   D+380  one hard shake cycle (e_sieveShake), the cards sink a step deeper
+//   D+580  STRAW: each card dries (its face recoloured to straw tones), splits into stalks (every third column
+//          drops out) — e_sieveStraw
+//   D+700  THE GUST: three flat ribbon swooshes (tapered 3 → 1 px, white / mist / steel) run from the sieve to the
+//          graveyard; the cards break into hand-drawn 2-px bent straws with wheat ears that tumble in 45° steps and
+//          ride it into the pile, shedding a chaff cloud that thins along the way; the pile takes each card when its
+//          last stalk lands — e_sieveGustR / L (panned from the sieve to the graveyard), e_sieveGrave
+//   D+1060 UNRAVEL: the mesh rows pull out from the front back, the hoop opens into loose strands blown after the
 //          gust; the light fades — e_sieveEnd
 // EDGES — the first draw completes the five seals (or a draw is missing): no choice follows, the remaining tosses
 // are skipped and the sieve unravels at once. A choice that never comes (surrender, a new duel): any other event
 // dismisses the waiting sieve.
 // P2: the sieve stands on P2's side (upper right); cards fly to whichever hand shows the draws.
-// No camera move, no full-screen wash; every crisp thing on whole pixels, palette only.
+// No camera move, no full-screen wash; every crisp thing on whole pixels, palette only (no alpha on the shadow or
+// the grains). The sieve draws above the units' stat plates (FX_TOP), under the hand and the HUD.
 
 import type Phaser from 'phaser';
 import type { CardId } from '../../data/cards';
@@ -60,7 +69,7 @@ import { fxRng } from '../_v3/spellfx';
 import { panAt, play as playV3 } from '../_v3/sound';
 import { cardLeaves, landingCount } from '../_v3/card';
 import { registerCardHook, registerEvent, registerObserver, type CinematicContext } from '../api';
-import { bg, castFloor, castSpot, evAt, ip, lightFlash, lightPool, relax, setTileOf, spellOpening, type ActCtx, type LightHandle } from './_kit';
+import { bg, evAt, lightFlash, lightPool, relax, setTileOf, spellOpening, type ActCtx, type LightHandle } from './_kit';
 import type { SfxName } from '../../audio/sfx';
 
 const ID: CardId = 'winnow_sieve';
@@ -568,7 +577,8 @@ function tossCard(sc: Phaser.Scene, from: XY, handoff: XY, player: PlayerId, up:
   const U = up + Math.max(0, -d);
   const B = 8 * d + 16 * U;
   const h = (B + Math.sqrt(Math.max(0, B * B - 64 * d * d))) / 32;
-  const at = (t: number): XY => ({ x: from.x + (handoff.x - from.x) * t, y: from.y + d * t - 4 * h * t * (1 - t) });
+  // x eases in (the hop leaves the grain nearly straight up), y follows the parabola
+  const at = (t: number): XY => ({ x: from.x + (handoff.x - from.x) * (t * t * (3 - 2 * t) * 0.7 + t * 0.3), y: from.y + d * t - 4 * h * t * (1 - t) });
   let last = from;
   let f = 0;
   return run(sc, ms, (t, _el, dt) => {
@@ -1013,7 +1023,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     const slotXY = worldOf(hand.owner === player ? hand.nextSlotXY() : hand.miniXY(player));
     // the hand-over point: just over the slot (a short, last glide into the fan is the hand's own)
     const handoff: XY = hand.owner === player ? { x: slotXY.x + (player === 0 ? -14 : 14), y: slotXY.y - 40 } : { x: slotXY.x, y: slotXY.y + (slotXY.y < 180 ? 30 : -30) };
-    const up = Math.max(6, Math.min(22, from.y - 70));
+    const up = Math.max(6, Math.min(26, from.y - 70));
     const dist = Math.hypot(handoff.x - from.x, handoff.y - from.y);
     const fms = R(T.flightBase + dist * T.flightPerPx);
     bg(run(sc, T.flickMs + (big ? 30 : 0), (t) => (S.dy = R((big ? 6 : 4) * (1 - t)))).then(() => (S.dy = 0)));

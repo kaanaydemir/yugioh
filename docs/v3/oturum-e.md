@@ -43,18 +43,25 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
   Sahibin kararı: sabit süre sınırı yok.
 
 ### S5 Harman Eleği (`winnow_sieve`)
-- Resim: `src/art/cardart-v3/winnow_sieve.ts` (88×68 + elle 44×34, 4 kare yaşayan resim: elek sallanır, taneler
-  havada, üç kart, savrulan saman). Sinematik: `src/cinematics/spells/winnow_sieve.ts` (activate kancası: hasır
-  elek örülür, buğday dökülür, 6 Hz sallama, üç kart takla atarak ele; elek seçim boyunca alçakta bekler —
-  `registerEvent('discard', öncelik 2)` yalnız bekleyen elek varken sahiplenir: kartlar eleğe düşer, samana döner,
-  rüzgar sapları mezarlığa savurur, elek çözülür; başka bir olay gelirse elek söner). SFX:
-  `src/audio/v3/e/winnow_sieve.ts` (12 tarif, `e_sieve*`).
+- Resim: `src/art/cardart-v3/winnow_sieve.ts` (88×68 + elle 44×34, 4 kare yaşayan resim: gün ışığında — sıcak gök
+  bandı + kademeli güneş parıltısı — sallanan elek, iki yanında sallama çizgileri, havada 2×1 taneler, üç kart,
+  sağa savrulan 2 px'lik saman şeridi; yığın tonlu, kaydırmalı 2×1 tane çizgileri). Sinematik:
+  `src/cinematics/spells/winnow_sieve.ts` (activate kancası: ~100 px'lik DEV hasır elek oyuncunun tarafının ortasında
+  örülür, buğday dökülür, 4 devir 6 Hz ±6 px sallama + her vuruşta 1 karelik basılma, yığın kenara yığılır ve taneler
+  kenardan uçar; üç kart altın patlamasıyla takla atarak ~26 px zıplar ve tek bir parabolde ele iner, el kartı ancak
+  yuvasının ~40 px üstünde devralır; üçüncü atış doruk: derin çöküş, hit-stop, beyaz kenar parlaması, 70 tane.
+  Elek seçim boyunca alçakta bekler — `registerEvent('discard', öncelik 2)`: kartlar eleğe düşer, tanelere yarı
+  gömülür (ön çemberin arkasında), samana döner, elle çizilmiş 2 px'lik başaklı saplara ayrılır; üç düz kurdele
+  rüzgar ve incelen saman bulutu onları mezarlığa savurur; elek çözülür). Elek, birimlerin ATK/DEF plakalarının
+  üstünde çizilir (FX_TOP). SFX: `src/audio/v3/e/winnow_sieve.ts` (15 tarif, `e_sieve*`; savurma artık dar, yüksek,
+  ≤0,35 sn'lik bir harman yelpazesi nefesi + saman tıkırtıları, mezarlığa doğru panlanır: `e_sieveGustR/L`).
 - Senaryolar: `src/duel/scenarios/e_winnow_sieve.ts` (eSieve, eSieveP2, eSieveSet, eSieveSetP2, eSieveBare,
   eSieveSeal, eSieveSealP2, eSieveUi, eSievePlay); test `tests/e/winnow_sieve.test.ts`.
-- Kanıt: `shots/e/winnow_sieve/` (r2z.png, r4toss.png, r4straw.png, r5p2disc.png, r5ui.png, r4set.png, r4seal.png,
-  art/, sfx/, measure.json).
-- Ölçüm (oyun ms): eSieve etkinleştirme 3,22 sn + atma 1,58 sn; kamera 0. REHBER §5 büyü sınırını (2,9 sn) etkinleştirmede
-  ~0,3 sn aşar (§7: 3,0 sn + seçim) — açık konu.
+- Kanıt: `shots/e/winnow_sieve/r2/` (shake.png, toss3.png, toss3b.png, disc.png, straw.png, gust.png, p2.png,
+  p2disc.png, set.png, art/, measure.json), ses: `shots/e/winnow_sieve/r2sfx/`.
+- Ölçüm (oyun ms): eSieve etkinleştirme 3,92 sn + atma 1,77 sn; kamera 0. eSieveSeal'in 1f/38px kamerası ortak
+  kazanma sahnesidir (eWellPailSeal de aynı: 1f/38px). Ses ayrımı (LSD): savurma ↔ e_strawGust 15,6 dB, ↔ e_galeSweep
+  25,8, ↔ e_galeStir 18,0; sallama ↔ e_wellShake 11,1; atış ↔ e_wellLeap 10,6, büyük atış ↔ e_wellLeap 10,3.
 
 ### S9 Saman Korkuluklar (`straw_decoys`)
 - Resim: `src/art/cardart-v3/straw_decoys.ts` (88×68 + 1× yoğunlukta yeniden çizilmiş 44×34, 4 kare yaşayan resim:

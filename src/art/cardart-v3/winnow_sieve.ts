@@ -2,15 +2,17 @@
 // "Gün ışığında sallanan elek, havada asılı taneler ve üç kart, savrulan saman." (YENI_KARTLAR §7 S5) — the image of
 // the scene (src/cinematics/spells/winnow_sieve.ts): the same round straw sieve (bent-wood hoop with straw lashings,
 // a basket-woven mesh, a golden heap of wheat) caught mid-shake, three cards flicked up out of it among hanging
-// grains, a few straw stalks blowing off to the right, a low sun.
-//   backdrop  the kit's SPELL recipe (night0 / night1 sky, night0 floor, teal1 horizon) with its teal portal centred
-//             over the sieve: the spell's light; a flat gold sun disc low on the left (one tone, part of the sky).
+// grains, a ribbon of straw stalks blowing off to the right, in daylight.
+//   backdrop  a warm DAYLIGHT recipe (the kit's flat bands + ONE stepped light): a dusk-warm sky (night1 over earth1),
+//             a big stepped sun glow (gold1 / gold2 / gold3) rising behind the sieve, the night0 threshing floor with a
+//             gold1 horizon line.
 //   subject   matter, ink outlined, ONE key light from the top left: the hoop (earth4 lip, earth3 / earth2 / earth1
 //             band lit → shade, gold3 lashings), the mesh (earth4 / earth3 / earth2 weave), the heap (gold2 / gold3,
 //             gold4 crest), three card backs (night3, mist frame, teal2 diamond), straw stalks (gold3 / earth4). The
-//             teal3 rim runs on the shadow side (IŞ-7).
-//   light     never outlined: the grains hanging in the air (gold4 / white), the hot glint where they burst from the
-//             heap (the focus), two shake ticks beside the hoop.
+//             heap is staggered 2×1 grain dashes in tone bands (gold4 crest, gold3 / gold2 body, gold1 foot). The
+//             gold2 rim runs on the shadow side (IŞ-7, the sun's colour).
+//   light     never outlined: the grains hanging in the air (2×1 gold4 / white dashes, a few larger), the hot glint
+//             where they burst from the heap (the focus), shake ticks at both sides of the hoop (every frame).
 // Small (44×34): the same composition painted again at 1× density by the same code (big geometry halved), then
 // corrected by hand: the weave becomes plain strand rows, the cards are redrawn natively, the grains thinned.
 // Living art: 4 frames × 140 ms, ≤ 2 px motion: the grains rise and fall a step, the sieve shifts one pixel left /
@@ -18,7 +20,7 @@
 
 import { PAL } from '../palette';
 import type { PixelCanvas } from '../pixel';
-import { ink, paintBackdrop, rim } from './_kit';
+import { ink, paintBackdrop, rim, type BackdropRecipe } from './_kit';
 import type { ArtLayers, CardArtV3 } from './_types';
 
 const FRAMES = 4;
@@ -96,9 +98,14 @@ function paintSieve(p: P, k: number, f: number): void {
       const crest = !inEll(x, y - 1 + liftUp, hx, my, grx, gry);
       let c: number;
       if (crest) c = PAL.gold4;
-      else if (k === 2) c = (x + (y % 2) * 2) % 4 === 0 ? PAL.gold2 : PAL.gold3;
-      else c = PAL.gold3;
-      if (!crest && y > my + gry - (k === 2 ? 3 : 1)) c = PAL.gold2;
+      else if (k === 2) {
+        // staggered 2×1 grain dashes (a brick bond, each row shifted one px), banded by depth
+        const row = y - (my - gry - hh);
+        const dash = Math.floor((x + (row % 2)) / 2) % 2 === 0;
+        const band = y < my - 2 ? 0 : y < my + gry - 3 ? 1 : 2;
+        c = band === 0 ? (dash ? PAL.gold4 : PAL.gold3) : band === 1 ? (dash ? PAL.gold3 : PAL.gold2) : dash ? PAL.gold2 : PAL.gold1;
+      } else c = y < my ? PAL.gold4 : PAL.gold3;
+      if (!crest && k === 1 && y > my + gry - 1) c = PAL.gold2;
       p.set(x, y, c);
     }
   // the near rim and the bent-wood band (covers the heap's foot)
@@ -146,57 +153,74 @@ function paintCard(p: P, cx: number, cy: number, w: number, h: number, a: number
     }
 }
 
-/** Straw stalks blowing off to the right (short strokes with a lit ear). */
+/** A ribbon of straw stalks blowing off to the right, out of the frame: 2-px straws with a lit ear (BIG geometry). */
 function paintStraw(p: P, k: number, f: number): void {
   const stalks: readonly (readonly [number, number, number, number])[] = [
-    // x, y, dx, dy (big px; the stroke runs from (x, y) by (dx, dy))
-    [74, 30, 7, -2],
-    [79, 37, 6, 1],
-    [70, 24, 5, -3],
+    // x, y (tail), dx, dy (big px; the straw runs from the tail to its ear)
+    [66, 33, 7, -3],
+    [73, 26, 7, -2],
+    [79, 20, 6, -3],
+    [70, 40, 6, -1],
+    [84, 13, 5, -2],
   ];
-  for (const [x, y, dx, dy] of stalks) {
-    const x0 = q(x + (f % 2), k);
-    const y0 = q(y, k);
+  const n0 = k === 2 ? stalks.length : 3;
+  for (let s = 0; s < n0; s++) {
+    const [x, y, dx, dy] = stalks[s];
+    const drift = (f + s) % 4 < 2 ? 0 : 1;
+    const x0 = q(x + drift * 2, k);
+    const y0 = q(y - drift, k);
     const n = Math.max(2, q(Math.max(Math.abs(dx), Math.abs(dy)), k) + (k === 1 ? 1 : 0));
     for (let i = 0; i <= n; i++) {
       const px = x0 + Math.round((q(dx, k) * i) / n);
       const py = y0 + Math.round((q(dy, k) * i) / n);
-      p.set(px, py, i >= n - (k === 2 ? 1 : 0) ? PAL.gold4 : i % 3 === 1 ? PAL.earth4 : PAL.gold3);
+      const ear = i >= n - (k === 2 ? 2 : 0);
+      p.set(px, py, ear ? PAL.gold4 : PAL.gold3);
+      // the straw's second, shaded row (big only): 2 px thick
+      if (k === 2) p.set(px, py + 1, ear ? PAL.gold3 : PAL.gold2);
+    }
+    // the ear's side grains
+    if (k === 2) {
+      const ex = x0 + q(dx, k);
+      const ey = y0 + q(dy, k);
+      p.set(ex - 1, ey - 1, PAL.gold4);
+      p.set(ex - 2, ey + 2, PAL.gold3);
     }
   }
 }
 
-/** The sun: a flat gold disc low on the left (backdrop). */
-function paintSun(p: P, k: number): void {
-  const cx = q(14, k);
-  const cy = q(14, k);
-  const r = q(7, k);
-  for (let y = cy - r - 1; y <= cy + r + 1; y++) for (let x = cx - r - 1; x <= cx + r + 1; x++) if (inEll(x, y, cx, cy, r, r)) p.set(x, y, PAL.gold2);
-}
+/** Daylight over the threshing floor: a warm sky and a big stepped sun glow rising behind the sieve. */
+const DAYLIGHT: BackdropRecipe = { kind: 'SPELL', shape: 'sun', tones: [PAL.gold1, PAL.gold2], sky: [PAL.night1, PAL.earth1], split: 26, floor: PAL.night0, horizonLine: PAL.gold1, rim: PAL.gold2 };
 
 // ---------------------------------------------------------------- the light
 
 function paintLight(l: P, k: number, f: number): void {
-  // grains hanging in the air between the heap and the cards, rising / falling a step per frame
+  // grains hanging in the air between the heap and the cards (2×1 dashes, big; single px, small), stepping
   const grains: readonly (readonly [number, number])[] = [
     [36, 32],
     [40, 27],
-    [47, 29],
-    [52, 33],
-    [33, 23],
-    [55, 24],
+    [48, 29],
+    [53, 34],
+    [32, 23],
+    [56, 24],
     [43, 21],
-    [30, 30],
-    [58, 30],
-    [49, 19],
-    [38, 15],
-    [61, 18],
+    [29, 31],
+    [59, 31],
+    [50, 18],
+    [37, 15],
+    [61, 17],
   ];
   const n = k === 2 ? grains.length : 7;
   for (let i = 0; i < n; i++) {
     const [x, y] = grains[i];
     const dy = (f + i) % 4 < 2 ? 0 : k === 2 ? -1 : 0;
-    l.set(q(x, k), q(y, k) + dy, i % 4 === 0 ? PAL.white : i % 2 ? PAL.gold4 : PAL.gold3);
+    const c = i % 4 === 0 ? PAL.white : i % 2 ? PAL.gold4 : PAL.gold3;
+    l.set(q(x, k), q(y, k) + dy, c);
+    if (k === 2) l.set(q(x, k) + 1, q(y, k) + dy, c);
+    // a few larger grains (2×2)
+    if (k === 2 && i % 5 === 1) {
+      l.set(q(x, k), q(y, k) + dy + 1, PAL.gold3);
+      l.set(q(x, k) + 1, q(y, k) + dy + 1, PAL.gold3);
+    }
   }
   // the burst at the focus: a small cross of light where the grains leave the heap
   const fx = q(FOCUS[0] + SHAKE[f] / 2, k);
@@ -207,19 +231,20 @@ function paintLight(l: P, k: number, f: number): void {
     l.set(fx + 1, fy, PAL.gold4);
     l.set(fx, fy - 1, PAL.gold4);
   }
-  // shake ticks beside the hoop (on the side it swings toward)
+  // shake ticks at both sides of the hoop (every frame), the leading side a step longer
   const s = SHAKE[f];
-  if (s !== 0) {
-    const tx = s > 0 ? q(79, k) : q(9, k);
-    for (let i = 0; i < (k === 2 ? 3 : 2); i++) l.set(tx, q(44 + i * 2, k), PAL.teal3);
+  for (const side of [-1, 1]) {
+    const tx = side > 0 ? q(78 + (s > 0 ? 2 : 0), k) : q(9 - (s < 0 ? 2 : 0), k);
+    const len = k === 2 ? (Math.sign(s) === side ? 3 : 2) : 1;
+    for (let r = 0; r < (k === 2 ? 2 : 1); r++)
+      for (let i = 0; i < len; i++) l.set(tx + side * i, q(44 + r * 4, k), i === 0 ? PAL.white : PAL.gold4);
   }
 }
 
 // ---------------------------------------------------------------- the painters
 
 function paint(l: ArtLayers, f: number, k: 1 | 2): void {
-  paintBackdrop(l.backdrop, 'SPELL', { focus: [FOCUS[0], FOCUS[1] - 8], radius: 28 });
-  paintSun(l.backdrop, k);
+  paintBackdrop(l.backdrop, DAYLIGHT, { focus: [FOCUS[0], FOCUS[1] - 14], radius: 30 });
   const s = l.subject;
   paintSieve(s, k, f);
   // three cards flicked up out of the grain, fanning toward the sky
@@ -236,7 +261,7 @@ function paint(l: ArtLayers, f: number, k: 1 | 2): void {
   }
   paintStraw(s, k, f);
   ink(s);
-  rim(s, PAL.teal3, { skip: [PAL.mist, PAL.teal2, PAL.gold4] });
+  rim(s, PAL.gold2, { skip: [PAL.mist, PAL.teal2, PAL.gold4, PAL.gold3] });
   paintLight(l.light, k, f);
 }
 
