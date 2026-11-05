@@ -12,6 +12,7 @@ import {
   lightFrame,
   torchFrame,
 } from '../../art/arena-nt/lights';
+import { BRICK_TORCHES, NT_WALL_TORCH_KEY, WALL_TORCH, paintWallTorch } from '../../art/arena-nt/brickwall';
 import { PAL } from '../../art/palette';
 import { attributeLightColor, lightFlash } from '../light';
 import type { Attribute } from '../../data/cards';
@@ -86,6 +87,7 @@ interface TorchLight {
   phase: number;
   lastFrame: number;
   frameOf: (f: number) => string;
+  wall: boolean;
 }
 
 /**
@@ -94,11 +96,15 @@ interface TorchLight {
  * - 'post': braziers on stone posts standing on the hall floor (left / right of the stage, clear of the HUD).
  */
 const TORCH_SPOTS: readonly { kind: 'sconce' | 'post'; x: number; y: number; depth: number; period: number; phase: number }[] = [
-  // one sconce on the front face of each hall pillar (./backhall.ts HALL_PILLARS: x + 11, under the banner)
-  { kind: 'sconce', x: 133, y: 82, depth: NT_DEPTH.wallLights + 0.5, period: 420, phase: 0 },
-  { kind: 'sconce', x: 255, y: 88, depth: NT_DEPTH.wallLights + 0.5, period: 460, phase: 140 },
-  { kind: 'sconce', x: 385, y: 88, depth: NT_DEPTH.wallLights + 0.5, period: 440, phase: 290 },
-  { kind: 'sconce', x: 507, y: 104, depth: NT_DEPTH.wallLights + 0.5, period: 410, phase: 80 },
+  // wall sconces on the brick back wall (src/art/arena-nt/brickwall.ts BRICK_TORCHES; their warm pools are baked per brick)
+  ...BRICK_TORCHES.map((b, i) => ({
+    kind: 'sconce' as const,
+    x: b.x,
+    y: b.y,
+    depth: NT_DEPTH.wallLights + 0.5,
+    period: [420, 460, 440, 410][i % 4],
+    phase: [0, 140, 290, 80][i % 4],
+  })),
   { kind: 'post', x: 82, y: 212, depth: NT_DEPTH.platform + 1.5, period: 390, phase: 210 },
   { kind: 'post', x: 566, y: 222, depth: NT_DEPTH.platform + 1.5, period: 450, phase: 340 },
 ];
@@ -134,16 +140,23 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
       scene.add
         .image(spot.x - TORCH_GLOW.cx, spot.y - TORCH_GLOW.cy, NT_LIGHTS_KEY, torchFrame.glow(0))
         .setOrigin(0)
-        .setDepth(spot.depth - 0.05),
+        .setDepth(spot.depth - 0.05)
+        // a wall sconce's light is the stepped brick pool baked into the back wall (brickwall.ts): no dithered halo
+        .setAlpha(spot.kind === 'sconce' ? 0 : 1),
     );
-    const frameOf = (f: number): string => (spot.kind === 'sconce' ? torchFrame.sconce(f) : torchFrame.post(f));
+    const wall = spot.kind === 'sconce';
+    // wall sconces: the dedicated wall torch of brickwall.ts (own textures); posts: the brazier frames of the lights atlas
+    const frameOf = (f: number): string => (wall ? NT_WALL_TORCH_KEY(f) : torchFrame.post(f));
+    if (wall) for (let f = 0; f < WALL_TORCH.frames; f++) ensureNtTexture(scene, 'brickwall', NT_WALL_TORCH_KEY(f), () => paintWallTorch(f));
     const img = ctx.add(
-      scene.add
-        .image(spot.x - TORCH_MOUNT.cx, spot.y - TORCH_MOUNT.flameY, NT_LIGHTS_KEY, frameOf(0))
+      (wall
+        ? scene.add.image(spot.x - WALL_TORCH.cx, spot.y - WALL_TORCH.flameY, frameOf(0))
+        : scene.add.image(spot.x - TORCH_MOUNT.cx, spot.y - TORCH_MOUNT.flameY, NT_LIGHTS_KEY, frameOf(0))
+      )
         .setOrigin(0)
         .setDepth(spot.depth),
     );
-    return { img, glow, period: spot.period, phase: spot.phase, lastFrame: 0, frameOf };
+    return { img, glow, period: spot.period, phase: spot.phase, lastFrame: 0, frameOf, wall };
   });
 
   let lights = true;
@@ -198,7 +211,8 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
             const step = Math.floor((t + tr.phase) / (tr.period / 3)) % 3;
             if (step !== tr.lastFrame) {
               tr.lastFrame = step;
-              tr.img.setFrame(tr.frameOf(step));
+              if (tr.wall) tr.img.setTexture(tr.frameOf(step));
+              else tr.img.setFrame(tr.frameOf(step));
               // the glow flickers by swapping its dither level (no alpha: palette-crisp)
               tr.glow.setFrame(torchFrame.glow(step));
             }

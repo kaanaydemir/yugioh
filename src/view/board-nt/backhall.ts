@@ -35,6 +35,18 @@ export function paintPillar(): PixelCanvas {
   return p;
 }
 
+/** The banner sigil, 8 × 9 at banner (4, 15): o = gold3, x = gold2, - = gold1 shade. */
+const SIGIL: readonly string[] = [
+  'x......x',
+  'xx....xx',
+  '-xx..xx-',
+  '.-xoox-.',
+  '..-xo-..',
+  '...xo...',
+  '...-x...',
+  '........',
+];
+
 /** A hanging banner, 16 × 46 in the player's colour with a gold emblem; `frame` 0..2 sways the swallowtail by a pixel. */
 export function paintBanner(side: 0 | 1, frame: number): PixelCanvas {
   const W = 16;
@@ -56,9 +68,9 @@ export function paintBanner(side: 0 | 1, frame: number): PixelCanvas {
       let c: number = edge ? PAL.ink : x < 5 ? R[2] : x < W - 5 ? R[1] : R[0];
       // a gold border stripe and a small diamond emblem
       if (!edge && (x === 4 || x === W - 5) && y > 4 && !tail) c = PAL.gold1;
-      const ey = Math.abs(y - 20);
-      const ex = Math.abs(x + 0.5 - W / 2);
-      if (!edge && ex + ey / 1.5 <= 3) c = ex + ey / 1.5 <= 1.5 ? PAL.gold3 : PAL.gold2;
+      // hedef-gorunum-3: a gold winged-V sigil (the arena emblem in miniature)
+      const sig = SIGIL[y - 15];
+      if (!edge && sig && x >= 4 && x <= 11 && sig[x - 4] !== '.') c = sig[x - 4] === 'o' ? PAL.gold3 : sig[x - 4] === 'x' ? PAL.gold2 : PAL.gold1;
       p.set(x, y, c);
     }
   }

@@ -349,3 +349,22 @@ Nabız filmi: `pod-16-film1.png` (P1), `pod-16-film2.png` (P2) — hafif (kenar 
 Kapılar: typecheck temiz, palcheck `pod-17.png` PASS, vitest arena-nt/board-nt/board-calm 37/37. v1: atlas yalnız ARENA_NT yolunda.
 Kalan farklar: P1 hâlâ sahne kenarından çıkan küçük bir blok üstünde (duelistXY); havuz hedefteki gibi yumuşak değil (palet sınırı);
 nabız sakin, bazı karelerde zor seçiliyor.
+
+## Arka duvar (madde "Back wall") — 2026-11-05
+Ne: lacivert reaktör kulesi + mavi panel duvar yerine hedef-gorunum-3'teki koyu tuğla duvar.
+- Yeni `src/art/arena-nt/brickwall.ts`: tek tam genişlik opak doku (656×110): tavan kemeri + borular, taş korniş,
+  tuğla alanı (her tuğlanın tonu en yakın aplik meşaleye uzaklığa göre seçilir → sıcak havuz tuğla sınırlarında
+  basamaklanır; dither/gradyan yok; ton merdiveni night1 → stone0/earth0 → skin0 → skin0+skin1 → skin1+skin2),
+  kapitelli taş sütunlar (6), amblem arkasında çerçeveli taş levha, sağda duvar boruları, LED'li küçük kutular, süpürgelik.
+  Kendi katman adı ('brickwall') — duvarın lacivert lift remap'i (calm-remap LIFT_LAYERS) dokunmuyor.
+- `src/view/board-nt/wall.ts`: panel şeridi, kule, eski metal sütunlar, tavan lambaları, ekran-arkası dither ışığı,
+  kule LED/veri panelleri ve neon bayraklar kaldırıldı; amblem levhada kalıyor. İki kızıl bayrak (altın kanatlı-V
+  mührü, `backhall.ts` paintBanner) sallanıyor; LED'ler yavaş ve ayrı ritimlerle yanıp sönüyor; her meşalenin havuzu
+  ara sıra bir kademe genişliyor (opak palet kaplama, alfa yok) → ışık nefes alıyor.
+- `src/view/board-nt/lights.ts`: aplik meşaleler artık duvara/sütuna oturmuş BRICK_TORCHES noktalarında
+  (119,58 sütun · 251,44 · 389,44 · 501,68); apliklerin noktalı dither halesi gizlendi (ışık tuğlaya pişmiş). Direkli mangallar değişmedi.
+Önce/sonra: shots/arena/wall-before-stack.png → shots/arena/wall-07-stack.png (+ -sbs), yakın: wall-before-clipL.png → wall-05-clipL.png,
+titreşim filmi wall-06-film.png. typecheck temiz, palcheck PASS, vitest arena-nt 22/22. v1: doku yalnız ARENA_NT yolunda.
+Kalan farklar: meşale alevleri hedefe göre küçük (sprite lights.ts paintTorch, mangallarla ortak — dokunulmadı);
+hedefte havuzlar daha yumuşak/geniş; tavan kemerleri sade; sağdaki borular/kutular HUD ve hologram altında az görünüyor;
+yukarı kaydırılan kamerada (intro) eski panel karoları duruyor.
