@@ -517,7 +517,7 @@ function inHood(pz: Pose, g: Geo, x: number, y: number): boolean {
   return y <= bottom - 0.6 + tip;
 }
 
-export function buildField(pz: Pose, g: Geo, side: 1 | -1): Field {
+function buildField(pz: Pose, g: Geo, side: 1 | -1): Field {
   const kind = new Int8Array(W * H).fill(-1);
   const depth = new Int16Array(W * H).fill(-1);
   const band = new Int8Array(W * H).fill(-1);

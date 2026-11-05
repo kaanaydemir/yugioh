@@ -776,8 +776,8 @@ Critic report: `shots/v3/kart-b/wisp_imp/critic-r3/` (6 majors, 7 minors). Evide
    (#9–#14: feathers → pillow, never empty).
 7. minor **flat white burst frame** — the burst's first frame is the body shape with its own inked, banded planes
    (only the darkest tones lifted one step) and the face: dark hollow + two white-hot eyes (facing the right way
-   for P2). `fix-r3/wiCushion-burst.png` #3–#4 (taken with the earlier full-lift version; the final keeps the
-   void4/white banding).
+   for P2). `fix-r3/wiCushion-burst2.png` #1–#2 (final); `fix-r3/wiCushion-burst.png` = the first try (every
+   value lifted: read too white, dropped).
 8. minor **summon pre-roll** — the falling feather is 14 px / 5.8 wide (was 11 / 4.6); a moonlight pool on the
    tile brightens through the pre-roll (`tile` glow 0 → 0.5 over PRE+120 ms, full on the touch).
    `fix-r3/wiSummon-preroll.png`.
@@ -800,7 +800,8 @@ Critic report: `shots/v3/kart-b/wisp_imp/critic-r3/` (6 majors, 7 minors). Evide
 - `monster-gates --class small --ref none` (`fix-r3/gates.txt`): 20 ok, 1 FAIL = HA-21 phase (the known,
   documented deviation; hit 71 %, hitHeavy 72 %). Frame edge: no new clipping beyond 3–5 px of the tumble's
   thrown feathers at x ≤ 2 (`edge.ts`).
-- measure `fix-r3/measure.json` (20 wi* keys): see below.
+- measure `fix-r3/measure.json` (20 wi* keys): **0 errors** (neon / handlers / timeouts / page / console), zoom 1
+  everywhere; wiSummon total 2633 ms.
 - v1: every change is in v3-only files (`monsters-v3/wisp_imp-*`, `audio/v3/wisp_imp.ts`) or inside LOOK_V3-gated
   registrations (the new soul_recall hook included).
 
