@@ -11,12 +11,13 @@
 //   e_voidLid      the lids open: "şııııp" — band-pass noise opening slowly upward, a soft wet parting at the end
 //   e_voidGaze     the eye looks down: a deep glass tone + a descending glass shimmer (the gaze falls on the field)
 //   e_voidReveal   a face-down card is seen through: a tiny high glass tick
-//   e_voidSwell    (sustained) the 28 Hz swell under the rise: sine 28 + 56 + a lowpassed saw opening slowly
+//   e_voidSwell    (sustained) the 28 Hz swell under the rise: 28/56/84 sines + a 112/168 Hz body, lowpass opening
 //   e_voidRise     (sustained) the upward choir: five "aah" voices gliding up a fifth, formant filtered, no vibrato
 //   e_voidSave     a guardian charm yanks its monster back: a gold snap (link pings + a bell) and a rope whip
 //   e_voidThud     the saved monster lands back on its tile: a soft low thump + dust
 //   e_voidTick     the pupil contracts: a DRY close tick (no reverb), two clicks 22 ms apart
-//   e_voidGulp     the swallow: a reverse suction swell into a deep glassy gulp
+//   e_voidGulp     the pull: a reversed glass swell + rising suction → a high glass pinch + dry tick → 56→28 Hz fall
+//   e_voidCard     a destroyed card lands on its graveyard: a soft glass tick (max 3 voices)
 //   e_voidBlink    an eyelid blink: a soft wet "tup"
 //   e_voidDrip     the single purple tear lands: a water-drop "tıp" (a fast upward blip) + a tiny ring
 
@@ -112,13 +113,21 @@ export const RECIPES = {
     verb: 0.25,
     duck: 0.35,
     play(v) {
-      // the 28 Hz swell (no tremolo): steady sines, the swell is only amplitude + an opening lowpass
+      // the 28 Hz swell (NO tremolo): only integer harmonics of 28 Hz (28 / 56 / 84 / 112 / 168), so nothing beats;
+      // the swell lives in the amplitude and an opening lowpass. 112 / 168 Hz are the steady upper body that a
+      // laptop or phone speaker can play (the 28 Hz fundamental is then implied by its harmonics).
       const d = 2.2;
-      v.tone('sine', 28, { g: [[0, 0], [d * 0.85, 0.26], [d, 0.0001, 'e']] });
-      v.tone('sine', 56, { g: [[0, 0], [d * 0.85, 0.12], [d, 0.0001, 'e']] });
-      const lp = v.filt('lowpass', [[0, 70], [d * 0.85, 420, 'e'], [d, 120, 'e']], 0.9);
-      v.tone('sawtooth', 28, { g: [[0, 0], [d * 0.85, 0.11], [d, 0.0001, 'e']], to: lp });
-      v.tone('sawtooth', 42, { g: [[0, 0], [d * 0.85, 0.04], [d, 0.0001, 'e']], to: lp });
+      const env = (g: number): [number, number, ('e' | 'l')?][] => [[0, 0], [d * 0.85, g], [d, 0.0001, 'e']];
+      v.tone('sine', 28, { g: env(0.24) });
+      v.tone('sine', 56, { g: env(0.13) });
+      v.tone('sine', 84, { g: env(0.07) });
+      const lp = v.filt('lowpass', [[0, 140], [d * 0.85, 520, 'e'], [d, 160, 'e']], 0.7);
+      v.tone('triangle', 112, { g: env(0.1), to: lp });
+      v.tone('triangle', 168, { g: env(0.05), to: lp });
+      v.tone('sawtooth', 56, { g: env(0.05), to: lp });
+      // a faint glass surface on top (still 28 Hz harmonics: 12× and 16×) so the swell reads on small speakers
+      v.tone('sine', 336, { g: env(0.018) });
+      v.tone('sine', 448, { g: env(0.012) });
     },
   },
   e_voidRise: {
@@ -179,14 +188,22 @@ export const RECIPES = {
     verb: 0.5,
     duck: 0.4,
     play(v) {
-      // suction: noise rising and narrowing into the pupil (reverse swell), then the deep glassy gulp
-      const bp = v.filt('bandpass', [[0, 300], [0.3, 2600, 'e']], [[0, 1.4], [0.3, 6, 'e']]);
-      v.noise('pink', { g: [[0, 0], [0.29, 0.5], [0.31, 0.0001, 'e']], to: bp });
-      v.tone('sine', [[0, 40], [0.3, 110, 'e']], { g: [[0, 0], [0.28, 0.2], [0.31, 0.0001, 'e']] });
-      thump(v, 0.3, 90, 28, 0.6, 0.45, { drive: 1.4 });
-      v.tone('sine', 28, { t: 0.3, g: [[0, 0], [0.02, 0.35], [0.8, 0.0001, 'e']] });
-      glassBell(v, 1240, 0.3, 0.045, 1.1, { modes: 4 });
-      glassBell(v, 1860, 0.32, 0.025, 0.8, { modes: 3 });
+      // THE PULL (0 → 0.32 s, synced to the bodies being snapped into the pupil): a reversed glass swell — glass
+      // partials fading IN and bending up — with a narrowing airy suction (band-pass noise climbing, high and thin)
+      const P = 0.32;
+      [1320, 1980, 2790, 3960].forEach((f, i) =>
+        v.tone('sine', [[0, f * 0.82], [P, f, 'e']], { t: i * 0.01, g: [[0, 0], [P * 0.92, 0.06 / (1 + i * 0.5)], [P, 0.0001, 'e']] }),
+      );
+      const bp = v.filt('bandpass', [[0, 1400], [P, 7200, 'e']], [[0, 2], [P, 9, 'e']]);
+      v.noise('white', { g: [[0, 0], [P * 0.9, 0.34], [P, 0.0001, 'e']], to: bp });
+      // the PINCH at the pupil: a high glass "tink" (bright, short) + a dry tick, no thump
+      glassBell(v, 4700, P, 0.06, 0.5, { modes: 3 });
+      glassBell(v, 3130, P + 0.012, 0.035, 0.7, { modes: 2 });
+      crack(v, P, 0.12, { hp: 4000, lp: 12000, dec: 0.004 });
+      // then the void drops away under it: a pure 56 → 28 Hz sine fall and a soft dark glass ring (no drive)
+      v.tone('sine', [[0, 56], [0.5, 28, 'e']], { t: P + 0.01, g: [[0, 0], [0.03, 0.3], [0.85, 0.0001, 'e']] });
+      v.tone('sine', [[0, 112], [0.3, 84, 'e']], { t: P + 0.01, g: [[0, 0], [0.02, 0.06], [0.4, 0.0001, 'e']] });
+      glassBell(v, 1240, P + 0.04, 0.018, 1.3, { modes: 3 });
     },
   },
   e_voidBlink: {
@@ -199,6 +216,19 @@ export const RECIPES = {
       v.noise('pink', { g: perc(0.34, 0.03, 0.002), to: v.filt('lowpass', 900, 1) });
       v.tone('sine', [[0, 230], [0.05, 120, 'e']], { g: perc(0.36, 0.07, 0.002) });
       crack(v, 0.004, 0.03, { hp: 1500, lp: 4000, dec: 0.006 });
+    },
+  },
+  e_voidCard: {
+    cap: 3,
+    gap: 0.04,
+    verb: 0.3,
+    vary: 0.06,
+    play(v) {
+      // a destroyed card lands on its graveyard while the eye blinks: a soft glass tick on a felt tap (not the
+      // generic cardPlace click): a quiet high glass bell + a muted low tap
+      glassBell(v, 3520, 0, 0.022, 0.3, { modes: 2 });
+      v.noise('pink', { g: perc(0.12, 0.02, 0.001), to: v.filt('lowpass', 1400, 0.8) });
+      v.tone('sine', [[0, 300], [0.03, 180, 'e']], { g: perc(0.1, 0.04, 0.001) });
     },
   },
   e_voidDrip: {

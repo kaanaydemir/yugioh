@@ -219,6 +219,8 @@ interface Body {
   /** The five limb points relative to the body's sprite position (P1 facing), string order. */
   limbs: XY[];
   flip: boolean;
+  /** Flipped-sprite mirror term (Phaser flips inside the frame): a relative x maps to `mirror - x`. */
+  mirror: number;
   /** The limp-puppet pose frames (lean / dangle) while the strings hold it; null: plain sprite. */
   pose: PuppetPose | null;
   /** The strings twist (cross over) during the pirouette. */
@@ -226,7 +228,7 @@ interface Body {
 }
 
 function makeBody(sc: Phaser.Scene, unit: MonsterUnit | null, tile: TileCard | null, ground: XY): Body {
-  const b: Body = { unit, tile, ground: { ...ground }, lift: 0, nx: 0, ny: 0, hover: unit ? unit.hover : 0, limbs: [], flip: unit ? unit.sprite.flipX : false, pose: null, twist: false };
+  const b: Body = { unit, tile, ground: { ...ground }, lift: 0, nx: 0, ny: 0, hover: unit ? unit.hover : 0, limbs: [], flip: unit ? unit.sprite.flipX : false, mirror: unit ? unit.sprite.frame.realWidth * (1 - 2 * unit.sprite.originX) : 0, pose: null, twist: false };
   if (unit) {
     const s = unit.sprite;
     const box = spriteBox(sc, s);
@@ -306,7 +308,7 @@ function limbsNow(b: Body): XY[] {
   const a = bodyAnchor(b);
   const mirrored = b.flip !== (b.unit ? b.unit.sprite.flipX : false);
   const pts = b.limbs.map((l) => {
-    const r = { x: mirrored ? -l.x : l.x, y: l.y };
+    const r = { x: mirrored ? b.mirror - l.x : l.x, y: l.y };
     const o = b.pose ? b.pose.offset(r) : { x: 0, y: 0 };
     return { x: a.x + r.x + o.x, y: a.y + r.y + o.y };
   });
@@ -329,7 +331,7 @@ function eyesAt(b: Body): XY[] {
   const a = bodyAnchor(b);
   const flip = b.unit.sprite.flipX;
   return b.pose.eyes.map((e) => {
-    const r = { x: flip ? -e.x - 1 : e.x, y: e.y };
+    const r = { x: flip ? b.pose!.mirror - e.x : e.x, y: e.y };
     const o = b.pose!.offset(r);
     return { x: a.x + r.x + o.x, y: a.y + r.y + o.y };
   });
@@ -642,7 +644,7 @@ async function takeScene(ctx: CCCtx, hint: { crossAt?: XY } = {}): Promise<void>
   const hang: XY = hint.crossAt ? { x: hint.crossAt.x, y: hint.crossAt.y + 8 } : hangOver(b, from);
   const rig = makeRig(sc, b, { x: hang.x, y: hang.y - 8 });
   if (eqTile) rig.tether = { from: { x: R(eqTile.home.x), y: R(eqTile.home.y) }, on: false };
-  rig.light = lightPool(sc, hang.x, hang.y, { color: PAL.gold4, radius: 8, spill: null, floorY: from.y, air: 0.6, airRadius: 14, intensity: 0, fadeIn: 0, anim: 'flicker' });
+  rig.light = lightPool(sc, hang.x, hang.y, { color: PAL.gold4, radius: 2, ry: 1, spill: null, floorY: from.y, air: 0.7, airRadius: 14, intensity: 0, fadeIn: 0, anim: 'flicker' });
   rig.light.setIntensity(1, 160);
   bg(starFlare(sc, { x: hang.x, y: hang.y - 8 }, 240, GOLD_FX, 26));
   void lightFlash(sc, hang.x, hang.y - 8, PAL.gold4, 34, 320, { floorY: from.y, intensity: 1 });
@@ -785,7 +787,7 @@ async function takeScene(ctx: CCCtx, hint: { crossAt?: XY } = {}): Promise<void>
     const big = h === legs.length - 1;
     playV3('e_puppetStep', { volume: big ? 1 : 0.85, pitch: 1 - h * 0.05, pan: panAt(g1.x) });
     dust(sc, { x: R(g1.x), y: R(g1.y) }, big ? 10 : 6);
-    void lightFlash(sc, g1.x, g1.y, PAL.gold2, big ? 26 : 18, 220, { intensity: big ? 0.8 : 0.5 });
+    void lightFlash(sc, g1.x, g1.y - 6, PAL.gold3, big ? 14 : 10, 160, { floorY: g1.y, intensity: big ? 0.45 : 0.3, air: 0.5 });
     if (big) await hitStop(sc, 70);
     await wait(sc, 40);
     b.ny = 0;
@@ -891,7 +893,7 @@ async function snapAll(sc: Phaser.Scene, b: Body, crossAt: XY): Promise<void> {
   const rig = makeRig(sc, b, crossAt);
   // the small cross grows back: small → mid → big
   crossSize(rig, 'small');
-  rig.light = lightPool(sc, crossAt.x, crossAt.y, { color: PAL.gold4, radius: 8, spill: null, floorY: b.ground.y, air: 0.6, airRadius: 12, intensity: 0, fadeIn: 0, anim: 'flicker' });
+  rig.light = lightPool(sc, crossAt.x, crossAt.y, { color: PAL.gold4, radius: 2, ry: 1, spill: null, floorY: b.ground.y, air: 0.7, airRadius: 12, intensity: 0, fadeIn: 0, anim: 'flicker' });
   rig.light.setIntensity(1, 100);
   bg(starFlare(sc, crossAt, 160, GOLD_FX, 16));
   playV3('e_puppetCross', { volume: 0.75, pitch: 1.12, pan: panAt(crossAt.x) });
@@ -942,7 +944,7 @@ async function snapAll(sc: Phaser.Scene, b: Body, crossAt: XY): Promise<void> {
   await wait(sc, 30);
   playV3('e_puppetCrossBreak', { volume: 1, pan: panAt(rig.at.x) });
   crossBreak(sc, rig.at);
-  void lightFlash(sc, rig.at.x, rig.at.y, PAL.gold4, 22, 260, { floorY: b.ground.y, intensity: 0.8 });
+  void lightFlash(sc, rig.at.x, rig.at.y, PAL.gold4, 12, 240, { intensity: 0.8, air: 0.9 });
   rig.cross.setVisible(false);
   sc.time.delayedCall(320, () => destroyRig(rig));
 }
@@ -1014,7 +1016,7 @@ async function returnScene(ctx: CCCtx): Promise<void> {
     b.hover = unit.hover;
     const p = puppetPose(sc, unit.sprite);
     if (p) {
-      eyes0 = p.eyes.map((e) => ({ x: unit.sprite.flipX ? -e.x - 1 : e.x, y: e.y }));
+      eyes0 = p.eyes.map((e) => ({ x: unit.sprite.flipX ? p.mirror - e.x : e.x, y: e.y }));
       p.restore();
     }
     spirals = eyes0.map(() => sc.add.image(0, 0, SPIRAL_KEY, 'f2').setDepth(DEPTH.FX + 9).setFlipX(unit.sprite.flipX));
@@ -1097,21 +1099,39 @@ async function noRoomScene(ctx: DestroyCtx): Promise<void> {
   }
   void lightFlash(sc, hitAt.x, hitAt.y, PAL.white, 18, 140, { floorY: home.y, intensity: 1 });
   void lightFlash(sc, homeOf.x, homeOf.y, PAL.crim3, 40, 300, { intensity: 0.8, ring: true });
-  const wall = new Raster(sc, hitAt.x - 12, hitAt.y - 20, 24, 40, DEPTH.FX + 9);
-  // a 1-frame white impact star, then two frames of a crimson barrier line (perpendicular to the lurch)
+  const wall = new Raster(sc, hitAt.x - 24, hitAt.y - 24, 48, 48, DEPTH.FX + 9);
+  // frame 1: a white impact burst (a 9-px plus + four diagonal sparks) where the body meets the wall
   wall.draw((r) => {
-    r.line(hitAt.x - 6, hitAt.y, hitAt.x + 6, hitAt.y, PAL.white);
-    r.line(hitAt.x, hitAt.y - 6, hitAt.x, hitAt.y + 6, PAL.white);
-    r.px(hitAt.x - 1, hitAt.y - 1, PAL.white);
-    r.px(hitAt.x + 1, hitAt.y + 1, PAL.white);
+    r.line(hitAt.x - 4, hitAt.y, hitAt.x + 4, hitAt.y, PAL.white);
+    r.line(hitAt.x, hitAt.y - 4, hitAt.x, hitAt.y + 4, PAL.white);
+    for (const [dx, dy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
+      r.px(hitAt.x + dx * 3, hitAt.y + dy * 3, PAL.white);
+      r.px(hitAt.x + dx * 5, hitAt.y + dy * 5, PAL.crim4);
+    }
   });
   await hitStop(sc, 60);
   await wait(sc, 34);
-  wall.draw((r) => {
-    const px = -uy;
-    const py = ux;
-    for (let k = -14; k <= 14; k++) if (k % 3 !== 0) r.px(R(hitAt.x + px * k), R(hitAt.y + py * k * 0.6 + k * 0.2), Math.abs(k) > 10 ? PAL.crim2 : PAL.crim3);
-  });
+  // then the invisible wall shows itself: a crimson pane across the lurch (vertical bars every 3 px between a top
+  // and a bottom rail), rippling out from the hit point, then dimming as the body falls back
+  const px = -uy;
+  const py = ux;
+  const pane = (reach: number, bar: number, rail: number) =>
+    wall.draw((r) => {
+      const at = (k: number) => ({ x: R(hitAt.x + px * k), y: R(hitAt.y + py * k * 0.5) });
+      const e0 = at(-reach);
+      const e1 = at(reach);
+      r.line(e0.x, e0.y - 9, e1.x, e1.y - 9, rail);
+      r.line(e0.x, e0.y + 9, e1.x, e1.y + 9, rail);
+      for (let k = -reach; k <= reach; k += 3) {
+        const q = at(k);
+        r.line(q.x, q.y - 8, q.x, q.y + 8, Math.abs(k) <= 1 ? PAL.crim4 : bar);
+      }
+    });
+  pane(6, PAL.crim3, PAL.crim2);
+  await wait(sc, 34);
+  pane(12, PAL.crim3, PAL.crim3);
+  sc.time.delayedCall(90, () => wall.alive && pane(12, PAL.crim2, PAL.crim1));
+  sc.time.delayedCall(150, () => wall.alive && pane(9, PAL.crim1, PAL.crim1));
   // bounced: it falls back to its tile, staggering
   await run(sc, 160, (t) => {
     const k = 1 - q(t, 4);

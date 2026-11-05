@@ -48,3 +48,31 @@ describe('e_puppet_string stages', () => {
     expect(events.find((e) => e.type === 'destroy' && e.reason === 'rule')).toMatchObject({ cardId: 'abyss_magus', player: 0 });
   });
 });
+
+describe('puppet_string eye finder (the spiral glint lands on the art\'s eyes)', () => {
+  it('finds both eyes of a face, the brighter first, and skips rim highlights', async () => {
+    const { findEyes } = await import('../../src/cinematics/spells/_puppet_string_body');
+    const W = 20;
+    const H = 20;
+    const d = new Uint8ClampedArray(W * H * 4);
+    const put = (x: number, y: number, v: number) => {
+      const i = (y * W + x) * 4;
+      d[i] = v;
+      d[i + 1] = v;
+      d[i + 2] = v;
+      d[i + 3] = 255;
+    };
+    // a dark head block (rows 2..17), a bright 3-px near eye and a dimmer 2-px far eye on row 6 (a 2-px slit: its
+    // middle rounds right, x 13)
+    for (let y = 2; y <= 17; y++) for (let x = 3; x <= 16; x++) put(x, y, 40);
+    for (const x of [7, 8, 9]) put(x, 6, 250);
+    for (const x of [12, 13]) put(x, 6, 180);
+    // a bright rim pixel on the silhouette's edge (no socket above it): never an eye
+    put(3, 4, 255);
+    const eyes = findEyes(d, W, H, 2, 17);
+    expect(eyes).toEqual([
+      { x: 8, y: 6 },
+      { x: 13, y: 6 },
+    ]);
+  });
+});

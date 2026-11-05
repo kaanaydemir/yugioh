@@ -6,7 +6,7 @@
 // Also finds the art's eye pixels (the brightest small marks with dark around them in the head band) for the
 // spiral glint.
 
-import Phaser from 'phaser';
+import type Phaser from 'phaser';
 import { frameRGBA } from '../../art/atlas';
 import type { XY } from '../../view/layout';
 
@@ -22,8 +22,13 @@ export interface PuppetPose {
   set(lean: number, dangle: number): void;
   /** Screen offset of a sprite-relative point (sprite pos + rel, current facing) under the current pose. */
   offset(rel: XY): XY;
-  /** Eye points relative to the sprite position, P1 facing (mirror them for a flipped sprite). */
+  /** Eye points relative to the sprite position, P1 facing (mirror them for a flipped sprite with mirrorX()). */
   readonly eyes: XY[];
+  /**
+   * Phaser flips a sprite inside its frame bounds, not around its origin: a sprite-relative x maps to
+   * `mirror - x` on a flipped sprite (mirror = W·(1 − 2·originX) of the hooked frame).
+   */
+  readonly mirror: number;
   /** Back to the real sprite: its own texture, frame and idle. Removes the pose textures. */
   restore(): void;
   lean: number;
@@ -105,11 +110,61 @@ export function puppetPose(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprit
     return key;
   };
 
+  const eyes = findEyes(data, W, H, top, bot);
+  // frame px → sprite-relative (P1 facing: unflipped art)
+  const rel = (fx: number, fy: number): XY => ({ x: Math.round(fx + 0.5 - ox * W), y: Math.round(fy + 0.5 - oy * H) });
+  const eyesRel = eyes.map((e) => rel(e.x, e.y));
+  const topRel = top - oy * H;
+  const botRel = bot - oy * H;
+  const hangRel = hangY - oy * H;
+
+  const pose: PuppetPose = {
+    lean: 0,
+    dangle: 0,
+    eyes: eyesRel,
+    mirror: W * (1 - 2 * ox),
+    set(lean, dangle) {
+      lean = Math.round(lean);
+      dangle = Math.max(0, Math.min(PAD_Y, Math.round(dangle)));
+      pose.lean = lean;
+      pose.dangle = dangle;
+      if (!sprite.active) return;
+      const leanArt = sprite.flipX ? -lean : lean;
+      const key = build(leanArt, dangle);
+      sprite.setTexture(key);
+      sprite.setOrigin((ox * W + PAD_X) / (W + PAD_X * 2), (oy * H) / (H + PAD_Y));
+    },
+    offset(r) {
+      const fy = r.y;
+      const dx = Math.round((pose.lean * (botRel - Math.min(fy, botRel))) / h);
+      const dy = fy >= hangRel ? pose.dangle : 0;
+      return { x: dx, y: dy };
+    },
+    restore() {
+      if (sprite.active) {
+        sprite.setTexture(texKey, frameName);
+        sprite.setOrigin(ox, oy);
+        if (wasPlaying) sprite.anims.resume();
+      }
+      for (const k of keys) if (scene.textures.exists(k)) scene.textures.remove(k);
+      keys.length = 0;
+    },
+  };
+  void topRel;
+  return pose;
+}
+
+/**
+ * The eye points of a frame (frame px), most likely first: in the face band (below the horns / crest, above the
+ * chest), inside the silhouette, the brightest marks that sit in a socket (darker pixels above AND below: a lit
+ * slit or dot in a face, not a highlight on the rim of a horn or a crest). Pure (tests and probes use it).
+ */
+export function findEyes(data: Uint8ClampedArray | Uint8Array, W: number, H: number, top: number, bot: number): XY[] {
+  const h = Math.max(1, bot - top);
+  const eyes: XY[] = [];
   // eyes: in the face band (below the horns / crest, above the chest), inside the silhouette, the brightest
   // marks that sit in a socket (darker pixels above AND below: a lit slit or dot in a face, not a highlight on
   // the rim of a horn or a crest)
-  const eyes: XY[] = [];
-  {
     const lum = (i: number) => 0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2];
     const ya = Math.round(top + h * 0.1);
     const yb = Math.round(top + h * 0.4);
@@ -152,51 +207,11 @@ export function puppetPose(scene: Phaser.Scene, sprite: Phaser.GameObjects.Sprit
       };
       const r1 = run(first);
       eyes.push({ x: Math.round((r1.l + r1.r) / 2), y: first.y });
-      const second = cand.find((c) => (c.x < r1.l - 1 || c.x > r1.r + 1) && Math.abs(c.x - first.x) <= 12 && Math.abs(c.y - first.y) <= 2 && c.s >= first.s * 0.75);
+      const second = cand.find((c) => (c.x < r1.l - 1 || c.x > r1.r + 1) && Math.abs(c.x - first.x) <= 12 && Math.abs(c.y - first.y) <= 2 && c.s >= first.s * 0.5);
       if (second) {
         const r2 = run(second);
         eyes.push({ x: Math.round((r2.l + r2.r) / 2), y: second.y });
       }
     }
-  }
-  // frame px → sprite-relative (P1 facing: unflipped art)
-  const rel = (fx: number, fy: number): XY => ({ x: Math.round(fx + 0.5 - ox * W), y: Math.round(fy + 0.5 - oy * H) });
-  const eyesRel = eyes.map((e) => rel(e.x, e.y));
-  const topRel = top - oy * H;
-  const botRel = bot - oy * H;
-  const hangRel = hangY - oy * H;
-
-  const pose: PuppetPose = {
-    lean: 0,
-    dangle: 0,
-    eyes: eyesRel,
-    set(lean, dangle) {
-      lean = Math.round(lean);
-      dangle = Math.max(0, Math.min(PAD_Y, Math.round(dangle)));
-      pose.lean = lean;
-      pose.dangle = dangle;
-      if (!sprite.active) return;
-      const leanArt = sprite.flipX ? -lean : lean;
-      const key = build(leanArt, dangle);
-      sprite.setTexture(key);
-      sprite.setOrigin((ox * W + PAD_X) / (W + PAD_X * 2), (oy * H) / (H + PAD_Y));
-    },
-    offset(r) {
-      const fy = r.y;
-      const dx = Math.round((pose.lean * (botRel - Math.min(fy, botRel))) / h);
-      const dy = fy >= hangRel ? pose.dangle : 0;
-      return { x: dx, y: dy };
-    },
-    restore() {
-      if (sprite.active) {
-        sprite.setTexture(texKey, frameName);
-        sprite.setOrigin(ox, oy);
-        if (wasPlaying) sprite.anims.resume();
-      }
-      for (const k of keys) if (scene.textures.exists(k)) scene.textures.remove(k);
-      keys.length = 0;
-    },
-  };
-  void topRel;
-  return pose;
+    return eyes;
 }
