@@ -38,7 +38,7 @@ import { monsterFrame, monsterTextureKey } from '../../art/textures';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { ZoneEntry } from '../../duel/FieldView';
 import { DEPTH, duelistXY, GAME_H, GAME_W, LOOK_V3, type XY } from '../layout';
-import { ntGrid, PLATE_C0, PLATE_C1, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1 } from '../board-nt/layout-nt';
+import { NT_DEPTH, ntIso, PLATE_OUTLINE, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1 } from '../board-nt/layout-nt';
 import { onDuelStart } from '../../duel/seeds';
 import { type Stamp, StepPatch, quantize } from './stepped';
 import { CAUSTIC_FRAMES, LIGHT_TEX, LT, ensureLightTextures } from './textures';
@@ -1347,9 +1347,22 @@ function fieldColor(id: string): number {
   return id === 'volcano_arena' ? PAL.fire3 : PAL.teal3;
 }
 
-/** Build (or get) a smooth warm top-left key-light wash strictly clipped inside the v3 platform octagon. */
+/**
+ * Build (or get) the key-light wash of the v3 platform top. Arena pass "board top" (2026-11-05, owner: calm clean dark
+ * slate, hedef-gorunum-3): ONE flat, palette-coloured (skin2) wash at a single low alpha, clipped to the plate's top
+ * octagon 3 px inside the gold bevel — no radial gradient, no amber pool. It lies UNDER the zone tiles (see the
+ * depth below), so the inset tiles and their 1-px neon borders stay exact palette pixels and read one step darker
+ * than the lit stage stone around them.
+ */
+const KEY_WASH = { color: PAL.skin2, alpha: 0.22 } as const;
+/**
+ * Board-top critique round 2 (2026-11-05): the warm wash turned the slab mauve-brown (≈100/81/81) against the target's
+ * cool dark slate; the slab's light falloff is now one hard-edged palette band in the platform atlas instead
+ * (art/arena-nt/platform.ts topTone), so the wash is off (kept for A/B).
+ */
+const KEY_WASH_ON = false;
 function ensureKeyLightTex(scene: Phaser.Scene): string {
-  const key = 'light:v3keywash';
+  const key = 'light:v3keywash2';
   if (scene.textures.exists(key)) return key;
   const OX = PLATE_X0;
   const OY = PLATE_Y0;
@@ -1362,31 +1375,30 @@ function ensureKeyLightTex(scene: Phaser.Scene): string {
   if (ctx) {
     const imgData = ctx.createImageData(W, H);
     const data = imgData.data;
+    const poly = PLATE_OUTLINE.map(([c, r]) => ntIso(c, r));
+    const inside = (x: number, y: number): boolean => {
+      let k = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const a = poly[i];
+        const b = poly[j];
+        if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) k = !k;
+      }
+      return k;
+    };
+    const cr = (KEY_WASH.color >> 16) & 255;
+    const cg = (KEY_WASH.color >> 8) & 255;
+    const cb = KEY_WASH.color & 255;
+    const al = Math.round(KEY_WASH.alpha * 255);
     for (let y = 0; y < H; y++) {
-      const sy = OY + y;
-      if (sy < PLATE_Y0 || sy >= PLATE_Y1) continue;
       for (let x = 0; x < W; x++) {
-        const sx = OX + x;
-        if (sx < PLATE_X0 || sx >= PLATE_X1) continue;
-        const [c, r] = ntGrid(sx + 0.5, sy + 0.5);
-        if (c < PLATE_C0 || c > PLATE_C1 || r < PLATE_R0 || r > PLATE_R1) continue;
-        // Distance from the upper-left edge of the platform (c = PLATE_C0) and radial falloff from (162, 124)
-        const edgeDist = (c - PLATE_C0) * 32;
-        // readability pass: a wider, warmer pool from the top left that fades smoothly across the board
-        const dx = (sx - 190) / 300;
-        const dy = (sy - 130) / 165;
-        const d = Math.hypot(dx, dy);
-        if (d >= 1) continue;
-        const falloff = Math.pow(1 - d, 1.35);
-        const rimBoost = edgeDist < 24 ? (1 - edgeDist / 24) * 0.14 : 0;
-        const alpha = Math.min(0.42, falloff * 0.34 + rimBoost);
-        if (alpha <= 0.005) continue;
+        const sx = OX + x + 0.5;
+        const sy = OY + y + 0.5;
+        if (!(inside(sx - 4, sy) && inside(sx + 4, sy) && inside(sx, sy - 3) && inside(sx, sy + 3))) continue;
         const idx = (y * W + x) * 4;
-        // Warm amber key light grazing from the upper-left
-        data[idx] = 236;
-        data[idx + 1] = 168;
-        data[idx + 2] = 104;
-        data[idx + 3] = Math.round(alpha * 255);
+        data[idx] = cr;
+        data[idx + 1] = cg;
+        data[idx + 2] = cb;
+        data[idx + 3] = al;
       }
     }
     ctx.putImageData(imgData, 0, 0);
@@ -1466,10 +1478,13 @@ export class LightLayer {
     if (this.stepped) {
       // Smooth top-left warm key-light wash on the board floor + duelist foot contact shadows & faint light pools
       try {
-        const keyTex = ensureKeyLightTex(scene);
-        const keyImg = this.makeSteppedImage(keyTex, DEPTH.TILE + 2.2);
-        keyImg.setOrigin(0).setPosition(PLATE_X0, PLATE_Y0).setVisible(this.on);
-        this.steppedStaticImgs.push(keyImg);
+        if (KEY_WASH_ON) {
+          const keyTex = ensureKeyLightTex(scene);
+          // under the zone tiles (nt:floor slots at NT_DEPTH.floor + 0.25), over the platform body (NT_DEPTH.platform)
+          const keyImg = this.makeSteppedImage(keyTex, NT_DEPTH.platform + 0.6);
+          keyImg.setOrigin(0).setPosition(PLATE_X0, PLATE_Y0).setVisible(this.on);
+          this.steppedStaticImgs.push(keyImg);
+        }
         const padShdTex = ensureFloorShadowTex(scene, 34, 18);
         const dFootTex = ensureFootTex(scene, 14, 7);
         for (const p of [0, 1] as const) {

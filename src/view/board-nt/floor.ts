@@ -255,9 +255,13 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
   }
   // owner decision 2026-11-02: back to the fb7243b board top — the smooth stone-flag texture over the plate and the smooth,
   // thin slot lines (the pixel-dither version read as "dotted"). The thick stage, daises and side walls of h3 stay.
-  const plateTex = ensurePlateTexture(scene);
-  if (plateTex) ctx.add(scene.add.image(PLATE_X0, PLATE_Y0, plateTex).setOrigin(0).setDepth(NT_DEPTH.platform + 0.5));
-  const slotKey = ensureSmoothSlots(scene);
+  // arena pass "board top" (2026-11-05, owner: calm clean slate, crisp 1-px borders, no anti-aliased canvas lines): the
+  // smooth plate overlay and the smooth slot lines are retired (kept below for an A/B); the slots are the pixel atlas.
+  void ensurePlateTexture;
+  void ensureSmoothSlots;
+  void PLATE_X0;
+  void PLATE_Y0;
+  const slotKey = NT_FLOOR_KEY;
   const slots: Slot[] = calmZones().map((z) => {
     const c = zoneXY(z.player, z.spot, z.index);
     const pile = z.spot !== 'monster' && z.spot !== 'spellTrap';

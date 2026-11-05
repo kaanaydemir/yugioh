@@ -153,3 +153,61 @@ sağ duvarda y 200..250 aralığında ≥ 6 crim3). `tests/view/board-nt-layout.
 (LightLayer / cinematics FACE_H okumuyor).
 Kalan farklar: tahta üstü hedefe göre sıcak/kahve (tahta/ışık maddesi), çevre maviden kömür-kahveye (zemin/duvar maddeleri),
 hedefin P1 duvarındaki amber pencereler (görev tanımı P1'de cyan istediği için bilerek cyan).
+
+### Tahta üstü (board top) — 2026-11-05
+
+Önce: `shots/arena/bt-0.png`, `bt-0-sbs.png`, `bt-0-zoom.png`, `bt-0-z3.png`. Tespit edilen farklar:
+(1) karo sınırları 2D-canvas ile çizilmiş yumuşak / kenar yumuşatmalı çizgi + parıltı (bulanık, net değil);
+(2) karolar gömük değil, yalnız çerçeve; (3) plaka üstünde yumuşak "taş döşeme" örtüsü (rgba derzler + leke) —
+ortada ve kenarlarda hayalet karo ızgarası; (4) ışık katmanının amber anahtar-ışık havuzu (`light:v3keywash`, rgba
+radyal, alfa ≤ 0.42) hem plakayı kahverengiye (ölçülen 128/100/84, hedef ≈ 80/68/76) çeviriyordu hem de karoların
+ÜSTÜNDE olduğu için neon çizgileri soldururdu; (5) P2 kırmızı çizgileri (crim2) koyu zeminde kayboluyordu.
+
+Adımlar (her adımda görüntü alındı, bakıldı):
+1. `view/board-nt/floor.ts`: yumuşak plaka örtüsü ve yumuşak karo çizgileri devreden çıktı (A/B için kod duruyor);
+   karolar piksel atlas (`nt:floor`). `art/arena-nt/floor.ts` `slotFrame`: dama/dither yok; 1 px oyuncu çizgisi, uzak
+   kenarlarda 2 px koyu iç duvar, yakın kenarlarda 1 px ışıklı dudak (stone2), içi TEK düz ton. → `bt-1.png`, `bt-1-zoom.png`
+2. `view/light/LightLayer.ts`: anahtar ışık yıkaması tek düz palet rengi (skin2) + tek düşük alfa (0.22), plaka
+   sekizgeninin altın pahın 3 px içine kırpılı, radyal gradyan yok; derinlik karoların ALTINA (NT_DEPTH.platform + 0.6).
+   Karo içi stone1 (yıkamasız) → çevreden bir ton koyu gömük okuma; çizgiler saf palet pikseli. Plaka tonu ≈ 88/74/78
+   (hedef ≈ 80–89 / 63–74 / 68–81). → `bt-2.png`, `bt-2-zoom.png`
+3. Çizgi her iki tarafta ramp[3] (cyan3 / crim3, hedefte ikisi de parlak); sıradaki taraf / dolu karo artık daha parlak
+   çizgiyle değil, uzak iç duvarın üst satırında ramp[1] (ince iç ışıma) ile ayrışıyor. → `bt-3.png`, `bt-3-zoom.png`,
+   `bt-3-z4.png`, `bt-3-sbs.png`
+
+Kapılar: `npm run typecheck` temiz; `palcheck bt-3.png` PASS (kalan palet dışı = plakanın yumuşak ışık yıkaması,
+CLAUDE.md'nin izin verdiği ince ışık katmanı); arena-nt / board-nt testleri geçiyor (kalan 4 hata kart/canavar
+testleri, bu maddeyle ilgisiz). v1: değişen kod yalnız NT yolunda (board-nt, arena-nt) ve LightLayer'ın stepped
+(v3) dalında; v1 bunlara girmiyor.
+Kalan farklar: hedefteki gömme daha derin (≈3 px duvar) ve çizgilerin dışında hafif neon ışıması var (bilerek yok:
+"ince sınır"); karo içi stone1 hedefe göre bir tık soğuk/mavi; hedefte tahta üstünün sol üstünde ışık daha belirgin.
+
+### Tahta üstü — eleştiri turu 1/3 düzeltmeleri (2026-11-05)
+
+Önce: `shots/arena/bt2-0.png`, `bt2-0-z.png` (hedef kırpımları: `bt2-tgt-z.png`, `bt2-tgt-zl.png`). Her adımda görüntü alındı, bakıldı:
+1. **#1 Gömme zayıf** — `art/arena-nt/floor.ts` `slotFrame`: uzak iç duvar 2 → 3 px ve bir ton koyu (ışıma satırı, ink,
+   stone0; eskiden stone0 ×2), yakın dudak bir ton açık (stone2 → stone3). Karo çizgi kapalıyken de çukur okunuyor. → `bt2-1-z.png`
+2. **#2 Kırmızı / cyan eşitliği** — çizgi zaten iki tarafta da ramp[3] (crim4 pastel pembe, sınır rengi olamaz). Asıl fark:
+   uzak duvarın ışıma satırı yalnız sıradaki tarafta (a6Hover'da P1) çiziliyordu. Artık iki tarafta HER ZAMAN ramp[1]
+   (cyan1 / crim1); sıradaki taraf / dolu karo ramp[2] ile ayrışıyor. Kırmızı karolar cyan ile aynı ağırlıkta. → `bt2-2-z.png`,
+   `bt2-2-zl.png`, `bt2-2.png`, `bt2-2-sbs.png`
+3. **#4 Sol üst anahtar ışık bandı (isteğe bağlı) — denendi, GERİ ALINDI.** `LightLayer` yıkamasında x + 2y = k izometrik
+   köşegeninde sert kenarlı ikinci alfa: (a) skin2 0.30 → bant ölçülen 101/81/81, hedefin sol üstü 90/81/86 — daha sıcak /
+   kırmızı, eleştirinin istediği "daha soğuk"un tersi (`bt2-3-z2.png`); (b) stone3 0.30 → 82/81/96, belirgin sert ton
+   yarığı, tahtayı ikiye bölen çizgi gibi okunuyor (`bt2-4-z2.png`); (c) stone3 0.26 → 78/78/92, parlaklık aynı yalnız ton
+   kayması (`bt2-5-z2.png`). Paletin skin2 ile stone3 arasında nötr bir adımı yok; sakin plaka korunarak kod tam eski hâline döndü.
+
+Reddedilen (gerekçeli):
+- **#3 köşegen çizgi "çift"**: maske dökümüyle doğrulandı — çizgi her satırda tam 2 px yatay, 2 px kayan temiz 2:1
+  izometrik basamak; tepe / yan köşelerde fazladan piksel yok (yan köşe 2 satırlık tek sütun). 2:1 çizginin standart 1 px
+  kalınlığı bu; "çift" izlenimi bitişik yakın dudaktan, 1. adımda dudak ayrı bir gri ton olarak okunuyor.
+- **#5 altın pah dalgalı / parlak piksel öbeği**: sahne bloğu maddesine ait (3/3 turunda bilerek her 6 px'te gold3 parıltı).
+- **#6 karo içi bir ton sıcak**: karo içi stone1 (57/56/70); palette stone0 ile stone1 arasında ya da stone1 yakınında daha
+  sıcak nötr yok (tek aday skin0 = kahve). Sıcaklık yalnız ışık yıkamasından gelebilir; yıkama karoların üstüne çıkarsa neon
+  çizgileri soldurur (önceki turun kararı). Dokunulmadı.
+
+Kapılar: `npm run typecheck` temiz; arena-nt / board-nt testleri geçiyor (kalan 4 hata kart/canavar testleri, ilgisiz);
+`palcheck bt2-6.png` PASS. v1: değişiklik yalnız `art/arena-nt/floor.ts` (NT atlası), v1 yolu kullanmıyor. Son: `bt2-6.png`,
+`bt2-6-sbs.png`.
+Kalan farklar: hedefte çizgilerin dışında hafif neon ışıması ve tahtanın sol üstünde yumuşak ışık (palet dışı gradyan
+gerektirir); kırmızı cyan'dan doğası gereği bir tık koyu (crim3 / cyan3 parlaklığı).

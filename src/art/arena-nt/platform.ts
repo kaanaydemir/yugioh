@@ -197,8 +197,14 @@ function topTone(x: number, y: number): Color {
   const dx = (x - 150) / 470;
   const dy = (y - 110) / 260;
   const wave = 0.03 * Math.sin(x * 0.045 + y * 0.07) + 0.02 * Math.cos(x * 0.021 - y * 0.05);
+  // board-top critique round 2 (2026-11-05): the light falloff the target has (lighter upper left, darker lower right) as
+  // ONE hard-edged palette band in the atlas — G2 (stone2) on the key-lit back-left side of an iso-diagonal edge
+  // (x + 2y = k, the screen direction of the board's columns), G1 (stone1) beyond it; no light-layer wash, no dither.
+  if (x + 2 * y + 6 * wave * 100 < KEY_BAND) return G2;
   return Math.hypot(dx, dy) + wave < 0.92 ? G1 : G0;
 }
+/** board-top critique round 2: where the lit stone2 band ends (screen x + 2y). */
+const KEY_BAND = 118 + 2 * 62 + 420;
 
 function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): PlatformArt['dashes'] {
   const dashPx: { x: number; y: number }[][] = Array.from({ length: 13 }, () => []);
