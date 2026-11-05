@@ -187,11 +187,16 @@ const SPIRALHORN_RECIPES = {
     gap: 0.08,
     verb: 0.25,
     duck: 0.15,
-    play: trim(2.5, (v) => {
-      for (let i = 0; i < 4; i++) hoof(v, i * 0.025, [0.3, 0.24, 0.27, 0.2][i], { f: [2200, 2350, 2100, 2280][i] });
-      // the grass flattens outward and springs back
-      shhk(v, 0.01, 0.11, 0.12);
-      puff(v, 0.0, 0.08, 0.06, 900, { kind: 'pink' });
+    play: trim(3.3, (v) => {
+      // four dry hoof-TIP ticks rolling front-to-back (a little roll, no body: the tiptoe lands light), each its own
+      // pitch, without the knock under them
+      for (let i = 0; i < 4; i++) {
+        crack(v, i * 0.03, [0.42, 0.3, 0.36, 0.26][i], { hp: [3600, 4300, 3300, 4000][i], lp: [6200, 7000, 5800, 6600][i], dec: 0.003 });
+        // each tip a small hollow knock of its own (a hoof, not a twig)
+        v.tone('triangle', [[0, [520, 610, 480, 570][i]], [0.02, [380, 430, 350, 410][i], 'e']], { t: i * 0.03, g: perc(0.07, 0.022, 0.0005) });
+      }
+      // the grass flattening outward, under it (no pink puff)
+      shhk(v, 0.02, 0.035, 0.09);
     }),
   },
   sshHonk: {
@@ -244,9 +249,11 @@ const SPIRALHORN_RECIPES = {
     gap: 0.05,
     verb: 0.25,
     play: trim(3, (v) => {
-      hoof(v, 0, 0.24);
-      shhk(v, 0.004, 0.12);
-      sweep(v, 0.01, 0.26, [700, 1800, 900], 0.1, { kind: 'pink', q: 1.3, peakAt: 0.4 });
+      // the grass "shhk" leads (the blades thrown back by the push-off), the hoof under it
+      hoof(v, 0.012, 0.15);
+      shhk(v, 0, 0.26, 0.13);
+      grass(v, 0.02, 0.12, 0.07, { f: 3400, peakAt: 0.15 });
+      sweep(v, 0.01, 0.26, [700, 1800, 900], 0.08, { kind: 'pink', q: 1.3, peakAt: 0.4 });
     }),
   },
   sshApexFlute: {
@@ -284,8 +291,10 @@ const SPIRALHORN_RECIPES = {
     duck: 0.45,
     play: trim(1.2, (v) => {
       // the keratin crack: band-passed 1.5 → 3.5 kHz, 10 ms, two strikes 8 ms apart
-      crack(v, 0, 1.0, { hp: 1500, lp: 3500, dec: 0.01, n: 2, gap: 0.008 });
-      thump(v, 0, 140, 80, 0.4, 0.1, { drive: 1.6 });
+      // (the keratin leads the knock by ≥ 3 dB: the crack is the sound, the thump only its weight)
+      crack(v, 0, 1.45, { hp: 1500, lp: 3500, dec: 0.01, n: 2, gap: 0.008 });
+      crack(v, 0.017, 0.5, { hp: 2200, lp: 3600, dec: 0.008 });
+      thump(v, 0, 140, 80, 0.26, 0.09, { drive: 1.4 });
       keratin(v, 0.002, 0.36, 900, 0.05);
       // the horn's woody ring, short (no bell, no glass: two inharmonic triangle partials)
       v.tone('triangle', 1420, { t: 0.003, g: perc(0.05, 0.09, 0.0008) });
@@ -347,9 +356,11 @@ const SPIRALHORN_RECIPES = {
     gap: 0.05,
     verb: 0.25,
     play: trim(2, (v) => {
-      puff(v, 0, 0.5, 0.07, 1000, { kind: 'pink', att: 0.002 });
-      thump(v, 0, 170, 100, 0.3, 0.06);
-      keratin(v, 0.004, 0.18, 900, 0.025);
+      puff(v, 0, 0.32, 0.06, 1000, { kind: 'pink', att: 0.002 });
+      thump(v, 0, 170, 100, 0.17, 0.05);
+      // the keratin tick leads (+4 dB): hide AND horn, never just a body thump
+      keratin(v, 0.004, 0.34, 900, 0.03);
+      keratin(v, 0.02, 0.1, 1350, 0.015);
     }),
   },
   sshStruckHeavy: {
@@ -472,8 +483,8 @@ export const SPIRALHORN_VOICE = {
   // which skips the kit's f1 beat): src/cinematics/kartc/steppe_spiralhorn.ts
   dissolve: 'sshGrassTurn',
   afterDissolve: [
-    [2, 'sshWindTakes', 0.95],
-    [6, 'sshLastFlute', 0.85],
+    [4, 'sshWindTakes', 0.95],
+    [8, 'sshLastFlute', 0.85],
   ],
   burst: 'sshPlumeLift',
   reviveGather: 'sshReviveGather',

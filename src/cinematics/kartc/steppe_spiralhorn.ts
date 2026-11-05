@@ -5,16 +5,18 @@
 //   strike "Bozkır Sıçrayışı"
 //     rear     the declaration's held charge (attack f1, the snort) → f2–f3: he rears on the hind legs, the forehooves
 //              paw the air twice (sshPaw), the horn-tip curls peel off (the art)
-//     bounds   THREE airborne bounds, each higher and longer (220 / 260 / 300 ms; ≈ 11 / 17 / 26 px above the floor):
-//              drawn take-off / tuck / reach frames; at each take-off a grass-wake fan springs out of the floor behind
-//              the hooves (world space: it stays on the floor), at each apex a two-turn spiral curl peels off the horn
-//              tips and trails back, and the flute fragment rises 880 / 988 / 1175 Hz; bounds 1–2 land on the hoof tips
-//              (a 2-px dust tick, two hoof ticks). No rings, no afterimages.
-//     toss     bound 3 comes down head-low with the horns levelled (f9, release, the falling air) and drives them UP
-//              and through at contact (f10): the keratin crack, s.impact() (the kit's flash / number / reaction),
-//              hit-stop 80, a small stepped white floor light, and the SEED BURST: 14 feather-grass seeds spray up and
-//              out of the contact point and glide down slowly, drifting away from him (≥ 900 ms), landing and blinking
-//              out in steps; a few catch a gold4 glint
+//     bounds   THREE airborne bounds, each higher and longer (220 / 260 / 300 ms; sprite lift 8 / 13 / 22 px over the drawn
+//              lifts), each with its own drawn take-off / apex / descent frames, on a straight run toward the target (a
+//              slight bow toward its side, never a loop away). He is `posed` for the whole strike (FieldView.sync never
+//              settles him onto his tile while the battle commits its state). At each take-off a grass-wake fan springs
+//              out of the floor behind the hooves, at each apex a whistle curl peels off each horn tip and rides with it
+//              (≤ 10 px, 3 drawn steps), and the flute fragment rises 880 / 988 / 1175 Hz. No rings, no afterimages.
+//     toss     bound 3 keeps the tightest tuck through its apex and drops the head only on the way down; he lands BESIDE
+//              the target on its floor row (strikeStop: the levelled horn tip 3 px short), holds the scoop a beat, the
+//              horns sweep up through 60° (the in-between), then the toss with a 2-px lunge: the keratin crack,
+//              s.impact() (the shared body blow hushed under it), hit-stop 80, a small white floor light, and one frame
+//              later the SEED BURST — 16 feather-grass seeds open into a crown over the contact, then glide down leeward
+//              (away from him) with spinning plumes, land and blink out; the follow-through frame plays under the stop
 //     rebound  one high back-bound off the target (f11), a low bound home (hoof ticks + grass), the head shake (f13)
 //     blocked  the horns lock against the guard (a double clack), he is shoved back 4 px sliding on his hooves, three
 //              blades spring up at the slide — no seeds — and he bounds home
@@ -25,9 +27,11 @@
 //              at the apex); he lands on the hoof tips (four ticks), the grass flattens outward in a crescent and
 //              springs back, 1 px shake; a light rear with the horns to the sky — the honk and the flute — seeds lift
 //              off the grass; the tile grass recedes in three steps
-//   death      (decoration of the recipe's deathV3 on the art's pose: kneel → grass → wind → plumes) the two fold thuds
-//              (forelegs, then hind legs), the seed stream carried on leeward (backward, away from the killer) past the frame edge, climbing, and the
-//              horns lifting off as two long seed plumes when the body goes
+//   death      (decoration of the recipe's deathV3 on the art's pose: kneel → the coat turns to grass in three bands from the
+//              hooves up → the wind takes the mound → only the horns lie on the floor) the two fold thuds, the grass turn,
+//              the seed stream carried on leeward (away from the killer), and on the last frame the two lying horns lift
+//              off as two separate seed plumes while the sprite is hidden — the kit's material break never runs (no burst,
+//              no ring: the finale is the plumes)
 //   struck     hide + horn: sshStruck / sshStruckHeavy on the contact frame instead of the generic body blow; the guard
 //              (pike fence) answers with the horn clack (also when he lowers the horns into the guard)
 // Camera: never touched (EF-8). No setScale / setAngle. Sounds fire on the frames they belong to (the scene clock).
@@ -52,7 +56,7 @@ import { warmPoses } from '../_v3/warm';
 import { atFrame, fade, hush, panAt, play, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { runSummon, type Stage, type SummonCtx } from '../summon-a/_kit';
-import { GrassPatch, SeedStream, dustTick, hornCurl, plumes, rng, seedBurst, wakeFan } from './steppe_spiralhorn-fx';
+import { GrassPatch, SeedStream, dustTick, hornCurl, plumes, rng, seedBurst, strikeStop, wakeFan } from './steppe_spiralhorn-fx';
 
 const ID: MonsterId = 'steppe_spiralhorn';
 const R = Math.round;
@@ -198,12 +202,8 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
   // tips of the scoop (f14) a few px short of the target's facing side — the toss then drives them up and through it
   const aim: XY = { x: s.toGround.x, y: s.toGround.y };
   const tip14 = tipOffset(u, 'attack', AF.scoop);
-  const gap = s.blocked ? -1 : 3;
   const front = s.direct ? aim.x : frontOf(target, aim, sgn);
-  let fx = front - sgn * gap - tip14.x;
-  // never past the target's own feet (a very narrow body): at least a body-length back
-  if (!s.direct) fx = sgn > 0 ? Math.min(fx, aim.x - 22) : Math.max(fx, aim.x + 22);
-  const stop: XY = { x: R(fx), y: R(s.direct ? aim.y : aim.y - 3) };
+  const stop = strikeStop(aim, front, tip14.x, sgn, { blocked: s.blocked, direct: s.direct });
   // the run-in: a straight charge with a slight bow toward the target's side (never a loop away from it)
   const dist = Math.hypot(stop.x - home.x, stop.y - home.y);
   let nrm: XY = dist > 0 ? { x: -(stop.y - home.y) / dist, y: (stop.x - home.x) / dist } : { x: 0, y: 1 };
@@ -247,19 +247,22 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
       play('sshTakeoff', { volume: [0.7, 0.8, 0.95][i], pan: panAt(at.x), pitch: [1, 0.96, 0.92][i] });
       wakeFan(sc, { x: R(at.x - sgn * 8), y: R(at.y) }, sgn, k, seedN());
     };
-    const apexAt = (i: number) => (p: XY, lift: number) => {
-      play('sshApexFlute', { volume: [0.75, 0.8, 0.9][i], pan: panAt(p.x), pitch: APEX_PITCH[i] });
-      // a curl off each horn tip, left behind in the air
-      const f = [AF.apex1, AF.apex2, AF.apex3][i];
-      const pts = framePoints('attack', f);
-      const sk = skeleton(framePose('attack', f));
-      const tips = [pts.muzzle ?? { x: AX, y: GY - 50 }, { x: R(sk.hornF.tip[0]), y: R(sk.hornF.tip[1]) }];
-      tips.forEach((tp, j) => {
-        const o = offsetOf(u, tp);
-        const at = { x: R(p.x + o.x), y: R(p.y - lift + o.y) };
-        if (j === 0) hornCurl(sc, at, sgn, curlDepth);
-        else void sleep(sc, 60).then(() => hornCurl(sc, { x: at.x - sgn, y: at.y + 1 }, sgn, curlDepth));
-      });
+    const apexAt = (i: number) => () => {
+      play('sshApexFlute', { volume: [0.75, 0.8, 0.9][i], pan: panAt(u.sprite.x), pitch: APEX_PITCH[i] });
+      // a curl off each horn tip, riding with the tip (whatever frame he shows now)
+      const tipNow = (far: boolean) => (): XY | null => {
+        if (!u.sprite.active) return null;
+        const fi = u.frameInfo();
+        if (fi.anim !== 'attack') return null;
+        const pt = far ? (() => {
+          const sk = skeleton(framePose('attack', fi.frame));
+          return { x: R(sk.hornF.tip[0]), y: R(sk.hornF.tip[1]) };
+        })() : (framePoints('attack', fi.frame).muzzle ?? { x: AX, y: GY - 50 });
+        const o = offsetOf(u, pt);
+        return { x: R(u.sprite.x + o.x), y: R(u.sprite.y + o.y) };
+      };
+      hornCurl(sc, tipNow(false), sgn, curlDepth);
+      void sleep(sc, 50).then(() => hornCurl(sc, tipNow(true), sgn, curlDepth));
     };
     const land = (at: XY) => {
       play('sshHoofTick', { volume: 0.8, pan: panAt(at.x) });
@@ -347,12 +350,12 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
     const mid = lerpXY(lunge, home, 0.55);
     play('sshTakeoff', { volume: 0.6, pan: panAt(stop.x), pitch: 1.08 });
     const back = Math.hypot(stop.x - home.x, stop.y - home.y);
-    await bound(u, { path: line(lunge, { x: R(mid.x), y: R(mid.y) }), ms: R(220 + back * 0.25), h: R(12 + back * 0.03), up: AF.back, apex: AF.back, down: AF.back, a: 0, b: 1 }, feetDepth);
+    await bound(u, { path: line(lunge, { x: R(mid.x), y: R(mid.y) }), ms: R(240 + back * 0.25), h: R(17 + back * 0.05), up: AF.back, apex: AF.back, down: AF.back, a: 0, b: 1 }, feetDepth);
     land(mid);
     show(u, 'attack', AF.land);
     await sleep(sc, 50);
     play('sshTakeoff', { volume: 0.45, pan: panAt(mid.x), pitch: 1.12 });
-    await bound(u, { path: line({ x: R(mid.x), y: R(mid.y) }, home), ms: R(180 + back * 0.3), h: R(5 + back * 0.04), up: AF.back, apex: AF.apex1, down: AF.land, a: 0.25, b: 0.75 }, feetDepth);
+    await bound(u, { path: line({ x: R(mid.x), y: R(mid.y) }, home), ms: R(190 + back * 0.3), h: R(7 + back * 0.04), up: AF.back, apex: AF.apex1, down: AF.land, a: 0.25, b: 0.75 }, feetDepth);
     land(home);
     show(u, 'attack', AF.land);
     await sleep(sc, 70);
@@ -507,24 +510,26 @@ async function steppeEntrance(S: Stage): Promise<void> {
   // ---- the gust sweeps across the tile from his entry side; the grass grows behind a travelling wave front
   const grass = new GrassPatch(sc, home, sgn, u.uid * 17 + 3);
   let grassOwned = true;
+  // he flies in from off screen: FieldView.sync must not settle him onto the tile mid-bound
+  const wasPosed = u.posed;
+  u.posed = true;
   try {
     play(sgn > 0 ? 'sshGustR' : 'sshGustL', { volume: 0.9 });
     play('sshGrassGrow', { volume: 0.85, pan });
-    // the wave runs on while he is already in the air (the leap leaves the edge at 260 ms)
-    const growing = animate(sc, 400, (t) => {
+    // the gust band crosses the patch (the blades it reaches lie flat, the grass rises behind it in three heights); the
+    // wave runs on while he is already in the air (the leap leaves the edge at 150 ms), the grown grass sways
+    const growing = animate(sc, 320, (t) => {
       grass.grow = t;
-      grass.gust = Math.sin(Math.PI * Math.min(1, t * 1.15)) * (1 - t * 0.4);
     }).then(() => {
       grass.grow = 1;
-      grass.gust = 0;
     });
-    await sleep(sc, 260);
+    await sleep(sc, 150);
 
     // ---- one long high bound in from off screen (P1 from the left edge, P2 from the right)
     const cam = sc.cameras.main;
     const startX = sgn > 0 ? cam.worldView.x - 28 : cam.worldView.x + cam.worldView.width + 28;
     const from: XY = { x: startX, y: home.y - 8 };
-    const leapMs = 560;
+    const leapMs = 540;
     const lift = arc(16, 30);
     u.showSprite();
     show(u, 'summon', 0);
@@ -551,7 +556,7 @@ async function steppeEntrance(S: Stage): Promise<void> {
       while (si < seeds.length && t >= seeds[si]) {
         si++;
         const c = u.framePoint(AX - 8, GY - 34);
-        seedBurst(sc, { x: R(c.x), y: R(c.y) }, R(home.y + 2 + si * 2), (-sgn) as 1 | -1, { n: 1, depth: DEPTH.FX - 2, seed: Math.floor(r() * 1e6), glideMs: 700, spread: 0.3 });
+        seedBurst(sc, { x: R(c.x), y: R(c.y) }, R(home.y + 2 + si * 2), (-sgn) as 1 | -1, { n: 1, depth: DEPTH.FX - 2, seed: Math.floor(r() * 1e6), glideMs: 700, spread: 0, power: 0.25 });
       }
     });
     place(u, home, 0);
@@ -564,11 +569,10 @@ async function steppeEntrance(S: Stage): Promise<void> {
     dustTick(sc, { x: R(home.x + sgn * 7), y: home.y }, sgn);
     dustTick(sc, { x: R(home.x - sgn * 9), y: home.y + 1 }, sgn);
     grass.pressAt = { ...home };
-    void animate(sc, 320, (t) => {
-      grass.press = t < 0.18 ? t / 0.18 : t < 0.6 ? 1 - ((t - 0.18) / 0.42) * 1.4 : -0.4 * (1 - (t - 0.6) / 0.4);
-    }).then(() => {
-      grass.press = 0;
-    });
+    // two drawn states over three frames: flattened outward, flattened, sprung back past upright
+    grass.press = 1;
+    void sleep(sc, 90).then(() => (grass.press = 2));
+    void sleep(sc, 160).then(() => (grass.press = 0));
     await sleep(sc, 80);
     show(u, 'summon', 6);
     await sleep(sc, 90);
@@ -581,7 +585,7 @@ async function steppeEntrance(S: Stage): Promise<void> {
     const heads = grass.seedheads();
     for (let i = 0; i < Math.min(5, heads.length); i++) {
       const h = heads[Math.floor(r() * heads.length)];
-      seedBurst(sc, h, R(h.y + 1), sgn, { n: 1, depth: unitDepth(home.y) + 1, seed: Math.floor(r() * 1e6), glideMs: 800, spread: 0.25 });
+      seedBurst(sc, h, R(h.y + 1), sgn, { n: 1, depth: unitDepth(home.y) + 1, seed: Math.floor(r() * 1e6), glideMs: 800, spread: 0, power: 0.3 });
     }
     grass.fadeOut(1000);
     grassOwned = false;
@@ -597,6 +601,7 @@ async function steppeEntrance(S: Stage): Promise<void> {
     }
   } finally {
     if (grassOwned) grass.destroy();
+    u.posed = wasPosed;
     if (!u.retired && u.sprite.active) {
       u.lift = 0;
       u.sprite.setVisible(true);
@@ -622,23 +627,37 @@ function watchDeath(sc: Phaser.Scene, u: MonsterUnit): void {
   deathWatched.add(u);
   const sgn = sgnOf(u);
   const pan = panAt(u.home.x);
+  const last = u.frameCount('death') - 1;
   let started = false;
   let fold1 = false;
   let fold1At = 0;
   let fold2 = false;
-  let seenEnd = false;
+  let turned = false;
   let gone = false;
   let acc = 0;
   let stream: SeedStream | null = null;
-  // the horns where they lie at the end (death f11), as world bases for the plumes
-  const sk11 = skeleton(framePose('death', 11));
-  const k11 = 0.55; // the art's plume phase on f11
-  const bases = [sk11.hornN, sk11.hornF].map((h, j) => ({ x: h.base[0] - k11 * (12 + j * 8), y: h.base[1] - k11 * (16 + j * 4) }));
+  // the horns as they lie on the floor at the end (the last death frame): world bases + angles for the plumes
+  const skL = skeleton(framePose('death', last));
   // the wind comes from the front (the killer's side): the stream and the plumes leave BACKWARD, away from him
   const lee = (-sgn) as 1 | -1;
-  const len = sk11.hornN.len + 2;
+  const len = skL.hornN.len + 3;
+  const lifted = () => {
+    // the horns go last: two long seed plumes lift away from where they lay, and the body is gone with them — the
+    // death kit's material break never runs on an empty frame (no burst, no ring: the finale is the plumes)
+    const horns = [skL.hornN, skL.hornF].map((h) => {
+      const b = u.framePoint(R(h.base[0]), R(h.base[1]));
+      const a = (h.ang * Math.PI) / 180;
+      const ang = sgn > 0 ? a : Math.PI - a;
+      return { base: { x: R(b.x), y: R(b.y) }, ang };
+    });
+    // a little apart (≥ 6 px) so they read as two from the first frame
+    horns[1].base = { x: horns[1].base.x - lee * 3, y: horns[1].base.y - 3 };
+    plumes(sc, horns, lee, Math.max(u.sprite.depth, unitDepth(u.home.y)) + 0.8, len);
+    play('sshPlumeLift', { volume: 0.8, pan });
+    u.sprite.setVisible(false);
+  };
   onFrame(sc, (dt, el) => {
-    if (el > 3200) {
+    if (el > 3600) {
       stream?.release();
       return false;
     }
@@ -662,27 +681,33 @@ function watchDeath(sc: Phaser.Scene, u: MonsterUnit): void {
         fold2 = true;
         play('sshFold', { volume: 0.7, pan, pitch: 0.86 });
       }
+      // the coat starts turning to grass (the kit's dissolve beat misses it when the pose joins on that frame; a
+      // second call inside the recipe's gap is dropped)
+      if (!turned && f >= 3) {
+        turned = true;
+        play('sshGrassTurn', { volume: 0.9, pan });
+      }
       // the wind takes the mound: the stream carries on leeward past the frame's edge, climbing
-      if (f >= 6 && f <= 10) {
+      if (f >= 7 && f <= 10) {
         stream ??= new SeedStream(sc, lee, u.sprite.depth + 0.7, u.uid * 13 + 9);
         acc += dt;
         while (acc >= 22) {
           acc -= 22;
-          const k = (f - 6) / 4;
-          const p = u.framePoint(8, GY - 16 - Math.round(k * 10));
-          stream.emit({ x: R(p.x), y: R(p.y) }, 1, 6, 8);
+          const k = (f - 7) / 3;
+          const p = u.framePoint(AX - 8 + Math.round(k * 20), GY - 6 - Math.round(k * 4));
+          stream.emit({ x: R(p.x), y: R(p.y) }, 1, 8, 6);
         }
       }
-      if (f >= 10) seenEnd = true;
+      if (f >= last && !gone) {
+        gone = true;
+        stream?.release();
+        lifted();
+        return false;
+      }
     }
-    if ((!active || (fi.anim !== 'death' && seenEnd)) && !gone) {
+    if (!active && !gone) {
       gone = true;
       stream?.release();
-      if (seenEnd) {
-        // the horns go last: two long seed plumes lift away from where they lay
-        const w = bases.map((b) => u.framePoint(R(b.x), R(b.y)));
-        plumes(sc, w, lee, Math.max(u.sprite.depth, unitDepth(u.home.y)) + 0.8, len);
-      }
       return false;
     }
     return true;

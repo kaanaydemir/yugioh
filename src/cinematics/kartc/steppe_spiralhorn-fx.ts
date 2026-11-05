@@ -23,6 +23,18 @@ import { Px, onFrame } from '../../vfx/combat';
 const R = Math.round;
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
+/**
+ * Where the strike's third bound lands (the feet): beside the target on its own floor row (3 px behind it in depth), the
+ * levelled horn tip of the scoop frame (`tipX`: its x offset from the feet, world orientation) `gap` px short of the
+ * target's facing side `front` — never past a body length from the target's feet. `sgn` = the attacker's facing.
+ */
+export function strikeStop(aim: XY, front: number, tipX: number, sgn: 1 | -1, o: { blocked?: boolean; direct?: boolean } = {}): XY {
+  const gap = o.blocked ? -1 : 3;
+  let fx = front - sgn * gap - tipX;
+  if (!o.direct) fx = sgn > 0 ? Math.min(fx, aim.x - 22) : Math.max(fx, aim.x + 22);
+  return { x: Math.round(fx), y: Math.round(o.direct ? aim.y : aim.y - 3) };
+}
+
 /** Deterministic per-moment random (films and measures stay repeatable). */
 export function rng(seed: number): () => number {
   let s = (Math.imul(seed | 0, 2654435761) ^ 0x5a1ca) >>> 0 || 1;
@@ -65,11 +77,10 @@ export class GrassPatch {
   private readonly blades: Blade[] = [];
   private readonly stop: () => void;
   private readonly rx: number;
-  /** 0..1: the wave front's travel across the tile (from the entry side). */
+  private el = 0;
+  /** 0..1: the wave front's travel across the patch (from the entry side). */
   grow = 0;
-  /** −1..1: the gust's bend (toward `dir`). */
-  gust = 0;
-  /** The landing press: 0 none, 1 flattened outward (from `pressAt`), negative = springing back past upright. */
+  /** The landing press: 0 none, 1 flattened outward (from `pressAt`), 2 springing back past upright. */
   press = 0;
   pressAt: XY;
   /** 0, 1, 2, 3: receding steps (3 = gone). */
@@ -84,21 +95,22 @@ export class GrassPatch {
     seed: number,
   ) {
     const rnd = rng(seed);
-    this.rx = Math.round(TILE_W * 0.4);
-    const ry = Math.round(TILE_H * 0.38);
+    // the patch spills 8 px past the tile's iso diamond (a meadow, not a decal)
+    this.rx = Math.round(TILE_W / 2 + 8);
+    const ry = Math.round(TILE_H / 2 + 4);
     this.pressAt = { ...home };
-    // tufts on a jittered grid inside the tile's iso diamond: each tuft is a tall centre blade (some with a white
-    // seedhead) and two shorter side blades fanning out — clumps with floor between them, never a hatch
-    for (let gy = -ry + 2; gy <= ry - 1; gy += 5)
-      for (let gx = -this.rx + 3; gx <= this.rx - 2; gx += 8) {
-        const jx = gx + (rnd() - 0.5) * 5 + (((gy / 5) & 1) ? 4 : 0);
+    // tufts on a jittered grid: each tuft is a tall centre blade (many with a white seedhead) and two shorter side
+    // blades fanning out — clumps with floor between them, never a hatch
+    for (let gy = -ry + 1; gy <= ry - 1; gy += 4)
+      for (let gx = -this.rx + 2; gx <= this.rx - 2; gx += 6) {
+        const jx = gx + (rnd() - 0.5) * 4 + (((gy / 4) & 1) ? 3 : 0);
         const jy = gy + (rnd() - 0.5) * 2;
         const d = Math.abs(jx) / this.rx + Math.abs(jy) / ry;
-        if (d > 0.92 || rnd() < 0.12) continue;
+        if (d > 0.96 || rnd() < 0.1) continue;
         const cx = R(home.x + jx);
         const cy = R(home.y + jy);
-        const hc = 3 + Math.round((1 - d) * 3 + rnd() * 1.5);
-        this.blades.push({ x: cx, y: cy, h: hc, head: rnd() < 0.45, lean: (rnd() - 0.5) * 0.8 });
+        const hc = 4 + Math.round((1 - d) * 4 + rnd() * 1.5);
+        this.blades.push({ x: cx, y: cy, h: hc, head: rnd() < 0.55, lean: (rnd() - 0.5) * 0.8 });
         this.blades.push({ x: cx - 1, y: cy, h: Math.max(2, hc - 2), head: false, lean: -1.6 - rnd() });
         if (rnd() < 0.8) this.blades.push({ x: cx + 1, y: cy, h: Math.max(2, hc - 1 - Math.round(rnd())), head: false, lean: 1.4 + rnd() });
       }
@@ -106,8 +118,9 @@ export class GrassPatch {
     // behind the unit for the blades behind its feet, in front of it for the blades in front
     this.back = layer(scene, unitDepth(home.y) - 0.5);
     this.front = layer(scene, unitDepth(home.y) + 0.5);
-    this.stop = onFrame(scene, () => {
+    this.stop = onFrame(scene, (dt) => {
       if (this.dead) return false;
+      this.el += dt;
       this.draw();
       return true;
     });
@@ -116,31 +129,44 @@ export class GrassPatch {
   private draw(): void {
     this.back.clear();
     this.front.clear();
-    const span = this.rx * 2 + 16;
-    const fx = this.home.x - this.dir * (this.rx + 8) + this.dir * span * this.grow;
+    const span = this.rx * 2 + 20;
+    // the gust's wave front crosses the patch from the entry side
+    const fx = this.home.x - this.dir * (this.rx + 10) + this.dir * span * this.grow;
     const rk = [1, 2 / 3, 1 / 3, 0][Math.min(3, this.recede)];
     if (rk <= 0) return;
     for (const b of this.blades) {
-      // three heights rise behind the wave front
+      // d: how far the front has passed this blade
       const d = (fx - b.x) * this.dir;
-      const lvl = d < 0 ? 0 : d < 4 ? 1 / 3 : d < 9 ? 2 / 3 : 1;
-      if (lvl <= 0) continue;
-      let h = b.h * lvl * rk;
-      // the gust bends the blades near the wave front hardest
-      let bend = b.lean + this.gust * this.dir * (d < 12 ? 2 : 1);
-      // the landing: blades near the hooves flatten outward (a crescent), then spring back past upright
-      if (this.press !== 0) {
+      if (d < -1) continue;
+      let h: number;
+      let bend: number;
+      if (d < 5 && this.grow < 1) {
+        // the gust band: blades just reached by the front lie flat along the wind (two rows deep)
+        h = Math.max(2, b.h * 0.4);
+        bend = this.dir * (3 + b.h * 0.5);
+      } else {
+        // behind it the grass rises in three heights, still leaning with the wind, then sways on its own: a 2-state
+        // bend every ~140 ms, the phase travelling across the patch with the breeze
+        const lvl = this.grow >= 1 ? 1 : d < 9 ? 1 / 3 : d < 14 ? 2 / 3 : 1;
+        h = b.h * lvl;
+        const ph = Math.floor((this.el - (b.x - this.home.x) * this.dir * 6) / 140) & 1;
+        bend = b.lean + (this.grow < 1 && d < 18 ? this.dir * 1.5 : 0) + this.dir * (ph ? 1 : -0.3);
+      }
+      h *= rk;
+      // the landing: blades near the hooves flatten outward (state 1), then spring back past upright (state 2)
+      if (this.press > 0) {
         const dx = b.x - this.pressAt.x;
         const dy = (b.y - this.pressAt.y) * 2;
-        const dist = Math.hypot(dx, dy);
-        const near = clamp01(1 - dist / (this.rx * 1.2));
+        const near = clamp01(1 - Math.hypot(dx, dy) / (this.rx * 1.1));
         if (near > 0) {
           const side = dx === 0 ? (b.y >= this.pressAt.y ? 1 : -1) : Math.sign(dx);
-          bend += side * this.press * 4 * near;
-          if (this.press > 0) h *= 1 - 0.55 * this.press * near;
+          if (this.press === 1) {
+            bend = side * (2 + 5 * near);
+            h *= 1 - 0.6 * near;
+          } else bend = -side * 1.5 * near + b.lean * 0.5;
         }
       }
-      drawBlade(b.y >= this.home.y ? this.front : this.back, b.x, b.y, h, bend, b.head && lvl >= 1 && rk >= 1);
+      drawBlade(b.y >= this.home.y ? this.front : this.back, b.x, b.y, h, bend, b.head && h >= 4 && rk >= 1);
     }
   }
 
@@ -240,44 +266,35 @@ export function dustTick(sc: Phaser.Scene, at: XY, dir: 1 | -1): void {
   );
 }
 
-/** Points of a two-turn spiral (radius up to ~3 px), deduplicated whole pixels, from the centre out. */
-const SPIRAL: readonly (readonly [number, number])[] = (() => {
-  const out: [number, number][] = [];
-  const seen = new Set<string>();
-  for (let a = 0; a <= Math.PI * 3.2; a += 0.1) {
-    const r = 0.3 + (a / (Math.PI * 3.2)) * 2.1;
-    const p: [number, number] = [R(Math.cos(a) * r), R(Math.sin(a) * r * 0.85)];
-    const k = p.join(',');
-    if (!seen.has(k)) {
-      seen.add(k);
-      out.push(p);
-    }
-  }
-  return out;
-})();
+/** The whistle curl in three drawn steps (x = trailing back from the tip, y down): a tight hook, the open 5×4
+ *  spiral, the unwinding arc. Each point: [x, y, head] — the leading pixels are leaf4, the tail leaf3. */
+export const CURL_STEPS: readonly (readonly (readonly [number, number, boolean])[])[] = [
+  [[0, 1, true], [1, 0, true], [2, 0, false], [2, 1, false], [1, 2, false]],
+  [[0, 2, true], [0, 1, true], [1, 0, true], [2, 0, false], [3, 0, false], [4, 1, false], [4, 2, false], [3, 3, false], [2, 3, false], [2, 2, false]],
+  [[0, 1, false], [1, 0, false], [2, 0, false], [3, 0, false], [4, 1, false]],
+];
 
-/** A two-turn spiral curl peeling off a horn tip, trailing back (−dir) and up; leaf4 → leaf3 → leaf2 → gone. */
-export function hornCurl(sc: Phaser.Scene, at: XY, dir: 1 | -1, depth: number): void {
+/**
+ * The whistle curl peeling off a horn tip: it rides with the tip (`tip()` = the tip's world point now), trailing back
+ * (−dir) and a little up but never more than ~10 px from it, in three drawn steps (hook → open spiral → unwinding arc),
+ * gone in ~250 ms.
+ */
+export function hornCurl(sc: Phaser.Scene, tip: () => XY | null, dir: 1 | -1, depth: number): void {
   const px = layer(sc, depth);
-  const ms = 330;
+  const ms = 250;
   let el = 0;
   onFrame(
     sc,
     (dt) => {
       el += dt;
       px.clear();
-      if (el >= ms) return false;
+      const at = tip();
+      if (el >= ms || !at) return false;
       const k = el / ms;
-      const shown = Math.max(2, Math.round(SPIRAL.length * clamp01(k / 0.3)));
-      // it peels off the tip, rides off backward and climbs a little; the inner turns go first as it unwinds
-      const cx = R(at.x - dir * (2 + k * 9));
-      const cy = R(at.y - 2 - k * 3);
-      const c = k < 0.4 ? PAL.leaf4 : k < 0.75 ? PAL.leaf3 : PAL.leaf2;
-      const from = k > 0.6 ? Math.round(SPIRAL.length * ((k - 0.6) / 0.4)) : 0;
-      for (let i = from; i < shown; i++) {
-        const [x, y] = SPIRAL[i];
-        px.dot(cx - dir * x, cy + y, c);
-      }
+      const step = k < 0.3 ? 0 : k < 0.72 ? 1 : 2;
+      const ox = R(at.x - dir * (2 + k * 6));
+      const oy = R(at.y - 2 - k * 2);
+      for (const [x, y, head] of CURL_STEPS[step]) px.dot(ox - dir * x, oy + y, head && step < 2 ? PAL.leaf4 : PAL.leaf3);
       return true;
     },
     () => px.g.destroy(),
@@ -288,23 +305,22 @@ export function hornCurl(sc: Phaser.Scene, at: XY, dir: 1 | -1, depth: number): 
 
 /** A feather-grass seed: a 2-px earth3 shaft and a plume in one of two drawn spin states, leaning away from `dir`. */
 export function drawSeed(px: Px, x: number, y: number, spin: number, dir: number, plume: number = PAL.white): void {
+  // the awn: a 1-px earth3 shaft, 2 px long
   px.rect(x, y, 1, 2, PAL.earth3);
   if (spin & 1) {
-    // lying: the plume streams back along the wind
+    // lying: the feather streams back along the wind (5 px)
     px.dot(x - dir, y - 1, plume);
     px.dot(x - dir * 2, y - 1, plume);
-    px.dot(x - dir * 2, y - 2, plume);
     px.dot(x - dir * 3, y - 2, plume);
-    px.dot(x - dir * 4, y - 2, PAL.mist);
-    px.dot(x - dir * 3, y - 1, PAL.mist);
+    px.dot(x - dir * 4, y - 2, plume);
+    px.dot(x - dir * 5, y - 2, PAL.mist);
   } else {
-    // standing: the plume opens upward like a small brush
+    // standing: the feather curls up over the shaft (5 px)
     px.dot(x, y - 1, plume);
-    px.dot(x - dir, y - 2, plume);
     px.dot(x, y - 2, plume);
     px.dot(x - dir, y - 3, plume);
-    px.dot(x - dir * 2, y - 3, PAL.mist);
-    px.dot(x + dir, y - 3, PAL.mist);
+    px.dot(x - dir * 2, y - 4, plume);
+    px.dot(x - dir * 3, y - 4, PAL.mist);
   }
 }
 
@@ -322,29 +338,33 @@ interface Seed {
 }
 
 /**
- * The seed burst at the contact point: `n` seeds spray up and out, then glide down slowly (terminal fall ≈ 14 px/s) with
- * a wind drift toward `dir` (away from the attacker) and a sway; they land on the floor around `floorY`, rest a beat
- * and blink out in steps. Their plumes spin (2 drawn states). Lives ≥ `glideMs` after the burst.
+ * The seed burst at the contact point: `n` seeds spray UP and out into a crown (30–40 px over the contact within
+ * ~150 ms: a hard launch under a strong drag), then glide down slowly (terminal fall ≈ 14 px/s) on a leeward wind
+ * drift toward `dir` (≈ 25 px/s, away from the attacker) with a sway; they land on the floor around `floorY`, rest a
+ * beat and blink out in steps. Their plumes spin (2 drawn states, both a full 4–5 px plume); a few catch a gold4 glint.
+ * `power` scales the launch (1 = the strike's burst; the summon's single seeds lift off softly).
  */
-export function seedBurst(sc: Phaser.Scene, at: XY, floorY: number, dir: 1 | -1, o: { n?: number; depth: number; seed: number; glideMs?: number; spread?: number }): void {
+export function seedBurst(sc: Phaser.Scene, at: XY, floorY: number, dir: 1 | -1, o: { n?: number; depth: number; seed: number; glideMs?: number; spread?: number; power?: number }): void {
   const rnd = rng(o.seed);
   const n = o.n ?? 14;
-  const spread = o.spread ?? 1;
+  const spread = o.spread ?? 1.4;
+  const pw = o.power ?? 1;
   const list: Seed[] = Array.from({ length: n }, (_, i) => {
-    // up and out: a fan from straight up, leaning with the wind
-    const a = -Math.PI / 2 + dir * (rnd() - 0.25) * 1.5 * spread;
-    const v = 40 + rnd() * 42;
+    // a crown: an even fan around straight up (leaning a little with the wind), each seed its own slot
+    const slot = n > 1 ? i / (n - 1) - 0.5 : 0;
+    const a = -Math.PI / 2 + slot * spread + dir * 0.12 + (rnd() - 0.5) * 0.18;
+    const v = (230 + rnd() * 100) * pw;
     return {
-      x: at.x + (rnd() - 0.5) * 6,
-      y: at.y + (rnd() - 0.5) * 6,
+      x: at.x + (rnd() - 0.5) * 4,
+      y: at.y + (rnd() - 0.5) * 4,
       vx: Math.cos(a) * v,
-      vy: Math.sin(a) * v - 20,
+      vy: Math.sin(a) * v,
       floor: floorY + R((rnd() - 0.3) * 10),
       spinOff: Math.floor(rnd() * 4),
       sway: rnd() * Math.PI * 2,
       landed: -1,
       glint: i % 4 === 1,
-      delay: i < 4 ? 0 : rnd() * 40,
+      delay: n > 3 ? R(rnd() * 80) : 0,
     };
   });
   const px = layer(sc, o.depth);
@@ -358,37 +378,43 @@ export function seedBurst(sc: Phaser.Scene, at: XY, floorY: number, dir: 1 | -1,
       px.clear();
       let alive = 0;
       for (const p of list) {
-        if (el < p.delay) {
+        const age = el - p.delay;
+        if (age < 0) {
           alive++;
           continue;
         }
         if (p.landed < 0) {
-          // the burst's drag, then the glide: a slow fall, a wind drift away from the attacker, a sway
-          const drag = Math.exp(-4.2 * s);
-          p.vx = p.vx * drag + dir * 20 * (1 - drag);
-          p.vy = p.vy * drag + 34 * (1 - drag);
-          const sw = Math.sin(el / 180 + p.sway) * 7;
-          p.x += (p.vx + (el > 220 ? sw : 0)) * s;
+          // the launch dies in the drag (the crown opens), then the glide takes over: the plumes hang in the air,
+          // falling slowly and riding the wind away from the attacker
+          const drag = Math.exp(-6.5 * s);
+          const k = Math.min(1, age / 260);
+          const tx = dir * 25 * k;
+          const ty = 14 * k;
+          p.vx = tx + (p.vx - tx) * drag;
+          p.vy = ty + (p.vy - ty) * drag;
+          const sw = age > 260 ? Math.sin(age / 170 + p.sway) * 8 : 0;
+          p.x += (p.vx + sw) * s;
           p.y += p.vy * s;
-          if (p.y >= p.floor && el > 300) {
+          if (p.y >= p.floor && age > 300) {
             p.y = p.floor;
             p.landed = el;
           }
           // a seed still airborne at the end of the glide is let down where it is
-          if (el > glide + 250 && p.landed < 0) p.landed = el;
+          if (age > glide + 300 && p.landed < 0) p.landed = el;
         }
         const rest = p.landed >= 0 ? el - p.landed : -1;
         // landed: rest a beat, then blink out in steps (on / off / on / gone)
         if (rest > 380) continue;
         alive++;
         if (rest > 160 && Math.floor((rest - 160) / 60) % 2 === 0) continue;
-        const spin = rest >= 0 ? 0 : Math.floor(el / 110) + p.spinOff;
-        const plume = rest > 160 ? PAL.mist : PAL.white;
+        const spin = rest >= 0 ? 0 : Math.floor(age / 110) + p.spinOff;
+        // the first frames leave the contact's white flash in mist (they never add white on top of it)
+        const plume = age < 70 || rest > 160 ? PAL.mist : PAL.white;
         drawSeed(px, R(p.x), R(p.y), spin, dir, plume);
         // a few catch the light: a 1-px gold4 glint stepping out (gold4 → white → gone)
-        if (p.glint && el > 60 && el < 420) px.dot(R(p.x) - dir * 2, R(p.y) - 3, el < 260 ? PAL.gold4 : PAL.white);
+        if (p.glint && age > 90 && age < 460) px.dot(R(p.x) - dir * 2, R(p.y) - 4, age < 300 ? PAL.gold4 : PAL.white);
       }
-      return alive > 0 && el < glide + 1200;
+      return alive > 0 && el < glide + 1400;
     },
     () => px.g.destroy(),
   );
@@ -484,35 +510,43 @@ export class SeedStream {
 }
 
 /**
- * The horns go last: two long seed plumes (an earth3 base, a white shaft with mist barbs) lift and drift leeward,
- * turning level as they go, then step out (white → mist → gone).
+ * The horns go last: each lying horn (base, angle, length in world px) lifts off as its own long seed plume — an
+ * earth3 base, a white shaft with mist barbs — rising and turning up into the wind leeward (`dir`), the second one
+ * 70 ms later on a steeper, longer path (they never merge), then stepping out (white → mist → gone).
  */
-export function plumes(sc: Phaser.Scene, bases: XY[], dir: 1 | -1, depth: number, len: number): void {
+export function plumes(sc: Phaser.Scene, horns: { base: XY; ang: number }[], dir: 1 | -1, depth: number, len: number): void {
   const px = layer(sc, depth);
-  const ms = 900;
+  const ms = 1000;
+  const lag = 70;
   let el = 0;
   onFrame(
     sc,
     (dt) => {
       el += dt;
       px.clear();
-      if (el >= ms) return false;
-      const k = el / ms;
-      const e = 1 - Math.pow(1 - k, 1.6);
-      bases.forEach((b, j) => {
-        const bx = b.x + dir * e * (34 + j * 14);
-        const by = b.y - e * (26 + j * 8) + Math.sin(k * 7 + j) * 1.5;
-        // from upright-leaning to nearly level along the wind
-        const a = -Math.PI / 2 + dir * (0.5 + 0.7 * e + j * 0.15);
-        const shaft = k < 0.72 ? PAL.white : PAL.mist;
-        const L = Math.max(3, R(len * (k < 0.85 ? 1 : 1 - (k - 0.85) / 0.15)));
+      if (el >= ms + lag) return false;
+      horns.forEach((h, j) => {
+        const k = clamp01((el - j * lag) / ms);
+        const e = 1 - Math.pow(1 - k, 1.7);
+        // rise and drift: the far plume climbs steeper and travels further
+        const bx = h.base.x + dir * e * (30 + j * 18);
+        const by = h.base.y - e * (20 + j * 16) + Math.sin(k * 7 + j * 2) * 1.2;
+        // from lying along the floor up into the wind: the shaft turns to lean leeward-up (j: a different angle)
+        const target = -Math.PI / 2 + dir * (0.55 + j * 0.45);
+        let da = target - h.ang;
+        while (da > Math.PI) da -= Math.PI * 2;
+        while (da < -Math.PI) da += Math.PI * 2;
+        const a = h.ang + da * Math.min(1, e * 1.4);
+        const shaft = k < 0.7 ? PAL.white : PAL.mist;
+        const L = Math.max(3, R(len * (k < 0.82 ? 1 : 1 - (k - 0.82) / 0.18)));
         for (let s = 0; s <= L; s++) {
-          const x = R(bx + Math.cos(a) * s + Math.sin(s * 0.9 + k * 9) * 0.6);
+          const x = R(bx + Math.cos(a) * s + Math.sin(s * 0.9 + k * 9 + j) * 0.6 * e);
           const y = R(by + Math.sin(a) * s);
           px.dot(x, y, s < 2 ? PAL.earth3 : shaft);
-          if (s > 2 && s % 3 === 0 && s < L - 1 && k < 0.85) {
+          // the feather barbs open as it lifts
+          if (s > 2 && s % 3 === j % 3 && s < L - 1 && k > 0.08 && k < 0.85) {
             px.dot(x - dir, y + 1, PAL.mist);
-            px.dot(x - dir * 2, y + 1, PAL.mist);
+            if (k > 0.25) px.dot(x - dir * 2, y + 1, PAL.mist);
           }
         }
       });

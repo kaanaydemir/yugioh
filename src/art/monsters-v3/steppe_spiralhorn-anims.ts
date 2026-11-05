@@ -51,7 +51,7 @@ const I = {
   // behind the breath, and drifts forward / back on a third; something moves on every frame, never everything
   br: [0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0],
   hdy: [-11, -11, -12, -12, -12, -11, -11, -11, -12, -12, -12, -11, -11, -11, -12, -12, -12, -11],
-  hdx: [8, 8, 8, 9, 9, 9, 9, 9, 9, 8, 8, 8, 9, 9, 9, 9, 8, 8],
+  hdx: [8, 8, 8, 9, 9, 9, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 8, 8],
   // weight drifts to the hindquarters while the hind hoof is cocked
   hipX: [-10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10, -10],
   ear: [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1],
@@ -77,10 +77,11 @@ const IDLE_HOLDS = [120, 110, 110, 120, 130, 110, 100, 110, 120, 130, 110, 100, 
 const GUARD_N = 6;
 const G0: Pose = {
   ...IDLE0,
-  // the head pushed out in front of the chest (the drooping nose hangs below the brisket, never inside the chest), the
-  // forelegs splayed forward and the hind legs back: braced
-  hipX: -11, hipY: -27, shX: 8, shY: -26, hdx: 12, hdy: -4, ha: A.pike, ear: 2,
-  fn: leg(11, 0, -10), ff: leg(15, 0, -8), hn: leg(-14, 0, -6), hf: leg(-10, 0, -4),
+  // the head pushed out in front of the chest (the drooping nose hangs below the brisket, never inside the chest); the
+  // hooves stay on their idle pixels (HA-9) but the legs brace — the cannons splay, knees forward, hocks back, the
+  // body sunk back onto the haunches
+  hipX: -12, hipY: -27, shX: 8, shY: -26, hdx: 12, hdy: -4, ha: A.pike, ear: 2,
+  fn: leg(9, 0, -16), ff: leg(13, 0, -12), hn: leg(-12, 0, -8), hf: leg(-8, 0, -6),
 };
 export function guardPose(f: number): Pose {
   const k = f % GUARD_N;
@@ -136,9 +137,9 @@ const ATTACK: Pose[] = [
   // f1 charge: sinks on the hind legs, head up, ears back
   { ...IDLE0, hipX: -11, hipY: -27, shX: 7, shY: -31, hdx: 7, hdy: -13, ha: A.up, ear: 2, sniff: 2, hn: leg(-11, 0, -20), hf: leg(-7, 0, -18), tail: 1, t: at(22, 1) },
   // f2 rearing: the shoulder lifts, the haunches bunch, the neck stretches, the front hooves leave the floor
-  { ...IDLE0, hipX: -10, hipY: -26, shX: 5, shY: -39, hdx: 8, hdy: -16, ha: A.up, ear: 2, sniff: 2, fn: leg(13, -7, 110), ff: leg(16, -5, 90), hn: leg(-11, 0, -24), hf: leg(-7, 0, -22), tail: 1, mane: 0.2, curl: 0, t: at(22, 2) },
+  { ...IDLE0, hipX: -10, hipY: -26, shX: 5, shY: -39, hdx: 8, hdy: -15, ha: A.up, ear: 2, sniff: 2, fn: leg(13, -7, 110), ff: leg(16, -5, 90), hn: leg(-11, 0, -24), hf: leg(-7, 0, -22), tail: 1, mane: 0.2, curl: 0, t: at(22, 2) },
   // f3 full rear (the longest hold): the front hooves paw the air, nostrils flared, the horn-tip curls peel off
-  { ...IDLE0, hipX: -9, hipY: -25, shX: 2, shY: -44, hdx: 9, hdy: -17, ha: A.up, ear: 2, sniff: 2, fn: leg(12, -17, 135), ff: leg(15, -12, 100), hn: leg(-10, 0, -28), hf: leg(-6, 0, -24), tail: 1, mane: 0.4, curl: 0.35, t: at(22, 3) },
+  { ...IDLE0, hipX: -9, hipY: -25, shX: 2, shY: -42, hdx: 8, hdy: -15, ha: A.up, ear: 2, sniff: 2, fn: leg(12, -17, 135), ff: leg(15, -12, 100), hn: leg(-10, 0, -28), hf: leg(-6, 0, -24), tail: 1, mane: 0.4, curl: 0.35, t: at(22, 3) },
   // f4 take-off 1: stretched out low, the hind legs pushing off the floor
   lifted({ hipX: -10, shX: 9, hdx: 9, hdy: -10, ha: A.level, ear: 2, ...STRETCH, hn: leg(-20, 2, -60), hf: leg(-17, 2, -55), mane: 0.6, tail: 3, t: at(22, 4) }, 2),
   // f5 apex 1: tucked
@@ -208,8 +209,8 @@ const ROAR_HOLDS = [80, 150, 100, 160, 130, 100, 110, 120, 140];
 // ------------------------------------------------------------------ hit / hitHeavy / hitMagic
 
 const HIT: Pose[] = [
-  // f0: the head tossed back, the ears flat, eyes shut — the legs stay on their idle pixels (HA-21 local)
-  { ...IDLE0, ha: A.up, ear: 2, blink: 2, sniff: 1 },
+  // f0 (the contact frame, HA-21 local): the ears flatten, the eyes shut, the nostrils flare — the head snaps back on f1
+  { ...IDLE0, hdx: 7, ear: 2, blink: 2, sniff: 1 },
   { ...IDLE0, hipX: -11, shX: 7, hdx: 5, hdy: -12, ha: A.up, ear: 2, blink: 2, mane: 0.3, tail: 2 },
   { ...IDLE0, hipX: -11, shX: 7, hdx: 6, hdy: -11, ear: 2, blink: 1, mane: 0.55 },
   { ...IDLE0, hdx: 7, ear: 1, mane: 0.75, nose: 1 },
@@ -220,8 +221,8 @@ export const hitPose = (f: number): Pose => HIT[Math.min(f, HIT.length - 1)];
 const HIT_HOLDS = [50, 60, 90, 100, 110, 130];
 
 const HH: Pose[] = [
-  // f0: the head thrown up, the hind legs start to buckle
-  { ...IDLE0, ha: A.up, ear: 2, blink: 2, sniff: 2, tail: 2 },
+  // f0 (contact): the ears flatten, the eyes shut, the tail clamps — the head is thrown up on f1
+  { ...IDLE0, hdx: 7, ear: 2, blink: 2, sniff: 2, tail: 2 },
   // f1–f2: he skitters back on buckled hind legs, a front hoof up
   { ...IDLE0, hipX: -12, hipY: -26, shX: 6, shY: -29, hdx: 5, hdy: -12, ha: A.up, ear: 2, blink: 2, fn: leg(8, -3, 30), hn: leg(-14, 0, -26), hf: leg(-10, 0, -24), mane: 0.3, tail: 2, dust: 0.2 },
   { ...IDLE0, hipX: -12, hipY: -27, shX: 6, shY: -29, hdx: 6, hdy: -11, ear: 2, blink: 1, fn: leg(8, -2, 20), hn: leg(-14, 0, -22), hf: leg(-10, 0, -20), mane: 0.5, tail: 2, dust: 0.5 },
@@ -240,12 +241,11 @@ const HM: Pose[] = [
   { ...IDLE0, hipX: -9, hipY: -30, shX: 9, shY: -31, hdx: 9, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, t: 1 / 12 },
   { ...IDLE0, hipX: -11, hipY: -30, shX: 7, shY: -31, hdx: 7, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, t: 2 / 12 },
   { ...IDLE0, hipY: -30, shY: -31, hdy: -12, ear: 1, blink: 0, glint: 1, rigid: 1, t: 3 / 12 },
-  { ...IDLE0, ear: 1, blink: 1, mane: 0.4, nose: 1 },
-  { ...IDLE0, ear: 0, mane: 0.7 },
+  { ...IDLE0, ear: 1, blink: 1, mane: 0.5, nose: 1 },
   { ...IDLE0 },
 ];
 export const hitMagicPose = (f: number): Pose => HM[Math.min(f, HM.length - 1)];
-const HM_HOLDS = [50, 60, 70, 90, 100, 120, 140];
+const HM_HOLDS = [50, 60, 70, 90, 140, 150];
 
 // ------------------------------------------------------------------ summon (12 frames): one long bound in, tiptoe landing
 
@@ -300,20 +300,18 @@ const DEATH: Pose[] = [
   { ...LIE, grass: 1, wind: 0.85, t: 0.5 },
   // the horns go last: they lie on the floor a moment (the card's watcher turns them into two seed plumes on the last)
   { ...LIE, grass: 1, wind: 1 },
-  { ...LIE, grass: 1, wind: 1 },
 ];
 export const deathPose = (f: number): Pose => DEATH[Math.min(f, DEATH.length - 1)];
-const D_HOLDS = [50, 50, 60, 80, 70, 70, 80, 60, 60, 60, 60, 110, 90];
+const D_HOLDS = [50, 50, 60, 80, 70, 60, 60, 60, 60, 60, 60, 200];
 
 // ------------------------------------------------------------------ revive (10 frames): the death run backwards
 
 const REVIVE: Pose[] = [
   { ...LIE, grass: 1, wind: 1, plume: 0.4, gather: true },
   { ...LIE, grass: 1, wind: 0.85, plume: 0, gather: true },
-  { ...LIE, grass: 1, wind: 0.55, gather: true },
-  { ...LIE, grass: 1, wind: 0.25, gather: true },
-  { ...LIE, grass: 0.67, gather: true },
-  { ...LIE, hdy: -7, hornLay: -48, grass: 0.34, blink: 1, gather: true },
+  { ...LIE, grass: 1, wind: 0.45, gather: true },
+  // the mound gathered; the coat comes back down the bands (the horns rising off the floor)
+  { ...LIE, hdy: -7, hornLay: -48, grass: 0.5, blink: 1, gather: true },
   { ...DEATH[2], blink: 1, mane: 0.5 },
   // land: up on all four hooves
   { ...IDLE0, hipY: -28, shY: -29, hdx: 9, hdy: -9, ha: A.down, ear: 1, ...GATHER, fn: leg(9, 0, 0), ff: leg(13, 0, 2), dust: 0.3, mane: 0.7 },
@@ -322,13 +320,13 @@ const REVIVE: Pose[] = [
   { ...IDLE0 },
 ];
 export const revivePose = (f: number): Pose => REVIVE[Math.min(f, REVIVE.length - 1)];
-const RV_HOLDS = [80, 80, 80, 80, 90, 90, 100, 110, 130, 140];
+const RV_HOLDS = [90, 90, 110, 120, 110, 120, 140, 150];
 
 // ------------------------------------------------------------------ tables
 
 const spec = (frames: number, fps: number, loop: boolean, holds: number[], marks?: AnimSpec['marks']): AnimSpec => ({ frames, fps, loop, holds, ...(marks ? { marks } : {}) });
 
-export const IMPACT = 14;
+export const IMPACT = 15;
 export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   idle: spec(IDLE_N, 9, true, IDLE_HOLDS),
   guard: spec(GUARD_N, 6, true, GUARD_HOLDS),
@@ -339,7 +337,7 @@ export const ANIMS: Record<MonsterAnim, AnimSpec> = {
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
   summon: spec(SUMMON.length, 10, false, SU_HOLDS, { land: 5 }),
   death: spec(DEATH.length, 14, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 3 }),
-  revive: spec(REVIVE.length, 10, false, RV_HOLDS, { land: 7 }),
+  revive: spec(REVIVE.length, 10, false, RV_HOLDS, { land: 5 }),
   hitHeavy: spec(HH.length, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 4 }),
   hitMagic: spec(HM.length, 12, false, HM_HOLDS, { impact: 0, contact: 0, recover: 4 }),
   toGuard: spec(5, 14, false, TG_HOLDS),

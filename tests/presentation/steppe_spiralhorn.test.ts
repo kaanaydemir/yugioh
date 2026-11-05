@@ -13,6 +13,9 @@ import { APEX_PITCH, SPIRALHORN_VOICE, V3_SPIRALHORN_RECIPES } from '../../src/a
 import { CHARACTER_SOUNDS } from '../../src/cinematics/_v3/sound';
 import { presentationOf } from '../../src/presentation/registry';
 import scenarios from '../../src/duel/scenarios/steppe_spiralhorn';
+import { strikeStop } from '../../src/cinematics/kartc/steppe_spiralhorn-fx';
+import { framePoints } from '../../src/art/monsters-v3/steppe_spiralhorn-anims';
+import { AX } from '../../src/art/monsters-v3/steppe_spiralhorn-rig';
 
 describe('steppe_spiralhorn presentation', () => {
   it('draws its strike and summon itself; death and flip stay on the recipe layer', () => {
@@ -45,6 +48,25 @@ describe('steppe_spiralhorn presentation', () => {
   it('raises the flute over the three bounds: 880 → 988 → 1175 Hz', () => {
     const hz = APEX_PITCH.map((p) => Math.round(880 * p));
     expect(hz).toEqual([880, 988, 1175]);
+  });
+
+  it('lands the strike between home and the target, the horn tip just short of it — as P1 and as P2', () => {
+    const tipDx = framePoints('attack', 14).muzzle!.x - AX;
+    // the 5-zone board, zone 2 against zone 2 (measured live): P1 home (288,176) → target (352,144), P2 the mirror
+    const cases = [
+      { sgn: 1 as const, home: { x: 288, y: 176 }, aim: { x: 352, y: 144 }, front: 334 },
+      { sgn: -1 as const, home: { x: 352, y: 144 }, aim: { x: 288, y: 176 }, front: 308 },
+    ];
+    for (const c of cases) {
+      const stop = strikeStop(c.aim, c.front, c.sgn * tipDx, c.sgn);
+      const lo = Math.min(c.home.x, c.aim.x);
+      const hi = Math.max(c.home.x, c.aim.x);
+      expect(stop.x, `x ${c.sgn}`).toBeGreaterThanOrEqual(lo);
+      expect(stop.x, `x ${c.sgn}`).toBeLessThanOrEqual(hi);
+      expect(Math.abs(stop.y - c.aim.y), `row ${c.sgn}`).toBeLessThanOrEqual(4);
+      // the levelled horn tip lands 3 px short of the target's facing side
+      expect((stop.x + c.sgn * tipDx - c.front) * c.sgn, `tip ${c.sgn}`).toBe(-3);
+    }
   });
 
   it('covers the scenarios of the lane brief', () => {

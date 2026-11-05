@@ -20,7 +20,6 @@ import { PAL } from '../palette';
 import { AX, GY, H, Part, W, type Frame } from './steppe_spiralhorn-rig';
 import { clamp, hash2, rnd } from './steppe_spiralhorn-kit';
 
-const TAU = Math.PI * 2;
 const M = 2; // frame margin the effects keep (Sİ-2)
 
 function put(f: Frame, x: number, y: number, c: number): void {
@@ -80,35 +79,28 @@ function catchlight(f: Frame): void {
   if (o.blink === 3) f.p.set(light.side < 0 ? ex + 1 : ex, ey, PAL.mist);
 }
 
-/** The wind curls peel off both horn tips and drift back (−x) and a little up: the visible whistle. */
+/** The whistle curl in three drawn steps (x = trailing back from the tip, y down): a tight hook, the open 5×4 spiral,
+ *  the unwinding arc; [x, y, head] — the leading pixels leaf4, the tail leaf3 (the strike's world curl is the same). */
+const CURL: readonly (readonly (readonly [number, number, boolean])[])[] = [
+  [[0, 1, true], [1, 0, true], [2, 0, false], [2, 1, false], [1, 2, false]],
+  [[0, 2, true], [0, 1, true], [1, 0, true], [2, 0, false], [3, 0, false], [4, 1, false], [4, 2, false], [3, 3, false], [2, 3, false], [2, 2, false]],
+  [[0, 1, false], [1, 0, false], [2, 0, false], [3, 0, false], [4, 1, false]],
+];
+
+/** The wind curls peel off both horn tips and trail back (−x) a little, within ~10 px of the tip: the visible whistle. */
 function curls(f: Frame): void {
   const { o, sk } = f;
   if (o.curl < 0) return;
   const ph = o.curl;
-  const shapes: (readonly (readonly [number, number])[])[] = [
-    [[0, 0], [1, 0], [2, 0], [2, 1], [2, 2], [1, 2]],
-    [[1, 0], [2, 0], [2, 1], [2, 2], [1, 2], [0, 2]],
-    [[0, 1], [1, 1], [1, 0], [2, 0], [3, 0]],
-  ];
   const tips = [sk.hornN.tip, sk.hornF.tip];
   tips.forEach((tp, i) => {
-    const k = clamp(ph - i * 0.18, 0, 1);
-    if (ph - i * 0.18 < 0) return;
-    const x = rnd(tp[0] - 3 - k * 9);
-    const y = rnd(tp[1] - 1 - k * 3 + Math.sin(k * TAU) * 1.2);
-    const s = shapes[Math.min(2, Math.floor(k * 3))];
-    const c = k < 0.45 ? PAL.leaf4 : PAL.leaf3;
-    if (k > 0.85) {
-      put(f, x + 1, y + 1, PAL.leaf3);
-      put(f, x + 2, y + 1, PAL.leaf3);
-      return;
-    }
-    for (const [dx, dy] of s) put(f, x + dx, y + dy, c);
-    // a 2-px tail back toward the horn tip
-    if (k < 0.6) {
-      put(f, x + 3, y + 2, PAL.leaf3);
-      put(f, x + 4, y + 2, PAL.leaf3);
-    }
+    const k = ph - i * 0.18;
+    if (k < 0) return;
+    const step = k < 0.3 ? 0 : k < 0.72 ? 1 : 2;
+    if (k > 0.95) return;
+    const x = rnd(tp[0] - 2 - k * 6);
+    const y = rnd(tp[1] - 2 - k * 2);
+    for (const [dx, dy, head] of CURL[step]) put(f, x - dx, y + dy, head && step < 2 ? PAL.leaf4 : PAL.leaf3);
   });
 }
 
