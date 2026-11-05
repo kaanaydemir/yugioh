@@ -30,7 +30,7 @@ export function mix(a: Pose, b: Pose, t: number): Pose {
   return o;
 }
 /** Whole-pixel geometry fields (hard parts move whole px). */
-const PX: (keyof Pose)[] = ['py', 'px', 'tx', 'ty', 'lean', 'hx', 'hy', 'nx', 'ny', 'fx', 'fy', 'nfx', 'nfl', 'ffx', 'ffl', 'rx', 'ry', 'spx', 'spy', 'hdrop', 'pdrop', 'roseY'];
+const PX: (keyof Pose)[] = ['py', 'px', 'tx', 'ty', 'lean', 'hx', 'hy', 'nx', 'ny', 'fx', 'fy', 'nfx', 'nfl', 'ffx', 'ffl', 'rx', 'ry', 'spx', 'spy', 'hdrop', 'pdrop', 'roseY', 'pdrop2', 'pdx', 'pdx2'];
 function snap(p: Pose): Pose {
   const o = { ...p } as Pose;
   for (const k of PX) (o as unknown as Record<string, number>)[k] = rnd(p[k] as number);
@@ -174,15 +174,17 @@ const ROAR_HOLDS = [80, 110, 130, 170, 90, 110, 100, 110, 120, 140];
 // ------------------------------------------------------------------ hit / heavy / magic
 
 const HIT_N = 6;
+// the compass knocked off its bearing: the needle torso recoils 2–3 px (the N tip thrown back), the head snaps
+// after it, and the rose crown whirls fast for two frames before it settles back
 const HIT_KEYS: Partial<Pose>[] = [
-  { hx: -1, lid: 2, eye: 0.5, lean: -1, sa: 6 },
-  { hx: -2, tx: -1, lean: -2, lid: 2, eye: 0.5, sa: 12, ny: -36, poleN: 0.5, spark: 0.3, fy: -57 },
-  { hx: -1, tx: -1, lean: -1, lid: 1, eye: 0.8, sa: 6, ny: -37, spark: 0.7, fy: -58 },
+  { hx: -2, tx: -1, lean: -2, lid: 2, eye: 0.5, sa: 8, py: 1, poleN: 0.5, rose: 0.3, roseG: 2 },
+  { hx: -3, tx: -2, lean: -3, lid: 2, eye: 0.5, sa: 14, py: 1, ny: -36, nfx: -1, poleN: 0.5, spark: 0.3, fy: -56, fx: -17, rose: 0.68, roseG: 2, shake: 1 },
+  { hx: -2, tx: -2, lean: -2, lid: 1, eye: 0.8, sa: 8, ny: -37, spark: 0.7, fy: -57, fx: -16, rose: 0.86 },
 ];
 export function hitPose(f: number): Pose {
   if (f >= HIT_N - 1) return home();
   if (f <= 2) return snap(key(HIT_KEYS[f], f, HIT_N));
-  return toward(key(HIT_KEYS[2], 2, HIT_N), f === 3 ? 0.45 : 0.8, f, HIT_N, { spark: 0 });
+  return toward(key(HIT_KEYS[2], 2, HIT_N), f === 3 ? 0.45 : 0.8, f, HIT_N, { spark: 0, rose: f === 3 ? 0.94 : 0.98 });
 }
 const HIT_HOLDS = [50, 60, 130, 100, 110, 120];
 
@@ -216,41 +218,59 @@ export function hitMagicPose(f: number): Pose {
 }
 const HM_HOLDS = [50, 60, 70, 70, 90, 100, 110, 120];
 
-// ------------------------------------------------------------------ summon (15): drop on the point, two compass turns, lock, unfold
+// ------------------------------------------------------------------ summon (18): drop on the point, two compass turns, lock, unfold
 
-const SU_N = 15;
+const SU_N = 18;
 /** The summon frame on which the needle locks onto the opponent ("TIK"). */
 export const SUMMON_LOCK = 12;
-/** The folded needle: en pointe, arms round the spear held as a compass card at the pivot. */
-const FOLD: Partial<Pose> = {
-  toe: 1, nfx: -6, ffx: 7, py: -1, nx: 7, ny: -41, fx: 0, fy: -45, spin: 1, yaw: 0, roseK: 0, lid: 0, eye: 1.2, lean: 0, hx: 0, poleN: 1.5, poleS: 1.5, tip: 1.5,
+/** The first unfold frame (the legs drop, the arms open: polarNeedleUnfold). */
+export const SUMMON_UNFOLD = 13;
+/** The CLOSED needle (the sovereign's compass-card pose): limbs folded into the lozenge, the blue S point on the
+ *  floor point, the spear balanced on the pivot as the compass card, the rose crown half furled. */
+export const CLOSED: Partial<Pose> = {
+  closed: 1, spin: 1, yaw: 0, syaw: 0, toe: 1, lid: 0, eye: 1.2, lean: 0, hx: 0, poleN: 1.5, poleS: 1.5, tip: 1.5, roseK: 0.5,
 };
-/** After the land: the body yaws through two full turns — side, front, away, back — whipping fast, then slowing
- *  (each [yaw deg, trail deg, whip]); the whole needle (body + spear + rose crown) turns as one compass card. */
+/** After the land: the closed needle yaws through two full turns (each [yaw deg, trail deg, whip]): the compass
+ *  card's fire and water points swap sides every half turn, fast first, then slowing toward the bearing. */
 const SPIN: [number, number, number][] = [
-  [90, 90, 1], [180, 90, 2], [270, 90, 1], [360, 90, 2],
-  [450, 90, 1], [540, 80, 2], [630, 70, 0], [700, 50, 0],
+  [80, 80, 1], [170, 90, 2], [260, 90, 1], [350, 90, 2],
+  [440, 90, 1], [525, 85, 2], [600, 75, 0], [655, 55, 0],
 ];
 export function summonPose(f: number): Pose {
   if (f >= SU_N - 1) return home();
   const ph = f / (SU_N - 1);
-  const base: Pose = { ...IDLE0, ...FOLD, rose: 0, dust: -1, t: ph };
-  if (f === 0) return { ...base, py: -3, streak: 1, yaw: 0, eye: 0.6 };
-  if (f === 1) return { ...base, py: 0, ring: 0.25, shake: 1, yaw: 0, trail: 40 };
+  const base: Pose = { ...IDLE0, ...CLOSED, rose: 0, dust: -1, t: ph };
+  if (f === 0) return { ...base, py: -3, streak: 1, eye: 0.6 };
+  if (f === 1) return { ...base, ring: 0.25, shake: 1, trail: 40 };
   if (f <= 9) {
     const [yaw, trail, whip] = SPIN[f - 2];
-    return { ...base, py: 0, yaw, trail, whip, rose: (yaw / 360) % 1, roseK: 0.6, ring: f === 2 ? 0.6 : f === 3 ? 0.9 : 0, field: f >= 7 ? 0.6 : 0, fph: ph };
+    return { ...base, yaw, trail, whip, rose: (yaw / 360) % 1, roseK: 0.6, ring: f === 2 ? 0.6 : f === 3 ? 0.9 : 0, field: f >= 7 ? 0.6 : 0, fph: ph };
   }
-  // f10–f12: out of the turn the spear swings past the foe's bearing (overshoot), back a hair, and LOCKS on it
-  const aimK: Partial<Pose> = { spin: 0, yaw: 0, aim: 1, roseK: 0.8, nx: 11, ny: -42, fx: -3, fy: -47, field: 0.6, fph: ph };
-  if (f === 10) return snap({ ...base, ...aimK, sa: -16, hx: -1, rose: 0.08, tip: 2 });
-  if (f === 11) return snap({ ...base, ...aimK, sa: 6, hx: 1, rose: 0.1, tip: 2, shake: 2 });
-  if (f === SUMMON_LOCK) return snap({ ...base, ...aimK, sa: 0, hx: 1, rose: 0.12, tip: 3, poleN: 2.5, poleS: 2.5, eye: 2, glint: 2, roseK: 1, field: 1, roseG: 2 });
-  // f13: unfold — the spear drops level into the hand, the legs open into the stance, the rose crown opens
-  const open = { ...IDLE0, ...FOLD, spin: 0, sa: -4, toe: 0, roseK: 1, rose: 0.9, dust: -1, t: ph };
-  return { ...blend(open, IDLE0, 0.55), spin: 0, toe: 0, roseK: 1, rose: 0.95, tip: 2, poleN: 1.5, eye: 1.4, dust: -1, field: 0.4, fph: ph };
+  // f10–f12: the compass card swings past the foe's bearing (overshoot), back a hair, and LOCKS on it (the body
+  // faces the foe again: yaw 720 ≡ the side view; aim turns the card onto the bearing)
+  const aimK: Partial<Pose> = { yaw: 720, aim: 1, roseK: 0.7, field: 0.6, fph: ph };
+  if (f === 10) return { ...base, ...aimK, syaw: 24, trail: 30, hx: -1, rose: 0.08, tip: 2 };
+  if (f === 11) return { ...base, ...aimK, syaw: -9, hx: 1, rose: 0.1, tip: 2, shake: 2 };
+  if (f === SUMMON_LOCK) return { ...base, ...aimK, syaw: 0, hx: 1, rose: 0.12, tip: 3, poleN: 2.5, poleS: 2.5, eye: 2, glint: 2, roseK: 0.8, field: 1, roseG: 2 };
+  // f13–f16: unfold — the body rises out of a plié on its points (the legs drop out of the lozenge), the arms open
+  // from the pivot with the spear still on the bearing, the rose crown fans out, then the stance
+  const U: [number, number, number, number][] = [
+    // [closed, spear offset from the bearing (deg), rose presence, toe]
+    [0.68, 0, 0.85, 1], [0.38, 6, 1, 1], [0.12, 12, 1, 0],
+  ];
+  if (f <= 15) {
+    const [cl, sa, rk, toe] = U[f - 13];
+    const k = 1 - cl;
+    return snap({
+      ...IDLE0, closed: cl, aim: 1, sa, toe, roseK: rk, rose: 0.14 + k * 0.6, roseG: f === 13 ? 2 : 1, dust: -1, t: ph,
+      nx: 15, ny: -38 - rnd(2 * cl), fx: -15, fy: -60 + rnd(8 * cl), nfx: f === 15 ? 0 : -1, ffx: f === 15 ? 0 : 1,
+      tip: f === 13 ? 2.5 : 2, poleN: 2 - k * 0.5, poleS: 2 - k * 0.5, eye: 1.6, field: 0.6 * cl, fph: ph, ring: f === 13 ? 0.35 : 0,
+    });
+  }
+  // f16: the stance settles (the spear eases off the bearing to its idle carry)
+  return snap({ ...IDLE0, sa: -6, ny: -39, rose: 0.92, tip: 1.5, poleN: 1.5, eye: 1.4, dust: -1, t: ph });
 }
-const SU_HOLDS = [70, 80, 60, 60, 60, 65, 70, 85, 100, 120, 110, 90, 200, 120, 140];
+const SU_HOLDS = [70, 80, 55, 55, 55, 60, 65, 75, 90, 105, 100, 80, 190, 75, 75, 85, 95, 120];
 
 // ------------------------------------------------------------------ death (10): seized → ripped out → spins away → the shell falls
 
@@ -260,29 +280,37 @@ const DEATH_KEYS: Partial<Pose>[] = [
   { hx: -1, lean: -2, tx: -1, lid: 0, eye: 2, poleN: 3, poleS: 3, field: 2, fph: 0.7, gap: 1, shake: 1, sa: 14, ny: -36, fy: -62, fx: -18, spark: 0.2 },
   { hx: -1, py: 1, lid: 0, eye: 2, poleN: 3, poleS: 3, field: 1.5, fph: 0.3, gap: 1, rip: 1, rx: -1, ry: -4, ra: -8, nx: 20, ny: -46, fx: -20, fy: -66, sa: 24, shake: 2, spark: 0.5 },
   { hx: -1, py: 3, hdrop: 3, pdrop: 3, lid: 2, eye: 0.5, poleN: 3, poleS: 2, rip: 1, rx: -4, ry: -11, ra: -50, nx: 12, ny: -28, fx: -14, fy: -40, sfree: 1, spx: 15, spy: -27, sa: 45 },
-  { hx: 1, py: 6, hdrop: 11, pdrop: 10, lid: 2, eye: 0, poleN: 2, poleS: 2, rip: 1, rx: -6, ry: -19, ra: -140, nx: 8, ny: -18, fx: -11, fy: -22, sfree: 1, spx: 16, spy: -12, sa: 64, diss: 0.1, spark: 0.4, roseK: 0.6, rose: 0.4 },
-  { hx: 3, py: 9, hdrop: 24, pdrop: 19, lid: 2, eye: 0, poleN: 2, poleS: 2, rip: 1, rx: -7, ry: -24, ra: -250, nx: 9, ny: -8, fx: -9, fy: -9, sfree: 1, spx: 17, spy: -4, sa: 22, diss: 0.22, roseK: 0 },
+  { hx: 1, py: 6, hdrop: 11, pdrop: 10, lid: 2, eye: 0, poleN: 2, poleS: 2, rip: 1, rx: -6, ry: -19, ra: -140, nx: 8, ny: -18, fx: -11, fy: -22, sfree: 1, spx: 16, spy: -12, sa: 64, diss: 0, spark: 0.4, roseK: 0.6, rose: 0.4 },
+  { hx: 3, py: 9, hdrop: 24, pdrop: 19, lid: 2, eye: 0, poleN: 2, poleS: 2, rip: 1, rx: -7, ry: -24, ra: -250, nx: 9, ny: -8, fx: -9, fy: -9, sfree: 1, spx: 17, spy: -4, sa: 22, diss: 0, roseK: 0 },
 ];
 export function deathPose(f: number): Pose {
   if (f <= 5) return snap(key(DEATH_KEYS[f], f, D_N));
-  const k5 = DEATH_KEYS[5];
-  const diss = [0.22, 0.38, 0.54, 0.7, 0.86][f - 5];
-  return snap(key({ ...k5, rip: 2, hx: 5, py: Math.min(12, 10 + (f - 6)), hdrop: f === 6 ? 34 : 39, pdrop: f === 6 ? 25 : 28, nx: 11, ny: -3, fx: -10, fy: -3, diss, poleN: 0, poleS: 0, tip: 0, dust: -1, roseK: 0, streak: f === 6 ? 1 : f === 7 ? 0.4 : 0 }, f, D_N));
+  // f6–f9: the needle is gone; the hollow shell's plates come down ONE BY ONE and lie still on the tile (C12 / §5.2
+  // "the plates fall"): f6 the helm strikes the marble, f7 the near pauldron, f8 the far pauldron, f9 the legs
+  // fold flat and the spear settles. No dissolve: the remains break only in the last 150 ms (cinematics).
+  const shell = (d: Partial<Pose>): Pose =>
+    snap(key({ ...DEATH_KEYS[5], rip: 2, diss: 0, nx: 11, ny: -3, fx: -10, fy: -3, poleN: 0, poleS: 0, tip: 0, dust: -1, roseK: 0, lid: 2, eye: 0, sfree: 1, spx: 17, ...d }, f, D_N));
+  if (f === 6) return shell({ py: 10, hx: -15, hdrop: 47, pdrop: 33, pdx: 2, pdx2: -2, pdrop2: -3, spy: -3, sa: 12, streak: 1, shake: 1, nx: 20, ny: -4, fx: -20, fy: -6 });
+  if (f === 7) return shell({ py: 11, hx: -16, hdrop: 46, pdrop: 38, pdx: 4, pdx2: -2, pdrop2: -9, spy: -2, sa: 7, streak: 0.4, nx: 23, ny: -4, fx: -22, fy: -5 });
+  if (f === 8) return shell({ py: 12, hx: -16, hdrop: 45, pdrop: 37, pdx: 4, pdx2: -3, pdrop2: -2, spy: -2, sa: 6, nx: 24, ny: -5, fx: -24, fy: -5 });
+  return shell({ py: 14, hx: -16, hdrop: 43, pdrop: 35, pdx: 4, pdx2: -3, pdrop2: -2, spy: -2, sa: 5, nx: 25, ny: -5, fx: -24, fy: -4 });
 }
-const D_HOLDS = [50, 60, 70, 80, 90, 90, 90, 90, 90, 100];
+/** Death frames on which a plate lands (the cinematics clink polarNeedlePlate on each). */
+export const DEATH_PLATES = [6, 7, 8, 9] as const;
+const D_HOLDS = [50, 60, 70, 80, 90, 90, 110, 110, 110, 130];
 
 // ------------------------------------------------------------------ revive (11): the plates gather, the needle spins back down into the shell
 
 const RV_N = 11;
 export function revivePose(f: number): Pose {
   if (f >= RV_N - 1) return home();
-  const shell: Partial<Pose> = { roseK: 0, py: 11, hdrop: 38, pdrop: 27, hx: 5, lid: 2, eye: 0, nx: 11, ny: -3, fx: -10, fy: -3, sfree: 1, spx: 17, spy: -4, sa: 22, dust: -1 };
+  const shell: Partial<Pose> = { roseK: 0, py: 14, hdrop: 43, pdrop: 35, pdrop2: -2, pdx: 4, pdx2: -3, hx: -16, lid: 2, eye: 0, nx: 25, ny: -5, fx: -24, fy: -4, sfree: 1, spx: 17, spy: -2, sa: 5, dust: -1 };
   if (f <= 4) {
     const k = f / 4;
     const up = 1 - k * 0.75;
-    return snap(key({ ...shell, py: 11 * up, hdrop: 38 * up, pdrop: 27 * up, hx: 5 * up, ny: -3 - 20 * k, fy: -3 - 26 * k, diss: 0.9 - 0.85 * k, gather: true, rip: 1, rx: rnd(-6 + 6 * k), ry: rnd(-22 + 16 * k), ra: rnd(-300 + 280 * k), poleN: 1 + k, poleS: 1 + k, field: 0.5 + k, fph: k }, f, RV_N));
+    return snap(key({ ...shell, py: 14 * up, hdrop: 43 * up, pdrop: 35 * up, pdrop2: -2 * up, pdx: 4 * up, pdx2: -3 * up, hx: -16 * up, nx: 25 - 13 * k, ny: -5 - 18 * k, fx: -24 + 10 * k, fy: -4 - 25 * k, diss: 0.9 - 0.85 * k, gather: true, rip: 1, rx: rnd(-6 + 6 * k), ry: rnd(-22 + 16 * k), ra: rnd(-300 + 280 * k), poleN: 1 + k, poleS: 1 + k, field: 0.5 + k, fph: k }, f, RV_N));
   }
-  if (f === 5) return snap(key({ ...shell, roseK: 0.6, py: 4, hdrop: 3, pdrop: 2, hx: 0, fx: -14, fy: -40, rip: 0, poleN: 3, poleS: 3, field: 1.6, fph: 0.6, eye: 1, lid: 1, nx: 12, ny: -30, sfree: 0, sa: -30, spark: 0.3, shake: 1 }, f, RV_N));
+  if (f === 5) return snap(key({ ...shell, roseK: 0.6, py: 4, hdrop: 3, pdrop: 2, pdrop2: 0, pdx: 0, pdx2: 0, hx: 0, fx: -14, fy: -40, rip: 0, poleN: 3, poleS: 3, field: 1.6, fph: 0.6, eye: 1, lid: 1, nx: 12, ny: -30, sfree: 0, sa: -30, spark: 0.3, shake: 1 }, f, RV_N));
   if (f === 6) return snap(key({ py: 1, poleN: 2, poleS: 2, eye: 2, field: 0.8, fph: 0.9, nx: 14, ny: -36, sa: -12, glint: 2 }, f, RV_N));
   return toward(key({ py: 1, poleN: 2, eye: 1.6, sa: -12 }, 6, RV_N), f === 7 ? 0.4 : f === 8 ? 0.7 : 0.9, f, RV_N);
 }

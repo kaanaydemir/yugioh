@@ -133,6 +133,16 @@ export interface Pose {
   aim: number;
   /** fast spin frame: a lit leading edge + a 1-px smear on the trailing side of the turning body */
   whip: number;
+  /** the CLOSED needle (summon; the sovereign's compass-card pose): 1 = arms and legs folded into the lozenge, the
+   *  body sunk so the blue S point stands on the floor point (R), the spear balanced on the pivot as the compass
+   *  card; 0…1 = unfolding (the body rises out of a plié, the arms open from the pivot) */
+  closed: number;
+  /** compass mode: extra yaw of the spear only (deg; the aim's bearing, so the body keeps its view) */
+  syaw: number;
+  /** death: the far pauldron's extra drop and the pauldrons' x drift (px) — the plates land one by one */
+  pdrop2: number;
+  pdx: number;
+  pdx2: number;
   /** global phase 0…1 */
   t: number;
 }
@@ -149,7 +159,7 @@ export const NEUTRAL: Pose = {
   smear: 0, flare: 0, spark: 0, shake: 0, zap: 0,
   rip: 0, rx: 0, ry: 0, ra: 0, gap: 0, hdrop: 0, pdrop: 0,
   streak: 0, trail: 0, ring: 0,
-  diss: 0, gather: false, glint: 0, aim: 0, whip: 0, t: 0,
+  diss: 0, gather: false, glint: 0, aim: 0, whip: 0, closed: 0, syaw: 0, pdrop2: 0, pdx: 0, pdx2: 0, t: 0,
 };
 export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
 
@@ -158,6 +168,8 @@ export const AIM_DEG = 27;
 /** Resolve `aim` for a side: P1 ('left' light) aims up-right, the P2 relit sheet down-right (flipX → down-left). */
 export function resolveAim(o: Pose, lightFrom: 'left' | 'right'): Pose {
   if (o.aim <= 0) return o;
+  // compass mode: the spear card turns onto the bearing (iso: 27° on screen ≈ 50° of yaw), the body keeps its view
+  if (o.spin > 0) return { ...o, aim: 0, syaw: o.syaw + (lightFrom === 'left' ? -50 : 50) };
   return { ...o, aim: 0, sa: o.sa + (lightFrom === 'left' ? -AIM_DEG : AIM_DEG) };
 }
 
@@ -225,7 +237,9 @@ const reach = (a: Pt, b: Pt, len: number): Pt => {
 
 export function skeleton(o: Pose): Skel {
   const base: Pt = [RX, GY + o.py];
-  const pel: Pt = [RX + o.px, base[1] - 25];
+  const cl = clamp(o.closed, 0, 1);
+  // closed: the whole needle sinks until its S point stands on the floor point (the torso's S tip is 20 px up)
+  const pel: Pt = [RX + o.px, base[1] - 25 + rnd(20 * cl)];
   const C: Pt = [pel[0] + o.tx, pel[1] - 15 + o.ty];
   const dl = Math.hypot(o.lean, TORSO_N);
   const d0: Pt = [o.lean / dl, -TORSO_N / dl];
@@ -248,12 +262,15 @@ export function skeleton(o: Pose): Skel {
   // the character's right side (spear arm, near leg) is screen-left when it faces the viewer, screen-right from behind
   const rs = view === 'front' ? -1 : 1;
   // compass mode: both hands hold the spear at the pivot like a compass card; the grip turns with the body
-  const grip: Pt = [C[0] + Math.cos(o.yaw * DEG) * 3, C[1] + 3 + Math.sin(o.yaw * DEG) * 1.3];
-  const sh1: Pt = fb ? [C[0] + rs * 5, C[1] - o.ty - 13 + o.pdrop] : [C[0] + 2 + sl, C[1] - o.ty + sb - 13 + o.pdrop];
-  const sh2: Pt = fb ? [C[0] - rs * 5, C[1] - o.ty - 13 + o.pdrop] : [C[0] - 3 + sl, C[1] - o.ty + sb - 14 + o.pdrop];
-  const w1 = reach(sh1, o.spin > 0 ? grip : [RX + o.nx, GY + o.ny], 18.6);
+  // (closed: the compass card sits on the pivot pin itself — no hands)
+  const grip: Pt = cl > 0 ? [C[0], C[1]] : [C[0] + Math.cos(o.yaw * DEG) * 3, C[1] + 3 + Math.sin(o.yaw * DEG) * 1.3];
+  const sh1: Pt = fb ? [C[0] + rs * 5, C[1] - o.ty - 13 + o.pdrop] : [C[0] + 2 + sl + o.pdx, C[1] - o.ty + sb - 13 + o.pdrop];
+  const sh2: Pt = fb ? [C[0] - rs * 5, C[1] - o.ty - 13 + o.pdrop] : [C[0] - 3 + sl + o.pdx2, C[1] - o.ty + sb - 14 + o.pdrop + o.pdrop2];
+  // unfolding: the hands open from the pivot (tucked against the lozenge) toward their targets
+  const tuck = (t: Pt, k: Pt): Pt => (cl > 0 ? [t[0] + (k[0] - t[0]) * cl, t[1] + (k[1] - t[1]) * cl] : t);
+  const w1 = reach(sh1, o.spin > 0 ? grip : tuck([RX + o.nx, GY + o.ny], [C[0] + 4, C[1] + 2]), 18.6);
   const el1 = ik2(sh1, w1, 9, 10, fb ? -rs : 1) as Pt;
-  const w2 = reach(sh2, o.spin > 0 ? [grip[0] - (fb ? rs : 1), grip[1] + 1] : [RX + o.fx, GY + o.fy], 18.6);
+  const w2 = reach(sh2, o.spin > 0 ? [grip[0] - (fb ? rs : 1), grip[1] + 1] : tuck([RX + o.fx, GY + o.fy], [C[0] - 4, C[1] + 1]), 18.6);
   const el2 = ik2(sh2, w2, 9, 10, fb ? rs : -1) as Pt;
   const lift = o.toe > 0 ? 3 : 0;
   let hip1: Pt = [pel[0] + 3, pel[1]];
@@ -264,7 +281,12 @@ export function skeleton(o: Pose): Skel {
   let ft2 = GY - o.ffl;
   let kb1 = -1;
   let kb2 = -1;
-  if (o.spin > 0) {
+  if (cl > 0) {
+    // unfolding out of the closed needle: a deep plié rising — the feet on the floor, the knees turned out
+    an1 = [RX + 5 + o.nfx, GY - 3 - lift];
+    an2 = [RX - 5 + o.ffx, GY - 3 - lift];
+    kb2 = 1;
+  } else if (o.spin > 0) {
     // the pirouette: the far (left) leg stands en pointe under the pivot, the near (right) leg in passé — its
     // pointed foot at the standing knee, the knee turned out toward the facing (side) or the right side (front/back)
     const bx = pel[0];
@@ -290,8 +312,8 @@ export function skeleton(o: Pose): Skel {
   let sN = SPEAR_N;
   let sS = SPEAR_S;
   if (o.spin > 0) {
-    const cx = Math.cos(o.yaw * DEG);
-    const sy = Math.sin(o.yaw * DEG) * 0.42;
+    const cx = Math.cos((o.yaw + o.syaw) * DEG);
+    const sy = Math.sin((o.yaw + o.syaw) * DEG) * 0.42;
     const m = Math.hypot(cx, sy) || 1;
     sd = [cx / m, sy / m];
     sN = SPEAR_N * m;
@@ -517,7 +539,7 @@ function poleLight(f: Frame): void {
       dot(cx, cy, o.poleN >= 2 ? PAL.white : PAL.gold4);
     }
   }
-  if (o.spin === 0 || Math.cos(o.yaw * DEG) > -0.2) tipAt(sk.spt, sk.sd, o.tip, fN ? PAL.water4 : PAL.fire4, fN ? PAL.water3 : PAL.gold4);
+  if (o.spin === 0 || Math.cos((o.yaw + o.syaw) * DEG) > -0.2) tipAt(sk.spt, sk.sd, o.tip, fN ? PAL.water4 : PAL.fire4, fN ? PAL.water3 : PAL.gold4);
 }
 
 function eyeLight(f: Frame): void {
@@ -678,10 +700,10 @@ function motionLight(f: Frame): void {
   }
   if (o.trail !== 0 && o.spin > 0) {
     // the iso arc the spear's two ends just swept (only where nothing is drawn: it reads behind the body)
-    const [cx, cy] = sk.w1;
+    const [cx, cy] = sk.sc;
     const steps = Math.max(6, rnd(Math.abs(o.trail) / 6));
     for (let i = 1; i <= steps; i++) {
-      const a = (o.yaw - (o.trail * i) / steps) * DEG;
+      const a = (o.yaw + o.syaw - (o.trail * i) / steps) * DEG;
       for (const [len, hot, cool, sgn] of [[SPEAR_N - 1, PAL.fire3, PAL.fire2, 1], [SPEAR_S - 1, PAL.water3, PAL.water2, -1]] as const) {
         const x = rnd(cx + sgn * Math.cos(a) * len);
         const y = rnd(cy + sgn * Math.sin(a) * len * 0.42);
@@ -765,7 +787,7 @@ export function drawNeedle(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right')
     // pirouette: while the compass turns its back on the foe, the dancer faces the other way — the same rig drawn
     // with the opposite light and mirrored about the root (pixel-exact; the key light stays at the top-left)
     const q = new PixelCanvas(W, H);
-    drawNeedle(q, { ...o, yaw: 180 - o.yaw, trail: -o.trail }, lightFrom === 'left' ? 'right' : 'left');
+    drawNeedle(q, { ...o, yaw: 180 - o.yaw, syaw: -o.syaw, trail: -o.trail }, lightFrom === 'left' ? 'right' : 'left');
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         const c = q.get(x, y);
@@ -779,26 +801,32 @@ export function drawNeedle(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right')
   const comp = new Comp(p);
   const f: Frame = { p, comp, light, o, sk };
   // compass mode: each half of the spear sits in front of / behind the body by its yaw
-  const nFront = o.spin > 0 ? Math.sin(o.yaw * DEG) > 0 : true;
+  // (closed: the card rides on the pivot pin in front of the lozenge unless it points straight away — the locked
+  // bearing up-right must read at board size)
+  const nFront = o.spin > 0 ? Math.sin((o.yaw + o.syaw) * DEG) > (o.closed >= 0.9 ? -0.85 : 0) : true;
+  // the closed needle: no limbs — the lozenge, the helm, the crown, the pauldron plates and the compass card
+  const shut = o.closed >= 0.9;
 
   const spinning = o.spin > 0;
   const fb = sk.view === 'front' || sk.view === 'back';
   drawRose(f, false);
-  drawArm(f, false);
+  if (!shut) drawArm(f, false);
   // compass mode: both arms wrap round to the grip below the pivot, behind the needle (the N half stays bare)
-  if (spinning) drawArm(f, true);
+  if (spinning && !shut) drawArm(f, true);
   if (!fb) drawPauldron(f, false);
-  drawLeg(f, false);
+  if (!shut) drawLeg(f, false);
   if (o.sfree > 0) comp.add(spearLayer(f), Part.spear, { out: PAL.stone1 });
   if (spinning) comp.add(spearLayer(f, nFront ? -1 : 1), Part.spear, { out: PAL.stone1 });
-  drawLeg(f, true);
-  drawPelvis(f);
+  if (!shut) {
+    drawLeg(f, true);
+    drawPelvis(f);
+  }
   drawTorso(f);
   drawHead(f);
   drawRose(f, true);
   if (fb) drawPauldron(f, false);
   drawPauldron(f, true);
-  if (!spinning) drawArm(f, true);
+  if (!spinning && !shut) drawArm(f, true);
   if (spinning) comp.add(spearLayer(f, nFront ? 1 : -1), Part.spear, { out: PAL.stone1 });
   if (o.spin === 0 && o.sfree === 0) comp.add(spearLayer(f), Part.spear, { out: PAL.stone1 });
   if (o.shake > 0) {

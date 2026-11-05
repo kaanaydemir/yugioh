@@ -217,12 +217,14 @@ export const V3_POLAR_NEEDLE_RECIPES = {
     duck: 0.2,
     play(v) {
       for (const [t, pan, f] of [
-        [0, -0.7, 2900],
-        [0.07, 0.7, 3300],
+        [0, -0.95, 2900],
+        [0.07, 0.95, 3300],
       ] as const) {
         const p = v.panner(pan);
-        v.noise('white', { t, g: [[0, 0], [0.004, 0.12], [0.06, 0.0001, 'e']], to: v.filt('bandpass', [[0, f * 1.6], [0.06, f, 'e']], 2, { t, to: p }) });
-        v.tone('sine', [[0, f * 0.3], [0.05, f * 0.4, 'e']], { t, g: perc(0.03, 0.12, 0.002), to: p });
+        // (fix r1: −21 dB was too quiet for the storyboard's L / R "tşk" — +5 dB, hard panned)
+        v.noise('white', { t, g: [[0, 0], [0.004, 0.22], [0.07, 0.0001, 'e']], to: v.filt('bandpass', [[0, f * 1.6], [0.06, f, 'e']], 2, { t, to: p }) });
+        v.noise('white', { t, g: perc(0.08, 0.01, 0.0003), to: v.filt('highpass', 5200, 0.7, { to: p }) });
+        v.tone('sine', [[0, f * 0.3], [0.05, f * 0.4, 'e']], { t, g: perc(0.05, 0.12, 0.002), to: p });
       }
       poleHum(v, 0, perc(0.06, 0.3, 0.01));
     },
@@ -268,15 +270,16 @@ export const V3_POLAR_NEEDLE_RECIPES = {
     verb: 0.45,
     duck: 0.6,
     play(v) {
-      pierceRing(v, 0, 0.2, 0.8);
-      v.noise('white', { g: perc(0.24, 0.006, 0.0002), to: v.filt('bandpass', 5200, 1.2) });
+      // (fix r1: the raw peak sat at 1.06 before the chain — every layer −1 dB)
+      pierceRing(v, 0, 0.18, 0.8);
+      v.noise('white', { g: perc(0.21, 0.006, 0.0002), to: v.filt('bandpass', 5200, 1.2) });
       crack(v, 0.006, 0.2, { hp: 3200, n: 2, gap: 0.012, to: v.panner(-0.6) });
       crack(v, 0.014, 0.2, { hp: 3600, n: 2, gap: 0.01, to: v.panner(0.6) });
-      thump(v, 0, 170, 80, 0.34, 0.11, { drive: 1.4 });
+      thump(v, 0, 170, 80, 0.3, 0.11, { drive: 1.4 });
       // the body of the hit: a short low-mid knock under the ring (the needle going THROUGH, not just ringing)
-      thump(v, 0.004, 320, 140, 0.16, 0.05, { drive: 1.2 });
-      needleTone(v, 0, perc(0.1, 0.4, 0.003));
-      poleHum(v, 0, perc(0.14, 0.45, 0.003));
+      thump(v, 0.004, 320, 140, 0.14, 0.05, { drive: 1.2 });
+      needleTone(v, 0, perc(0.09, 0.4, 0.003));
+      poleHum(v, 0, perc(0.125, 0.45, 0.003));
       glassRain(v, { t: 0.02, d: 0.45, n: 10, g: 0.035, notes: DUST, dec: [0.04, 0.12], curve: 1.6, modes: 2 });
     },
   },
@@ -347,6 +350,46 @@ export const V3_POLAR_NEEDLE_RECIPES = {
       v.noise('pink', { g: [[0, 0], [0.04, 0.2], [D * 0.5, 0.11], [D, 0.0001, 'e']], to: bp });
       v.tone('sine', [[0, A3 * 4], [D, A3 * 6, 'e']], { g: [[0, 0], [0.04, 0.05], [D, 0.0001, 'e']], to: am });
       needleTone(v, 0, [[0, 0], [0.03, 0.06], [D * 0.6, 0.0001, 'e']], 1, am);
+    },
+  },
+  /** Lost to an attack-position foe: like poles REPEL — the brackets snap open (L / R clicks flying apart), a
+   *  bent field "vwomm" (the 220 / 221 needle tone shoved down a fifth against the 110 / 111 hum) and a dry
+   *  push of air. No shield, no clang: the field throws the needle off. */
+  polarNeedleRepel: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.45,
+    duck: 0.45,
+    play(v) {
+      for (const [t, pan, f] of [
+        [0, -0.95, 3400],
+        [0.012, 0.95, 3000],
+      ] as const) {
+        const p = v.panner(pan);
+        v.noise('white', { t, g: perc(0.2, 0.025, 0.0003), to: v.filt('bandpass', [[0, f], [0.08, f * 0.6, 'e']], 2, { t, to: p }) });
+        clank(v, f * 0.36, t, 0.05, 0.1, { ratio: 1.17, index: 1.2, click: 0, to: p });
+      }
+      // the bent field: the needle's tone pushed down (A3 → D3) with its 1 Hz-off twin, an FM growl in it
+      v.tone('sine', [[0, A3 * 2], [0.06, A3 * 1.2, 'e'], [0.4, A3 * 0.68, 'e']], { g: [[0, 0], [0.01, 0.2], [0.45, 0.0001, 'e']] });
+      v.tone('sine', [[0, A3 * 2 + 2], [0.06, A3 * 1.2 + 1.5], [0.4, A3 * 0.68 + 1, 'e']], { g: [[0, 0], [0.01, 0.12], [0.42, 0.0001, 'e']] });
+      thump(v, 0.005, 140, 60, 0.26, 0.14, { drive: 1.3 });
+      sweep(v, 0, 0.28, [3800, 1600, 600], 0.12, { kind: 'pink', q: 1.2, pan: [0, 0], peakAt: 0.12 });
+      poleHum(v, 0, perc(0.2, 0.55, 0.003));
+    },
+  },
+  /** Position → defence: the needle swings upright, the spear comes up to guard — a soft pivot tick, a light
+   *  220 lock and the 110 / 111 hum swelling under it (no shield clink: the needle IS the guard). */
+  polarNeedleGuard: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.4,
+    duck: 0.2,
+    play(v) {
+      sweep(v, 0, 0.14, [900, 2600, 1500], 0.05, { kind: 'pink', q: 1.4, pan: [0.3, -0.2], peakAt: 0.6 });
+      pivotClick(v, 0.13, 0.2, 4800);
+      pivotClick(v, 0.142, 0.1, 3400);
+      needleTone(v, 0.135, [[0, 0], [0.006, 0.12], [0.2, 0.06], [0.6, 0.0001, 'e']]);
+      poleHum(v, 0, [[0, 0], [0.16, 0.35], [0.3, 0.3], [0.75, 0.0001, 'e']]);
     },
   },
   /** Death: a magnetite plate drops onto the marble (a dull stone-metal clack and a tiny bounce). */
