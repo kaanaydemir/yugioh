@@ -29,9 +29,12 @@ describe('crag_axeman presentation', () => {
   it('speaks with its own voice: every role is a registered cax sound', () => {
     expect(CHARACTER_SOUNDS.crag_axeman).toBe(AXEMAN_VOICE);
     const names = new Set<string>(SFX_NAMES);
-    for (const [role, name] of Object.entries(AXEMAN_VOICE)) {
-      expect(names.has(name as string), role).toBe(true);
-      expect(String(name).startsWith('cax'), role).toBe(true);
+    // a role is a sound name, or (struck) an object of sound names: check every leaf
+    const leaves = (role: string, v: unknown): [string, string][] =>
+      v && typeof v === 'object' ? Object.entries(v as Record<string, unknown>).flatMap(([k, x]) => leaves(`${role}.${k}`, x)) : [[role, String(v)]];
+    for (const [role, name] of Object.entries(AXEMAN_VOICE).flatMap(([r, v]) => leaves(r, v))) {
+      expect(names.has(name), role).toBe(true);
+      expect(name.startsWith('cax'), role).toBe(true);
     }
     for (const k of Object.keys(V3_AXEMAN_RECIPES)) {
       expect(names.has(k), k).toBe(true);
