@@ -519,6 +519,12 @@ function takeAuraRun(ctx: AnyCtx, from: number, sign: number, o: { through?: (e:
 /** Play a taken run: gains as Kanat Selamı from their lady, losses as Kanatlar Döner toward theirs. */
 async function playRun(ctx: AnyCtx, run: { i: number; ev: StatEv; d: number }[], mode: BlessMode): Promise<void> {
   if (!run.length) return;
+  // round 3 #6 (khSteal): a sync before the run (the control change) may have snapped the plates to the new numbers
+  // already — they go back to the old ones at once, so each roll plays on its own beat (unbless / bless)
+  for (const r of run) {
+    const u = ctx.unit(r.ev.uid);
+    if (u && !u.retired && (u.shownStats.atk !== r.ev.prevAtk || u.shownStats.def !== r.ev.prevDef)) void u.setStats(r.ev.prevAtk, r.ev.prevDef, false);
+  }
   const gains = run.filter((r) => r.d > 0);
   const losses = run.filter((r) => r.d < 0);
   const jobs: Promise<void>[] = [];
@@ -703,6 +709,43 @@ if (LOOK_V3)
       }
     },
     { priority: 25, name: `kart-f:${ID}:tributed` },
+  );
+
+// ================================================================ a control change (round 3 #6: khSteal)
+
+/**
+ * A lady changes sides (puppet_string): the control-change cinematic syncs the plates to the new numbers while she
+ * crosses, half a second before "Kanatlar Döner" / "Kanat Selamı" play them. The aura run's plates are held on
+ * their old numbers for the crossing, so the −300 / +300 roll on her beats, not on the sync.
+ */
+if (LOOK_V3)
+  registerEvent(
+    'controlChange',
+    async (ctx: Ctx<'controlChange'>) => {
+      const held: { u: MonsterUnit; ev: StatEv }[] = [];
+      for (let i = ctx.index + 1; i < ctx.events.length; i++) {
+        const e = ctx.events[i];
+        if (e.type !== 'statChange') {
+          if (held.length) break;
+          continue;
+        }
+        if (ctx.isConsumed(i) || auraDelta(ctx.events, ctx.stateAt, i) === 0) continue;
+        const u = ctx.unit(e.uid);
+        if (u) held.push({ u, ev: e });
+      }
+      if (!held.length) return ctx.base();
+      let on = true;
+      onFrame(ctx.scene, () => {
+        for (const h of held) if (!h.u.retired && (h.u.shownStats.atk !== h.ev.prevAtk || h.u.shownStats.def !== h.ev.prevDef)) void h.u.setStats(h.ev.prevAtk, h.ev.prevDef, false);
+        return on;
+      });
+      try {
+        await ctx.base();
+      } finally {
+        on = false;
+      }
+    },
+    { priority: 25, name: `kart-f:${ID}:control` },
   );
 
 // ================================================================ the declaration flare (a buffed ally attacks)
@@ -1019,6 +1062,12 @@ async function loseSettle(u: MonsterUnit, conF: number, F: { open: number; sweep
   const spr = u.sprite;
   if (!spr.active) return;
   const f6 = feetOf(u);
+  const dir = u.flipX ? -1 : 1;
+  // the battle pins the claimed sprite at the contact anchor, and her death frames stand ON that anchor while the
+  // clap / open / sweep frames reach ~12–15 px ahead of it: the stand-in walks the body back by that art offset
+  // (feet on the floor) so the hand-off to the death frames lands on the same body, not one frame later 15 px back
+  const ax = (anim: AnyMonsterAnim, f: number) => artPoint(u, anim, f, 'core')?.x ?? artPoint(u, anim, f, 'head')?.x ?? 0;
+  const back = Math.max(0, Math.min(20, Math.round(ax('attack', F.sweep) - ax('death', 0))));
   const dep = target && target.sprite.active ? Math.max(spr.depth, target.sprite.depth + 1) : spr.depth;
   const img = sc.add.image(spr.x, spr.y, spr.texture.key, `attack:${conF}`).setOrigin(spr.originX, spr.originY).setFlipX(spr.flipX).setDepth(dep);
   spr.setVisible(false);
@@ -1027,14 +1076,10 @@ async function loseSettle(u: MonsterUnit, conF: number, F: { open: number; sweep
   };
   try {
     await sleep(sc, 50);
-    show(F.open, f6);
+    show(F.open, { x: f6.x - dir * Math.round(back * 0.25), y: f6.y });
     await sleep(sc, 34);
-    // the sweep: the wings level as the body unrolls upright over its feet (the battle pins the claimed sprite at the
-    // contact point, so the stand-in ends exactly there: one frame 2 px up, then down on the floor)
-    show(F.sweep, { x: f6.x, y: f6.y - 2 });
-    await sleep(sc, 17);
-    show(F.sweep, f6);
-    await sleep(sc, 17);
+    // the sweep: thrown back off the stronger body, the wings level as she unrolls upright over her feet
+    await animate(sc, 50, (t) => show(F.sweep, { x: f6.x - dir * Math.round(back * (0.25 + 0.75 * E.outQ(t))), y: f6.y - (t < 0.5 ? 1 : 0) }));
   } finally {
     img.destroy();
     if (spr.active) spr.setVisible(true);
@@ -1555,10 +1600,10 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
       fl.dot(j.x, j.y, PAL.leaf3);
       void sleep(sc, 2 * 17).then(() => fl.g.destroy());
     });
-    // round 3 #5: the prone hold is one breath, not a pause — the bird lifts 60 ms after the jewel's last flicker
-    // (f8) instead of waiting out the last frame (thud → lift ≈ 190 ms, was ≈ 250 + the f9 hold)
+    // round 3 #5: the prone hold is one breath, not a pause — the bird lifts as the jewel's last flicker (f8, two
+    // frames) ends instead of waiting out f9 (flat → lift ≈ 215 ms, was ≈ 400)
     await capped(sc, untilShown(u, 'death', Math.min(8, n - 1), 1600), 1600);
-    await sleep(sc, 60);
+    await sleep(sc, 34);
     // ---- lift-off: the cape on her back rises as a gold-rimmed bird WHILE the body under it darkens into the floor
     // (three palette steps night2 → night1 → night0, then gone); the card is born once the bird is off her
     const spr = u.sprite;
