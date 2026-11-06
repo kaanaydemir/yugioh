@@ -120,6 +120,8 @@ export interface Pose {
   climb: number;
   /** near elbow side: −1 arched up (planted), +1 dropped low (raised arm, keeps the mask clear) */
   nb: number;
+  /** near arm segment stretch (0 = rest lengths): a plunged arm reaching deep keeps a bent, straining elbow */
+  nlen: number;
   /** 1 = the mask has slipped off the head: (mx, my) place it relative to the root and it sinks below the puddle surface */
   maskFree: number;
   /** 1 = the near arm passes BEHIND the hood (cocked behind the head in the attack), drawn before head + mask */
@@ -183,6 +185,7 @@ export const NEUTRAL: Pose = {
   glint: 0,
   climb: 0,
   nb: -1,
+  nlen: 0,
   maskFree: 0,
   nBack: 0,
   aFront: 0,
@@ -273,7 +276,7 @@ export function skeleton(o: Pose): Skel {
   const s85 = sp(0.82);
   const wN: Pt = [AX + o.nx, GY + o.ny];
   const shN = under([s85[0] + 1, s85[1] + 9], wN);
-  const elN = straight(sag(ik2(shN, wN, 14, 17, o.nb) as Pt), shN, wN);
+  const elN = straight(sag(ik2(shN, wN, 14 * (1 + o.nlen), 17 * (1 + o.nlen), o.nb) as Pt), shN, wN);
   // far front arm: a second spider-leg arch ahead of the near arm (shoulder hidden behind the chest)
   const wF: Pt = [AX + o.fx, GY + o.fy];
   const s70 = sp(0.7);
@@ -772,17 +775,25 @@ function veinLight(f: Frame): void {
     [[sk.sp(0.2)[0] - 7, sk.sp(0.2)[1] + 2], [sk.sp(0.33)[0] - 8, sk.sp(0.33)[1] - 2], [sk.sp(0.47)[0] - 5, sk.sp(0.47)[1] - 6]],
     [sk.shN, sk.elN, [(sk.elN[0] + sk.wN[0]) / 2, (sk.elN[1] + sk.wN[1]) / 2 - 1]],
   ];
-  for (const path of paths)
+  paths.forEach((path, pi) => {
     for (let i = 0; i + 1 < path.length; i++) {
       const [a, b] = [path[i], path[i + 1]];
       const n = Math.max(1, rnd(Math.hypot(b[0] - a[0], b[1] - a[1])));
+      // the arm's vein fades down the forearm (hot at the shoulder, a dotted ember past the elbow): a straining
+      // arm, not a striped staff
+      const fore = pi === 2 && i === 1;
       for (let k = 0; k <= n; k++) {
         const x = rnd(a[0] + ((b[0] - a[0]) * k) / n);
         const y = rnd(a[1] + ((b[1] - a[1]) * k) / n);
+        if (fore) {
+          if (body(x, y) && k % 2 === 0 && k < n * 0.75) p.set(x, y, k < n * 0.35 ? PAL.void3 : PAL.void2);
+          continue;
+        }
         if (body(x, y)) p.set(x, y, hot && k % 3 !== 0 ? PAL.void4 : PAL.void3);
         if (hot && body(x, y + 1) && k % 2 === 0) p.set(x, y + 1, PAL.void2);
       }
     }
+  });
 }
 
 /** two violet cracks through the mound (the spirit's light inside the mud); they breathe with the swell */
