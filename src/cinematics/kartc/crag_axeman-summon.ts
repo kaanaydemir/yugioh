@@ -11,7 +11,9 @@
 //   +680–850   f6–f7: one vertical light seam runs up the boulder's face; it splits clean and the halves fall apart
 //              (caxSplit, caxHalves); a short Yarık opens on the floor where it split
 //   +850       f8 'land': he steps out (caxStepOut: 2 px shake, dust at the boots)
-//   +960       f9: the NARA, axe raised one-handed (caxNara), the ATK/DEF badge pops
+//   +960       the NARA (the roar's frames), axe raised one-handed (caxNara), the held shout a living 2-frame loop
+//              (chest, head, axe, beads, the floor seam breathing in front of his boots), a stepped dust ring + hopping
+//              pebbles on the voice's beats; the ATK/DEF badge pops when the shout ends
 //   → idle     f10–11: the axe back onto the shoulder; the floor seam fades in three steps
 // No hologram build (the boulder is matter), no magic circle, no floor ring: C6's log drops vertically and opens like
 // doors; the sentinel's rocks orbit; this one rolls in and is CUT. No camera move.
