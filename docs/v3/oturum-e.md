@@ -32,6 +32,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
 | soul_leash (Ruh Tasması) | büyük 88×68 + elle 44×34 küçük; §10 dama sınırı içinde (gece zemini dikişleri 3 px, büyük/küçük 1 yama), dama ve tek piksel sınırları testte | tamam: tasma, bağ, kontrol devri; P1/P2, elden ve set kartından, Draw Phase nabzı, kopunca dönüş, yer yok, savaşta ölüm; alma 5,2 sn (≤5,3); CPU senaryosu eLeashCpu (&mode=vsBot) | tamam: 16 e_leash tarifi, hepsi vuruşunda çalıyor; puppet_string karşılıklarından ≥10 dB ayrışıyor | 6 / 6,5 / 6 | shots/e/soul_leash/ |
 | spite_axe (Hınç Baltası) | büyük 88×68 + elle 44×34 küçük, ikisi de %100 palette, resim aracı bayraksız | tamam: kuşanma +800, dönüşte sahibinin destesine gider, sahibine −500 kırbaç ve −800 ATK (P1/P2); elden 5,35 sn (pay 5,03, süre sınırı yok kararıyla kabul); CPU senaryosu eAxeCpu (&mode=vsBot) | tamam: 14 e_axe tarifi, her biri vuruşunda çalıyor | 5 / 6,5 / 6,5 | shots/e/spite_axe/ |
 | page_turner (Sayfa Çeviren) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı piksel, 4 kare | tamam: kitap, eller bağlanır, sayfa karıştırma, preslenmiş yapraklar iki mezarlığa, yeniden dağıtım, kapanış; ePage 5,70 sn (pay 5,84); kamera sabit; CPU senaryoları ePageBot / ePageCpu | tamam: her vuruşta e_page* tarifi; dağıtımda genel cardDraw susturuluyor | 6 / 6,5 / 7 | shots/e/page_turner/ |
+| lucky_die (Talih Zarı) | büyük 88×68 + elle 44×34 küçük, bayraksız, 0 palet dışı, 13 ton, mürekkep 1,00; küçük/büyük 0,86 | tamam: zar atışı, yüze göre +100×zar ATK/DEF; 1'de sönük e_dieDud, 6'da ikramiye akoru + üç havai fişek; toplam 4,25–5,05 sn (pay 5,03, süre sınırı yok kararıyla kabul); kamera sabit; CPU senaryosu eDieCpu (&mode=vsBot) | tamam: 13 e_die* tarifi, hepsi sahnede çalıyor, ses yüksekliği makul | 6 / 7 / 7 | shots/e/lucky_die/ |
 | (doldurulacak) | | | | | |
 
 ### S3 Boşluk Gözü (`void_eye`)
@@ -284,3 +285,8 @@ kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe aç�
 - ePageBot ve ePageCpu yeni senaryolar: filme alındı ama measure.json çalışmasında yok. ePageCpu --fresh olmadan ve &mode=vsBot ile çekilmeli.
 - ePageBot'ta P1'in 'Bir kart seç ya da SAVAŞ'a geç' istemi P2'nin turunda görünüyor; viewAsP1 sahneleme hilesinden (eWellPailBot ile aynı), karttan değil.
 - src/art/cardart/page_turner.ts yok; eski (v1) görünümde yer tutucu resim çıkıyor. Yeni kartlar için izinli.
+
+### lucky_die
+- eDie ve eDieP2 (zar 6) 5,05 sn sürüyor, pay 5,03 sn — havai fişek kuyruğu yüzünden 0,02 sn fazla; süre sınırı yok kararıyla bırakıldı.
+- Her senaryonun ses listesinde sona doğru 'heronDrop' var: reed_heron'un (başka şerit, src/cinematics/kartc/reed_heron-marsh.ts) ortam sesi, zarın sönüşüyle çakışıyor.
+- tests/art/hollow_ogre ve mudgrasp_spirit tam koşuda yük altında düşüyor, tek başına 20/20 geçiyor; bu karttan kaynaklı değil.
