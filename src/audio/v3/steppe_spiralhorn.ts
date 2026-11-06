@@ -509,8 +509,8 @@ export const SPIRALHORN_VOICE = {
   // which skips the kit's f1 beat): src/cinematics/kartc/steppe_spiralhorn.ts
   dissolve: 'sshGrassTurn',
   afterDissolve: [
-    [4, 'sshWindTakes', 0.95],
-    [8, 'sshLastFlute', 0.85],
+    [2, 'sshWindTakes', 0.95],
+    [5, 'sshLastFlute', 0.85],
   ],
   burst: 'sshPlumeLift',
   reviveGather: 'sshReviveGather',

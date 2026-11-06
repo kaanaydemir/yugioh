@@ -49,7 +49,7 @@ import { PAL } from '../../art/palette';
 import type { AnyMonsterAnim } from '../../art/types';
 import { monsterFrame } from '../../art/textures';
 import { AX, GY, skeleton } from '../../art/monsters-v3/steppe_spiralhorn-rig';
-import { AF, framePoints, framePose } from '../../art/monsters-v3/steppe_spiralhorn-anims';
+import { AF, DEATH_WIND0, framePoints, framePose } from '../../art/monsters-v3/steppe_spiralhorn-anims';
 import { APEX_PITCH } from '../../audio/v3/steppe_spiralhorn';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, LOOK_V3, unitDepth, type XY } from '../../view/layout';
@@ -617,13 +617,14 @@ async function steppeEntrance(S: Stage): Promise<void> {
     // ---- one long high bound in from off screen (P1 from the left edge, P2 from the right)
     const cam = sc.cameras.main;
     const startX = sgn > 0 ? cam.worldView.x - 28 : cam.worldView.x + cam.worldView.width + 28;
-    // P2 enters from the right edge on a far floor line BEHIND the duelist's podium (his feet stay up-screen of the
-    // duelist's until he has cleared its x, then the line curves down onto his tile): the duelist figure and its
-    // podium are never covered by the bound — they stand in front of it
-    const from: XY = { x: startX, y: sgn > 0 ? home.y - 8 : home.y - 74 };
+    // P2 enters from the right edge on a lower floor line, and passes BEHIND the duelist figure that stands between the
+    // edge and his tile: until he has cleared the duelist's x his depth stays under the duelist's, so the figure (and
+    // the portrait panel above it) is never covered by the bound
+    const from: XY = { x: startX, y: sgn > 0 ? home.y - 8 : home.y + 10 };
     const leapMs = 540;
-    const lift = sgn > 0 ? arc(16, 30) : arc(10, 26);
-    const pathAt = (t: number): XY => (sgn > 0 ? lerpXY(from, home, t) : { x: lerp(from.x, home.x, t), y: lerp(from.y, home.y, t * t * t) });
+    const lift = sgn > 0 ? arc(16, 30) : arc(6, 19);
+    const pathAt = (t: number): XY => lerpXY(from, home, t);
+    const duel = sgn < 0 ? S.ctx.views.duelists?.get(S.player)?.sprite ?? null : null;
     u.showSprite();
     show(u, 'summon', 0);
     place(u, from, lift(0));
@@ -641,6 +642,7 @@ async function steppeEntrance(S: Stage): Promise<void> {
       const p = pathAt(t);
       const h = lift(t);
       place(u, p, h);
+      if (duel && duel.active && p.x > duel.x - 42) u.sprite.setDepth(Math.min(u.sprite.depth, duel.depth - 0.5));
       if (!fluted && t >= 0.36) {
         fluted = true;
         play('sshFluteRise', { volume: 0.9, pan: panAt(p.x) });
@@ -780,15 +782,15 @@ function watchDeath(sc: Phaser.Scene, u: MonsterUnit): void {
         turned = true;
         play('sshGrassTurn', { volume: 0.9, pan });
       }
-      // the wind takes the mound (f7 → the last frame): it is peeled column by column from the windward (front) side,
+      // the wind takes the mound (DEATH_WIND0 → the last frame): it is peeled column by column from the windward (front) side,
       // and every peeled column leaves as members of ONE curving ribbon of blades and plumed seeds that drifts leeward
       // and climbs (spawned over the whole ~640 ms, never all at once)
-      if (f >= 7 && f < last) {
+      if (f >= DEATH_WIND0 && f < last) {
         stream ??= new SeedStream(sc, lee, Math.max(u.sprite.depth, unitDepth(u.home.y)) + 0.7, u.uid * 13 + 9);
         acc += dt;
         while (acc >= 16) {
           acc -= 16;
-          const k = Math.min(1, (f - 7 + (acc / Math.max(1, u.frameMs('death', f)))) / (last - 7));
+          const k = Math.min(1, (f - DEATH_WIND0 + acc / Math.max(1, u.frameMs('death', f))) / (last - DEATH_WIND0));
           // the erosion front runs from the head end (+x in the frame) to the rump; it leaves from the mound's top half
           const p = u.framePoint(AX + 16 - Math.round(k * 32), GY - 6 - Math.round(4 * Math.sin(k * Math.PI)));
           stream.emit({ x: R(p.x), y: R(p.y) }, 1, 4, 6);

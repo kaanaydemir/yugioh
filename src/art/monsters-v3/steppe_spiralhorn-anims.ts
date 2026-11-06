@@ -90,10 +90,8 @@ export function guardPose(f: number): Pose {
   return {
     ...G0,
     hdx: k === 1 || k === 2 ? 13 : 12,
-    // the horn tips waver a pixel (f2 up, f4 down) and the barrel breathes (f3–f4 the whole back rises)
-    hdy: k === 2 ? -5 : k === 4 ? -3 : -4,
-    hipY: k === 3 || k === 4 ? G0.hipY - 1 : G0.hipY,
-    shY: k === 3 || k === 4 ? G0.shY - 1 : G0.shY,
+    // the horn tips waver a pixel (f2) and the barrel breathes (f3–f4)
+    hdy: k === 1 || k === 2 ? -5 : -4,
     br: k === 3 || k === 4 ? 1 : 0,
     sniff: k === 2 ? 1 : 0,
     tail: k === 5 ? 2 : 0,
@@ -218,10 +216,11 @@ const ROAR_HOLDS = [80, 150, 100, 160, 130, 100, 110, 120, 140];
 
 const HIT: Pose[] = [
   // f0 (the contact frame, HA-21 local): the ears flatten, the eyes shut, the nostrils flare — the head snaps back on f1
-  { ...IDLE0, hipY: -28, shY: -29, hdx: 7, hdy: -10, ear: 2, blink: 2, sniff: 1 },
+  { ...IDLE0, hdx: 7, ear: 2, blink: 2, sniff: 1 },
   // f1: the head is tossed up and back (6 px up, 5 back), the ears pinned flat to the skull
   { ...IDLE0, hipX: -11, shX: 7, shY: -31, hdx: 3, hdy: -17, ha: A.up, ear: 2, blink: 2, mane: 0.3, maneK: 2, tail: 2 },
-  { ...IDLE0, hipX: -11, shX: 7, hdx: 5, hdy: -14, ha: A.up, ear: 2, blink: 1, mane: 0.55 },
+  // f2: the 1-px body squash as the blow lands through the legs
+  { ...IDLE0, hipX: -11, hipY: -28, shX: 7, shY: -29, hdx: 5, hdy: -14, ha: A.up, ear: 2, blink: 1, mane: 0.55 },
   { ...IDLE0, hdx: 7, ear: 1, mane: 0.75, nose: 1 },
   { ...IDLE0, ear: 1, mane: 0.9 },
   { ...IDLE0 },
@@ -248,7 +247,7 @@ const STIFF = { fn: leg(10, 0, 0), ff: leg(14, 0, 0), hn: leg(-13, 0, 0), hf: le
 const HM: Pose[] = [
   // f0–f2: the coat goes rigid — the legs locked straight and spread a pixel, the eye wide, the mane teeth on end;
   // both horn tips flash a 3×3 star that opens (f1) and steps out (f2)
-  { ...IDLE0, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, ...STIFF, t: 0 },
+  { ...IDLE0, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, t: 0 },
   { ...IDLE0, hipX: -9, hipY: -30, shX: 9, shY: -31, hdx: 9, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, ...STIFF, t: 1 / 12 },
   { ...IDLE0, hipX: -11, hipY: -30, shX: 7, shY: -31, hdx: 7, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, ...STIFF, t: 2 / 12 },
   { ...IDLE0, hipY: -30, shY: -31, hdy: -12, ear: 1, blink: 0, rigid: 1, ...STIFF, t: 3 / 12 },
@@ -292,9 +291,9 @@ const LIE: Pose = {
 };
 /** The wind frames: the mound is peeled from the windward (front) side column by column; the laid horns sink with the
  *  grass under them onto the floor line and slide back from the killer; the top blades sway as a wave running leeward. */
-const WIND_N = 8;
+const WIND_N = 5;
 const windFrame = (i: number): Pose => {
-  const w = 0.17 + i * 0.115;
+  const w = 0.17 + i * 0.19;
   const k = Math.min(1, w * 1.25);
   return { ...LIE, grass: 1, wind: w, press: 1, t: (i % 3) / 3, hornDy: rnd(k * 13), hornDx: -rnd(k * 12), hornLayF: rnd(-26 + k * 18) };
 };
@@ -310,16 +309,17 @@ const DEATH: Pose[] = [
   // the horns lie on the floor; the second band
   { ...LIE, grass: 0.67, mane: 0.6, t: 1 / 3 },
   // the mound is grass in his shape (three bands on his body planes); its top blades sway as a wave running leeward,
-  // and the first gust presses the windward edge down
-  { ...LIE, grass: 1, mane: 0.7, t: 2 / 3 },
-  { ...LIE, grass: 1, mane: 0.8, press: 1, t: 0 },
+  // and the first gust presses the windward edge down and lifts the first tops
+  { ...LIE, grass: 1, mane: 0.8, press: 1, wind: 0.07, t: 2 / 3 },
   // the wind takes it: peeled from the windward side into a curving, climbing ribbon (the card's SeedStream carries it)
   ...Array.from({ length: WIND_N }, (_, i) => windFrame(i)),
   // the horns go last: they lie on the floor line a moment (the card's watcher turns them into two seed plumes)
   { ...LIE, grass: 1, wind: 1, hornDy: 13, hornDx: -12, hornLayF: -8 },
 ];
 export const deathPose = (f: number): Pose => DEATH[Math.min(f, DEATH.length - 1)];
-const D_HOLDS = [50, 50, 60, 80, 70, 50, 50, ...Array.from({ length: WIND_N }, () => 80), 200];
+const D_HOLDS = [50, 50, 60, 80, 60, 70, ...Array.from({ length: WIND_N }, () => 110), 200];
+/** The first death frame of the wind (the card's watcher carries the ribbon from it). */
+export const DEATH_WIND0 = 6;
 
 // ------------------------------------------------------------------ revive (10 frames): the death run backwards
 
