@@ -50,8 +50,8 @@ export interface PuddleGeo {
   my: number;
   kr: number;
 }
-const GEO_L: PuddleGeo = { cx: RX + 8, cy: GY - 2, rx: 17, ry: 8, rdx: 12, my: GY - 9, kr: 0.23 };
-const GEO_R: PuddleGeo = { cx: RX - 9, cy: GY - 2, rx: 17, ry: 8, rdx: -14, my: GY - 9, kr: 0.23 };
+const GEO_L: PuddleGeo = { cx: RX + 11, cy: GY - 8, rx: 20, ry: 12, rdx: 9, my: GY - 20, kr: 0.38 };
+const GEO_R: PuddleGeo = { cx: RX - 12, cy: GY - 8, rx: 20, ry: 12, rdx: -11, my: GY - 20, kr: 0.38 };
 /** The puddle geometry of a sheet ('left' = the P1 sheet, 'right' = the P2 relight sheet, shown flipped). */
 export const puddleGeo = (lightFrom: 'left' | 'right'): PuddleGeo => (lightFrom === 'right' ? GEO_R : GEO_L);
 /** The geometry of the sheet being drawn (set by drawArcher; drawing is synchronous). */
@@ -521,10 +521,11 @@ const onRim = (x: number, y: number, s: number): boolean =>
 
 /** The reflection's tone for a figure tone (dark blue: night / water darks, YENI_KARTLAR §C4). */
 export const REFL_MAP = new Map<number, number>([
-  [PAL.white, PAL.water2], [PAL.mist, PAL.water2], [PAL.steel, PAL.water1], [GLASS, PAL.water3],
-  [PAL.night4, PAL.night3], [PAL.night3, PAL.night2], [PAL.night2, PAL.night1], [PAL.night1, PAL.night0],
-  [PAL.gold4, PAL.water3], [PAL.gold3, PAL.water2], [PAL.gold2, PAL.water1], [PAL.gold1, PAL.night2],
+  [PAL.white, PAL.night3], [PAL.mist, PAL.night3], [PAL.steel, PAL.night2], [GLASS, PAL.night3],
+  [PAL.night4, PAL.night2], [PAL.night3, PAL.night1], [PAL.night2, PAL.night0], [PAL.night1, PAL.night0],
+  [PAL.gold4, PAL.water4], [PAL.gold3, PAL.water3], [PAL.gold2, PAL.water3], [PAL.gold1, PAL.water2],
 ]);
+
 /** The reflection's value ladder (dark → light) for its light ramp. */
 const REFL_LADDER: number[] = [PAL.night0, PAL.night1, PAL.night2, PAL.water1, PAL.water2, PAL.water3, PAL.water4];
 /** The card art's lake keeps the original darker mapping. */
@@ -563,7 +564,9 @@ function drawPuddle(p: PixelCanvas, o: Pose, light: Light): void {
       // the haze: denser toward the rim, sparse in the middle (the floor / tile shows through the mirror)
       // the haze lies in water lines (whole rows, never speckle): every other row near the rim, every fourth inside
       const line = glow ? (d > 0.45 ? (y & 1) === 0 : (y & 3) === 0) : d > 0.6 && (y & 3) === 0;
-      if (line) p.set(x, y, glow ? (d > 0.45 ? PAL.mist : PAL.steel) : back ? PAL.steel : PAL.night4);
+      if (line && (glow || s < 0.95)) p.set(x, y, glow ? (d > 0.45 ? PAL.mist : PAL.steel) : back ? PAL.steel : PAL.night4);
+      // crit r3: the still water is a lit water1 sheet (the dark twin's ground) — set once the puddle has settled
+      else if (!glow && s >= 0.95) p.set(x, y, d > 0.82 ? PAL.night3 : PAL.water1);
     }
   // ripples: thin iso rings expanding from the feet (two, half a cycle apart)
   if (o.rip >= 0 && s >= 0.95)
@@ -576,12 +579,13 @@ function drawPuddle(p: PixelCanvas, o: Pose, light: Light): void {
         const x = rnd(G.cx - 0.5 + Math.cos(a) * G.rx * r);
         const y = rnd(G.cy - 0.5 + Math.sin(a) * G.ry * r);
         if (inPuddle(x, y, 1) > 0.75) continue;
-        p.set(x, y, ph < 0.55 ? PAL.mist : PAL.steel);
+        p.set(x, y, ph < 0.3 ? PAL.mist : PAL.steel);
       }
     }
 }
 
 /** The sheen line over the surface and the reflection (a mirror's specular streak). */
+const TWIN_TONES = new Set<number>([PAL.night0, PAL.night1, PAL.night2, PAL.water2, PAL.water3, PAL.water4]);
 function sheenPass(p: PixelCanvas, o: Pose): void {
   if (o.pud < 0.4 || o.crack > 0) return;
   const s = clamp(o.pud, 0, 1);
@@ -591,6 +595,9 @@ function sheenPass(p: PixelCanvas, o: Pose): void {
       const x = rnd(c - 2 * (y - pcy(s))) + w;
       const d = inPuddle(x, y, s);
       if (d > 0.72) continue;
+      // the streak lies on the open water only: it passes behind the twin (crit r3: it scribbled over its figure)
+      const under = p.get(x, y);
+      if (under !== null && TWIN_TONES.has(under)) continue;
       p.set(x, y, w === 0 && d < 0.35 ? PAL.white : PAL.mist);
     }
 }
@@ -599,9 +606,10 @@ function sheenPass(p: PixelCanvas, o: Pose): void {
  *  whole in its middle, broken into water lines (every other row, the classic broken reflection) toward the rim.
  *  `rv` (the summon's surfacing) thins it the same way. */
 function reflShows(x: number, y: number, rv: number): boolean {
+  if ((globalThis as { __RA_DBG?: boolean }).__RA_DBG) return true;
   const d = inPuddle(x, y, 1);
   if (d > 1) return false;
-  const a = (d < 0.8 ? 1 : 0.5) * rv;
+  const a = (d < 0.9 ? 1 : 0.5) * rv;
   if (a >= 0.99) return true;
   if (a >= 0.49) return (y & 1) === 0;
   if (a >= 0.24) return (y & 3) === 0;
@@ -618,37 +626,101 @@ function rowEdge(q: PixelCanvas, x: number, y: number, d: -1 | 1): number {
   return e;
 }
 
+
+/**
+ * The twin (crit r3): a crisp, hand-built inverted silhouette driven by the reflection's own skeleton (so it lags,
+ * leads and looks at the viewer on its own). Squashing the full figure (skeleton or pixels) to ~20 px turned it into
+ * a swirl; instead the body (feet → chin) is foreshortened by `kb` and the head, the crescent crown and the bow are
+ * drawn at FIXED pixel sizes, so the three key shapes — hood, crown horns (pointing down), bow arc — always read.
+ * Dark night body on the lit water, light-blue crown and bow lines, a 1-px water rim on the key-light side.
+ */
+interface TwinMap { hb: number; kb: number }
+let TW: TwinMap = { hb: GY - 40, kb: 0.36 };
+/** Source row (figure px) → the twin's output row (the body part; the head is placed at the chin + its radius). */
+const twinY = (sy: number): number => G.my + (GY - Math.max(sy, TW.hb)) * TW.kb + Math.max(0, TW.hb - sy) * 0.6;
+/** A skeleton point → the twin's frame px. */
+const twinPt = (pt: Pt): Pt => [pt[0] + G.rdx, twinY(pt[1])];
+
+function mirrorTwin(r: Pose, light: Light): PixelCanvas {
+  const q = layer();
+  const sk = skeleton({ ...r, bx: r.bx - 4, nx: r.nx - 4 });
+  TW = { hb: sk.head[1] + 3, kb: G.kr * 0.95 };
+  const P = (pt: Pt): Pt => { const [x, y] = twinPt(pt); return [x, y]; };
+  const ls = light.side < 0 ? -1 : 1;
+  const BODY = PAL.night1;
+  const ROBE_C = PAL.night2;
+  /** the hood is the twin's lightest dark (the archer's white hood, inverted in value but still its focal shape) */
+  const HOOD = PAL.night0;
+  // legs (the feet hang from the water line), the robe widening up toward its hem, the torso narrowing to the chin
+  for (const [hp, an] of [[sk.hip2, sk.an2], [sk.hip1, sk.an1]] as const) {
+    const [x0, y0] = P(an);
+    const [x1, y1] = P(hp);
+    q.thickLine(x0, y0, x1, y1, 2, BODY);
+  }
+  const hem = GY - 8;
+  const pel = sk.pel;
+  q.poly([P([pel[0] - 6, hem]), P([pel[0] + 6, hem]), P([pel[0] + 3.5, pel[1]]), P([pel[0] - 3.5, pel[1]])], ROBE_C);
+  q.poly([P([pel[0] - 3, pel[1]]), P([pel[0] + 3, pel[1]]), P([sk.neck[0] + 2.5, sk.neck[1]]), P([sk.neck[0] - 2.5, sk.neck[1]])], BODY);
+  // arms: the bow arm to the grip, the draw arm to its hand
+  for (const [sh, el, w] of [[sk.sh2, sk.el2, sk.w2], [sk.sh1, sk.el1, sk.w1]] as const) {
+    const a0 = P(sh), a1 = P(el), a2 = P(w);
+    q.line(rnd(a0[0]), rnd(a0[1]), rnd(a1[0]), rnd(a1[1]), BODY).line(rnd(a1[0]), rnd(a1[1]), rnd(a2[0]), rnd(a2[1]), BODY);
+  }
+  // the hood: a fixed 5×5 round head below the chin
+  const [hx, hy] = P(sk.head);
+  const hcx = rnd(hx);
+  const hcy = rnd(hy);
+  for (let y = -2; y <= 3; y++) for (let x = -3; x <= 2; x++) { const ux = x + 0.5; const uy = y - 0.5; if (ux * ux + uy * uy <= 7.5) q.set(hcx + x, hcy + y, HOOD); }
+  // the dark body's edge: a 1-px water rim OUTSIDE the silhouette (the lit water hugging the dark twin), water2 —
+  // on the key-light side the body's own edge pixel lifts to night3 (its volume), never the bright azure
+  const body = q.clone();
+  const b = boxOf(body, 1);
+  if (b)
+    for (let y = b.y0; y <= b.y1; y++)
+      for (let x = b.x0; x <= b.x1; x++) {
+        if (body.get(x, y) !== null) {
+          if (body.get(x + ls, y) === null && body.get(x, y) !== HOOD) q.set(x, y, PAL.night3);
+          continue;
+        }
+        if (body.get(x + 1, y) !== null || body.get(x - 1, y) !== null || body.get(x, y + 1) !== null || body.get(x, y - 1) !== null) q.set(x, y, PAL.water2);
+      }
+  // the hood's ring: a 1-px water line round the dark head (not where it joins the neck) — the round head reads
+  for (let y = -3; y <= 4; y++)
+    for (let x = -4; x <= 3; x++) {
+      const X = hcx + x;
+      const Y = hcy + y;
+      if (body.get(X, Y) === HOOD) continue;
+      const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, c]) => body.get(X + a, Y + c) === HOOD);
+      if (nb && y >= -1) q.set(X, Y, PAL.water2);
+    }
+  // the crescent crown, inverted: its two horns hang DOWN either side of the hood and curl in at the tips
+  // (light-blue lines, the tips water4); the bowl passes behind the hood
+  for (const d of [-1, 1]) {
+    const horn: Pt[] = [[3, 0], [4, 1], [4, 2], [5, 3], [5, 4], [4, 5], [3, 6]];
+    for (let i = 0; i < horn.length; i++) q.set(hcx + d * horn[i][0] - (d < 0 ? 1 : 0), hcy + horn[i][1], i >= 5 ? PAL.water4 : PAL.water3);
+  }
+  // the bow: a 1-px light-blue arc through the twin's horns and grip, a darker belly line, the string
+  const n = 18;
+  let prev: Pt | null = null;
+  for (let i = 0; i <= n; i++) {
+    const t = -1 + (2 * i) / n;
+    const cx = sk.grip[0] + sk.bu[0] * t * BOW_L - sk.bb[0] * BOW_BULGE * t * t;
+    const cy = sk.grip[1] + sk.bu[1] * t * BOW_L - sk.bb[1] * BOW_BULGE * t * t;
+    const [x, y] = P([cx, cy]);
+    const pt: Pt = [rnd(x), rnd(y)];
+    if (prev) q.line(prev[0], prev[1], pt[0], pt[1], Math.abs(t) < 0.45 ? PAL.water4 : PAL.water3);
+    if (Math.abs(t) < 0.6) q.set(pt[0] + (sk.bb[0] >= 0 ? 1 : -1), pt[1], PAL.water2);
+    prev = pt;
+  }
+  const t0 = P(sk.top), t1 = P(sk.bot), nk = P(sk.nock);
+  q.line(rnd(t0[0]), rnd(t0[1]), rnd(nk[0]), rnd(nk[1]), PAL.water1).line(rnd(nk[0]), rnd(nk[1]), rnd(t1[0]), rnd(t1[1]), PAL.water1);
+  return q;
+}
+
 function drawReflection(p: PixelCanvas, o: Pose, light: Light): void {
   const r = o.R ?? o;
   if (o.rv <= 0 || o.pud < 0.95) return;
-  const q = layer();
-  drawFigure(q, { ...r, bowFront: r.bowFront, k: 1 }, light, reflView());
-  // recolour to the dark-blue reflection
-  const b = boxOf(q);
-  if (!b) return;
-  for (let y = b.y0; y <= b.y1; y++)
-    for (let x = b.x0; x <= b.x1; x++) {
-      const c = q.get(x, y);
-      if (c === null) continue;
-      q.set(x, y, REFL_MAP.get(c) ?? PAL.night1);
-    }
-  cleanCrumbs(q);
-  // the key light falls on the puddle's lit half too: the reflection reads a tone brighter there and a tone deeper
-  // on the far half (the mirror keeps the scene's light direction)
-  const ls = light.side;
-  for (let y = b.y0; y <= b.y1; y++)
-    for (let x = b.x0; x <= b.x1; x++) {
-      const c = q.get(x, y);
-      if (c === null) continue;
-      const i = REFL_LADDER.indexOf(c);
-      if (i < 0) continue;
-      // per row: the key light's side of the twin reads 2 steps lighter (3 px in from its edge), the far side 2
-      // steps deeper — the mirror keeps the scene's light direction, and the 14-px twin keeps its volume
-      const fromLit = ls < 0 ? x - rowEdge(q, x, y, -1) : rowEdge(q, x, y, 1) - x;
-      const fromDark = ls < 0 ? rowEdge(q, x, y, 1) - x : x - rowEdge(q, x, y, -1);
-      const st = fromLit <= 3 ? 2 : fromDark <= 3 ? -2 : 0;
-      if (st) q.set(x, y, REFL_LADDER[clamp(i + st, 0, REFL_LADDER.length - 1)]);
-    }
+  const q = mirrorTwin(r, light);
   // no outline: the reflection is floor (a 1-px dark ring would turn the 14-px twin into a blob)
   // the reflection surfaces: its coverage rises with rv (it fades up through the dither, never a hard panel)
   const rv = clamp(o.rv, 0, 1);
@@ -666,30 +738,29 @@ function drawReflection(p: PixelCanvas, o: Pose, light: Light): void {
   const at = o.rip >= 0 ? SHIMMER.indexOf(sk0) : -1;
   const shimmer = (y: number): boolean => at >= 0 && Math.abs(y - (rnd(G.my) + 2 + at * 2)) <= 1;
   // the reflection's face is the focal point (its eyes look at the viewer): its hood stays whole once surfaced
-  const [fhx, fhy] = reflView().T(skeleton(r).head);
-  const face = (x: number, y: number): boolean => rv >= 0.9 && o.rbreak <= 0 && Math.abs(x + 0.5 - fhx) <= 4.5 && Math.abs(y + 0.5 - fhy) <= 3.5;
+  const [fhx, fhy] = twinPt(skeleton(r).head);
+  const face = (x: number, y: number): boolean => rv >= 0.9 && o.rbreak <= 0 && Math.abs(x + 0.5 - fhx) <= 6 && y + 0.5 - fhy >= -3.5 && y + 0.5 - fhy <= 7.5;
   for (let y = Math.max(1, rnd(G.cy - G.ry)); y < H - 1; y++) {
     const sh = shiftOf(y);
     for (let x = 1; x < W - 1; x++) {
       const c = q.get(x - sh, y);
       if (c === null) continue;
-      if (onRim(x, y, 1)) continue;
-      if (!reflShows(x, y, rv) && !face(x, y)) continue;
+      if (face(x, y)) { /* the hood and the crown always read whole */ }
+      else if (onRim(x, y, 1) || !reflShows(x, y, rv)) continue;
       p.set(x, y, shimmer(y) ? REFL_LADDER[clamp(REFL_LADDER.indexOf(c) + 1, 0, REFL_LADDER.length - 1)] ?? c : c);
     }
   }
   // the far water line the reflection hangs from: a 1-px glass line under its feet, lit where it touches them
   if (rv >= 0.45 && o.rbreak < 0.85) {
-    const [fx0] = reflView().T(skeleton(r).an2);
-    const [fx1] = reflView().T(skeleton(r).an1);
+    const [fx0] = twinPt(skeleton(r).an2);
+    const [fx1] = twinPt(skeleton(r).an1);
     for (let x = rnd(fx0) - 2; x <= rnd(fx1) + 2; x++) if (inPuddle(x, G.my - 1, 1) < 0.95 && !p.isOpaque(x, G.my - 1)) p.set(x, G.my - 1, x >= rnd(fx0) && x <= rnd(fx1) ? PAL.water3 : PAL.water1);
   }
   // eyes of the reflection (its own light: water4; turned to the viewer = two white eyes) — always whole
   if (r.eye > 0.05 && r.lid < 2 && o.rbreak < 0.4 && rv >= 0.45) {
     const sk = skeleton(r);
-    const v = reflView();
-    const [hx, hy] = v.T(sk.head);
-    const ey = rnd(hy + 1 * 0.55);
+    const [hx, hy] = twinPt(sk.head);
+    const ey = rnd(hy);
     const c = r.eye >= 1.6 ? PAL.white : PAL.water4;
     if (r.look >= 0.5) {
       p.set(rnd(hx) - 2, ey, c).set(rnd(hx) + 1, ey, c);
@@ -1136,3 +1207,4 @@ export function drawMirrorFigure(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'r
   if (o.look >= 0.5) p.set(rnd(hx) - 2, ey, PAL.white).set(rnd(hx) + 1, ey, PAL.white);
   else p.set(rnd(hx) + 2, ey, PAL.water4).set(rnd(hx) + 3, ey, PAL.water3);
 }
+export const __mirrorTwinDbg = (o: Pose, l: "left" | "right"): PixelCanvas => { G = puddleGeo(l); return mirrorTwin(o, lightOf(l)); };

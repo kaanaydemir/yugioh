@@ -174,9 +174,9 @@ export function attackPose(f: number): Pose {
 }
 const ATTACK_HOLDS = [80, 120, 140, 180, 130, 40, 40, 40, 45, 45, 40, 40, 40, 70, 90, 100, 110, 120, 140];
 
-// ------------------------------------------------------------------ roar (10 frames): "ta-da!" — midnight on the brows
+// ------------------------------------------------------------------ roar (9 frames): "ta-da!" — midnight on the brows
 
-const R_N = 10;
+const R_N = 9;
 const ROAR_KEYS: Partial<Pose>[] = [
   {},
   { py: 2, nx: 8, ny: -13, fx: 1, fy: -14, hour: 215, min: 145, lid: 1, mouth: 2, cw: 0.8 },
@@ -190,9 +190,9 @@ export function roarPose(f: number): Pose {
   if (f >= R_N - 1) return home();
   if (f <= 6) return snap(key(ROAR_KEYS[f], f, R_N, IDLE0, 2));
   const k6 = key(ROAR_KEYS[6], 6, R_N, IDLE0, 2);
-  return toward(k6, f === 7 ? 0.5 : 0.82, f, R_N, { spark: 0, blaze: 0, cw: f === 7 ? 0 : 0.8, hour: f === 7 ? 320 : 305, min: f === 7 ? 40 : 55 });
+  return toward(k6, 0.66, f, R_N, { spark: 0, blaze: 0, cw: 0.4, hour: 312, min: 48 });
 }
-const ROAR_HOLDS = [80, 110, 130, 170, 100, 110, 100, 110, 120, 140];
+const ROAR_HOLDS = [80, 110, 130, 170, 100, 110, 110, 140, 150];
 
 // ------------------------------------------------------------------ hit / heavy / magic
 
@@ -209,7 +209,7 @@ export function hitPose(f: number): Pose {
 }
 const HIT_HOLDS = [50, 60, 130, 100, 110, 120];
 
-const HH_N = 8;
+const HH_N = 7;
 const HH_KEYS: Partial<Pose>[] = [
   { lid: 3, mouth: 2, hour: 270, min: 90, look: -1 },
   { hx: -3, neck: -2, lean: -2, py: 2, bx: -1, lid: 2, mouth: 2, hour: 240, min: 120, h1x: -2, h2x: -2, cw: 0.5, nx: 9, ny: -13, fx: 2, fy: -16, spark: 0.3, shake: 1 },
@@ -220,11 +220,11 @@ const HH_KEYS: Partial<Pose>[] = [
 export function hitHeavyPose(f: number): Pose {
   if (f >= HH_N - 1) return home();
   if (f <= 4) return snap(key(HH_KEYS[f], f, HH_N));
-  return toward(key(HH_KEYS[4], 4, HH_N), f === 5 ? 0.5 : 0.85, f, HH_N);
+  return toward(key(HH_KEYS[4], 4, HH_N), 0.7, f, HH_N);
 }
-const HH_HOLDS = [50, 60, 140, 100, 110, 120, 130, 140];
+const HH_HOLDS = [50, 60, 140, 100, 110, 135, 150];
 
-const HM_N = 8;
+const HM_N = 7;
 const HM_KEYS: Partial<Pose>[] = [
   { blaze: 1, eye: 2, hour: 30, min: 200, whirl: 1 },
   { blaze: 1, eye: 2, hour: 150, min: 330, whirl: 1, shake: 1, ny: -15, fy: -18, h1x: 1, h2x: -1 },
@@ -235,9 +235,9 @@ export function hitMagicPose(f: number): Pose {
   if (f >= HM_N - 1) return home();
   if (f <= 3) return snap(key(HM_KEYS[f], f, HM_N));
   const k3 = key(HM_KEYS[3], 3, HM_N);
-  return toward(k3, f === 4 ? 0.35 : f === 5 ? 0.65 : 0.85, f, HM_N, { blaze: f === 4 ? 0.3 : 0, shake: 0, whirl: 0, spark: 0, hour: [0, 0, 0, 0, 320, 305, 300][f], min: [0, 0, 0, 0, 40, 55, 60][f] });
+  return toward(k3, f === 4 ? 0.45 : 0.8, f, HM_N, { blaze: f === 4 ? 0.3 : 0, shake: 0, whirl: 0, spark: 0, hour: [0, 0, 0, 0, 320, 302][f], min: [0, 0, 0, 0, 40, 58][f] });
 }
-const HM_HOLDS = [50, 60, 70, 70, 90, 100, 110, 120];
+const HM_HOLDS = [50, 60, 70, 70, 100, 115, 130];
 
 // ------------------------------------------------------------------ summon (14): the dial, midnight, the cuckoo pop, three bounces, a bow
 
