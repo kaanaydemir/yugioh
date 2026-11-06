@@ -45,6 +45,7 @@ import { DEPTH, type XY, unitDepth } from '../../view/layout';
 import { Sparks, onFrame, sleep } from '../../vfx/combat';
 import { Raster } from '../../vfx/setpieces';
 import type { StrikeArgs } from '../_core/types';
+import type { ContactEstimator } from '../_v3/contact-estimate';
 import { strikeStartFrame } from '../_v3/clash';
 import { atFrame, atMark, panAt, play, soundsOfUnit, takeCharge } from '../_v3/sound';
 import { currentPixels } from '../strikes-a/_kit';
@@ -820,4 +821,21 @@ export function recipeStrike(r: PresentationRecipe): ((s: StrikeArgs) => Promise
   const kind = KINDS[r.attack.type];
   if (!kind) return null;
   return async (s) => kind(s, r, await hooksOf(r));
+}
+
+/**
+ * v3: the throw's contact time for the declaration's settle (_v3/contact-estimate.ts): the wind-up from the frame
+ * after the charge pose to the release frame, its hold, and the flight over the gap (the strike reports the exact
+ * time when it starts and again at launch). null for an attack type without an estimate.
+ */
+export function recipeContactEstimate(r: PresentationRecipe): ContactEstimator | null {
+  if (r.attack.type !== 'throw') return null;
+  return (u, t) => {
+    const n = u.frameCount('attack');
+    if (n < 1) return null;
+    const REL = clamp(u.markFrame('attack', 'release', u.impactFrame), 0, Math.max(0, n - 1));
+    const f0 = Math.min(Math.max(0, u.markFrame('attack', 'charge', 0) + 1), REL);
+    const relHold = projectileOf(r.attack.vfx) && REL < n - 1 ? u.rangeMs('attack', REL, REL + 1) : 0;
+    return Math.max(0, u.rangeMs('attack', f0, REL)) + relHold + throwFlightMs(r, len(sub(t.core(), originPoint(u, r.attack.from, REL))));
+  };
 }

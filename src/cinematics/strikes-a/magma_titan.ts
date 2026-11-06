@@ -20,6 +20,7 @@ import { slash } from '../../vfx/combat';
 import { burnFly } from '../../vfx/setpieces';
 import { lightFlash, lightPool } from '../../view/light';
 import { fx, registerCardHook, registerStrike } from '../api';
+import { homeDistance, registerContactEstimate } from '../_v3/contact-estimate';
 import type { StrikeArgs } from '../_core/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import {
@@ -478,3 +479,12 @@ registerCardHook('magma_titan', 'destroyed', (ctx) =>
 void ADD;
 void Phaser;
 export type { MonsterUnit };
+
+// v3: the fist's contact time for the declaration's settle (rise 150, stomp 70 + 90, cocked fist F, then the charge;
+// the strike reports the exact time when it starts)
+registerContactEstimate('magma_titan', (u, t) => {
+  const F = frameMs(u, 'attack');
+  const dist = Math.max(0, homeDistance(u, t) - 10);
+  const dashMs = ARENA_V2 ? travelMs(dist, 170, 1.45, 210, 420, 680) : clamp(170 + dist * 0.9, 210, 420);
+  return 150 + 70 + 90 + F + dashMs;
+});

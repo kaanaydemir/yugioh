@@ -20,6 +20,7 @@ import { afterimages, whiteFlash } from '../../vfx/combat';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { lightFlash, lightPool } from '../../view/light';
 import { registerCardHook, registerStrike } from '../api';
+import { registerContactEstimate } from '../_v3/contact-estimate';
 import {
   ARENA_V2,
   E,
@@ -442,3 +443,11 @@ registerCardHook('storm_hawk', 'destroyed', (ctx) =>
     },
   }),
 );
+
+// v3: the dive's contact time for the declaration's settle (crouch 120, climb 220, a far target's glide, the 45 / 50 ms
+// tuck and the 290 ms dive; the strike reports the exact time once its path is chosen)
+registerContactEstimate('storm_hawk', (u, t) => {
+  const dx = Math.abs(t.home.x - u.home.x);
+  const glide = ARENA_V2 && dx > 90 ? clamp((dx - 34) * 1.9 * 0.7, 200, 380) : 0;
+  return 120 + 220 + glide + 45 + 50 + 290;
+});

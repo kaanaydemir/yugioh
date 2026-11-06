@@ -21,7 +21,8 @@ import { allRecipes, isMonsterId, v3Recipe } from '../../presentation/registry';
 import { registerCardHook, registerStrike } from '../api';
 import { recipeDeath } from './death';
 import { recipeFlip } from './flip';
-import { preloadHooks, recipeStrike } from './strike';
+import { preloadHooks, recipeContactEstimate, recipeStrike } from './strike';
+import { registerContactEstimate } from '../_v3/contact-estimate';
 import { recipeSummon } from './summon';
 
 /** The recipe layer's priority (above the per-card files' 0, below a card's own partial override). */
@@ -46,6 +47,8 @@ export function installRecipe(id: string): string[] {
     if (fn) {
       offs.push(registerStrike(id, fn, o('strike')));
       parts.push('strike');
+      const est = recipeContactEstimate(r);
+      if (est) offs.push(registerContactEstimate(id, est));
     } else console.warn(`[recipe] ${id}: no '${r.attack.type}' strike kind yet — its own strike plays`);
   }
   if (!c.summon) {

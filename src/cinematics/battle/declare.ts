@@ -34,6 +34,7 @@ import { lightBeam, lightFlash } from '../../view/light';
 import { fx, registerEvent, registerObserver } from '../api';
 import { REACTION_POSES, warmUnitPoses } from '../_v3/warm';
 import { alignStart, frameDelta, idleDelta, settleBefore, settleGoal, strikeContactIn, struckPosesFor } from '../_v3/posematch';
+import { contactEstimate } from '../_v3/contact-estimate';
 import { V3HOOKS } from '../v3small/_hooks';
 import {
   ADD,
@@ -380,7 +381,9 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
   // declaration + the strike from the frame after the charge pose to the attack's 'contact' mark
   // (the battle re-plans on the strike's own first frame, _v3/posematch.ts)
   if (attacker && target) {
-    const lead = strikeContactIn(attacker, declarePoseFrame(attacker) + 1);
+    // no 'contact' mark (a thrown / fired / dashing strike): the strike's registered estimate of when its blow lands
+    // (_v3/contact-estimate.ts) — the strike re-plans with the exact time when it starts (StrikeArgs.contactIn)
+    const lead = strikeContactIn(attacker, declarePoseFrame(attacker) + 1) ?? contactEstimate(attacker, target);
     if (lead !== null) {
       // the goal: the frames the pose this blow plays continues — a 'destroy' of the target later in this batch (before
       // the next declaration) means death, else a recoil

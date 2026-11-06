@@ -20,6 +20,7 @@ import { afterimages, bite } from '../../vfx/combat';
 import { burnFly } from '../../vfx/setpieces';
 import { lightFlash } from '../../view/light';
 import { fx, registerCardHook, registerStrike } from '../api';
+import { homeDistance, registerContactEstimate } from '../_v3/contact-estimate';
 import type { StrikeArgs } from '../_core/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import {
@@ -389,3 +390,12 @@ registerCardHook('ember_wolf', 'destroyed', (ctx) =>
     });
   }),
 );
+
+// v3: the bite's contact time for the declaration's settle (the strike's timeline above: crouch 1.5 F, coil F,
+// blaze F, then the dash over the gap; the strike reports the exact time when it starts)
+registerContactEstimate('ember_wolf', (u, t) => {
+  const F = frameMs(u, 'attack');
+  const dist = Math.max(0, homeDistance(u, t) - 8);
+  const dashMs = ARENA_V2 ? travelMs(dist, 110, 1.3, 120, 260, 540) : clamp(100 + dist * 0.55, 120, 260);
+  return F * 3.5 + dashMs;
+});
