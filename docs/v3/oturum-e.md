@@ -36,6 +36,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
 | crystal_wyrm (Kristal Ejder) | YALNIZ KART RESMİ: büyük 88×68 + elle 44×34 küçük; 0 palet dışı, beyaz yok, mürekkep 1,00; büyük 18 ton / %2,3 tek piksel / 21 kare, küçük 17 ton / %4,9 / 3 kare; yaşayan şeritler iki boyutta | kapsam dışı (kart sinematiği yok); çağrı ~3,5 sn, kamera sabit; v1 filmdiff 17/17 AYNI; CPU senaryosu eWyrmCpu (&mode=vsBot) | kapsam dışı (yeni ses yok) | 6,5 / 6,5 / 7,5 | shots/e/crystal_wyrm/ |
 | straw_decoys (Saman Korkuluklar) | büyük 88×68 + elle 44×34 küçük, 19 ton, 0 palet dışı, küçük/büyük 0,77; doluluk 1,00 (tarla kasıtlı taşıyor) | tamam: korkuluklar, karga, saldırı yeniden hedeflenir (P1/P2, elden/set, hızlı yanıt, tek korkuluk); eStrawOwn 4,85 sn (pay 4,76, süre sınırı yok kararıyla kabul); v1 filmdiff 17/17 AYNI; CPU senaryosu eStrawCpu (&mode=demo) | tamam: 19 e_straw tarifi, hepsi işaretinde çalıyor | 5 / 6 / 7 | shots/e/straw_decoys/dod/ |
 | abyss_magus (Uçurum Büyücüsü) | YALNIZ KART RESMİ: büyük 88×68 + elle 44×34 küçük; 0 palet dışı; büyük 17/20 ton, 6/6 zemin, %2,8 tek piksel, doluluk 0,72, mürekkep 0,95; küçük 17/20 ton, %5,0, mürekkep 0,99; kare başına 16–28 / 5–9 px değişim | kapsam dışı (kart sinematiği yok); çağrı 3,57 sn (ortak kurban çağrısı), zoom 1; v1 filmdiff 17/17 AYNI; CPU senaryosu eMagusCpuP2 (&mode=vsBot, --fresh olmadan) | kapsam dışı (yeni ses yok) | 5 / 5,5 / 6 | shots/e/abyss_magus/dod/ |
+| dawn_swords (Şafak Kılıçları) | büyük 88×68 + elle 44×34 küçük, 14/13 ton, 0 palet dışı, mürekkep %100; eski görünüm resmi dondurulmuş (FNV-1a fc7303d4 testi) | tamam: yaldızlı şafak kafesi, canavarlar kafeste soğur, sayaç tıkırdar, süre dolunca/temizlenince kalkar; eDawn 5,38 sn (pay 5,30, süre sınırı yok kararıyla kabul); zoom 1; v1 filmdiff 17/17 AYNI; CPU senaryosu eDawnCpu (&mode=demo) | tamam: 19 e_dawn tarifi, hepsi sahnede çalıyor (e_dawnTick, e_dawnLast dahil); tepe -2…-21 dBFS | 6,5 / 6,5 / 7 | shots/e/dawn_swords/dod/ |
 | (doldurulacak) | | | | | |
 
 ### S3 Boşluk Gözü (`void_eye`)
@@ -310,3 +311,10 @@ kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe aç�
 - eMagusCpuP2 yalnız --fresh olmadan çalışıyor: shot.mjs --fresh senaryoyu hot-seat kipinde yeniden kuruyor (DuelScene.ts:390), &mode=vsBot yok sayılıyor. Bu karta özgü değil.
 - Çağrı sırasında ölçülen kamera kayması (P1 en çok 10 px, P2 20 px, zoom 1) ortak kurban çağrısı odağından geliyor.
 - Bilinen temel hatalar (bu kart değil): arena-nt-platform ×2, cardface-v3 G1, dusk_ashen, hourglass_imp, shield_titan; cloud_hatchling yük altında zaman aşımı, tek başına geçiyor.
+
+### dawn_swords
+- Küçük/büyük resim yerleşim eşleşmesi 0,748 (eşik 0,75, araç bayraklıyor); kafesteki canavar 1x küçük resimde zor seçiliyor. Küçük resme elle rötuş ikisini de çözer; yapılmadı.
+- Büyük resim özne doluluğu 0,87 (hedef 0,60–0,75); kafes bilerek tüm genişliği kaplıyor, kabul edilmiş büyü resimleri de 0,86–1,00.
+- eDawn 5,38 sn, pay 5,30 sn (~0,08 sn fazla; iki kapalı canavarın açılması); süre sınırı yok kararıyla kabul.
+- eDawnExpire / eDawnPurge palcheck FAIL: kafes kalkınca arenanın kendi palet dışı tabanı (~%39) geri geliyor; Purge'deki %91 Arındıran Dalga'nın tam ekran etkisi. Bu kartın pikselleri değil.
+- v1 filmdiff setinde dawn_swords filmi yok; eski görünüm eşitliği kapı incelemesi, dondurulmuş resim hash testi ve dsCast'in v1 görsel kontrolüne dayanıyor.
