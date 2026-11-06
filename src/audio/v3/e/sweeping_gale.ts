@@ -12,19 +12,21 @@
 //                  rotor, panned round) + a breathy bottle tone rising a sixth
 //   e_galeLob      the leaf-green curl leaves the card for the whirl: "fwip" (a narrow band flicked up + a tick)
 //   e_galeRattle   the doomed cards rattle in their slots: a dry paper chatter, accelerating
-//   e_galeSweep    THE STROKE, L → R: a BROOM "shhhk" travelling across the stereo field — a scrape at its head,
-//                  dense band-passed bristle grains surging in gusts, a narrow air band, a low push, leaf rustle
+//   e_galeSweep    THE STROKE, L → R: a BROOM travelling across the stereo field — a hard drag bite, then five
+//                  push-drag strokes of sparse hard 5–8 kHz straw scratches over a dull drag, the 1–4 kHz gust band
+//                  left nearly empty (LSD ≥ 12 dB to windGust / sshGustR / e_pageGust)
 //   e_galeSweepRL  the same stroke, R → L (the mirrored sweep when player 2 casts)
 //   e_galeSnap     one card torn off its slot: a dry paper SNAP (short high crack + a papery flap) — pitched per card
 //   e_galeGlimpse  a face-down card flashes its face for a frame: a quick paper flip "fft" + a tiny bright tick
 //   e_galeFall     a card drops off the platform edge: the RECEDING WHISTLE (sine 2.3 k → 0.6 k, fading, a little
-//                  air around it), its distance in the closing lowpass
+//                  air around it), its distance in the closing lowpass; the scene pitches each card a pentatonic
+//                  step lower (0, −3, −5, −7, −10 … semitones) so a cascade is a little falling run
 //   e_galeSnuff    the field spell's environment is snuffed like a candle: "vump" — a low pressure thud, a short
 //                  breath out, a wick hiss under it
 //   e_galeTail     the gale leaves over the far edge: an airy sigh sinking (no sine: the fall owns the whistle)
-//   e_galeCarry    a little gust carries a fallen card's leaves to its graveyard: a leaf rustle on a soft breath
+//   e_galeCarry    a little gust carries a fallen card's leaves to its graveyard: leafy and tick-led (dry ticks + rustle)
 //   e_galePile     a swept card is delivered to its graveyard: a soft paper flop + a little leaf rustle
-//   e_galeDie      Büyü Mührü negates the gale: the stirring air sinks and chokes off, the leaves drop
+//   e_galeDie      Büyü Mührü negates the gale: a muffled breath bending down and choked off, a dull paper slump
 
 import type { Recipe } from '../../sounds';
 import type { Voice } from '../../synth';

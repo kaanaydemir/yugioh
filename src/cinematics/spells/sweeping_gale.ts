@@ -9,49 +9,46 @@
 //   0      common v3 spell opening (spells/_kit): the card leaves the hand for its owner's side (or a set card stands
 //          up on its tile), "SÜPÜRGE RÜZGARI" plate, a short hover. THE AIR STIRS round it: seven 3×3 leaves circle
 //          the hovering card on visible wind arcs, faster and closer (anticipation) — e_galeStir
-//   ~320   release (hold 170 ms): a spinning leaf-green CURL (a white core, leaf4 / leaf3 arms, a leaf trail) leaves
-//          the card's top edge and lobs (230 ms) to the far end of the OPPONENT's back row, just off the slab's
-//          corner — e_galeLob ("fwip"); the spent card drops to its graveyard behind it
+//   ~320   release (hold 170 ms): a spinning leaf-green CURL (~15 px: two 2-px spiral arms round a white core, a
+//          four-step leaf trail) leaves the card's top edge and lobs (230 ms) onto the END TILE of the OPPONENT's back
+//          row — e_galeLob ("fwip"); the spent card drops to its graveyard behind it
 // The massDestroy (registerLaneE, this file) — ONE gale for every per-card event of the wipe:
-//   +0     THE WHIRL winds up where the curl landed: three stepped wind curls (white / leaf4 / leaf3) spin and grow,
-//          leaves are drawn round them, a green light breathes under it — e_galeWhirl. THE FIELD SPELL's
-//          ENVIRONMENT shows itself as a candle-like flame of its own colour standing on its card (tidal: water,
-//          cavern: void, festival: gold, volcano: fire) flickering on a 4-frame loop (tip sway + width pulse), and
-//          pours its light over the opponent's side
-//   +90    the doomed cards RATTLE in their slots (1-px hops, faster as the wind nears) — e_galeRattle
-//   +210   THE BROOM STROKE (the head runs the path in 700 ms): the whirl unwinds into a giant crescent of wind — 13
-//          bristles (a white leading edge, a crescent front where the middle bristles lead, leaf4 / teal4 / leaf3
-//          bodies, broken leaf2 tails converging like a broom's bristles toward its "handle") sweeps the whole back
-//          row end to end (L → R when player 1 casts; mirrored for player 2), hovering just over the tiles, and leaves
-//          over the side rim past the field zone; a soft green light runs with its front, leaves and paper scraps
-//          ride it — e_galeSweep (the broom "shhhk" travelling L → R)
+//   +0     THE WHIRL: a little tornado stands up on that tile ring by ring (seven stepped wind rings stacked into a
+//          ~30-px funnel, 2-px front arcs with white leading tips, speed streaks, a white eye column, six leaves
+//          orbiting, a dust ring turning on the tile, a green light pool) — e_galeWhirl. THE FIELD SPELL's
+//          ENVIRONMENT shows itself as a candle-like flame of its own colour (~13 × 30 px) standing on its card
+//          (tidal: water, cavern: void, festival: gold, volcano: fire) on a 4-frame loop, and pours its light over
+//          the opponent's whole half (a tinted pool)
+//   +100   the doomed cards RATTLE in their slots (1-px hops, faster as the wind nears) — e_galeRattle
+//   +300   THE BROOM STROKE (the head runs the path in 700 ms): the whirl leans downwind and unwinds into a giant
+//          crescent of wind — 13 bristles (a white leading edge, leaf4 / teal4 / leaf3 bodies, broken leaf2 tails
+//          converging like a broom's bristles) sweeps the whole back row end to end (L → R when player 1 casts;
+//          mirrored for player 2) and leaves over the side rim — e_galeSweep (rhythmic push-drag straw strokes).
+//          The victim's monsters lean 1 px downwind for a few frames as the front passes them
 //   each card, as the front reaches it: it tears off its slot (one white frame, a paper SNAP — e_galeSnap), lifts
-//          and TUMBLES (a real 3-D roll about the wind's axis + a yaw: the iso card renderer), is carried along and
-//          outward; a face-down card shows its FACE as it turns over (one white frame, then the face —
-//          e_galeGlimpse); its shadow shrinks on the floor; it crosses the PLATFORM EDGE and drops at once into the
-//          void (gravity, darkening in light steps; past a back edge it goes BEHIND the slab and its trim, in front
-//          of the backdrop; over a front edge it drops past the wall) — the receding whistle, e_galeFall
-//   THE FIELD (its own clock, see fieldTimes): the flame leans as the front nears (−220 ms), is stretched thin and
-//          buffeted while the bristles pass (drawn ABOVE the band: always visible), and once the stroke's tail has
-//          cleared the zone it gutters in three steps (150 ms) and is SNUFFED like a candle: its light pools go out
-//          at once, a puff, a wick ember blinks twice, a 2-px smoke thread curls up and drifts downwind —
-//          e_galeSnuff ("vump") on that frame. On the same frame the field card jolts 1 px and the field spell's own
-//          'inactive' event plays: a volcano arena's lava is cut with the flame (the board's theme set at once a
-//          few frames in), its monsters' own cooling follows. 190 ms later (the snuff has read: puff, ember, smoke)
-//          the field card, the last to go, tears off on the last gust and blows over the side edge (1.5× flight)
-//   +~670  THE TAIL: the stroke leaves over the far rim, its bristles thin out, the last leaves spiral down —
-//          e_galeTail (an airy sigh; the falling cards own the only whistle)
+//          and TUMBLES (a real 3-D roll about the wind's axis + a yaw); a face-down card shows its FACE as it turns
+//          over (one white frame — e_galeGlimpse); its shadow shrinks on the floor. EVERY card leaves over a VISIBLE
+//          rim: on player 2's (far) side the wind carries it LOW along its row to the right-hand rim; on player 1's
+//          side it is thrown over its own front-left rim; at the edge it drops past the wall into the void — the
+//          receding whistle, e_galeFall, each card's a step lower (a descending pentatonic run)
+//   THE FIELD (its own clock, see fieldTimes): the flame leans as the front nears, is stretched and buffeted while
+//          the bristles pass, then gutters in three steps (150 ms) while the light over the half dims in three
+//          steps — and is SNUFFED like a candle: the light is CUT, the arena's light drops for a breath (the field
+//          theme changes under that dark: a volcano's lava is cut with it), a puff, a wick ember, a smoke thread —
+//          e_galeSnuff ("vump"). 100 ms later the LAST GUST (three bristle curls with leaves racing through the
+//          field zone) tears the field card off and blows it over the rim
+//   +~760  THE TAIL: the stroke leaves over the far rim, its bristles thin out — e_galeTail
 //   each fallen card is delivered to its owner's graveyard AS SOON AS it is gone: a little gust of four leaves
 //          streaks from where it vanished to the pile (e_galeCarry), drops a mini card silhouette on it, the pile
-//          counts up and bumps — e_galePile
+//          counts up and bumps — e_galePile. The snuffed wick's smoke finishes on its own after the scene.
 // THE RESPONSE WINDOW (a ready Büyü Mührü): the activation batch has no massDestroy. The card does NOT dissolve: a
 // hand card keeps hovering beside its owner, a set card lies back down face-up on its own tile, while a few leaves
 // keep circling it (a kept handle, 'gale:wait'). Declined → the next batch's gale releases its curl FROM THAT CARD
 // and sends the card to its graveyard; sealed → after the trap's own presentation the gale dies on the card (the
 // leaves wither and drop, the card sags — e_galeDie) and it goes to its graveyard (the 'toGraveyard' hook).
-// Measured (game time, tempo 1.35; tools/measure.mjs, camera 0f/0px): eGale 4.88 s, eGaleP2 4.80, eGaleSet 4.22,
-// eGaleSetP2 4.13, eGaleOne 2.70, eGaleVolcano 5.15 / eGaleWindow 5.67 (both batches of the window), eGaleAxe 6.10
-// (with spite_axe's own toDeck presentation after the gale), eGaleSealed 4.95 (the seal's cut-in included). The
+// Measured (game time, tempo 1.35; tools/measure.mjs, camera 0f/0px; round 3): eGale 4.75 s, eGaleP2 4.90, eGaleSet
+// 4.08, eGaleSetP2 4.23, eGaleOne 3.18, eGaleVolcano 5.02 / eGaleWindow 5.53 (both batches of the window), eGaleAxe 5.60
+// (with spite_axe's own toDeck presentation after the gale), eGaleSealed 5.18 (the seal's cut-in included). The
 // side effects (spite_axe back to its deck, soul_leash's monster going home, a field spell's stat changes) are NOT
 // presented here: their events stay unconsumed and play in order after the gale (their own presentations). A card
 // whose destination is not the graveyard (spite_axe → deck) RESISTS the gale: it rattles, jumps 3 px and slams back
@@ -814,7 +811,7 @@ function lobCurl(sc: Phaser.Scene, from: XY, to: XY, ms: number = T.lobMs): Prom
     while (steps.length > 5) steps.shift();
     ras.draw((r) => {
       for (const tr of trail) r.px(tr.x, tr.y + 1, tr.age < 40 ? PAL.leaf3 : tr.age < 80 ? PAL.leaf2 : PAL.leaf1);
-      const trailCols = [PAL.leaf1, PAL.leaf2, PAL.leaf3, PAL.leaf4];
+      const trailCols = [PAL.leaf2, PAL.leaf3, PAL.leaf3, PAL.leaf4];
       steps.slice(0, -1).forEach((st, i, arr) => {
         const age = arr.length - 1 - i;
         leaf3(r, st.x, st.y + 2 + age, Math.floor(el / 60) + i, trailCols[Math.max(0, 3 - age)]);
@@ -826,10 +823,14 @@ function lobCurl(sc: Phaser.Scene, from: XY, to: XY, ms: number = T.lobMs): Prom
         let prev: XY | null = null;
         for (let j = 0; j < 10; j++) {
           const an = a + arm + j * 0.6;
-          const rr = 2 + j * 0.62;
+          const rr = 2 + j * 0.74;
           const pt = { x: R(x + Math.cos(an) * rr), y: R(y + Math.sin(an) * rr * 0.8) };
           const col = j < 2 ? PAL.white : j < 5 ? PAL.leaf4 : j < 8 ? PAL.leaf3 : PAL.leaf2;
-          if (prev) r.line(prev.x, prev.y, pt.x, pt.y, col);
+          if (prev) {
+            // 2-px arms: a bold little whirlwind, not a speck
+            r.line(prev.x, prev.y + 1, pt.x, pt.y + 1, j < 5 ? PAL.leaf3 : PAL.leaf2);
+            r.line(prev.x, prev.y, pt.x, pt.y, col);
+          }
           prev = pt;
         }
       }
@@ -992,7 +993,7 @@ registerCardHook(ID, 'toGraveyard', async (ctx) => {
   const leaves = h.leaves().map((p, i) => ({ x0: p.x, y0: p.y, side: i % 2 ? 1 : -1, delay: 90 + i * 35, lie: floorY - 1 + (i % 3) }));
   const card0 = card && card.active ? { y: R(card.y) } : null;
   let tinted = 0;
-  await run(sc, 560, (_t, el) => {
+  await run(sc, 480, (_t, el) => {
     if (card && card.active && card0) {
       // the card shivers for three frames as the air leaves it, then SAGS 3 px in steps and dims in two tone steps
       card.setX(at.x + (el < 90 ? (Math.floor(el / 30) % 2 ? 1 : -1) : 0));
@@ -1212,7 +1213,7 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
         // the environment's light over the victim's whole half (it tints their tiles in the flame's colour)
         const half = scr(toWorld(victim, [3, 0.8]));
         envSpill = lightPool(sc, R(half.x), R(half.y) - 10, { color: flame.ramp[3], radius: 150, floorY: R(half.y), intensity: 0, tint: 0.35, fadeIn: 0, anim: 'flicker' });
-        envSpill.setIntensity(1.25, 220);
+        envSpill.setIntensity(1.6, 220);
       });
       // while it gutters, the environment's light over the half dims in three steps with it
       for (let k = 0; k < 3; k++) once(`dim${k}`, el, ft.tClear + (k * T.gutter) / 3, () => (envSpill as LightHandle | null)?.setIntensity([0.85, 0.55, 0.32][k], 30));
@@ -1603,10 +1604,10 @@ function drawCarrier(r: Raster, cr: Carrier, el: number): void {
  * downwind and unwinds (`wind`: +1 the stroke runs right).
  */
 function drawWhirl(r: Raster, floor: XY, el: number, wind: number): void {
-  const grow = ease.out(el / T.whirlMs);
+  const grow = 0.25 + 0.75 * ease.out(el / T.whirlMs);
   const unwind = seg(el, T.stroke, 150);
   const N = 7;
-  const shownRings = Math.min(N, Math.ceil(grow * N + 0.01));
+  const shownRings = Math.min(N, Math.max(2, Math.ceil(grow * N + 0.01)));
   // the dust ring on the tile (dashed, turning)
   if (unwind < 0.8) {
     const rot = el / 90;

@@ -9,34 +9,40 @@
 // BEAT LIST (scene ms at 1×; × 1.35 in game time with the v3 tempo).
 //   0      common v3 spell opening (spells/_kit): a hand card flies beside its owner (a set card stands up on its own
 //          tile), "KUYU KOVASI" plate, short hover
-//   ~400   RELEASE: the card pours into an orb at its bottom edge that hops onto the well's tile — the caster's free
-//          spell/trap tile nearest to the cast spot that no unit covers (a set card: its own tile unless a unit stands
-//          in front of it or its plate would cross the windlass) — the floor is never opened
+//   ~400   RELEASE: the card pours into an orb at its bottom edge that hops onto the well's tile, chosen by CLEAR AIR
+//          (wellSpot): the set card's own tile unless a unit stands in front of it or its windlass would really cover a
+//          sprite; else the caster's free spell/trap tile that scores best on distance + the room its two leaps have
+//          (units' opaque sprite boxes, duelists, portrait screens and HUD panels are measured, not guessed)
 //   W+0    LAND: a teal ring runs out on the tile, a rune ellipse flashes for two frames, the light pool comes on
 //   W+30   THE STONE RING builds itself in three courses, each course popping a stone grit — e_wellStone ×3
 //   W+170  THE WINDLASS: two wooden posts shoot up, the axle with its rope drum drops into the forks — e_wellFrame.
 //          The crank always sits on the side that faces the board's centre (P2's well is mirrored)
 //   W+280  THE CRANK turns by itself: 2 turns in 16 stepped angles, slow → fast; the rope coils scroll round the
 //          drum, the bucket climbs the shaft; the light pool swells and widens with the speed — e_wellClick on EVERY
-//          step, e_wellRope at the first steps
+//          step (the first and last teeth ring out), e_wellRope at the first steps
 //   ~W+560 the bucket BREAKS THE SURFACE: a crown of water flares out of the mouth, caustic light runs out over the
 //          neighbouring tiles — e_wellSlosh
 //   W+720  the crank stops: the pawl catches — e_wellCatch; the bucket hangs under the drum, swinging, BRIMMING with
-//          glowing water (a domed teal surface, glints), 2-px streams run over both lips; drops splash in the shaft,
-//          on the ring stones and on the floor — e_wellSpill (the card's separating layer)
-//   W+870  the bucket TIPS toward the caster's hand (three stepped angles)
-//   W+960  LEAP 1: a card bursts out of the water like a fish — a splash crown, the card growing through nine native
-//          sizes (6×8 → 48×68, never scaled) along ONE low ballistic arc (rise ≈ 24 px) that ends in the hand's next
-//          slot; a wet rim, a teal under-glow light, droplets all along the path — e_wellLeap ("şlap-gloop-fwip").
-//          At the slot the card IS the hand's card (same 48×68 back, same pixel): the hand only turns it face-up
-//          (its own sharp turn frames) — e_wellTap (a wet paper tap + one drip). No generic draw flight, no
-//          cardDraw / cardPlace.
-//   W+1180 LEAP 2: the second card leaps the same way; at the top of its arc it SHAKES THE WATER OFF — seven hard
-//          side-to-side jerks (±4 px, stepped π/16), a ring of droplets thrown at each reversal — e_wellShake; then it
-//          falls on into the hand — e_wellTap
-//   after  the bucket tips back; it DROPS: the ratchet freewheels, the bucket PLOPS — e_wellDown; the spent card is
-//          born beside the well (toward the graveyard) and leaves; the crank's LAST TURN — e_wellLast; THE WELL
-//          DISSOLVES from the top down into rising teal motes — e_wellFade
+//          glowing water; the overflow POURS over the lips: sheets that leave the lip sideways, thin out and break into
+//          falling segments and drops (the gaps run down), a sliding highlight, a splash on the rim; the low lip pours,
+//          the high lip stops — e_wellSpill (the card's separating layer: a trickle with drips knocking the staves)
+//   W+870  the bucket TIPS toward the caster's hand (three stepped angles) — e_wellTip (the bail creaks)
+//   W+960  LEAP 1: a card BURSTS STRAIGHT UP out of the water (100 ms, a splash column), flicks its tail (a 1-px body
+//          bend, stepped ±π/16 roll) up to its apex, bends into a C there, then falls into the hand rolling ±π/16 for
+//          85 % of the way, growing through native sizes (6×8 → 48×68, never scaled), and FLOPS into the slot (2 px
+//          low, then settles) — e_wellLeap ("şlap-gloop-fwip"). At the slot the card IS the hand's card (same 48×68
+//          back): the hand only turns it face-up — e_wellTap. No generic draw flight, no cardDraw / cardPlace.
+//   W+1160 LEAP 2: the second fish leaps higher and to the other side; its apex is planned in CLEAR SPACE (planLeap:
+//          a grid of apexes scored against every obstacle box, padded for the idle animations) and there it SHAKES
+//          THE WATER OFF — eight hard jerks (±7 px, ±2·π/16 roll, the tail lagging), a wide sheet of droplets thrown
+//          sideways on the first two reversals, rings after — e_wellShake (a wet paper rattle); then it falls into the
+//          hand — e_wellTap. A unit a path still crosses is dimmed while the cards fly.
+//   after  the bucket tips back — e_wellTip (soft); as soon as leap 2 has shaken itself dry the bucket DROPS: the
+//          ratchet freewheels, the bucket PLOPS — e_wellDown; the spent card rises out of the well's mouth and goes to
+//          the graveyard; the crank's LAST TURN (e_wellClick × 7, e_wellLast) — the well DISSOLVES from the top down into
+//          rising teal motes from its 5th tooth on — e_wellFade
+// THE OTHER PLAYER'S HAND on screen (vsBot, the bot casts): the cards grow only to 14×20 and shrink into the 9×13 mini
+// hand, which counts them in (no second flight).
 // EDGE — the first draw completes the five seals: no second draw; as soon as the seal lands the bucket drops and the
 // well dissolves at once (≈ 300 ms, no last turn) so the win follows the seal card's arrival.
 // No camera move, no full-screen wash; every crisp thing on whole pixels, palette only.
@@ -404,21 +410,22 @@ function paintBucketLight(p: PixelCanvas, s: WellState): void {
     const down = Math.sin(s.tilt) * side; // > 0: this lip is the low one
     if (down < -0.05) continue; // the raised lip stops pouring
     const lip = bucketAt(s, side * 9, 4.4);
-    const throwX = 0.55 + down * 6 + (Math.abs(s.tilt) < 0.05 ? 0 : 0.25);
+    // level: a short curtain hugging the stave; tipped: the low lip throws a long arc out
+    const throwX = Math.abs(s.tilt) < 0.05 ? 0.32 : 0.55 + down * 6;
     const len = Math.max(6, R(ty - 0.5 - lip.y + 3));
     const hiAt = (fp * 2) % (len + 6);
     let last: XY | null = null;
     for (let k = 0; k <= len; k++) {
       // x leaves the lip faster than y at first, then the fall takes over (a parabola in k)
-      const x = lip.x + side * (0.6 + Math.sqrt(k) * throwX * 1.6);
+      let x = lip.x + side * (0.6 + Math.sqrt(k) * throwX * 1.6);
       const y = lip.y + k;
-      const cyc = (((k - fp) % 6) + 6) % 6;
-      const solid = k < 4;
-      const dash = k < 11 ? cyc < 4 : cyc === 0; // long dashes, then lone drops
-      if (!solid && !dash) continue;
+      const cyc = (((k - fp) % 5) + 5) % 5;
+      // solid at the lip, then dashes, then lone drops that wobble off the line
+      if (k >= 5 && (k < 10 ? cyc >= 3 : cyc !== 0)) continue;
+      if (k >= 10) x += side * ((k + fp + (side > 0 ? 1 : 0)) % 3 === 0 ? 1 : 0);
       const col = Math.abs(k - hiAt) < 1 ? PAL.white : k < 2 ? PAL.water4 : k < 8 ? PAL.teal4 : PAL.teal3;
       put(x - 0.5, y - 0.5, col);
-      if (k < 7) put(x - 0.5 - side, y - 0.5, k < 3 ? PAL.water4 : PAL.teal3);
+      if (k < 3) put(x - 0.5 - side, y - 0.5, PAL.water4);
       last = { x, y };
     }
     // the splash where it lands: two droplets hopping, alternating each step
@@ -772,7 +779,7 @@ function spriteBox(spr: Phaser.GameObjects.Sprite): { x0: number; y0: number; x1
   return spr.flipX ? { x0: left + fw - 1 - b.x1, y0: top + b.y0, x1: left + fw - 1 - b.x0, y1: top + b.y1 } : { x0: left + b.x0, y0: top + b.y0, x1: left + b.x1, y1: top + b.y1 };
 }
 
-/** Every unit (opaque sprite box + its plate), both duelists, the portrait screens and the HUD panels. */
+/** Every unit (opaque sprite box + its plate), both duelists and piles, the portrait screens and the HUD panels. */
 function obstacles(ctx: ActCtx): Box[] {
   const out: Box[] = [];
   for (const p of [0, 1] as PlayerId[]) {
@@ -786,6 +793,11 @@ function obstacles(ctx: ActCtx): Box[] {
     });
     const d = duelistXY(p);
     out.push({ x0: d.x - 11, y0: d.y - 36, x1: d.x + 11, y1: d.y + 3, w: 10 });
+    // the piles (soft: a card may pass over them, but should not hang over one)
+    for (const z of ['deck', 'graveyard'] as const) {
+      const q = zoneXY(p, z);
+      out.push({ x0: q.x - 16, y0: q.y - 20, x1: q.x + 16, y1: q.y + 8, w: 2 });
+    }
   }
   for (const r of SCREENS) out.push({ x0: r.x, y0: r.y, x1: r.x + r.w - 1, y1: r.y + r.h - 1, w: 4 });
   for (const r of [UI.p1Panel, UI.p2Panel, UI.phaseBar]) out.push({ x0: r.x, y0: r.y, x1: r.x + r.w - 1, y1: r.y + r.h - 1, w: 6 });
@@ -835,7 +847,9 @@ function riseAt(pl: LeapPlan, k: number): XY {
   return { x: pl.B.x + (pl.P.x - pl.B.x) * k, y: pl.B.y + (pl.P.y - pl.B.y) * easeOut(k) };
 }
 function fallAt(pl: LeapPlan, k: number): XY {
-  return { x: pl.P.x + (pl.T.x - pl.P.x) * k, y: pl.P.y + (pl.T.y - pl.P.y) * k * k };
+  // a mini-hand above the apex (the other player's corner): a smooth glide up into it instead of a fall
+  const e = pl.T.y < pl.P.y ? k * k * (3 - 2 * k) : k * k;
+  return { x: pl.P.x + (pl.T.x - pl.P.x) * k, y: pl.P.y + (pl.T.y - pl.P.y) * e };
 }
 
 /**
@@ -850,14 +864,14 @@ function planLeap(obst: Box[], M: XY, T: XY, sizes: readonly (readonly [number, 
   const wellBox = { x0: o.well.x - 24, y0: o.well.y - 50, x1: o.well.x + 24, y1: o.well.y + 6 };
   let best: LeapPlan = { M, B, P: { x: B.x + o.pref.dx, y: B.y - o.pref.h }, T, apex: o.apex, cost: Infinity };
   // (the apex may be HIGH — up in the open air over the units' heads, between the portrait screens: a real leap)
-  for (let dx = -64; dx <= 64; dx += 4)
+  for (let dx = -96; dx <= 96; dx += 4)
     for (let h = 6; h <= 124; h += 2) {
       const P = { x: R(B.x + dx), y: R(B.y - h) };
       const r = rectAt(P, aw, ah, o.margin, 3);
       let cost = 0;
       if (r.x0 < 6 || r.x1 > 634 || r.y0 < 22 || r.y1 > 300) cost += 4000;
-      // hard things (units: their idle frames swing an axe or a tail; duelists) keep 4 px of air round them
-      for (const b of obst) cost += overlap(r, b.w >= 10 ? { x0: b.x0 - 4, y0: b.y0 - 4, x1: b.x1 + 4, y1: b.y1 + 4 } : b) * b.w;
+      // hard things (units: their idle frames swing an axe or a tail; duelists) keep 8 px of air beside them, 4 above and below
+      for (const b of obst) cost += overlap(r, b.w >= 10 ? { x0: b.x0 - 8, y0: b.y0 - 4, x1: b.x1 + 8, y1: b.y1 + 4 } : b) * b.w;
       cost += overlap(r, wellBox) * 3;
       const pl: LeapPlan = { M, B, P, T, apex: o.apex, cost: 0 };
       // the path: a few samples of the rise and the fall (only the hard obstacles; a crossed unit is dimmed)
@@ -868,12 +882,14 @@ function planLeap(obst: Box[], M: XY, T: XY, sizes: readonly (readonly [number, 
         const si = k <= 0.3 ? o.apex : Math.min(sizes.length - 2, o.apex + Math.floor(((k - 0.3) / 0.7) * (sizes.length - 1 - o.apex)));
         const [w, hh] = sizes[si];
         const rr = rectAt(q, w * 0.7, hh * 0.7, 0, 0);
-        for (const b of obst) if (b.w >= 10) cost += overlap(rr, b) * 0.25;
+        for (const b of obst) if (b.w >= 10) cost += overlap(rr, b) * 0.12;
       }
-      cost += Math.abs(dx - o.pref.dx) * 0.8 + Math.abs(h - o.pref.h) * 1.2;
+      // a higher leap than wished is cheap past 16 px (a fish clearing the units' heads is the point)
+      const over = Math.max(0, h - o.pref.h);
+      cost += Math.abs(dx - o.pref.dx) * 0.8 + Math.max(0, o.pref.h - h) * 1.2 + Math.min(16, over) * 1.2 + Math.max(0, over - 16) * 0.3;
       if (o.avoid) {
         const dd = Math.hypot(P.x - o.avoid.x, P.y - o.avoid.y);
-        if (dd < 24) cost += (24 - dd) * 12;
+        if (dd < 44) cost += (44 - dd) * 20; // two fish, two places: never the same apex twice
       }
       if (cost < best.cost) best = { M, B, P, T, apex: o.apex, cost };
     }
@@ -884,8 +900,9 @@ function planLeap(obst: Box[], M: XY, T: XY, sizes: readonly (readonly [number, 
 function leapOpts(k: number, dir: number, well: XY, avoid: XY | null, mini: boolean): PlanOpts {
   const apex = mini ? 2 : k === 0 ? 4 : 5;
   return k === 0
-    ? { burst: 12, apex, margin: 2, pref: { dx: dir * 22, h: 8 }, avoid, well }
-    : { burst: 20, apex, margin: 7, pref: { dx: -dir * 10, h: 24 }, avoid, well };
+    ? { burst: 12, apex, margin: 5, pref: { dx: dir * 22, h: 8 }, avoid, well }
+    : // the shake swings ±7 px and rolls ±2·π/16 (a 30 × 42 card turned π/8 is 44 px wide): 7 + 7 px each side
+      { burst: 20, apex, margin: 14, pref: { dx: -dir * 10, h: 24 }, avoid, well };
 }
 
 interface Leap {
@@ -1149,9 +1166,11 @@ function wellSpot(ctx: ActCtx, player: PlayerId, setHome: XY | null, target: XY,
       if (b.uid === undefined) continue;
       if (b.y1 - 10 >= c.y - 2 && overlap(rb, b) > 0) cost += 10000; // in front: hides the ring
       else {
-        const area = overlap(fb, b);
-        const share = area / Math.max(1, (b.x1 - b.x0) * (b.y1 - b.y0));
-        if (area > 0 && (!set || share > 0.15)) cost += 600 + area;
+        // the set tile only moves when the windlass would really cover the unit's body (its plate steps back anyway)
+        const body = set ? { ...b, y1: b.y1 - 12 } : b;
+        const area = overlap(fb, body);
+        const share = area / Math.max(1, (body.x1 - body.x0) * (body.y1 - body.y0));
+        if (area > 0 && (!set || share > 0.3)) cost += 600 + area;
       }
     }
     const M = { x: c.x, y: c.y + MOUTH_DY };
@@ -1159,7 +1178,10 @@ function wellSpot(ctx: ActCtx, player: PlayerId, setHome: XY | null, target: XY,
     const p1 = planLeap(obst, M, target, sizes, leapOpts(0, dir, c, null, mini));
     const p2 = planLeap(obst, M, target, sizes, leapOpts(1, dir, c, p1.P, mini));
     cost += p2.cost * 1.5 + p1.cost * 0.5;
-    if (set) cost -= 300;
+    // the fish fly TO the hand: a detour away from it (out to a board edge and all the way back) costs its length
+    const trip = (pl: LeapPlan) => Math.hypot(pl.P.x - M.x, pl.P.y - M.y) + Math.hypot(target.x - pl.P.x, target.y - pl.P.y);
+    cost += trip(p1) + trip(p2);
+    if (set) cost -= 900; // "karonun üstüne": the set card BECOMES the well
     if ((globalThis as { __WELL_DEBUG?: boolean }).__WELL_DEBUG) console.log('[well] tile', JSON.stringify({ c, cost: Math.round(cost), p1: [p1.P, Math.round(p1.cost)], p2: [p2.P, Math.round(p2.cost)] }));
     if (cost < bd) {
       bd = cost;
@@ -1354,7 +1376,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
       for (const g of [u.sprite, u.badge.image] as (Phaser.GameObjects.Components.Alpha & Phaser.GameObjects.GameObject)[]) {
         if (!g || !g.active || crossed.has(g)) continue;
         crossed.add(g);
-        void tween(sc, { targets: g, alpha: 0.5, duration: 100 });
+        void tween(sc, { targets: g, alpha: 0.6, duration: 100 });
       }
     }
   };
@@ -1455,8 +1477,6 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     leap2 = leapOne(1);
     await wait(sc, T.tipBackAfter);
   } else await leap1.done;
-  // the crossed units come back as soon as the last card has passed its apex (it falls to the hand, away from them)
-  void (leap2 ? leap2.apex : leap1.done).then(undimCrossed);
   const landedAll = async () => {
     await leap1.done;
     if (leap2) await leap2.done;

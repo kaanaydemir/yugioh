@@ -89,10 +89,11 @@ export const RECIPES = {
     play: lift(5, (v) => {
       // the two posts knock into the stone (left, right), then the axle drops onto them (lower, heavier)
       woodTick(v, 0, 330, 0.3, { snap: 0.8 });
-      woodTick(v, 0.055, 349, 0.28, { snap: 0.8 });
-      woodTick(v, 0.15, 247, 0.42, { snap: 1.2, body: 1.5 });
-      thump(v, 0.15, 150, 95, 0.2, 0.09);
-      v.bursts([0.2, 0.226, 0.246, 0.262], [0.07, 0.05, 0.035, 0.02], { dec: 0.008, f: 2400, q: 2 });
+      woodTick(v, 0.034, 349, 0.28, { snap: 0.8 });
+      // (the axle lands 80 scene ms = 108 ms after the first post: synced to the picture)
+      woodTick(v, 0.108, 247, 0.42, { snap: 1.2, body: 1.5 });
+      thump(v, 0.108, 150, 95, 0.2, 0.09);
+      v.bursts([0.158, 0.184, 0.204, 0.22], [0.07, 0.05, 0.035, 0.02], { dec: 0.008, f: 2400, q: 2 });
     }),
   },
   e_wellClick: {
@@ -239,13 +240,13 @@ export const RECIPES = {
     play: lift(7, (v) => {
       // the brightest cue: a WET PAPER RATTLE — the card flaps hard in the air: a fast paper flutter (a ~45 Hz
       // amplitude rattle through a papery band) under the whole shake, one hard wet flap per jerk …
-      const d = 0.34;
+      const d = 0.42; // eight jerks × 34 scene ms × the 1.35 tempo
       const pb = v.filt('bandpass', [[0, 1300], [d * 0.4, 1900, 'e'], [d, 1200, 'e']], 1.6);
       const fl = v.flutter(46, 0.9, { d, base: 0.08, to: pb });
       v.noise('white', { g: [[0, 0], [0.01, 0.3], [d * 0.5, 0.2], [d, 0.0001, 'e']], to: fl });
       v.noise('pink', { g: [[0, 0], [0.01, 0.1], [d, 0.0001, 'e']], to: v.flutter(23, 0.8, { d, base: 0.2, to: v.filt('bandpass', 520, 1.4) }) });
-      [0, 0.046, 0.092, 0.138, 0.184, 0.23].forEach((t, i) => {
-        sweep(v, t, 0.045, [2200, 4600, 2800], 0.2 - i * 0.022, { kind: 'white', q: 1.8, peakAt: 0.3 });
+      [0, 0.046, 0.092, 0.138, 0.184, 0.23, 0.276, 0.322].forEach((t, i) => {
+        sweep(v, t, 0.045, [2200, 4600, 2800], 0.2 - i * 0.02, { kind: 'white', q: 1.8, peakAt: 0.3 });
         puff(v, t, 0.06, 0.035, 2000, { kind: 'pink' });
       });
       // … and a bright spray of droplets flung sideways, spread wide (heaviest on the first two reversals)

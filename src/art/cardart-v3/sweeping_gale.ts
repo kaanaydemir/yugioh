@@ -50,12 +50,14 @@ const R2 = 55;
 /** angle window of the blade (screen radians, y down): from its lower-left root to its upper-right tip */
 const A0 = -2.62;
 const A1 = -0.3;
+const A0_SMALL = -2.2;
 
 function bladeTone(x: number, y: number, f: number, k: 1 | 2 = 2): number | null {
   const d1 = Math.hypot(x - C1[0], y - C1[1]);
   const d2 = Math.hypot(x - C2[0], y - C2[1]);
   const a = Math.atan2(y - C1[1], x - C1[0]);
-  if (a < A0 || a > A1) {
+  // the small picture pulls the crescent's tail in (the slab and the void below it stay clear: the destination)
+  if (a < (k === 1 ? A0_SMALL : A0) || a > A1) {
     return null;
   }
   // the blade tapers at both ends: its inner circle grows toward the tips
@@ -143,8 +145,6 @@ const CARDS: readonly CardShape[] = [
   { pts: cardQuad(52, 43, 10, 14, 58, 0.7), frame: PAL.mist, face: PAL.teal2, emblem: PAL.teal4, bob: true },
   // dropping past the edge into the void (in shade, edge-on-ish)
   { pts: cardQuad(70, 55, 8, 12, -24, 0.9), frame: PAL.steel, face: PAL.night2, emblem: PAL.teal2, bob: true },
-  // deep in the void: small and dark, almost gone
-  { pts: cardQuad(81, 64, 5, 7, 18), frame: PAL.night3, face: PAL.night1, emblem: null, bob: false },
 ];
 
 function paintCard(p: PixelCanvas, c: CardShape, dy: number): void {
@@ -206,15 +206,15 @@ function paint(l: ArtLayers, f: number): void {
     patch(l.subject, ['...kk...', '.kkmmkk.', 'kmrrermk', '.kkmmkk.', '...kk...'], key, 3, 23);
     // the flying trap: a leaning card (white frame, magenta body, one light pip)
     patch(l.subject, ['..kkkkk', '.kwwwwk', '.kwpppk', '.kwpqpk', 'kwpppk.', 'kwpppk.', 'kwwwwk.', 'kkkkk..'], key, 28, 5 - bob);
-    // the card going over the edge: a small teal card rolling
-    patch(l.subject, ['.kkk.', 'kmttk', 'kttmk', '.kkk.'], key, 24, 21 + bob);
-    // the falling card in the void: a clean tilted 4 × 6 in shade
-    patch(l.subject, ['..kk', '.ksk', 'ksnk', 'ksnk', 'ksk.', 'kk..'], key, 34, 25 - bob);
+    // the card going over the edge: a teal card rolling, tilted (5 × 7, ink outlined)
+    patch(l.subject, ['..kkk', '.kmtk', '.kttk', 'kttmk', 'kttk.', 'kmtk.', 'kkk..'], key, 23, 18 + bob);
+    // the falling card in the void: a tilted 5 × 7 in shade
+    patch(l.subject, ['kkk..', 'ksnk.', 'ksnnk', '.ksnk', '.ksnk', '.kssk', '..kkk'], key, 34, 23 - bob);
     smallCards = [
       [3, 23, 8, 5],
       [28, 5 - bob, 7, 8],
-      [24, 21 + bob, 5, 4],
-      [34, 25 - bob, 4, 6],
+      [23, 18 + bob, 5, 7],
+      [34, 23 - bob, 5, 7],
     ];
   }
   // the wind (light layer: never outlined)
@@ -226,6 +226,24 @@ function paint(l: ArtLayers, f: number): void {
       fr.forEach((row, ry) => [...row].forEach((ch, rx) => ch !== '.' && l.light.set(x + rx, y + ry, ch === '#' ? PAL.leaf4 : PAL.leaf3)));
     });
   } else {
+    // hand-made at 1×: four short bristle streaks trailing inside the crescent (broken leaf3 / leaf2 dashes that
+    // follow its curve and step along with the frame), so the small blade still reads as a BROOM, not a moon
+    const streaks: readonly (readonly [number, number, number, number])[] = [
+      [10, 13, 8, PAL.leaf3],
+      [16, 11, 8, PAL.leaf3],
+      [9, 16, 6, PAL.leaf2],
+      [21, 10, 7, PAL.leaf3],
+    ];
+    streaks.forEach(([sx, sy, len, tone], i) => {
+      const o = (f + i) % 2;
+      for (let d = 0; d < len; d++) {
+        const x = sx + d + o;
+        // a gentle curve: the dash rises one pixel every three (the crescent's curve)
+        const y = sy - Math.floor(d / 3);
+        if (d === len - 1 && (f + i) % 4 === 3) continue;
+        if (!l.light.isOpaque(x, y)) l.light.set(x, y, d === len - 1 && tone === PAL.leaf3 ? PAL.leaf4 : tone);
+      }
+    });
     // hand-made at 1×: leaves as 2-px flecks that turn (horizontal ↔ diagonal)
     LEAVES.slice(0, 4).forEach(([x, y], i) => {
       const sx = Math.round(x / 2);

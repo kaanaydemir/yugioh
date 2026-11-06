@@ -16,7 +16,9 @@ function runStage(key: string): { state: GameState; events: GameEvent[] } {
   let state = buildStage(sc.stage);
   const events: GameEvent[] = [];
   for (const step of sc.steps) {
-    const a = (typeof step === 'function' ? step({ uid: (id: CardId, p?: PlayerId) => uidOf(state, id, p) }) : step) as Action;
+    if (typeof step === 'object' && step !== null && 'ui' in step) continue; // a UI step (the bot stage's wait)
+    const a = (typeof step === 'function' ? step({ uid: (id: CardId, p?: PlayerId) => uidOf(state, id, p) }) : step) as Action | null;
+    if (!a) continue; // a view step (the bot stage hands the screen to P1)
     const r = apply(state, a);
     state = r.state;
     events.push(...r.events);
@@ -26,7 +28,7 @@ function runStage(key: string): { state: GameState; events: GameEvent[] } {
 
 describe('e_well_pail stages', () => {
   it('the normal stages: activate → draw → draw → toGraveyard (the caster draws both)', () => {
-    for (const key of ['eWellPail', 'eWellPailP2', 'eWellPailSet', 'eWellPailSetP2']) {
+    for (const key of ['eWellPail', 'eWellPailP2', 'eWellPailSet', 'eWellPailSetP2', 'eWellPailBot']) {
       const { events } = runStage(key);
       const p = PACK[key].stage.active ?? 0;
       const types = events.map((e) => e.type);

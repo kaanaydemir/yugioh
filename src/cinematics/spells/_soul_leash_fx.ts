@@ -399,6 +399,10 @@ export interface LeashLook {
   /** Cut: the part from `cutFrom` on is gone (0..1, the snap), the rest hangs and drops `drop` px. */
   cutFrom?: number;
   drop?: number;
+  /** The chain sways a pixel with `phase` (ms). */
+  sway?: boolean;
+  /** The lock: the 4 links nearest the collar snap taut and flash white, in order toward the card (0..1, < 0 none). */
+  snap?: number;
 }
 
 /** The pixels of the leash curve from a to b (deduplicated, whole pixels). */
@@ -442,93 +446,164 @@ export function quadPath(a: XY, c: XY, b: XY): XY[] {
   return out;
 }
 
-/** Draw the leash (see LeashLook) into a raster. */
-export function drawLeash(r: Raster, a: XY, b: XY, L: LeashLook): void {
-  const pts = leashPath(a, b, L.sag);
+/** A face-on chain link: a 4×3 gold oval round an ink hole in an ink outline (6×5 in all), lit from the top. */
+function ovalLink(px: (x: number, y: number, c: number) => void, x: number, y: number, top: number, side: number, bot: number): void {
+  const K = PAL.ink;
+  px(x, y - 2, K);
+  px(x + 1, y - 2, K);
+  px(x - 1, y - 1, K);
+  px(x + 2, y - 1, K);
+  px(x - 2, y, K);
+  px(x + 3, y, K);
+  px(x - 1, y + 1, K);
+  px(x + 2, y + 1, K);
+  px(x, y + 2, K);
+  px(x + 1, y + 2, K);
+  px(x, y - 1, top);
+  px(x + 1, y - 1, top);
+  px(x - 1, y, side);
+  px(x + 2, y, side);
+  px(x, y, K);
+  px(x + 1, y, K);
+  px(x, y + 1, bot);
+  px(x + 1, y + 1, bot);
+}
+
+/** The chain's flying hook: a 5×4 gold ring (ink outline, a white glint) — it reads as a hook, not a dot. */
+export function hookRing(px: (x: number, y: number, c: number) => void, x: number, y: number, flash = false): void {
+  const K = PAL.ink;
+  for (let xx = -2; xx <= 2; xx++) {
+    px(x + xx, y - 3, xx === -2 || xx === 2 ? 0 : K);
+    px(x + xx, y + 2, xx === -2 || xx === 2 ? 0 : K);
+  }
+  for (const yy of [-2, -1, 0, 1]) {
+    px(x - 3, y + yy, yy === -2 || yy === 1 ? 0 : K);
+    px(x + 3, y + yy, yy === -2 || yy === 1 ? 0 : K);
+  }
+  const T = flash ? PAL.white : PAL.gold4;
+  for (let xx = -1; xx <= 1; xx++) px(x + xx, y - 2, T);
+  for (let xx = -1; xx <= 1; xx++) px(x + xx, y + 1, flash ? PAL.gold4 : PAL.gold2);
+  for (const yy of [-1, 0]) {
+    px(x - 2, y + yy, flash ? PAL.gold4 : PAL.gold3);
+    px(x + 2, y + yy, flash ? PAL.gold4 : PAL.gold3);
+    for (let xx = -1; xx <= 1; xx++) px(x + xx, y + yy, K);
+  }
+  px(x - 2, y - 2, K);
+  px(x + 2, y - 2, K);
+  px(x - 2, y + 1, K);
+  px(x + 2, y + 1, K);
+  px(x - 1, y - 2, PAL.white);
+}
+
+/** Pixels the chain may not cover (other units' bodies and stat plates: the chain passes behind them). */
+export type Clip = (x: number, y: number) => boolean;
+
+/**
+ * Draw the leash (see LeashLook) into a raster. The CHAIN is real links: a gold face-on oval (6×5 with its
+ * outline) every 8 px of the curve, a purple side-on link (2 px along the curve, lit top, ink under) between
+ * them — it sags and sways a pixel. The bond mode (the old thin line) is kept for callers that want it.
+ */
+export function drawLeash(r: Raster, a: XY, b: XY, L: LeashLook, clip?: Clip): void {
+  const sway = L.mode === 'chain' && L.sway ? R(Math.sin(L.phase / 210)) : 0;
+  const pts = leashPath(a, b, L.sag + sway);
   const n = pts.length;
   const end = Math.floor(n * Math.max(0, Math.min(1, L.prog)));
   const pulseAt = L.pulse >= 0 ? R(L.pulse * (n - 1)) : -99;
   const cut = L.cutFrom !== undefined ? Math.floor(n * L.cutFrom) : n;
   const bead = L.mode === 'bond' ? Math.floor(L.phase / 70) % 18 : -1;
+  const px = (x: number, y: number, c: number) => {
+    if (!c) return;
+    if (clip && clip(x, y)) return;
+    r.px(x, y, c);
+  };
+  if (L.mode === 'chain') {
+    const PITCH = 8;
+    // count links from the collar end so the one at the hook never jumps while the chain grows
+    const last = Math.min(end, cut) - 1;
+    for (let i = last; i >= 0; i--) {
+      const k = (last - i) % PITCH;
+      const p = pts[i];
+      const dy = L.drop && L.drop > 0 ? R((L.drop * i) / Math.max(1, cut)) : 0;
+      const linkNo = Math.floor((last - i) / PITCH);
+      const snapHot = L.snap !== undefined && L.snap >= 0 && linkNo < 4 && linkNo <= R(L.snap * 4);
+      const hot = L.hot || snapHot || Math.abs(i - pulseAt) <= 3;
+      if (k === 0) {
+        ovalLink(px, p.x - 1, p.y + dy, hot ? PAL.white : PAL.gold4, hot ? PAL.gold4 : PAL.gold3, hot ? PAL.gold3 : PAL.gold2);
+      } else if (k === 4 || k === 5) {
+        px(p.x, p.y + dy - 1, hot ? PAL.white : PAL.void4);
+        px(p.x, p.y + dy, PAL.void2);
+        px(p.x, p.y + dy + 1, PAL.ink);
+      } else if (k === 3 || k === 6) {
+        // the links' ends meeting: one ink pixel, so the chain never breaks into separate dots
+        px(p.x, p.y + dy, PAL.void1);
+      }
+    }
+    if (end < n && end > 0 && L.prog < 1) {
+      const p = pts[Math.max(0, end - 1)];
+      hookRing(px, p.x, p.y + 1);
+    }
+    return;
+  }
   for (let i = 0; i < end; i++) {
     if (i >= cut) break;
     const p = pts[i];
-    // the cut piece hangs from the card end: it drops more the farther it is from the card
     const dy = L.drop && L.drop > 0 ? R((L.drop * i) / Math.max(1, cut)) : 0;
-    let c: number;
-    if (L.mode === 'chain') {
-      // chunky links, 2 rows tall: a purple link (lit top, shaded bottom), a thin gold connector, a gold link,
-      // a thin connector — an ink underline so it reads over the floor and the bodies
-      const k = i % 6;
-      const thick = k === 0 || k === 1 || k === 3 || k === 4;
-      const gold = k === 3 || k === 4;
-      const d0 = Math.abs(i - pulseAt);
-      if (thick) {
-        const top = d0 <= 2 ? PAL.white : L.hot ? PAL.white : gold ? PAL.gold4 : PAL.void4;
-        r.px(p.x, p.y + dy - 1, top);
-        r.px(p.x, p.y + dy, gold ? PAL.gold2 : PAL.void2);
-        r.px(p.x, p.y + dy + 1, PAL.ink);
-        if (k === 0 || k === 3) r.px(p.x, p.y + dy - 2, PAL.ink);
-        continue;
-      }
-      c = k === 2 ? PAL.gold3 : PAL.void3;
-      r.px(p.x, p.y + dy + 1, PAL.ink);
-    } else {
-      c = i % 3 === 0 ? (L.hot ? PAL.white : PAL.void4) : L.hot ? PAL.void4 : PAL.void3;
-      if (bead >= 0 && i % 18 === bead) c = PAL.gold4;
-    }
+    let c: number = i % 3 === 0 ? (L.hot ? PAL.white : PAL.void4) : L.hot ? PAL.void4 : PAL.void3;
+    if (bead >= 0 && i % 18 === bead) c = PAL.gold4;
     const d = Math.abs(i - pulseAt);
     if (d === 0) c = PAL.white;
     else if (d <= 2) c = L.pulseColor ?? PAL.gold4;
     else if (d <= 4 && L.pulseColor) c = L.pulseColor === PAL.leaf4 ? PAL.leaf3 : PAL.gold3;
-    r.px(p.x, p.y + dy, c);
-  }
-  // the leading tip while it flies: a gold ring
-  if (end < n && end > 0 && L.prog < 1) {
-    const p = pts[Math.max(0, end - 1)];
-    r.px(p.x, p.y, PAL.white);
-    r.px(p.x - 1, p.y, PAL.gold3);
-    r.px(p.x + 1, p.y, PAL.gold3);
-    r.px(p.x, p.y - 1, PAL.gold3);
-    r.px(p.x, p.y + 1, PAL.gold3);
+    px(p.x, p.y + dy, c);
   }
 }
 
 // ================================================================ the lingering bond (two parts)
 
 /**
- * The lingering bond, drawn in two parts so it never cuts across its wearer: from the BACK of the collar it
- * hangs straight down BEHIND the body to the floor (the `back` raster, under the sprite), then lies on the tiles
- * to the leash card (the `floor` raster, under every unit: whoever stands on it covers it). An ink pixel under
- * the floor part makes it read as a strap lying on the floor. `L.pulse` runs from the card (0) to the collar (1).
+ * The lingering bond — a thin LIGHT bond (§7 "ince ışık bağı"), drawn in three parts so it never cuts across its
+ * wearer: a 3-px stub leaving the buckle ring IN FRONT of the neck toward the back (the `front` raster, over the
+ * sprite), then from the back of the collar it hangs straight down BEHIND the body (the `back` raster), then it
+ * lies on the tiles (the `floor` raster, under every unit): out round the wearer's back side IN FRONT of its feet
+ * (so even a big body that stands between it and the card never hides it), then to the leash card's near corner.
+ * The core is one lit pixel — gold3 / void4 / void4 — over a void2 underline; every 1.5 s a white-gold bead runs up
+ * it from the card into the collar. `L.pulse` runs from the card (0) to the collar (1).
  */
-export function drawBond(back: Raster, floor: Raster, hook: XY, ground: XY, card: XY, L: LeashLook, facingLeft: boolean): void {
+export function drawBond(back: Raster, floor: Raster, hook: XY, ground: XY, card: XY, L: LeashLook, facingLeft: boolean, front?: Raster, ring?: XY, halfW = 10): void {
   const foot = { x: R(hook.x), y: R(ground.y) };
-  // on the floor it swings out round the wearer's back side (clear of its stat plate) to the card's near corner
   const f = facingLeft ? 1 : -1;
+  // the corner out at the back side, a few px in front of the feet
+  const corner = { x: R(foot.x + f * (halfW * 0.6 + 6)), y: foot.y + 5 };
   const end = { x: R(card.x + f * 10), y: R(card.y) };
-  const ctrl = { x: foot.x + f * 46, y: (foot.y + end.y) / 2 };
-  const fl = quadPath(end, ctrl, foot);
+  const ctrl = { x: R(corner.x + f * 22), y: R((corner.y + end.y) / 2) };
+  const fl1 = quadPath(end, ctrl, corner);
+  const fl2 = quadPath(corner, { x: R((corner.x + foot.x) / 2), y: corner.y }, foot).slice(1);
+  const fl = [...fl1, ...fl2];
   const vert: XY[] = [];
   for (let y = foot.y - 1; y >= R(hook.y); y--) vert.push({ x: foot.x, y });
-  const n = fl.length + vert.length;
+  const stub: XY[] = [];
+  if (front && ring) for (let k = 3; k >= 1; k--) stub.push({ x: ring.x + f * k, y: ring.y + (k >= 2 ? 1 : 0) });
+  const n = fl.length + vert.length + stub.length;
   const pulseAt = L.pulse >= 0 ? R(L.pulse * (n - 1)) : -99;
-  const bead = Math.floor(L.phase / 70) % 18;
+  // the slow bead: every 1500 ms a light runs the whole bond in 700 ms
+  const bt = L.phase % 1500;
+  const beadAt = bt < 700 ? R((bt / 700) * (n - 1)) : -99;
   const hotC = L.hotColor ?? PAL.void4;
   const runC = L.pulseColor ?? PAL.gold4;
   for (let i = 0; i < n; i++) {
-    const onFloor = i < fl.length;
-    const p = onFloor ? fl[i] : vert[i - fl.length];
-    const r = onFloor ? floor : back;
-    // the wide axis: up on the floor, sideways on the hanging part
-    const wx = onFloor ? 0 : 1;
-    const wy = onFloor ? -1 : 0;
-    let c: number = i % 3 === 0 ? PAL.void4 : PAL.void3;
-    if (i % 18 === bead) c = PAL.gold4;
+    const part = i < fl.length ? 0 : i < fl.length + vert.length ? 1 : 2;
+    const p = part === 0 ? fl[i] : part === 1 ? vert[i - fl.length] : stub[i - fl.length - vert.length];
+    const r = part === 0 ? floor : part === 1 ? back : front!;
+    // the underline axis: under it on the floor, beside it on the hanging part
+    const wx = part === 1 ? -f : 0;
+    const wy = part === 1 ? 0 : 1;
+    let c: number = i % 3 === 0 ? PAL.gold3 : PAL.void4;
+    let under: number = PAL.void2;
+    const db = i - beadAt;
+    if (db <= 0 && db > -3) c = db === 0 ? PAL.white : PAL.gold4;
     if (L.hot) {
       c = i % 2 ? hotC : (L.hotLight ?? PAL.white);
-      // 2 px wide, a 1-px halo either side
-      r.px(p.x + wx, p.y + wy, hotC);
+      under = hotC;
       if (L.hotHalo !== undefined) {
         r.px(p.x + 2 * wx, p.y + 2 * wy, L.hotHalo);
         r.px(p.x - wx, p.y - wy, L.hotHalo);
@@ -539,10 +614,11 @@ export function drawBond(back: Raster, floor: Raster, hook: XY, ground: XY, card
       // the run: a bright head and a 6-px body behind it, 2 px wide, a 1-px dark-leaf halo on the far side
       const col = d >= -1 ? (L.pulseHead ?? PAL.white) : runC;
       c = col;
-      r.px(p.x + wx, p.y + wy, col);
+      under = col;
       if (L.pulseColor === PAL.leaf3 && d > -5) r.px(p.x - wx, p.y - wy, PAL.leaf2);
     }
-    if (onFloor && !L.hot) r.px(p.x, p.y + 1, PAL.ink);
+    r.px(p.x + wx, p.y + wy, under);
+    if (part === 0 && !L.hot) r.px(p.x, p.y + 2, PAL.ink);
     r.px(p.x, p.y, c);
   }
 }

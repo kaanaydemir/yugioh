@@ -18,6 +18,7 @@
 //   e_sieveFall    the tossed grains rain back into the sieve: a soft, thinning patter
 //   e_sieveSettle  the sieve sinks low to wait: a soft hoop bump and a grain hush
 //   e_sieveIdle    while the choice waits: a very quiet grain slide (the grains roll across the mesh)
+//   e_sieveCatch   a tossed card reaches its hand slot: a soft paper tick (card on card) and one stray grain
 //   e_sieveDrop    a chosen card drops into the sieve: a short paper "fwip" and a soft landing on grain
 //   e_sieveStraw   the cards turn to straw: a short, crisp, dry crunch above 3 kHz (≤ 0.3 s)
 //   e_sieveGustR   the winnowing breath carries the straw to the RIGHT: a narrow high air puff + chaff ticks panned L → R
@@ -66,9 +67,13 @@ function wash(v: Voice, t: number, g: number, d: number, o: { f?: number; n?: nu
 /** One shake stroke: the grain slaps a side of the hoop — a sandy 2–4 kHz slap, the 240 Hz tap, a low body. */
 function stroke(v: Voice, t: number, g: number, f: number, to: AudioNode): void {
   // the slap: a hard sandy burst (fast attack, short), then grains trickling back
-  v.noise('pink', { t, g: perc(g * 0.7, 0.035, 0.0006), to: v.filt('bandpass', f * 0.8, 1.0, { to }) });
-  v.crackle({ t, d: 0.05, n: 14, g: g * 0.42, f: f * 1.1, q: 1.2, dec: 0.004, curve: 2, to });
-  hoop(v, t + 0.002, g * 0.42, { f: 240, to, body: 0.3 });
+  // (round 2: the slap leads — the hoop tap is half what it was, the grain band sits higher, so the stroke's centroid
+  //  lands near 2 kHz and the 6 Hz sandy patter is the identity, not the 240 Hz knock)
+  const hp = v.filt('highpass', 1500, 0.7, { to });
+  v.noise('white', { t, g: perc(g * 0.62, 0.03, 0.0005), to: v.filt('bandpass', f * 0.8, 1.1, { to: hp }) });
+  v.noise('pink', { t: t + 0.006, g: perc(g * 0.3, 0.05, 0.001), to: v.filt('bandpass', f * 0.75, 1.4, { to }) });
+  v.crackle({ t, d: 0.06, n: 18, g: g * 0.36, f: f * 0.95, q: 1.2, dec: 0.003, curve: 2, to });
+  hoop(v, t + 0.002, g * 0.2, { f: 240, to, body: 0.12 });
 }
 
 /** The winnowing breath: a narrow, high, fast puff of air carrying chaff ticks across `pan` (≤ 0.35 s). */
@@ -122,10 +127,10 @@ export const RECIPES = {
     }),
   },
   e_sieveShake: {
-    cap: 3,
+    cap: 2,
     gap: 0.06,
-    verb: 0.2,
-    play: lift(6, (v) => {
+    verb: 0.14,
+    play: lift(-0.5, (v) => {
       // one shake cycle (1/6 s): the grain slaps the hoop HARD LEFT, then HARD RIGHT
       stroke(v, 0, 1.1, 2900, v.panner(-0.9));
       stroke(v, 0.083, 1.05, 3300, v.panner(0.9));
@@ -136,7 +141,7 @@ export const RECIPES = {
     gap: 0.05,
     verb: 0.3,
     vary: 0.02,
-    play: lift(6, (v) => {
+    play: lift(2, (v) => {
       // the flick leads with the hoop's knock: bent wood + the bowl's weight ("tok") …
       hoop(v, 0, 0.6, { f: 240, body: 0.4 });
       thump(v, 0, 112, 84, 0.12, 0.06);
@@ -153,11 +158,14 @@ export const RECIPES = {
   e_sieveTossBig: {
     cap: 2,
     gap: 0.05,
-    verb: 0.36,
-    play: lift(7, (v) => {
-      // the last, biggest flick: a heavier knock with a double ring of the hoop …
-      hoop(v, 0, 0.7, { f: 240, body: 0.5 });
-      thump(v, 0, 104, 72, 0.16, 0.1);
+    verb: 0.4,
+    play: lift(8, (v) => {
+      // the last, biggest flick (played at pitch 0.92: heavier, not lighter): a sub thump under everything …
+      thump(v, 0, 78, 52, 0.42, 0.24);
+      v.tone('sine', [[0, 70], [0.3, 55, 'e']], { g: [[0, 0], [0.006, 0.3], [0.32, 0.0001, 'e']] });
+      // … a heavier knock with a double ring of the hoop …
+      hoop(v, 0, 0.75, { f: 240, body: 0.7 });
+      thump(v, 0, 104, 72, 0.2, 0.12);
       hoop(v, 0.05, 0.36, { f: 352 });
       v.noise('white', { t: 0.02, g: perc(0.3, 0.012, 0.0003), to: v.filt('highpass', 6000, 0.8) });
       v.crackle({ t: 0.025, d: 0.22, n: 20, g: 0.16, f: 8800, q: 2, dec: 0.002, curve: 1.5 });
@@ -165,7 +173,10 @@ export const RECIPES = {
       wash(v, 0.015, 0.95, 0.3, { f: 3300, n: 44, q: 1.8, to: v.panner(-0.35) });
       wash(v, 0.03, 0.8, 0.28, { f: 2900, n: 36, q: 1.8, to: v.panner(0.35) });
       v.crackle({ t: 0.03, d: 0.24, n: 26, g: 0.26, f: 5200, q: 1.8, dec: 0.003, curve: 1.4 });
-      v.crackle({ t: 0.2, d: 0.4, n: 24, g: 0.12, f: 2600, q: 1.3, dec: 0.004, curve: 0.8 });
+      // the fountain raining back: a long grain shower tail, thinning over most of a second
+      v.crackle({ t: 0.2, d: 0.75, n: 54, g: 0.14, f: 2600, q: 1.3, dec: 0.004, curve: 0.6, to: v.panner(-0.25) });
+      v.crackle({ t: 0.26, d: 0.7, n: 40, g: 0.11, f: 3400, q: 1.4, dec: 0.003, curve: 0.6, to: v.panner(0.25) });
+      v.noise('pink', { t: 0.18, g: [[0, 0], [0.08, 0.06], [0.75, 0.0001, 'e']], to: v.filt('bandpass', 2700, 1) });
       // a warm swell of light under it (the climax) — a soft fifth, no bell
       v.tone('sine', [[0, 294], [0.4, 330, 'e']], { t: 0.02, g: [[0, 0], [0.03, 0.05], [0.45, 0.0001, 'e']] });
       v.tone('sine', 440, { t: 0.04, g: [[0, 0], [0.04, 0.035], [0.4, 0.0001, 'e']] });
@@ -206,6 +217,18 @@ export const RECIPES = {
       v.crackle({ t: 0.15, d: 0.45, n: 7, g: 0.05, f: 3200, q: 1.5, dec: 0.004 });
     },
   },
+  e_sieveCatch: {
+    cap: 3,
+    gap: 0.04,
+    verb: 0.18,
+    play: lift(9, (v) => {
+      // a tossed card lands in its hand slot: a soft paper tick (card on card) with one stray grain after it
+      v.noise('white', { g: perc(0.2, 0.014, 0.0003), to: v.filt('bandpass', 5200, 1.6) });
+      v.noise('pink', { t: 0.004, g: perc(0.1, 0.03, 0.0006), to: v.filt('bandpass', 2400, 1.2) });
+      thump(v, 0.002, 340, 260, 0.035, 0.025);
+      v.noise('white', { t: 0.07, g: perc(0.05, 0.006, 0.0002), to: v.filt('bandpass', 6800, 3) });
+    }),
+  },
   e_sieveDrop: {
     cap: 3,
     gap: 0.05,
@@ -221,14 +244,14 @@ export const RECIPES = {
   e_sieveStraw: {
     cap: 2,
     gap: 0.05,
-    verb: 0.22,
+    verb: 0.08,
     play: lift(3, (v) => {
       // the card dries into straw: a short, dry CRUNCH above 3 kHz — dense brittle snaps, light and quick (≤ 0.3 s)
-      const d = 0.26;
+      const d = 0.17;
       const hp = v.filt('highpass', 3200, 0.8);
       v.noise('white', { g: [[0, 0], [0.008, 0.2], [0.06, 0.12], [d, 0.0001, 'e']], to: v.filt('bandpass', [[0, 4200], [d, 7000, 'e']], 1.1, { to: hp }) });
       v.crackle({ d, n: 34, g: 0.22, f: 4800, q: 1.6, dec: 0.003, curve: 0.8, to: hp });
-      v.crackle({ t: 0.01, d: 0.12, n: 14, g: 0.2, f: 3600, q: 1.4, dec: 0.004, curve: 1.2, to: hp });
+      v.crackle({ t: 0.01, d: 0.1, n: 14, g: 0.2, f: 3600, q: 1.4, dec: 0.004, curve: 1.2, to: hp });
       // two dry snaps (a stalk breaking)
       v.noise('white', { t: 0.04, g: perc(0.26, 0.008, 0.0002), to: v.filt('bandpass', 4200, 2) });
       v.noise('white', { t: 0.11, g: perc(0.18, 0.007, 0.0002), to: v.filt('bandpass', 5600, 2.2) });
