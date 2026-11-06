@@ -8,7 +8,7 @@
 //             holds); each plant a shake (1 / 1 / 2 px), a dust puff, a pebble hop and the gravel crunch rising in
 //             level and pitch (caxStep ×3) — the upper body stays locked in the cocked pose
 //   chop      f12 (60 ms, smeared): the vertical chop comes down (caxChop)
-//   BITE      f13: the blade's front horn bites the floor a stride (12 px) in front of the target's toes (caxBite): stone
+//   BITE      f13: the blade's front horn bites the floor a stride (8 px) in front of the target's toes (caxBite): stone
 //             chips burst back toward him; the target's ATK/DEF plate steps aside (back at contact + 300 ms); the Yarık
 //             RUNS in three visible steps (a gold4 head flaring white on the floor, ~75 ms, caxRunR/L panned from the
 //             attacker to the target) while his lunge settles a px, and CLIMBS the target's own body the frame it reaches
@@ -16,9 +16,14 @@
 //   heave     f14–f15: the axe wrenched out (chips, a clod; caxWrench), onto the shoulder (caxShoulder); he walks home
 //             in three plain drawn steps (no shake; caxScuff). The seam stays ~1.5 s: breathing, one gold4 spark run, faint ticks, a
 //             three-step fade (crag_axeman-yarik.ts)
-//   blocked   the seam runs to where the line meets the guard and forks 3 px short of it into a "Y" (a white flash at
-//             the split; no climb); the axe bounces in the floor (3 px up, back 1), he staggers back a step (hitHeavy
-//             frames, the haft dragging) and walks home
+//   blocked   the seam runs to where the line meets the guard and forks 7 px short of it into a "Y" (a white flash at
+//             the split, two ±35° prongs over the guard's shadow; no climb), held ~80 ms before the guard answers; the
+//             bite pose kicks up in the floor (3 px up, back), he staggers back a step (hitHeavy frames, the haft
+//             dragging) and walks home
+//   contact   the kit's contact flash and burst are hidden: the seam's own bloom on the climb column is the blow (white
+//             band 5 px → 3 px over three frames, the body's pixels beside it a tone lighter, breathing while it holds)
+//   loses     no recover / idle frame: struck IN the bite crouch (head snapped back, grip loosening) until his own death
+//             reaches the planted-axe frame
 //   direct    no steps (the direct budget is ~1.6 s): the spin, the cock, the chop from his own tile's front edge; the
 //             seam runs the whole way off the board to the duelist's plate and a vertical light seam flashes over the
 //             duelist
@@ -131,7 +136,8 @@ export const BLADE_FRONT = 6;
 
 /**
  * The strike's floor plan (pure; tested): where the axe bites (`BITE_GAP` px in front of the target's footprint), where
- * he plants for it (the bite less the contact frame's reach), the spin's back-step point, and the four step points.
+ * he plants for it (on the attack line, a contact-frame reach short; the bite is then his feet plus the frame's edge
+ * offset), the spin's small centrifugal sway point, and the four step points.
  */
 export function cutPlan(home: XY, aim: XY, front: number, sgn: number, reachX: number, o: { blocked?: boolean; reachY?: number } = {}): { bite: XY; land: XY; start: XY; steps: XY[]; dir: XY } {
   const dir = norm(sub(aim, home));
@@ -299,7 +305,7 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
   const targetDies = result === 'targetDestroyed' || result === 'bothDestroyed';
   const target = s.direct || s.blocked ? null : s.target;
 
-  // ---- geometry: where the axe bites, where he plants for it, the back-step of the spin, the three step points
+  // ---- geometry: where the axe bites, where he plants for it, the spin's sway point, the three step points
   const homeFeet: XY = { ...u.home };
   const bo = biteOffset(u, conF);
   let bite: XY;
@@ -352,7 +358,7 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
   atFrame(u, 'attack', relF, () => play('caxChop', { volume: 0.9, pan: panAt(land.x) }));
 
   // ---- the body's path, on one clock that reads the frame on screen:
-  //   spin    he drifts back SPIN_BACK px (centrifugal), so the run-up starts behind home
+  //   spin    in place: the centrifugal pull sways him SPIN_BACK px off his mark, the steps then carry him past home
   //   cock    held, then in its last 45 % he lunges into step 1
   //   f9–f11  each step frame opens on a PLANT (shake 1 / 1 / 2, dust, pebble, the gravel crunch rising) — the boot
   //           the art shows planted — holds the weight, then slides into the next step in its last half; the third

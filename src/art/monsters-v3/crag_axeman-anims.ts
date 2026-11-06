@@ -9,7 +9,8 @@
 //            axe swung up behind the head (the longest frame), three heavy steps with an accelerating cadence, a 60 ms
 //            smeared chop, the bite (the edge buried in the floor, the seam starting), the heave and the axe back on
 //            the shoulder;
-//   roar   = the NARA: he sinks, fills the chest, then bursts up with the axe raised one-handed and the mouth open;
+//   roar   = the NARA: the axe swung down low by the knee in a deep crouch, then ONE underhand swing up to overhead —
+//            head thrown back, mouth wide, the crescent thrust up above and in front of the skull — a 3-frame shout cycle;
 //   guard  = the haft held horizontal across the chest as a bar, crouched, the crescent up behind the far shoulder;
 //   summon = a boulder rolls in (4 drawn frames), a still beat, the blade punches out, ONE clean light seam, the halves
 //            fall apart, he steps out (land) and shouts the nara;
@@ -247,7 +248,7 @@ export function roarPose(f: number): Pose {
   switch (f) {
     // the gather: the axe swung down off the shoulder in front of him, then low by the knee in a deep crouch, the chest
     // filling, head down — so the burst is ONE big underhand swing from the floor to overhead (never a plain arm-raise)
-    case 0: return key({ nx: 16, ny: -36, ba: -40, hl: 24, hd: 1, chy: 1, hy: 1, bead: 1, cape: 1 }, f, n);
+    case 0: return key({ nx: 14, ny: -34, ba: -114, hl: 28, bead: 1 }, f, n);
     case 1: return key({ nx: 16, ny: -28, ba: 40, hl: 22, hd: 1, az: 1, sink: 3, lean: 2, chy: 1, hy: 2, hx: 0, eye: 0, bead: 2, tilt: -1, fx: -11, fy: -27, cape: 1 }, f, n);
     case 2: return above(key({ nx: 17, ny: -26, ba: 62, hl: 22, hd: 1, az: 1, sink: 5, lean: 3, chy: 2, hy: 3, hx: 0, eye: 0, bead: 3, tilt: -1, cape: 2, fx: -10, fy: -26 }, f, n), GY - 3);
     // the BURST: up on the voice, the axe thrust overhead (the one glint at its apex)
@@ -341,7 +342,7 @@ const FG_HOLDS = [60, 70, 70, 80, 80];
 const SU_N = 12;
 const CROUCH: Partial<Pose> = { hl: 23, hd: 1, sink: 4, lean: 2, nx: 15, ny: -30, ba: 28, az: 1, hy: 2, eye: 2, cape: 2, bead: 2 };
 // f0–3 the roll cycle (the cinematic cycles it along a long path in from off the tile), f4 the blade punches out, f5–6
-// the seam climbs the face, f7–8 the halves fall apart (30°, 60°), f9 they land beside his boots, f10 'land': he steps
+// the seam climbs the face, f7–8 the halves fall apart in front of him (18°, 34°) while he rises from a crouch, f9 they land beside his boots, f10 'land': he steps
 // out (the halves now lie on the floor as decals, sinking — the cinematic's), f11 idle f0. The NARA that follows is
 // the roar anim, played by the cinematic.
 export function summonPose(f: number): Pose {
