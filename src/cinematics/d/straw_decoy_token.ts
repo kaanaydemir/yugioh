@@ -580,7 +580,9 @@ registerStrike(
     // ---- contact
     const tip = strawPoint(u, 'tipR') ?? aim;
     const hitAt: XY = s.direct ? { x: R(s.to.x), y: R(s.to.y) } : tip;
-    s.impact(hitAt);
+    // a 0-ATK slap on a foe that is not guarding: no generic guard hex (clang: false) — the chaff and the knock-back
+    // home score it (the real guard of a defense-position target keeps its hex)
+    s.impact(hitAt, loses && ctx.ev.targetPosition !== 'defense' ? { clang: false } : undefined);
     const blow = norm({ x: s.toGround.x - u.home.x, y: s.toGround.y - u.home.y });
     if (s.blocked && !loses) {
       play('scarecrowBounce', { volume: 0.9, pan: panAt(tip.x) });
