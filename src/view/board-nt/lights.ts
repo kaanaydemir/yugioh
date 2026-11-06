@@ -148,6 +148,7 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
     [0, 530, 208, true, -7, 1, 22000, 1800],
     [2, 566, 262, true, -6, 1, 16000, 11800],
     [4, 504, 288, true, -9, 0, 12500, 6100],
+    [5, 590, 146, true, -8, 0, 13500, 8800],
   ];
   BANKS.forEach(([i, x, y, flip, ax, ay, period, phase], k) =>
     addFog(lightFrame.fogBank(i), x, y, flip, NT_DEPTH.platform - 0.18 + k * 0.001, ax, ay, period, phase),
