@@ -9,7 +9,8 @@
 //            axe swung up behind the head (the longest frame), three heavy steps with an accelerating cadence, a 60 ms
 //            smeared chop, the bite (the edge buried in the floor, the seam starting), the heave and the axe back on
 //            the shoulder;
-//   roar   = the NARA: he sinks, fills the chest, then bursts up with the axe raised one-handed and the mouth open;
+//   roar   = the NARA: the axe swung down low by the knee in a deep crouch, then ONE underhand swing up to overhead —
+//            head thrown back, mouth wide, the crescent thrust up above and in front of the skull — a 3-frame shout cycle;
 //   guard  = the haft held horizontal across the chest as a bar, crouched, the crescent up behind the far shoulder;
 //   summon = a boulder rolls in (4 drawn frames), a still beat, the blade punches out, ONE clean light seam, the halves
 //            fall apart, he steps out (land) and shouts the nara;
@@ -85,7 +86,7 @@ const AXE: [number, number, number, number][] = [
   [13, -33, -144, 0],
   [13, -33, -166, -0.5],
   [12, -32, 162, -0.5],
-  [12, -31, 126, -0.5],
+  [12, -31, 112, -0.5],
   [12, -31, 95, 1],
   [12, -32, 96, 1],
   [13, -32, 118, -0.5],
@@ -157,8 +158,8 @@ const A_N = 17;
 const SPIN: [Facing, number, number, number, number, number, number, number, number][] = [
   [1, 19, -38, -10, 0.65, 1, 0.15, 0, 1],
   [2, 24, -44, -30, 0.55, -1, 0.3, 0, 1],
-  [3, -16, -45, -155, 0.45, -1, 0.45, 0, -1],
-  [4, -19, -38, 172, 0.36, 1, 0.6, 0, -1],
+  [3, -15, -45, -155, 0.55, -1, 0.45, 0, -1],
+  [4, -15, -38, 172, 0.5, 1, 0.6, 0, -1],
   [5, -10, -32, 140, 0.6, 1, 0.75, -1, -1],
   [6, 3, -30, 95, 0.5, 1, 0.9, -1, 1],
 ];
@@ -210,37 +211,60 @@ export function attackPose(f: number): Pose {
     }
     case 13: { // contact: the BITE — a deep lunge (front knee bent, torso pitched over, both arms driven straight down the
       // haft, the beads thrown forward), the edge buried in the floor in front, the seam starting, chips burst back
-      const p = key({ nx: 21, ny: -22, ba: 62, hl: 23, hd: 1, az: 1, fh: 1, g2: -9, sink: 8, lean: 8, chy: 2, f1x: 12, f2x: -3, eye: 2, hx: 3, hy: 5, mant: 2, bead: 4, cape: 4, chips: 0.25, crack: 7, crackK: 1, bury: 1, spark: 0.2 }, f, n);
+      const p = key({ nx: 21, ny: -22, ba: 62, hl: 23, hd: 1, az: 1, fh: 1, g2: -9, sink: 8, lean: 8, chy: 2, f1x: 12, f2x: -3, eye: 2, hx: 3, hy: 5, mant: 2, bead: 4, cape: 4, chips: 0.25, crack: 3, crackK: 1, bury: 1, spark: 0.2 }, f, n);
       return plant(p, GY + 4);
     }
     case 14: // the heave: the axe torn out of the floor, chips and a clod fly
-      return key({ nx: 13, ny: -42, ba: -52, hl: 23, hd: 1, az: 1, fh: 1, g2: -6, sink: 2, lean: 1, f1x: 4, f2x: 1, chips: 0.75, crack: 7, crackK: 0.5, eye: 1, bead: 1, cape: 1, dust: 0.6 }, f, n);
+      return key({ nx: 13, ny: -42, ba: -52, hl: 23, hd: 1, az: 1, fh: 1, g2: -6, sink: 2, lean: 1, f1x: 4, f2x: 1, chips: 0.75, crack: 4, crackK: 0.4, eye: 1, bead: 1, cape: 1, dust: 0.6 }, f, n);
     default: // 15: swung back onto the shoulder
       return snap(key({ ...mix(key({ nx: 15, ny: -42, ba: -105, hl: 25, hd: -1, az: 0, f1x: 1, sink: 1, bead: -1, cape: -1 }, f, n), IDLE0, 0.35) }, f, n));
   }
 }
-const ATTACK_HOLDS = [70, 110, 100, 85, 75, 65, 60, 60, 170, 160, 135, 110, 60, 80, 110, 120, 140];
+const ATTACK_HOLDS = [70, 110, 100, 85, 75, 65, 60, 60, 170, 160, 135, 110, 45, 80, 110, 120, 140];
+
+/**
+ * The walk home after a blow (drawn step frames on the cinematic's overlay, not sprite frames): the axe on the
+ * shoulder, the near boot lifted and set back, then the far one; the beads and the cloak trail; the last is the
+ * settle (idle f0 with the beads still swinging).
+ */
+export const WALK_POSES: Pose[] = [
+  key({ f1x: -3, f1y: -2, f2x: 1, sink: 1, lean: -1, bead: 2, cape: 1, hem: 0.2, t: 0.2 }, 0, 2),
+  key({ f2x: -3, f2y: -2, f1x: 1, sink: 1, lean: -1, bead: -1, cape: -1, hem: 0.6, t: 0.6 }, 0, 2),
+  key({ bead: 1, cape: 0 }, 0, 2),
+];
 
 // ------------------------------------------------------------------ roar (10 frames): the NARA
 
 const R_N = 10;
-const RAISED: Partial<Pose> = { hl: 23, hd: 1, nx: 17, ny: -63, ba: -168, elx: 1, ely: 0, az: 0, mouth: 1, eye: 2, hy: -1, hx: 1, chy: -1, shr: -2, mant: -1, lean: -1, fx: -15, fy: -36 };
+/**
+ * The shout: the head THROWN BACK (mouth 2: the face turned up 14°, the jaw dropped, a wide-open mouth framed in skin),
+ * the chest pushed out, and the axe THRUST UP one-handed overhead — the arm out to the side clear of the face, the haft
+ * at ~70° and the crescent high above and IN FRONT of the skull (never resting on it), its edge to the sky.
+ */
+const RAISED: Partial<Pose> = { hl: 18, hd: 1, nx: 24, ny: -54, ba: -70, elx: 1, ely: 0, az: 0, mouth: 2, eye: 2, hy: -2, hx: -1, chy: -1, shr: -2, mant: -1, lean: 0, fx: -15, fy: -36 };
 export function roarPose(f: number): Pose {
   const n = R_N;
   if (f >= n - 1) return home();
   switch (f) {
-    case 0: return key({ nx: 13, ny: -34, ba: -122, chy: 1, hy: 1, bead: 1 }, f, n);
-    case 1: return key({ nx: 13, ny: -34, ba: -125, sink: 2, chy: 1, hy: 2, hx: -1, eye: 0, bead: 2, tilt: -1, fx: -11, fy: -27 }, f, n);
-    case 2: return key({ nx: 13, ny: -33, ba: -128, sink: 3, chy: 2, hy: 3, hx: -1, eye: 0, bead: 2, tilt: -1, cape: 1, fx: -10, fy: -26 }, f, n);
-    case 3: return key({ ...RAISED, sink: 1, bead: -2, cape: -2, glint: 1 }, f, n);
-    case 4: return key({ ...RAISED, bead: -1, cape: -3, glint: 1, fseam: 8, fseamK: 1 }, f, n);
-    case 5: return key({ ...RAISED, bead: 1, cape: -2, hx: 2, glint: 1, fseam: 8, fseamK: 1 }, f, n);
-    case 6: return key({ ...RAISED, bead: 2, cape: -1, mouth: 0, fseam: 8, fseamK: 0.5 }, f, n);
-    case 7: return key({ nx: 16, ny: -46, ba: -132, hl: 25, az: 0, eye: 1, bead: 1, cape: 0, hy: -1, fseam: 6, fseamK: 0 }, f, n);
+    // the gather: the axe swung down off the shoulder in front of him, then low by the knee in a deep crouch, the chest
+    // filling, head down — so the burst is ONE big underhand swing from the floor to overhead (never a plain arm-raise)
+    case 0: return key({ nx: 14, ny: -34, ba: -114, hl: 28, bead: 1 }, f, n);
+    case 1: return key({ nx: 16, ny: -28, ba: 40, hl: 22, hd: 1, az: 1, sink: 3, lean: 2, chy: 1, hy: 2, hx: 0, eye: 0, bead: 2, tilt: -1, fx: -11, fy: -27, cape: 1 }, f, n);
+    case 2: return above(key({ nx: 17, ny: -26, ba: 62, hl: 22, hd: 1, az: 1, sink: 5, lean: 3, chy: 2, hy: 3, hx: 0, eye: 0, bead: 3, tilt: -1, cape: 2, fx: -10, fy: -26 }, f, n), GY - 3);
+    // the BURST: up on the voice, the axe thrust overhead (the one glint at its apex)
+    case 3: return key({ ...RAISED, ny: -55, sink: 1, bead: -2, cape: -2, glint: 1 }, f, n);
+    // the held shout is a LIVING three-frame cycle on the voice's beats (the summon runs 4 → 5 → 6 → 4 → 5 at ~70 ms):
+    // the jaw works (wide / half / wide), the raised axe trembles a px up and forward, the chest heaves, the beads and
+    // the cloak hem shake, the floor seam breathes with the voice
+    case 4: return key({ ...RAISED, bead: -1, cape: -3, glint: 1, fseam: 16, fseamK: 1 }, f, n);
+    case 5: return key({ ...RAISED, mouth: 1, chy: 0, ny: -55, nx: 25, hy: -1, bead: 1, cape: -2, mant: 0, fseam: 16, fseamK: 0.75 }, f, n);
+    case 6: return key({ ...RAISED, ny: -53, nx: 24, ba: -73, bead: 2, cape: -1, chy: -2, fseam: 15, fseamK: 1 }, f, n);
+    // the voice spent: the mouth shuts, the axe comes down over the shoulder
+    case 7: return key({ nx: 21, ny: -50, ba: -98, hl: 20, hd: 1, elx: 1, ely: 0.4, az: 0, eye: 1, bead: 1, cape: 0, hy: -1, fseam: 10, fseamK: 0.5 }, f, n);
     default: return snap(key({ ...mix(key({ nx: 15, ny: -40, ba: -124, hl: 26, az: 0 }, f, n), IDLE0, 0.5) }, f, n));
   }
 }
-const ROAR_HOLDS = [80, 110, 170, 90, 120, 110, 110, 110, 120, 130];
+const ROAR_HOLDS = [80, 110, 150, 90, 80, 70, 80, 110, 110, 120];
 
 // ------------------------------------------------------------------ hit / hitHeavy / hitMagic
 
@@ -298,7 +322,9 @@ export function toGuardPose(f: number): Pose {
   if (f === 0) return blend(IDLE0, { ...mid, ba: -130, hd: -1 }, 0.5);
   if (f === 1) return { ...mid, hem: 0.2 };
   if (f === 2) return blend(mid, GUARD0, 0.55);
-  return blend(mid, GUARD0, 0.85);
+  // the last in-between is also the guard's RECOIL frame (the brace plays it back on a blocked blow): the bar driven 2 px
+  // into the chest, the chest giving, the head snapped back a px, the beads thrown (the boots stay planted: the kit's knock slides him)
+  return { ...GUARD0, nx: (G0.nx ?? 15) - 2, ny: (G0.ny ?? -33) + 1, shr: 1, hx: -1, hy: 2, bead: 2, eye: 0 };
 }
 const TG_HOLDS = [60, 70, 70, 80, 80];
 export function fromGuardPose(f: number): Pose {
@@ -316,7 +342,7 @@ const FG_HOLDS = [60, 70, 70, 80, 80];
 const SU_N = 12;
 const CROUCH: Partial<Pose> = { hl: 23, hd: 1, sink: 4, lean: 2, nx: 15, ny: -30, ba: 28, az: 1, hy: 2, eye: 2, cape: 2, bead: 2 };
 // f0–3 the roll cycle (the cinematic cycles it along a long path in from off the tile), f4 the blade punches out, f5–6
-// the seam climbs the face, f7–8 the halves fall apart (30°, 60°), f9 they land beside his boots, f10 'land': he steps
+// the seam climbs the face, f7–8 the halves fall apart in front of him (18°, 34°) while he rises from a crouch, f9 they land beside his boots, f10 'land': he steps
 // out (the halves now lie on the floor as decals, sinking — the cinematic's), f11 idle f0. The NARA that follows is
 // the roar anim, played by the cinematic.
 export function summonPose(f: number): Pose {
@@ -326,8 +352,9 @@ export function summonPose(f: number): Pose {
   if (f === 4) return key({ hide: true, bould: 2, roll: 0, rock: 0, chips: 0.3 }, f, n);
   if (f === 5) return key({ hide: true, bould: 3, roll: 0, bk: 0.5, chips: 0.6 }, f, n);
   if (f === 6) return key({ hide: true, bould: 3, roll: 0, bk: 1, chips: 0.9 }, f, n);
-  if (f === 7) return key({ ...CROUCH, bould: 4, bk: 30, fseam: 4, fseamK: 1 }, f, n);
-  if (f === 8) return key({ ...CROUCH, sink: 3, bould: 4, bk: 60, fseam: 6, fseamK: 1, bead: 1 }, f, n);
+  // f7–8: he RISES from a deep crouch behind the falling halves (their bases still hide his legs): head low, then up
+  if (f === 7) return key({ ...CROUCH, sink: 9, lean: 4, hy: 3, bould: 4, bk: 18, fseam: 4, fseamK: 1 }, f, n);
+  if (f === 8) return key({ ...CROUCH, sink: 6, lean: 3, bould: 4, bk: 34, fseam: 6, fseamK: 1, bead: 1 }, f, n);
   if (f === 9) return key({ ...CROUCH, sink: 3, lean: 1, bould: 5, bk: 0, fseam: 8, fseamK: 1, nx: 15, ny: -34, ba: -42, bead: 1 }, f, n);
   return key({ ...CROUCH, sink: 2, lean: 1, f1x: 3, dust: 0.4, fseam: 8, fseamK: 1, nx: 17, ny: -37, ba: -60, hl: 25, bead: -1, cape: -1 }, f, n);
 }
@@ -419,7 +446,7 @@ export function framePose(anim: AnyMonsterAnim, f: number): Pose {
 }
 
 /** The card picture's pose: the nara at the top of the swing, the crescent held up like a rising sun. */
-export const CARD_POSE: Pose = pose({ ...RAISED, ny: -59, ba: -172, hy: 0, cape: -2, bead: -1, t: 0.3, hem: 0.3 });
+export const CARD_POSE: Pose = pose({ ...RAISED, ny: -59, cape: -2, bead: -1, t: 0.3, hem: 0.3 });
 
 export const MUZZLE = { x: AX + 18, y: GY - 58 };
 

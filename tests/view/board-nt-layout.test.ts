@@ -23,10 +23,10 @@ describe('neon tower layout map', () => {
     }
   });
 
-  // hedef-gorunum-3 (owner decision 2026-11-02): the stage is a tight chamfered block around the tiles; the duelists stand
-  // on their own raised daises attached to its near / far edges (pads layer), so only the tile grid must be inside it and
-  // each dais must touch it.
-  it('is ONE chamfered slab: a convex octagon that contains the whole tile grid; each duelist dais touches it', () => {
+  // hedef-gorunum-3 (owner decisions 2026-11-02 / arena pass 2026-11-05): the stage is a tight chamfered block around the tiles
+  // (no wide empty margins); the duelists stand on their own raised daises ATTACHED to its two long edges (pads layer): each
+  // dais's back edge lies flush on the stage edge — its back tip on the plate, its centre and the rest of it off the plate.
+  it('is ONE tight chamfered slab: a convex octagon round the tile grid; each duelist dais sits flush against its long edge', () => {
     expect(PLATE_OUTLINE.length).toBe(8);
     const pts = PLATE_OUTLINE.map(([c, r]) => ntIso(c, r));
     // every vertex lands on a whole pixel and the outline is convex (all turns the same way)
@@ -58,12 +58,31 @@ describe('neon tower layout map', () => {
         const t = ntIso(col, row);
         for (const [dx, dy] of [[-32, 0], [32, 0], [0, -16], [0, 16]]) expect(inside(t.x + dx, t.y + dy), `tile ${col},${row}`).toBe(true);
       }
-    for (const p of [0, 1] as const) {
-      const d = duelistXY(p);
-      // the dais (40×20 diamond around the feet) reaches the stage: at least one of its tips lies on the plate
-      const tips = [[-20, 0], [20, 0], [0, -10], [0, 10]].map(([dx, dy]) => inside(d.x + dx, d.y + dy));
-      expect(tips.some(Boolean), `dais ${p}`).toBe(true);
-    }
+    // tight: no tile-free margin wider than 0.6 tile on any side (each extreme vertex lies close to the grid's own corner)
+    const grid = { left: ntIso(0, 4).x - 32, right: ntIso(6, 0).x + 32, far: ntIso(0, 0).y - 16, near: ntIso(6, 4).y + 16 };
+    expect(grid.left - PLATE_TOP.x).toBeLessThanOrEqual(24);
+    expect(PLATE_TOP.x + PLATE_TOP.w - grid.right).toBeLessThanOrEqual(24);
+    expect(grid.far - PLATE_TOP.y).toBeLessThanOrEqual(12);
+    expect(PLATE_TOP.y + PLATE_TOP.h - grid.near).toBeLessThanOrEqual(12);
+    // arena pass round 2: an OCTAGON, not a rhombus with nicked tips — big chamfers: both vertical end caps ≥ 16 px tall,
+    // the flat far edge ≥ 48 px wide; the flat near edge stays 328..364 (the lighting split)
+    const len = (i: number): number => Math.hypot(pts[(i + 1) % 8].x - pts[i].x, pts[(i + 1) % 8].y - pts[i].y);
+    expect(pts[0].x).toBe(pts[1].x); // left cap is vertical
+    expect(pts[4].x).toBe(pts[5].x); // right cap is vertical
+    expect(len(0)).toBeGreaterThanOrEqual(16);
+    expect(len(4)).toBeGreaterThanOrEqual(16);
+    expect(pts[2].y).toBe(pts[3].y);
+    expect(len(2)).toBeGreaterThanOrEqual(48);
+    // arena pixel/polish round 3: the near flat edge is 268..364 (the near-left edge moved out so the P1 dais stands ON the stage)
+    expect([Math.round(pts[7].x), Math.round(pts[6].x)]).toEqual([268, 364]);
+    // P1: the whole dais (40×20 pad + its 2 steps, ±24×12 round the feet) lies on the stage top — one convex block, no bump;
+    // P2: the dais still stands behind the far-right edge, its front tip flush on it
+    const d0 = duelistXY(0);
+    for (const [dx, dy] of [[-24, 0], [24, 0], [0, -12], [0, 12]]) expect(inside(d0.x + dx, d0.y + dy), `P1 dais ${dx},${dy} on the plate`).toBe(true);
+    const d1 = duelistXY(1);
+    expect(inside(d1.x, d1.y + 10), 'P2 dais front tip on the plate').toBe(true);
+    expect(inside(d1.x, d1.y + 8), 'P2 flush').toBe(false);
+    expect(inside(d1.x, d1.y), 'P2 dais centre off the plate').toBe(false);
   });
 
   it('keeps the platform inside the left panel edge, the HUD hint plate and the frame', () => {
@@ -77,9 +96,9 @@ describe('neon tower layout map', () => {
     expect(PLATE_CORNERS.right.x).toBe(PLATE_TOP.x + PLATE_TOP.w);
   });
 
-  it('gives the platform a THICK armour side (J4: 45..60 px) and a bounding box that includes it', () => {
-    expect(FACE_H).toBeGreaterThanOrEqual(45);
-    expect(FACE_H).toBeLessThanOrEqual(60);
+  it('gives the platform a THICK but chunky armour side (round 4: 44..50 px, trimmed from 58) and a bounding box that includes it', () => {
+    expect(FACE_H).toBeGreaterThanOrEqual(44);
+    expect(FACE_H).toBeLessThanOrEqual(50);
     expect(PLATE_FULL.y + PLATE_FULL.h).toBe(PLATE_TOP.y + PLATE_TOP.h + FACE_H);
   });
 

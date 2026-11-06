@@ -2,13 +2,14 @@
 // boynuzlar silüet" (YENI_KARTLAR C11). Style sheet docs/v3/KART_RESIMLERI.md, contract ./_types.ts.
 //
 // big (88×68)   the saiga IN THE AIR, mid-bound, legs stretched fore and aft — the board sprite's own pixels, 1:1, drawn
-//               from the rig in its long-bound pose (never scaled) — in front of a low setting sun: a two-step stepped
-//               disc (gold1 / gold2) behind the head so the two corkscrew horns stand in silhouette against it, their
-//               gold4 tips the brightest point (the focus). Sky: the WIND bands (night0 / leaf0), a night0 steppe floor
-//               with the leaf1 horizon line and two flat leaf1 grass tufts; a foreground clump of feather grass (leaf
-//               blades, white plumes) under the leap fills the lower left. The shadow-side rim is the sun's gold2.
+//               from the rig in its long-bound pose (never scaled) — over the open STEPPE at dusk (r4: no sun disc, which
+//               was crystal_wyrm's gold halo): a two-band dusk sky (night0 → the WIND leaf0 glow low over the land), a
+//               few white feather-grass plumes drifting in it, a low wide horizon of stepped grass tufts (a leaf1 band,
+//               leaf2 lit tops) and, filling the lower third behind the hooves, grass blades bending leeward in the wind;
+//               a foreground clump of feather grass under the leap. The two corkscrew horns stand against the leaf0
+//               glow, their gold4 tips the brightest point (the focus). The shadow-side rim is the WIND leaf3.
 // small (44×34) the SAME picture, closer: a 1:1 crop of the same sprite frame — horns, head with the drooping nose,
-//               the forequarters — on the same sun (hand-placed for the 1× window, not a reduction).
+//               the forequarters — over the same horizon (hand-placed for the 1× window, not a reduction).
 // Living (3 frames, 160 ms): the horn-tip wind curls peel off and drift back (the whistle), the mane ripples.
 // Colours only from PAL.
 
@@ -26,17 +27,52 @@ const FOCUS_SMALL = [15, 5] as const;
 const BIG_AT = [5, -4] as const;
 const SMALL_AT = [-40, -9] as const;
 
-/** WIND's sky, floor and horizon; the sunset's stepped disc and rim in gold (the setting sun). */
-const SUNSET: BackdropRecipe = {
+/** The steppe at dusk: WIND's two sky bands (night0 → leaf0 low over the land), a night0 floor, the leaf1 horizon line
+ *  and a WIND rim (leaf2, a value under the mane); no light disc (the land's own grass horizon is the picture). */
+const STEPPE: BackdropRecipe = {
   kind: 'WIND',
-  shape: 'sun',
-  tones: [PAL.gold1, PAL.gold2],
+  shape: 'gust',
+  tones: [PAL.leaf1, PAL.leaf2],
   sky: [PAL.night0, PAL.leaf0],
-  split: 30,
+  split: 24,
   floor: PAL.night0,
   horizonLine: PAL.leaf1,
-  rim: PAL.gold2,
+  rim: PAL.leaf2,
 };
+
+/** The grass horizon: a leaf1 band of stepped tufts (2-px steps) with leaf2 lit tops, `hz` = the floor's first row. */
+function horizon(p: PixelCanvas, hz: number, k: number): void {
+  const w = p.w;
+  for (let x = 0; x < w; x++) {
+    // tufts: a slow swell and a 2-px step pattern, never a ruler
+    const h = Math.round((3 + 2 * Math.sin(x * 0.21) + (((x >> 1) * 7) % 5 === 0 ? 2 : 0)) * k / 2) * 2;
+    for (let y = hz - h; y < hz; y++) p.set(x, y, y === hz - h ? PAL.leaf2 : PAL.leaf1);
+  }
+}
+
+/** The lower third: grass blades bending leeward (+x) in the wind, the lit (left) edge leaf2 on the near ones. */
+function windGrass(p: PixelCanvas, y0: number, y1: number, f: number, step: number, hmin: number, hmax: number): void {
+  for (let i = 0, x = 1; x < p.w; i++, x += step + (i % 3 === 0 ? 1 : 0)) {
+    const h = hmin + ((i * 5) % (hmax - hmin + 1));
+    const base = y1 - ((i * 3) % 3);
+    // the gust leans every third blade one step further on alternate frames (the living picture)
+    const lean = 3 + ((i + f) % 3 === 0 ? 1 : 0);
+    for (let j = 0; j < h; j++) {
+      const t = j / h;
+      const xx = x + Math.round(lean * t * t * 1.6);
+      const yy = base - j;
+      if (yy < y0) break;
+      p.set(xx, yy, PAL.leaf1);
+      if (j < h - 2) p.set(xx + 1, yy, j > h * 0.4 ? PAL.leaf2 : PAL.leaf1);
+    }
+  }
+}
+
+/** Feather-grass plumes adrift in the sky: a white feather (4 px) with a mist fringe and tip. */
+function skyPlume(p: PixelCanvas, x: number, y: number): void {
+  // a soft tuft drifting level on the wind: two rows of white, a mist tip trailing
+  p.set(x, y, PAL.white).set(x - 1, y, PAL.white).set(x - 2, y, PAL.white).set(x - 1, y - 1, PAL.white).set(x - 2, y - 1, PAL.mist).set(x - 3, y, PAL.mist).set(x + 1, y + 1, PAL.mist);
+}
 
 const CURL = [0.15, 0.45, 0.75] as const;
 
@@ -98,13 +134,16 @@ function plumes(p: PixelCanvas, pts: readonly (readonly [number, number])[]): vo
 }
 
 function big(l: ArtLayers, f: number): void {
-  paintBackdrop(l.backdrop, SUNSET, { focus: [56, 20], radius: 26 });
-  // two flat steppe tufts on the floor band (the horizon line's tone)
-  for (const [x, w] of [[6, 7], [70, 9]] as const) for (let i = 0; i < w; i++) l.backdrop.vline(x + i, 50 - ((i * 3) % 3) - (i % 2), 50, PAL.leaf1);
+  paintBackdrop(l.backdrop, STEPPE, { shape: false, horizon: 44 });
+  horizon(l.backdrop, 44, 1);
+  // the lower third: grass bending in the wind behind the hooves (two depths: far, short; near, tall)
+  windGrass(l.backdrop, 46, 54, f, 4, 3, 6);
+  windGrass(l.backdrop, 50, 67, f + 1, 5, 7, 12);
+  for (const [x, y] of [[14, 12], [30, 20], [82, 28], [8, 30]] as const) skyPlume(l.backdrop, x + (f % 2), y);
   const s = sprite(f);
   l.subject.blit(grassClump(88, 68, 26, 67), 0, 0);
   l.subject.blit(s.body, BIG_AT[0], BIG_AT[1]);
-  rim(l.subject, PAL.gold2, { skip: [PAL.gold3, PAL.gold4, PAL.white, PAL.mist] });
+  rim(l.subject, STEPPE.rim, { skip: [PAL.gold3, PAL.gold4, PAL.white, PAL.mist] });
   l.light.blit(s.light, BIG_AT[0], BIG_AT[1]);
   plumes(l.light, [
     [30, 52],
@@ -113,10 +152,13 @@ function big(l: ArtLayers, f: number): void {
 }
 
 function small(l: ArtLayers, f: number): void {
-  paintBackdrop(l.backdrop, SUNSET, { focus: [28, 16], radius: 26 });
+  paintBackdrop(l.backdrop, STEPPE, { shape: false, horizon: 26, split: 12 });
+  horizon(l.backdrop, 26, 0.6);
+  windGrass(l.backdrop, 27, 33, f, 4, 3, 5);
+  skyPlume(l.backdrop, 6 + (f % 2), 8);
   const s = sprite(f);
   l.subject.blit(s.body, SMALL_AT[0], SMALL_AT[1]);
-  rim(l.subject, PAL.gold2, { skip: [PAL.gold3, PAL.gold4, PAL.white, PAL.mist] });
+  rim(l.subject, STEPPE.rim, { skip: [PAL.gold3, PAL.gold4, PAL.white, PAL.mist] });
   l.light.blit(s.light, SMALL_AT[0], SMALL_AT[1]);
 }
 

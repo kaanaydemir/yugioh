@@ -116,7 +116,11 @@ async function splitBody(ctx: DestroyCtx, u: MonsterUnit, home: XY, burst: () =>
   };
   const dissolveF = u.markFrame('death', 'dissolve', 4);
   // ---- the beats on their frames
-  atFrame(u, 'death', 1, () => play('caxAxeSlip', { volume: 0.9, pan }), { late: false });
+  // the slip is heard even when the death joins already ON f1 (posematch often starts it there): late, but only while
+  // the axe has not yet bitten (a death joined past f2 starts with the planted axe — no slip then)
+  atFrame(u, 'death', 1, () => {
+    if (u.frameInfo().frame <= 2) play('caxAxeSlip', { volume: 0.9, pan });
+  }, { late: true });
   atFrame(u, 'death', 2, () => {
     play('caxAxeBite', { volume: 0.95, pan });
     const ax = u.framePoint(AX + 19, GY);

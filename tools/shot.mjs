@@ -73,8 +73,10 @@ function chromePath() {
   try {
     for (const d of fs.readdirSync(base).sort().reverse()) {
       if (/^chromium-\d+$/.test(d)) {
-        const p = path.join(base, d, 'chrome-linux', 'chrome');
-        if (fs.existsSync(p)) return p;
+        for (const sub of ['chrome-linux', 'chrome-linux64']) {
+          const p = path.join(base, d, sub, 'chrome');
+          if (fs.existsSync(p)) return p;
+        }
       }
     }
   } catch {}

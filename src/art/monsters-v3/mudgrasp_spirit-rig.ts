@@ -120,6 +120,8 @@ export interface Pose {
   climb: number;
   /** near elbow side: −1 arched up (planted), +1 dropped low (raised arm, keeps the mask clear) */
   nb: number;
+  /** near arm segment stretch (0 = rest lengths): a plunged arm reaching deep keeps a bent, straining elbow */
+  nlen: number;
   /** 1 = the mask has slipped off the head: (mx, my) place it relative to the root and it sinks below the puddle surface */
   maskFree: number;
   /** 1 = the near arm passes BEHIND the hood (cocked behind the head in the attack), drawn before head + mask */
@@ -147,12 +149,12 @@ export const NEUTRAL: Pose = {
   lid: 0,
   look: 0,
   mouth: 0,
-  nx: 23,
+  nx: 19,
   ny: -2,
   nc: 0,
   nd: -1,
   ndh: 0,
-  fx: 33,
+  fx: 27,
   fy: -3,
   fc: 0.2,
   aa: -100,
@@ -183,6 +185,7 @@ export const NEUTRAL: Pose = {
   glint: 0,
   climb: 0,
   nb: -1,
+  nlen: 0,
   maskFree: 0,
   nBack: 0,
   aFront: 0,
@@ -267,13 +270,15 @@ export function skeleton(o: Pose): Skel {
   const maskO: Pt = o.maskFree > 0 ? [AX + o.mx, GY + o.my] : [rnd(head[0]) - 5 + o.mx, rnd(head[1]) - 10 + o.my];
   // climb (summon): the arms come straight up out of the mud under their hands; melt (death): the elbows sag
   const cl = clamp(o.climb, 0, 1);
-  const under = (sh: Pt, w: Pt): Pt => [sh[0] + (w[0] - 3 - sh[0]) * cl, sh[1] + (GY + 10 - sh[1]) * cl];
+  // FIX r3: the roots sit between the wrist and the body's centre (arms LEAN out of the vortex toward the tile's
+  // edges — never upright posts)
+  const under = (sh: Pt, w: Pt): Pt => [sh[0] + (w[0] + (AX - w[0]) * 0.4 - sh[0]) * cl, sh[1] + (GY + 10 - sh[1]) * cl];
   const sag = (el: Pt): Pt => [el[0], el[1] + (GY - 2 - el[1]) * m];
   const straight = (el: Pt, sh: Pt, w: Pt): Pt => [el[0] + ((sh[0] + w[0]) / 2 - el[0]) * cl, el[1] + ((sh[1] + w[1]) / 2 - el[1]) * cl];
   const s85 = sp(0.82);
   const wN: Pt = [AX + o.nx, GY + o.ny];
   const shN = under([s85[0] + 1, s85[1] + 9], wN);
-  const elN = straight(sag(ik2(shN, wN, 14, 17, o.nb) as Pt), shN, wN);
+  const elN = straight(sag(ik2(shN, wN, 14 * (1 + o.nlen), 17 * (1 + o.nlen), o.nb) as Pt), shN, wN);
   // far front arm: a second spider-leg arch ahead of the near arm (shoulder hidden behind the chest)
   const wF: Pt = [AX + o.fx, GY + o.fy];
   const s70 = sp(0.7);
@@ -425,6 +430,27 @@ function elbowLump(q: PixelCanvas, el: Pt, r: number, c: number, drip: number): 
 }
 
 /** finger lifts of a drumming hand */
+/**
+ * Wet gloss on a banded mud limb (FIX r2, "matte dry sticks"): a dashed streak INSET one px inside the lit band
+ * (on the mid tone right under / beside a lit pixel) in the next-lighter tone, plus a hot catch every few px —
+ * the arm reads as a glossy wet tube at 1×, not a matte stick.
+ */
+function wetGloss(q: PixelCanvas, t: Tones, hot: number, seed: number): void {
+  const pts: Pt[] = [];
+  for (let y = 1; y < H - 1; y++)
+    for (let x = 1; x < W - 1; x++) {
+      if (q.get(x, y) !== t.M) continue;
+      const litAbove = q.get(x, y - 1) === t.L || q.get(x - 1, y) === t.L;
+      if (!litAbove) continue;
+      if (!q.isOpaque(x + 1, y) || !q.isOpaque(x, y + 1)) continue;
+      pts.push([x, y]);
+    }
+  for (const [x, y] of pts) {
+    const h = (x * 7 + y * 3 + seed) % 6;
+    if (h < 2) q.set(x, y, hot);
+  }
+}
+
 function drum(o: Pose, shift = 0): number[] {
   return [0, 1, 2, 3].map((i) => (o.nd < 0 ? 0 : rnd(o.ndh * Math.max(0, 1 - Math.abs(((o.nd + shift) % 4) - i)))));
 }
@@ -486,12 +512,61 @@ function drawPuddle(f: Frame): PixelCanvas {
       }
     q.ellipse(cx, cy, 4, 1, PAL.void0);
   }
+  // melting (death) — FIX r3 (critic: "a pile of rubble / potatoes"): the body has run down into ONE continuous glossy
+  // sheet of liquid mud that spreads and THINS over the frames — a low wet dome with an ink edge, a lit wet rim
+  // along its top, a travelling ripple band, a dark wet skirt where it meets the pool and violet light leaking
+  // through its thinnest edge. No separate lobes. The mask floats on it (drawn after) and sinks last.
+  if (o.melt > 0.45 && o.sink > 10) {
+    const k = clamp((o.melt - 0.45) / 0.55, 0, 1);
+    const gone = o.mask > 0 ? 0 : 1;
+    // a soft dome under the mask (not a full-width bar): it widens a little and slumps lower every frame
+    const srx = rnd((15 + 7 * k) * (1 - 0.2 * gone));
+    const sry = gone ? 1 : Math.max(2, rnd(6.5 - 2.2 * k - Math.max(0, o.sink - 25) * 0.4));
+    const sx = cx + rnd(6 + 2 * k); // centred under the floating mask (P2 mirrors it with the sheet)
+    const by = cy + 1;
+    const inS = (x: number, y: number) => {
+      if (y > by) return false;
+      const ex = (x - sx) / srx;
+      const ey = (y - by) / sry;
+      return ex * ex + ey * ey <= 1;
+    };
+    // ink edge (over the pool), then the sheet
+    for (let y = by - sry - 1; y <= by; y++)
+      for (let x = sx - srx - 1; x <= sx + srx + 1; x++)
+        if (!inS(x, y) && (inS(x - 1, y) || inS(x + 1, y) || inS(x, y + 1)) && y < by) q.set(x, y, PAL.ink);
+    const rip = (o.t * 3 + k) % 1;
+    for (let y = by - sry; y <= by; y++)
+      for (let x = sx - srx; x <= sx + srx; x++) {
+        if (!inS(x, y)) continue;
+        const top = !inS(x, y - 1);
+        const ex = (x - sx) / srx;
+        let c: number = PAL.earth1;
+        if (y === by) c = PAL.earth0;
+        else if (top) c = ex * -light.side > 0.15 ? PAL.earth3 : PAL.earth2;
+        else if (!inS(x, y - 2) && ((x + y) & 1) === 0) c = PAL.earth2;
+        // the ripple band: a lighter wet ring running outward through the sheet
+        if (!top && y < by && Math.abs(Math.abs(ex) - rip) < 0.05) c = PAL.earth2;
+        q.set(x, y, c);
+      }
+    // hot wet catches on the rim toward the light (one long, one short)
+    const hx = sx + light.lx(-rnd(srx * 0.45));
+    for (let i = 0; i < 3; i++) {
+      const x = hx + i - 1;
+      for (let y = by - sry; y <= by; y++) if (inS(x, y)) { q.set(x, y, i === 1 ? PAL.earth4 : PAL.earth3); break; }
+    }
+    // violet light leaking through the thinnest outer edge (the spirit's light under the ground)
+    for (const d of [-1, 1]) {
+      const x = sx + d * (srx - 2);
+      if (inS(x, by - 1)) q.set(x, by - 1, PAL.void2);
+    }
+  }
   f.comp.add(q, Part.puddle, {});
   return q;
 }
 
 function drawRearArms(f: Frame): void {
   const { sk, o, light } = f;
+  if (o.melt > 0.55) return; // melted into the pool's lobes (no stick-arms lying on the floor)
   const k = 1 - 0.35 * o.melt;
   // the far rear arm first (a value darker), then the near rear arm over it
   const q2 = layer();
@@ -500,6 +575,7 @@ function drawRearArms(f: Frame): void {
   if (sk.wR2[1] > GY - 9) plantedHand(q2, sk.wR2, -1, Math.min(1, o.rc + 0.2), FAR.M, undefined, 0.7);
   else hand(q2, sk.wR2, 180 + 30, Math.min(1, o.rc + 0.2), FAR.M, undefined, 0.8, 2);
   bands(q2, FAR, light, 1, 2);
+  wetGloss(q2, FAR, PAL.earth3, 1);
   f.comp.add(q2, Part.rear, { out: CREASE });
   const q = layer();
   limb(q, [sk.rearRoot, sk.elR, sk.wR], 5.5 * k, 3.6 * k, ARM.M);
@@ -507,6 +583,7 @@ function drawRearArms(f: Frame): void {
   if (sk.wR[1] > GY - 9) plantedHand(q, sk.wR, -1, o.rc, ARM.M, undefined, 0.85);
   else hand(q, sk.wR, 180 + 12, o.rc, ARM.M, undefined, 0.9);
   bands(q, ARM, light, 2, 2);
+  wetGloss(q, ARM, PAL.earth4, 2);
   f.comp.add(q, Part.rear, { out: CREASE });
 }
 
@@ -519,11 +596,13 @@ function drawCrown(f: Frame, pts: Pt[], curl: number, part: Part, t: Tones, hand
   const dir = handDir ?? Math.atan2(tip[1] - prev[1], tip[0] - prev[0]) / DEG;
   hand(q, tip, dir, curl, t.M, undefined, 1.05, 3, 30 - 18 * curl);
   bands(q, t, f.light, 2, 2);
+  wetGloss(q, t, t === ARM ? PAL.earth4 : PAL.earth3, 3);
   f.comp.add(q, part, { out: CREASE });
 }
 
 function drawFarArm(f: Frame): void {
   const { sk, o, light } = f;
+  if (o.melt > 0.55) return;
   const q = layer();
   limb(q, [sk.shF, sk.elF, sk.wF], 5.5 * (1 - 0.35 * o.melt), 3.6 * (1 - 0.3 * o.melt), FAR.M);
   elbowLump(q, sk.elF, 2, FAR.M, 2);
@@ -531,11 +610,14 @@ function drawFarArm(f: Frame): void {
   if (flat) plantedHand(q, sk.wF, 1, o.fc, FAR.M, drum(o, 2).map((v, i) => (i === 3 ? 0 : v)), 0.9);
   else hand(q, sk.wF, Math.atan2(sk.wF[1] - sk.elF[1], sk.wF[0] - sk.elF[0]) / DEG, o.fc, FAR.M);
   bands(q, FAR, light, 2, 2);
+  wetGloss(q, FAR, PAL.earth3, 4);
   f.comp.add(q, Part.farArm, { out: CREASE });
 }
 
 function drawTorso(f: Frame): void {
   const { sk, o, light } = f;
+  // fully melted: the body IS the pool's sagging lobes now (drawn by drawPuddle) — no flat sunk torso slab
+  if (o.melt > 0.85) return;
   const q = layer();
   const m = clamp(o.melt, 0, 1);
   const blobs: Blob[] = [];
@@ -591,6 +673,26 @@ function drawTorso(f: Frame): void {
     const y0 = rnd(s0[1]);
     for (let k = 0; k < n * (1 + m); k++) if (q.get(x, y0 + k) === MUD.M || q.get(x, y0 + k) === MUD.S) q.set(x, y0 + k, CREASE);
   }
+  // sagging FOLDS across the chest (FIX r2: the lit front plane read as a flat box at 1×): two curved creases
+  // where the wet mud slumps over itself, each with a wet highlight band riding its upper lip (the roll's crest)
+  if (m < 0.7 && o.sink < 20) {
+    for (const [t, sag, wk] of [[0.42, 1.5, 0.8], [0.18, 1.9, 0.95]] as const) {
+      const c = sk.sp(t);
+      const r = sk.rad(t) * wk;
+      const cy = rnd(c[1]) + 2 + rnd(o.swell);
+      for (let dx = -Math.floor(r); dx <= Math.floor(r * 0.8); dx++) {
+        const x = rnd(c[0]) + dx * -light.side;
+        const y = cy - rnd((dx * dx) / (r * sag * 2.2));
+        const v = q.get(x, y);
+        if (v === null || !q.isOpaque(x, y - 1) || !q.isOpaque(x, y + 1)) continue;
+        q.set(x, y, CREASE);
+        const up = q.get(x, y - 1);
+        if (up === MUD.L || up === MUD.M) q.set(x, y - 1, (dx & 3) === 1 ? PAL.earth4 : up === MUD.L ? GLOSS : MUD.L);
+        const dn = q.get(x, y + 1);
+        if (dn === MUD.L) q.set(x, y + 1, MUD.M);
+      }
+    }
+  }
   f.comp.add(q, Part.torso, { out: CREASE });
   (f as Frame & { pops?: Pt[] }).pops = pops;
 }
@@ -609,6 +711,22 @@ function drawHead(f: Frame): void {
   q.poly([[hx - 3, hy - 13.5], [hx - 9, hy - 15.5], [hx - 13, hy - 12], [hx - 8, hy - 9]], MUD.M);
   blobShade(q, [{ x: cw.x + 0.5, y: cw.y + 0.5, rx: cw.rx + 0.5, ry: cw.ry + 0.5 }, { x: hx + 3.5, y: hy + 6.5, rx: 5.5, ry: 3.5 }], MUD, light, { lit: 0.55, shade: 0.15 });
   despeckle(q, 2);
+  // FIX r3 (idle "bubbles on the back"): a bubble swells on the hood's crown over two frames and POPS (a violet
+  // flash out of it, two wet flecks) — twice per idle loop, on its own rhythm
+  if (f.o.bubK > 0 && f.o.mask > 0 && f.o.melt < 0.3) {
+    const u = (f.o.bub * 2 + 0.15) % 1;
+    const bx = hx - 5;
+    const by = hy - 14;
+    if (u >= 0.3 && u < 0.55) {
+      const r = u < 0.42 ? 1 : 2;
+      q.disc(bx, by - r + 1, r, MUD.L);
+      q.set(bx - (r > 1 ? 1 : 0), by - r * 2 + 1 + (r > 1 ? 1 : 0), GLOSS);
+    } else if (u >= 0.55 && u < 0.68) {
+      (f as Frame & { hoodPop?: Pt }).hoodPop = [bx, by - 1];
+      q.set(bx - 2, by - 3, MUD.L);
+      q.set(bx + 2, by - 4, MUD.L);
+    }
+  }
   // the cavity: void-black, a 2-px ring of it shows around the mask's top and back
   const cav = { x: hx + 2.5, y: hy - 1.5, rx: 8.5, ry: 10.5 };
   for (let y = rnd(cav.y - cav.ry); y <= rnd(cav.y + cav.ry); y++)
@@ -637,6 +755,7 @@ function drawMask(f: Frame): void {
 
 function drawNearArm(f: Frame): void {
   const { sk, o, light } = f;
+  if (o.melt > 0.55) return;
   const q = layer();
   limb(q, [sk.shN, sk.elN, sk.wN], 6 * (1 - 0.35 * o.melt), 3.8 * (1 - 0.3 * o.melt), ARM.M);
   elbowLump(q, sk.elN, 2, ARM.M, 1 + ((rnd(o.t * 8) >> 1) & 1));
@@ -645,6 +764,7 @@ function drawNearArm(f: Frame): void {
   if (flat) plantedHand(q, sk.wN, 1, o.nc, ARM.M, drum(o));
   else hand(q, sk.wN, dir, o.nc, ARM.M, drum(o));
   bands(q, ARM, light, 2, 2);
+  wetGloss(q, ARM, PAL.earth4, 5);
   // a gloss run on the forearm's lit top
   const mid: Pt = [(sk.elN[0] + sk.wN[0]) / 2, (sk.elN[1] + sk.wN[1]) / 2];
   for (let i = 0; i < 2; i++) {
@@ -726,12 +846,14 @@ function eyeLight(f: Frame): void {
   const fx0 = EYE_F.x0 + 1;
   const ey = EYE_N.y;
   if (o.lid < 2) {
-    for (let x = nx0; x < nx0 + 3; x++) {
+    // FIX r3 (idle "eyes looking around"): the whole iris slides inside the wide socket with `look` (±1 px), the
+    // void rim opening on the other side — the glance reads at 1×
+    for (let x = nx0 + look; x < nx0 + 3 + look; x++) {
       if (o.lid === 0) put(ox + x, oy + ey, lit);
       put(ox + x, oy + ey + 1, lit);
     }
-    put(ox + nx0 + 1 + look, oy + ey + 1, core);
-    if (o.lid === 0) put(ox + nx0 + 1 + look, oy + ey, core);
+    put(ox + nx0 + 1 + look * 2, oy + ey + 1, core);
+    if (o.lid === 0) put(ox + nx0 + 1 + look * 2, oy + ey, core);
     for (let x = fx0; x < fx0 + 2; x++) {
       if (o.lid === 0) put(ox + x, oy + ey, lit);
       put(ox + x, oy + ey + 1, o.eye > 0.6 ? PAL.void2 : PAL.void1);
@@ -772,17 +894,25 @@ function veinLight(f: Frame): void {
     [[sk.sp(0.2)[0] - 7, sk.sp(0.2)[1] + 2], [sk.sp(0.33)[0] - 8, sk.sp(0.33)[1] - 2], [sk.sp(0.47)[0] - 5, sk.sp(0.47)[1] - 6]],
     [sk.shN, sk.elN, [(sk.elN[0] + sk.wN[0]) / 2, (sk.elN[1] + sk.wN[1]) / 2 - 1]],
   ];
-  for (const path of paths)
+  paths.forEach((path, pi) => {
     for (let i = 0; i + 1 < path.length; i++) {
       const [a, b] = [path[i], path[i + 1]];
       const n = Math.max(1, rnd(Math.hypot(b[0] - a[0], b[1] - a[1])));
+      // the arm's vein fades down the forearm (hot at the shoulder, a dotted ember past the elbow): a straining
+      // arm, not a striped staff
+      const fore = pi === 2 && i === 1;
       for (let k = 0; k <= n; k++) {
         const x = rnd(a[0] + ((b[0] - a[0]) * k) / n);
         const y = rnd(a[1] + ((b[1] - a[1]) * k) / n);
+        if (fore) {
+          if (body(x, y) && k % 2 === 0 && k < n * 0.75) p.set(x, y, k < n * 0.35 ? PAL.void3 : PAL.void2);
+          continue;
+        }
         if (body(x, y)) p.set(x, y, hot && k % 3 !== 0 ? PAL.void4 : PAL.void3);
         if (hot && body(x, y + 1) && k % 2 === 0) p.set(x, y + 1, PAL.void2);
       }
     }
+  });
 }
 
 /** two violet cracks through the mound (the spirit's light inside the mud); they breathe with the swell */
@@ -799,14 +929,16 @@ function crackLight(f: Frame): void {
     // [dx, dy, hot?] relative to a spine sample: a zig-zag with a fork
     [[0, 0, 0], [1, 1, 0], [1, 2, 1], [2, 3, 0], [2, 4, 0], [1, 5, 0], [3, 4, 0], [4, 5, 0]],
     [[0, 0, 0], [0, 1, 1], [1, 2, 0], [1, 3, 0], [0, 4, 0]],
+    [[0, 0, 0], [-1, 1, 0], [-1, 2, 1], [-2, 3, 0], [-2, 4, 0]],
   ];
-  const roots: Pt[] = [[c1[0] + s * (r1 * 0.35), c1[1] - 2], [c2[0] - s * 3, c2[1] + 3]];
+  const c3 = sk.sp(0.45);
+  const roots: Pt[] = [[c1[0] + s * (r1 * 0.35), c1[1] - 2], [c2[0] - s * 3, c2[1] + 3], [c3[0] - s * (sk.rad(0.45) * 0.55), c3[1] - 3]];
   cracks.forEach((cr, i) => {
     const [rx, ry] = roots[i];
     for (const [dx, dy, h] of cr) {
       const x = rnd(rx) + dx * s;
       const y = rnd(ry) + dy;
-      if (body(x, y)) p.set(x, y, h ? hot : PAL.void1);
+      if (body(x, y)) p.set(x, y, h ? PAL.void3 : hot === PAL.void3 ? PAL.void3 : PAL.void2);
     }
   });
 }
@@ -892,6 +1024,12 @@ export function drawMudgrasp(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right
   crackLight(f);
   veinLight(f);
   popLight(f, f.pops ?? []);
+  const hp = (f as Frame & { hoodPop?: Pt }).hoodPop;
+  if (hp) for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [0, -1]] as const) {
+    const x = rnd(hp[0]) + dx;
+    const y = rnd(hp[1]) + dy;
+    if (f.comp.id[y * W + x] === Part.head) f.p.set(x, y, dx === 0 && dy === 0 ? PAL.void4 : PAL.void3);
+  }
   eyeLight(f);
   glintLight(f);
 }

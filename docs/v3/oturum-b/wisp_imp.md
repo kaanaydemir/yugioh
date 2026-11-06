@@ -564,3 +564,255 @@ verified, and one untested route to the HA-21 phase deviation was measured:
 27. HA-21 phase deviation — orchestrator decision (issues 19 / 23), now with the centre-frame route ruled out.
 28. Unchanged: sameness UYARI blind test (24), idle SFX (decision 3), feather struck-body material (decision 4),
     icon wiring in `cardface-v3/index.ts` (1), card-art bbox fill (4).
+
+## FIX round 1b (independent critic r1 / c2 → fixes, 2026-11-01)
+Critic report: `shots/v3/kart-b/wisp_imp/critic-r1/c2/` (2 blockers, 6 majors, 4 minors). Evidence of the fixes:
+`shots/v3/kart-b/wisp_imp/fix-r2/`. Scratch: `<scratch>/wisp_imp/f2/` (`z.ts` = zoom renderer
+`npx vite-node z.ts -- out.png SCALE "anim:f[:r];…"`, `PATCH='{json}'` overrides pose fields; before copies
+`wisp_imp-rig.orig.ts`, `wisp_imp-anims.orig.ts`, `cin.orig.ts`, `scen.orig.ts`; `m.json` = measure run).
+
+### What changed, finding by finding
+1. **BLOCKER field pillow before the payoff** — the effect hook no longer plays the cushion frames. The special
+   was re-keyed (12 → 15 frames, marks `charge 1, release 8, impact 8, recover 11`; total 137 frames, 2.17 MB):
+   f1 hug, **f2–f4 new build-up** (squeeze smaller, shudder left / right, feathers lifting and slipping out as
+   whole feathers), f5 the brief swell (pillow 0.35), f6–f8 cushion / squeeze / poof (kept for the sprite, unused
+   by the effect). The hook plays `held … SWELL (= release − 3)` at ×1.3, holds 60 ms, then bursts. The pillow
+   now appears only on the panel. `fix-r2/wiCushion-field.png`, `special-clutch-x6.png`.
+2. **BLOCKER no burst** — new `burstCloud()` (`kart-b/wisp_imp.ts`): flash frame (body shape, all white, ink rim)
+   → 4 beats of an inked lumpy `cumulus()` (overlapping puffs, top-left lit bands, 1-px creases where an upper puff
+   laps a lower one) that grows to ~1.5× the body and RISES (−3 → −23 px), tears into lobes, thins (ink → void0 →
+   no rim); 8 whole inked feathers tumble out of its upper rim; the flock leaves from the cloud's rim when it lifts
+   off. The body is retired on the flash frame. `fix-r2/wiCushion-burst.png` (t 3080–3575).
+3. **pof flat discs** — `pof()` rewritten on `cumulus()`: k0 tight pop (pillow-wide), k1 wide squat puff (~80 px),
+   both inked; k2 torn ring of inked lobes; k3 last wisps; then the ring. A third of the 30 down particles are
+   whole inked feather stamps. `fix-r2/wiCushion-pof.png`, `wiCushionP2-panel.png` #14–17.
+4. **frozen clutch egg** — the clutch observer now steps f1 → f2 → f3 → f4 → f3 … every 100 ms (distinct squeeze /
+   shudder frames) and lets a whole inked feather slip off the back every 170 ms and float up.
+   `fix-r2/wiCushion-field.png` #3–#16.
+5. **body reads as hooded squid** (rig) — `PLUMES` redrawn as 7 SHORT broad round-tipped shingles (upper row in
+   front of the lower one, two wing feathers notching the back edge, a lower hem row over the tail root); `leaf()`
+   got a `round` profile; a shingle is flat white with a lilac curl toward its tip, a quill, and a void1 rim round
+   its tip, so each tip laps the feather under it as a scallop line (kept from despeckle). Plume-on-plume cast
+   shade removed (the rims carry it). Hands = three slim fanned feather fingers parted by a void2 crease.
+   Tail: three barb notches on alternating edges. `fix-r2/body-idle-x8.png`, `body-1x-2x.png`, `sheet/`.
+6. **chip / confetti particles** — new `stamp()`: an inked, quilled 5–9 px feather with a lit vane and a round
+   tip, edge-on (quill only) when `flip < 0.3` (the falling-leaf turn-over); `Plumes` takes `ink: true` and flips
+   with its pendulum. Used in the summon fountain (every 3rd–2nd feather) + its fling, the "bö!" crown, the burst,
+   a third of the flock, the clutch escapees, the wind-death peel stream, flaking darts, ricochets, the pof, the
+   pillow tuft. The rig's built-in attack dart confetti (attack f5–f8 bursts) removed (the cinematic owns darts).
+7. **wind-death checker fray** (rig) — death f6 no longer erodes: the last shingle and the tail leave as three more
+   whole feathers and what is left is a shrunken hood round the eyes (no holes). f4/f5 keep the hem shingles
+   (peel 4 / 4.5), so f5 is not bald. `fix-r2/death-f4-f7-x6.png`, `wiDefDies-clip.png`.
+8. **guard eyes painted on the hands** (rig) — `paintEyes` takes the near-hand map: an eye pixel under a finger is
+   skipped unless it is a finger crease; guard hands moved 3 px down so the fingers cover the lower hollow and
+   the eyes peek over them (P1 + P2). `fix-r2/guard-x8.png`, `wiGuard-clip.png`.
+9. minors: **summon pre-roll** FALL 62 → 44 px, PRE 460 → 320 ms, the sprite's falling feather path ends flat on
+   the tile centre (summon event 2833 → 2583 ms) `fix-r2/wiSummon-clip.png`; **blocked darts** ricochet up and back
+   on a high spinning arc with a white "tink" spark (`wiBlocked-zoom.png`); **panel pillow** widened (+10 px, raster
+   124×58) to cover the whole digit run (P1 panel nudged 3 px to the digits' centre), face hollow 13×9, 2×3 eyes,
+   a feather tuft pops off on the breath.
+
+### Gates (round 1b)
+- `monster-gates --class small --ref none` (`fix-r2/gates.txt`): **20 ok, 1 FAIL = HA-21 phase** (the known,
+  documented deviation; orchestrator decision still pending). KK-13 frames/bytes ok (137 frames).
+- Tests: `tests/art/wisp_imp*.test.ts` (special marks updated in my own test), `tests/duel/monster-timing`,
+  `tests/presentation`: 101/101. `tsc`: 0 errors.
+- Timing (`<scratch>/wisp_imp/f2/m.json`): effect (activate) **2267 ms ≤ 2320**; wind death 1050; summon 2583;
+  declaration 316. No camera calls added.
+- v1: not re-filmed this round; every change is in v3-only files (`monsters-v3/wisp_imp-*`) or inside the
+  LOOK_V3-gated registrations of `kart-b/wisp_imp.ts`.
+
+### Open issues (after round 1b)
+29. HA-21 phase deviation — orchestrator decision (19 / 23 / 27).
+30. Revive: the shared soul_recall pillar still covers the sprite's own feather gather (no own revive hook yet).
+31. Unchanged: idle SFX (decision 3), feather struck-body material (decision 4), icon wiring in
+    `cardface-v3/index.ts` (1), card-art bbox (4), sameness blind test (24). Card art was not redrawn to the new
+    shingle body (it already shows tips at the hem; a re-check against the new rig is worth a pass).
+32. The stamps read as feathers at 2–3×; at 1× the heavier inked ones can still read as small shards in dense
+    streams (flock) — a critic should judge at 1×.
+
+## FIX round 1c (logged late: the 11:27–11:31 edits after round 1b)
+Code was changed after round 1b's notes and never logged: the clutch got its own sustained voice
+`wiClutch` (started with the hold; meant to fade when the pillow takes over), a `wiSwell` recipe was
+added (but never played), `wiHu` fired on the lethal blow from the clutch observer. Evidence of that run:
+`shots/v3/kart-b/wisp_imp/fix-r3/sfx`. Its bugs are the critic-r2 findings below (wiClutch never stopped,
+wiSwell orphaned).
+
+## FIX round 2 (independent critic r2 → fixes, 2026-11-05)
+Critic report: `shots/v3/kart-b/wisp_imp/critic-r2/n/` (1 blocker, 7 majors, 7 minors). Evidence of the
+fixes: `shots/v3/kart-b/wisp_imp/fix-c2/`. Scratch `<scratch>/wisp_imp/c2/` (before copies `*.orig.ts`,
+`gates.txt`, `same/`, sheets). No time gate any more (owner decision 2026-11-05): durations by feel.
+
+### Finding by finding
+1. **BLOCKER wiCushionSelf (wisp attacks and dies) played the survive recoil + idle** — `strikeV3` now runs
+   the same look-ahead as the observer (`pillowComes`: an own activate monsterEffect before the next
+   battle). If it comes: no `wiHu`, no `hit`; on the first dart's contact `holdClutch(sc, u, true)` takes
+   the sprite with an exclusive `playRange('special', 1, 2)` (the attack play's waiter lets go WITHOUT
+   resting to idle) and the strike returns as soon as the volley is in — so the effect now starts at
+   1617 ms instead of 2467 (hug 1.25–1.8 s, swell 1.82, burst 1.9). No idle frame, no silence (RMS
+   −21…−22 dBFS through 1.5–1.9 s). `fix-c2/wiCushionSelf-field.png`, `wiCushionSelf.png`,
+   `clips/wiCushionSelf.{mp4,wav,json}`.
+2. **wiClutch never stopped** — the hold is one function `holdClutch` (observer + strike share it); the
+   pillow ends the hum ON the swell frame (`endClutchVoice(u, 90)` in the SWELL atFrame, safety stop before
+   wiCloud), the hold loop leaves it alone when the effect took over and stops it on every other exit.
+   WAV check: 440–520 Hz band falls 40 → 9–19 dB after 1.95 s (it was +25…30 dB to 3.8 s).
+3. **wiSwell orphaned / wiStuff twice** — the SWELL frame plays `wiSwell` (0.85); `wiStuff` only packs the
+   pillow on the panel. measure: wiSwell 1817 / 3050, wiStuff once.
+4. **inaudible jabs** — `wiTsk` +9 dB with a 2.2–2.8 kHz cloth "tk" band + a 2.6→1.9 kHz triangle tick +
+   a stronger body thump; the strike steps the pitch 1.06 → 1.30 per jab. WAV: 2–3.2 kHz spikes now at
+   each jab (+16…26 dB vs −1…7 between). `lpTick` was NOT hushed (it plays later, async; hush is
+   synchronous) — the louder, mid-band jab is the fix.
+5. **clutch read as waving** — special f1–f4 redrawn as a real hug: near hand flat across the belly
+   pointing back, far hand's fingertips round the back pointing forward, both low; NO flung `free` feathers
+   (they read as raised arms); eyes shut → "> <"; the body shrinks 1 px a frame (sw/sh −1 → −3/−4, len −1 →
+   −3) and f3/f4 shiver bx ±1. The hold escalates: f1 (110 ms) → f2 (100) → f3↔f4 with the beat tightening
+   90 → 45 ms, escaping feathers every 200 → 80 ms. The STRUCK branch first plays the wisp's own
+   `hitHeavy` stagger (tumbles back, dizzy) from the contact, and only hugs once that lets go: the hug
+   is now ~0.3 s (2.66–2.95 s) before the swell in wiCushion. `fix-c2/hug-new.png` (f0–f5 + P2 f4),
+   `wiCushion-field.png`, `sheet/wisp_imp-v3-special.png`.
+6. **no card sound / reaction when struck as the target** — new LOOK_V3 observer branch (no activate
+   coming): on `v3:contact` it plays the new `wiFfp` (a 2–4 kHz breath burst closing on a cloth pop + 5 kHz
+   rustle + quill ticks) and knocks whole inked feathers off the hood away from the blow (`featherPop`):
+   guard holds / survived recoil = wiHu 0.55 + wiFfp 0.55 + 3 feathers; lethal in defense = wiFfp 0.85 + 4
+   feathers (fills the 480 ms before wiGust); lethal with the pillow = wiHu + wiFfp + 5 feathers + the
+   stagger. Over the shared layer (shieldBlock / hex ward untouched, decision 4). `fix-c2/wiGuard-clip.png`.
+7. **feathers = lilac shards at 1×** — `stamp()` redrawn white-dominant: the spine BOWS ~1 px (a curved
+   vane), the lit side up to 2 px white, the shade side 1 px white with lilac only near the tip, a lilac
+   shaft with a darker bare calamus; the ink rim only on the shadow side (right / below). Turn-over slowed
+   (Plumes flip cos(ph·0.3), swing ×0.8; flock flip el·0.005). Flock 36 → 22 feathers, half of them 9–10 px
+   stamps. **Wind death** stream: runs low and short (vy 0…+30, grav −30, life 420–580 ms), the ribbons /
+   streaks stop short of the duelist's dais (`REACH`), and any feather reaching a 30 px circle round
+   `duelistXY` is dropped (`Plumes.avoid`). `fix-c2/wiDefDies-clip.png` (no feather on the duelist; a few
+   fade by the dais' front corner).
+8. **LP panel payoff** — "0 · KORUNDU" now settles gold and stays 450 ms after the pof, then blinks out;
+   a gold ring (panelFlash) circles the revealed 4000 120 ms after the pof; the pof cumulus spreads
+   sideways / down (upper lobes ×0.5–0.6) and is centred 2–3 px lower, so it no longer covers the
+   player-name row. `fix-c2/wiCushionP2-panel.png`, `wiCushionP2-pof.png`.
+
+Minors: **summon pre-roll** — the dark smudge was NOT the moon pool: the light layer's contact shadow
+(LightLayer foot, follows the sprite: groundY = sprite.y + hover + lift) — the falling feather now counts
+as lifted (`u.lift = 40` until the body builds, restored by S.own); the moon pool is an air glint only
+(no floor spill); the feather drifts in from beside the tile (slant 30 px easing to 0) instead of from over
+the deck stack (it still brushes the stack's lower-left corner for ~1 frame). `fix-c2/wiSummon-preroll.png`.
+**pof / bö** — wiPof: the "p" +6 dB (2.3 kHz + 1.5 kHz), two SHORT lobes 60 ms apart closing 850 → 350 Hz
+in ~150 ms, the "f" hiss (2.6 → 0.9 kHz) carries the tail; wiBoo: closed-lip thump + release click 12–16 ms
+ahead of the voice, voice attack 10 ms (`ghostVoice` got an optional `att`). **Scenarios** — added
+`wiBlockedP2`, `wiGuardP2`, `wiSpellKill` (judgment_bolt: wind, no pof — verified in measure) and
+`wiCharmSave` (guardian_charm: wisp lives, no pillow — the guard branch's wiHu/wiFfp plays). **Hood** — two
+big shingle scallops (a void3 curved tip edge + 2 px void4 shade band) across the crown and the back of the
+hood, face hollow kept clean (`fix-c2/hood.png`). **impactHeavy** — `s.impact` wrapped in
+`hush(['impactHeavy'])` (clip JSON: impactHeavy `played: false`); direct volley darts get a 9 px trail
+with a 4 px white head. **registerStrike** priority 20.
+
+### Gates (round 2)
+- tsc: 0 wisp errors. Tests `tests/art/wisp_imp*`, `tests/duel/monster-timing`: 24/24.
+- `monster-gates --class small --ref none` (`fix-c2/gates.txt`): 20 ok, 1 FAIL = HA-21 phase (the known
+  deviation, unchanged). IŞ-10 noise ok after the hood scallops.
+- Sameness: same UYARI rows as before (crystal_wyrm / abyss_magus / stone_sentinel, MOTsig) — open issue 24.
+- measure `fix-c2/measure.json`: 20 wi* keys, errors 0, zoom 1 everywhere. Effect (activate) 2350 ms
+  (struck) / 2266 (self); wiCushionSelf total 4.30 s (was 5.03 s); wind death 1050; summon 2633.
+- v1: every change is in v3-only files or LOOK_V3-gated registrations / v3-only recipes.
+
+### Open issues (after round 2)
+33. HA-21 phase deviation — orchestrator decision (19 / 23 / 27 / 29).
+34. The struck branch's hug length is set by the ATTACKER's strike (the battle handler plays triggers
+    after it ends): ~0.3 s after the stagger for shade_assassin; a longer attacker strike means a longer
+    (escalating) hug.
+35. lpDown / lpTick still overlap the jab window (shared LP roll; not hushable from a strike).
+36. Unchanged: idle SFX (decision 3), struck-body material (decision 4 — wiFfp is overlaid instead),
+    revive pillar (30), icon wiring (1), card-art bbox (4) and card art not re-checked against the new hood
+    scallops, sameness blind test (24). The wind feathers can still fade near the P2 dais' front corner.
+
+## FIX round 3 (independent critic r3 → fixes, 2026-11-05)
+Critic report: `shots/v3/kart-b/wisp_imp/critic-r3/` (6 majors, 7 minors). Evidence of the fixes:
+`shots/v3/kart-b/wisp_imp/fix-r3/`. Scratch `<scratch>/wisp_imp/r19/` (before copies `rig.orig.ts`,
+`anims.orig.ts`, `cin.orig.ts`, `snd.orig.ts`; `iso.ts` / `iso2.ts` = isolated-pixel counter (all / non-ink),
+`isomap.ts` = ASCII map with isolated pixels marked, `kinds.ts` / `bands.ts` = the rig's field layout,
+`edge.ts` = frame-edge clipping check). No time gate (owner decision 2026-11-05).
+
+### Finding by finding
+1. **MAJOR struck pillow branch: dead gap after the lethal blow** — the observer no longer lets the stagger
+   recover: `hitHeavy` plays only f1…f4 (`playRange('hitHeavy', 1, 4)`: thrown → spin → drop → dizzy bounce),
+   70 ms, then `holdClutch(sc, u, true)` grabs the hug straight from the dizzy pose (no idle frame at all).
+   `wiClutch` now starts ON the contact (under the stagger) and the hold reuses it (`clutchVoice`); its late
+   octave-down hum and rustle were raised (0.05 → 0.08, rustle peak 0.12 → 0.15). WAV
+   (`fix-r3/clips/wiCushion.wav`): −22…−25 dBFS through the whole stagger + hug (1.75–2.7 s); the only dip is
+   −32/−33 dBFS for ~150 ms right before wiSwell (was −40…−58 dBFS for 0.75 s). Film
+   `fix-r3/wiCushion-field.png` (t 1.9–3.05 s: contact, tumble, hug, swell — the wisp never looks alive).
+2. **MAJOR feather material (rig)** — the skirt is redrawn as FIVE big shingled feathers + one wing feather
+   (`PLUMES`, w 7.4–9.4, roof-tile order, upper row lighter: the lower row is one step down through `leaf(dark)`
+   only — the old double shift that turned it into a void3 blob is gone); a shingle is ONE lit plane (white /
+   void4 for the lower row), its shadow edge one band down (1 px, 2 px only near the tip), ONE 1-px quill line
+   (a quill pixel without a quill neighbour is dropped back to the vane — no floating dots), and a 1-px void2
+   scallop line round its rounded tip (all but the light-facing upper edge). The per-pixel sheet-normal shift
+   on plumes was removed (it made the mottle). A new `flattenTones` pass (before despeckle) melts any feather
+   tone pixel that shares its tone with < 2 of its 4 neighbours into the plane round it (lines kept).
+   Measured (`fix-r3/isolated.txt`, non-ink isolated px): idle **40.8 → 26.5** mean, attack 44.7 → 32.2,
+   hit 46.5 → 30.5; counting the outline's staircase corners too (the critic's number): idle 70 → 53.
+   `fix-r3/z-idle-f0f1-x12.png` vs `critic-r3/z-idle-f0f1-x12.png`, `fix-r3/z-idle4.png`.
+3. **MAJOR "?" tail (rig)** — the tail spline is re-routed: it leaves the hem at the back-bottom, sweeps back,
+   RISES behind the body as the "?"'s stem and curls over at shoulder height, the hook opening downward and away
+   from the body, a swelling feather tip at the end (`geo`, 10 control points). tailCurl lets the hook out,
+   tailSwing sways the stem and more the curl (the figure-8 drift animates the curl). A frame-edge guard bends
+   the curl in from its middle when a pose would cut it on the frame edge (thrown / whipped poses). Reads in
+   every idle frame P1 + P2 (`fix-r3/z-idle4.png`, `fix-r3/sheet-p2/wisp_imp-file-p2-idle.png`).
+4. **MAJOR blocked branch: shared counter-shock beam over the volley** — the thick white-hot jagged line was
+   the battle kit's ranged `backlash` (`_v3/clash.ts`, called from `battle.ts` for any ranged blocked
+   attacker). Not suppressible by API, so (this strike only, `s.blocked`) the raster it creates synchronously
+   inside `s.impact()` (a new `fx:set:` Image at depth FX+3, ADD) is hidden right after the call. The shield clang
+   (hex + star) stays. The card's own glance-off was added (`glance()`): a lilac ring of down breaking into arcs
+   on the guard face (white first frame → void4 → void3 → void2) + a spray of down and stamps back toward the
+   wisp. `fix-r3/wiCushionSelf-darts.png` (t 1050–1832: six darts readable, no gold beam). Logged below as a
+   shared wish (a `noBacklash` option on StrikeArgs would be cleaner).
+5. **MAJOR revive: the cyan pillar through the wisp's own revive** — new gated hook `kart-b:wisp_imp:revive`
+   (`registerCardHook('soul_recall', 'activate', …, priority 20)`): if the summon it brings back is wisp_imp it
+   runs the shared presentation (`ctx.base()`) but hides its 16-px cyan column (`recallPillarV3`'s Raster,
+   identified by depth unitDepth(tile) − 0.5 + width 16), and on that frame starts `featherBreeze()`: 16 feathers
+   (a third of them inked stamps) spiralling in from BEHIND the ghost, tightening and sinking onto it (half behind
+   the sprite, half in front), the wind death backwards. Any other card: `ctx.base()` untouched.
+   `fix-r3/wiRevive.png` (t 0.9–2.3 s: the cyan soul flies in, no column, the feathers spiral in, the pose fills).
+6. minor **blank frame at the pillow hand-off** — the pillow is born 50 ms before the flock ends (a small 15×5
+   pillow), the flock's arrived feathers stay drawn on the panel until it is cleared. `fix-r3/wiCushion-pack.png`
+   (#9–#14: feathers → pillow, never empty).
+7. minor **flat white burst frame** — the burst's first frame is the body shape with its own inked, banded planes
+   (only the darkest tones lifted one step) and the face: dark hollow + two white-hot eyes (facing the right way
+   for P2). `fix-r3/wiCushion-burst2.png` #1–#2 (final); `fix-r3/wiCushion-burst.png` = the first try (every
+   value lifted: read too white, dropped).
+8. minor **summon pre-roll** — the falling feather is 14 px / 5.8 wide (was 11 / 4.6); a moonlight pool on the
+   tile brightens through the pre-roll (`tile` glow 0 → 0.5 over PRE+120 ms, full on the touch).
+   `fix-r3/wiSummon-preroll.png`.
+9. minor **hit vs hitHeavy** — hitHeavy is a real TUMBLE (8 frames kept): f1 thrown back (hood rolled back,
+   skirt flung up, tail whipped, 6 feathers + a ring burst), f2 an edge-on SPIN frame (narrow and tall, skirt
+   whipped the other way, eyes squeezed), f3 the float DROPS 4 px into a squashed bounce, f4 dizzy bounce up,
+   f5 head-shake, f6 PRE_IDLE. Holds 50/70/120/90/… (HA-4: f1 ≤ 70, recover at 240 ms). hit stays the short
+   flinch. `fix-r3/z-hit-vs-hitHeavy.png`.
+10. minor **jabs under the LP roll** — the last two `wiTsk` jabs play at 1.35 (+2.6 dB). (lpDown itself is shared.)
+11. minor **dark blob on the hood (struck branch)** — not this card's layer: it is shade_assassin's own dark
+    strike residue (its dithered shadow smear) drifting over the wisp's tile while it retreats (visible in
+    `fix-r3/wiCushion-field.png` #3–#9, now mostly on the floor). Logged (another card's / shared).
+12. minor **wind direction** — the gust ribbons' curl now rolls FORWARD (downwind, a breaking crest) in both the
+    cinematic ribbons and the rig's gust frames, so cause and feathers read the same way.
+    `fix-r3/wiDefDies.png`.
+
+### Gates (round 3)
+- tsc: 0 errors. Tests: `tests/art/wisp_imp*`, `tests/duel/monster-timing`, `tests/presentation`: 115/116 — the
+  one failure is `crag_axeman.test.ts` (another card).
+- `monster-gates --class small --ref none` (`fix-r3/gates.txt`): 20 ok, 1 FAIL = HA-21 phase (the known,
+  documented deviation; hit 71 %, hitHeavy 72 %). Frame edge: no new clipping beyond 3–5 px of the tumble's
+  thrown feathers at x ≤ 2 (`edge.ts`).
+- measure `fix-r3/measure.json` (20 wi* keys): **0 errors** (neon / handlers / timeouts / page / console), zoom 1
+  everywhere; wiSummon total 2633 ms.
+- v1: every change is in v3-only files (`monsters-v3/wisp_imp-*`, `audio/v3/wisp_imp.ts`) or inside LOOK_V3-gated
+  registrations (the new soul_recall hook included).
+
+### Open issues (after round 3)
+37. HA-21 phase deviation — orchestrator decision (19 / 23 / 27 / 29 / 33).
+38. The blocked-volley backlash is hidden by finding its raster after `s.impact()` (depth + texture-key match):
+    works, but a shared `StrikeArgs` option (e.g. `noBacklash`) would be the clean API. Same for the revive
+    column (identified by depth + width in `recallPillarV3`): a shared `noColumn` hint would be cleaner.
+39. The struck branch's hug is still as long as the attacker's strike tail (~0.8 s for shade_assassin, now an
+    escalating trembling hug straight out of the tumble, no idle).
+40. The shared hitReact rings on the wisp as a blocked attacker (thin brown/gold arcs) remain (shared).
+41. Unchanged: idle SFX (decision 3), struck-body material (decision 4), icon wiring (1), card-art bbox (4) —
+    and the card art was not redrawn to the new 5-shingle skirt and "?" tail (worth a card-art pass), sameness
+    blind test (24), shade_assassin's residue over the tile (finding 11).
