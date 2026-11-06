@@ -581,6 +581,8 @@ if (LOOK_V3)
         const e = ctx.events[i];
         if ((e.type === 'summon' || e.type === 'flip') && ctx.cardId(e.uid) === ID) after = true;
       }
+      // (the revive keeps her one voice: her song on the land frame, under the bless root)
+      if (after && run.some((r) => r.d > 0)) singSong(ctx.scene, { volume: 0.8, pan: panAt(ladyPlace(ctx as unknown as AnyCtx, causeLady(ctx as unknown as AnyCtx, run[0].i, true, run[0].ev.uid) ?? run[0].ev.uid, run[0].i).x) });
       await playRun(ctx as unknown as AnyCtx, run, after ? 'afterSummon' : 'full');
     },
     { priority: 25, name: `kart-f:${ID}:aura` },

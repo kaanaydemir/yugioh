@@ -132,14 +132,18 @@ function fromGuardPose(f: number): Pose {
 }
 const FG_HOLDS = [60, 60, 70, 80, 90];
 
-// ------------------------------------------------------------------ attack (13): "Kargı Hamlesi" + the mane lash
+// ------------------------------------------------------------------ attack (14): "Kargı Hamlesi" + the mane lash
 
-const A_N = 13;
+const A_N = 14;
 const COUCH: PD = { bx: -3, crouch: 3, lean: -2, fbx: 36, ffx: 55, gx: 52, gy: 57, la: -4, lb: 40, lf: 36, bgx: 40, bgy: 60, pen: 2, eyes: 2, mane: { th: 186, curl: -6, droop: 1, amp: 1, len: 41, ph: 0.25 } };
 function attackPose(f: number): Pose {
   const keys: PD[] = [
     { mane: { ph: 0.06 } },
     { crouch: 1, bx: -1, gx: 70, gy: 53, la: -58, lb: 36, lf: 40, mane: { th: 192, ph: 0.12 }, pen: 0, pph: 0.2 },
+    // gate fix: the charge pose's TENSE twin (the declaration's held charge trembles between f1 and f2 — declare.ts
+    // keepCharging — while a trap or the titan's ward holds the battle): the same planted body and raised lance, the
+    // grip squeezed 1 px, the mane ripple travelling on and lifting, the pennon cracking the other way, the eyes up
+    { crouch: 1, bx: -1, gx: 70, gy: 54, la: -58, lb: 36, lf: 40, mane: { th: 190, ph: 0.155, amp: 1.5 }, pen: 1, pph: 0.55, eyes: 2 },
     { crouch: 2, bx: -2, lean: -1, fbx: 37, gx: 60, gy: 55, la: -28, lb: 38, lf: 38, mane: { th: 188, ph: 0.18, amp: 1.4 }, pen: 2 },
     COUCH,
     { ...COUCH, bx: 0, lean: 1, gx: 55, mane: { ...COUCH.mane, ph: 0.32 } },
@@ -155,7 +159,7 @@ function attackPose(f: number): Pose {
   if (f >= A_N - 1) return IDLE0();
   return K(keys[f]);
 }
-const ATTACK_HOLDS = [90, 130, 160, 200, 120, 60, 70, 80, 90, 100, 110, 120, 130];
+const ATTACK_HOLDS = [90, 130, 80, 160, 200, 120, 60, 70, 80, 90, 100, 110, 120, 130];
 
 // ------------------------------------------------------------------ special (14): "Fırtına Hücumu"
 
@@ -391,11 +395,11 @@ const RV_HOLDS = [120, 100, 100, 100, 100, 110, 140, 90, 110, 120];
 
 const spec = (frames: number, fps: number, loop: boolean, holds: number[], marks?: AnimSpec['marks']): AnimSpec => ({ frames, fps, loop, holds, ...(marks ? { marks } : {}) });
 
-export const IMPACT = 5;
+export const IMPACT = 6;
 export const ANIMS: Record<MonsterAnim, AnimSpec> = {
   idle: spec(IDLE_N, 8, true, IDLE_HOLDS),
   guard: spec(GUARD_N, 6, true, GUARD_HOLDS),
-  attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: IMPACT, impact: IMPACT, contact: 6, recover: 8 }),
+  attack: spec(A_N, 10, false, ATTACK_HOLDS, { charge: 1, release: IMPACT, impact: IMPACT, contact: 7, recover: 9 }),
   roar: spec(R_N, 10, false, ROAR_HOLDS, { charge: 1, release: 5, impact: 5, recover: 7 }),
   hit: spec(7, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 4 }),
 };

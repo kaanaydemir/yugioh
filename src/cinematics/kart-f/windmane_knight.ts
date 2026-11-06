@@ -1148,6 +1148,31 @@ function meleeClash(u: MonsterUnit, tip: XY): XY {
   return rint({ x: c.x + (dx / L) * 42, y: c.y + (dy / L) * 42 });
 }
 
+/**
+ * Gate fix (blocked, survives): the battle handler holds his animation for the recoil (claim without a pin). The strike
+ * keeps his position: the shove off the guard (`px`, whole pixels, while he reels), then — once the recoil has handed
+ * the sprite back — the two heavy steps home.
+ */
+async function recoilHome(u: MonsterUnit, home: XY, px: number, ms: number, rnd: () => number): Promise<void> {
+  const sc = u.scene;
+  const dir = u.flipX ? -1 : 1;
+  const f = feetOf(u);
+  await animate(sc, 100, (t) => setFeet(u, rint({ x: f.x - dir * px * E.outQ(t), y: f.y + (px / 2) * E.outQ(t) * dir })));
+  await new Promise<void>((resolve) => {
+    let el = 0;
+    onFrame(sc, (dt) => {
+      el += dt;
+      if (!u.claimed || u.retired || !u.sprite.active || el > 1500) {
+        resolve();
+        return false;
+      }
+      return true;
+    });
+  });
+  if (!u.sprite.active || u.retired) return;
+  await stride(u, feetOf(u), home, ms, rnd, { steps: 2, sound: true });
+}
+
 /** The point the lance meets: the target's core, else (direct) the floor point in front of the duelist. */
 function aimOf(s: StrikeArgs): XY {
   if (s.direct || !s.target || !s.target.sprite.active) return { x: s.to.x, y: s.to.y };
@@ -1163,8 +1188,8 @@ async function lanceStrike(s: StrikeArgs): Promise<void> {
   const charge = takeCharge(u, 'wmkCharge', { volume: 0.85, pan });
   const home = { ...u.home };
   const dir = u.flipX ? -1 : 1;
-  const relF = u.markFrame('attack', 'release', 5);
-  const conF = u.markFrame('attack', 'contact', 6);
+  const relF = u.markFrame('attack', 'release', 6);
+  const conF = u.markFrame('attack', 'contact', 7);
   const held = strikeStartFrame(u);
   const f0 = held > 0 ? Math.min(held + 1, relF) : 0;
   const loses = s.ctx.ev.result === 'attackerDestroyed' || s.ctx.ev.result === 'bothDestroyed';
@@ -1203,7 +1228,9 @@ async function lanceStrike(s: StrikeArgs): Promise<void> {
     // ---- contact: the thrust
     u.pose('attack', conF);
     const tipNow = pointNow(u, 'muzzle', aim);
-    s.impact(loses ? meleeClash(u, tipNow) : tipNow);
+    // gate fix: a blocked knight that survives is a melee clash too — the handler then claims his recoil on this frame
+    // (no ranged backlash line along the lance); the skid sparks and the clank stay on the real tip
+    s.impact(loses || s.blocked ? meleeClash(u, tipNow) : tipNow);
     play(s.blocked ? 'wmkBlocked' : 'wmkThrust', { volume: 1, pan: panAt(tipNow.x) });
     const floor = s.direct ? s.toGround : s.target ? s.target.home : s.toGround;
     if (s.blocked) {
@@ -1214,6 +1241,12 @@ async function lanceStrike(s: StrikeArgs): Promise<void> {
       // round 3 #1: he stays where the blow met him — the handler claims him there and the death follows its counter
       lost = true;
       await sleep(sc, 34);
+      return;
+    }
+    if (s.blocked && u.claimed) {
+      // gate fix: the guard held and the handler plays his recoil (its animation, not his position): he is shoved
+      // off the guard while he reels, and walks home once the recoil hands the sprite back (no lash: the blow glanced)
+      await recoilHome(u, home, 6, 440, rnd);
       return;
     }
     const rest = u.playRange('attack', conF, undefined, { hold: true });
@@ -1309,7 +1342,7 @@ async function stormStrike(s: StrikeArgs): Promise<void> {
     const tipNow = pointNow(u, 'muzzle', aim);
     // round 2 #3: the gale boom IS the contact — the generic body blow is never stacked under it (a struck body with
     // its own material still sounds)
-    hush(['impactHeavy', 'impactLight'], () => s.impact(loses ? meleeClash(u, tipNow) : tipNow));
+    hush(['impactHeavy', 'impactLight'], () => s.impact(loses || s.blocked ? meleeClash(u, tipNow) : tipNow));
     play(s.blocked ? 'wmkStormSplit' : 'wmkGaleBoom', { volume: 1, pan: panAt(tipNow.x) });
     void stopTime(sc, 30);
     void shake(sc, 180, s.blocked ? 2 : 4);
@@ -1343,6 +1376,11 @@ async function stormStrike(s: StrikeArgs): Promise<void> {
       // round 3 #1: no trip home — the handler claims him at the contact point (counter, then the hollow armour)
       lost = true;
       await sleep(sc, 34);
+      return;
+    }
+    if (s.blocked && u.claimed) {
+      // gate fix: the gale split round the guard; the handler plays his recoil, the strike carries him off it and home
+      await recoilHome(u, home, 8, 480, rnd);
       return;
     }
     const rest = u.playRange('special', conF, undefined, { hold: true });

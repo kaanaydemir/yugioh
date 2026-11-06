@@ -23,7 +23,7 @@ describe('windmane_knight', () => {
       expect(spec(a), a).toBeTruthy();
       expect(spec(a).holds?.length, a).toBe(spec(a).frames);
     }
-    expect(spec('attack').marks).toMatchObject({ charge: 1, release: 5, impact: 5, contact: 6, recover: 8 });
+    expect(spec('attack').marks).toMatchObject({ charge: 1, release: 6, impact: 6, contact: 7, recover: 9 });
     expect(spec('special').marks).toMatchObject({ charge: 1, release: 11, impact: 11, contact: 12, recover: 14 });
     expect(spec('roar').marks).toMatchObject({ release: 5, impact: 5 });
     expect(spec('summon').marks?.land).toBe(6);

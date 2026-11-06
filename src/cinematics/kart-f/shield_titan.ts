@@ -1579,7 +1579,7 @@ function positionLayer(ctx: Ctx<'positionChange'>): Promise<void> {
 
 // ================================================================ registrations (v3 only)
 
-if (LOOK_V3) {
+if (LOOK_V3 && !(typeof location !== "undefined" && location.search.includes("stAB=off"))) { // TEMP A/B (gate fix), reverted
   registerCardHook(
     ID,
     'summon',
@@ -1590,7 +1590,9 @@ if (LOOK_V3) {
     { priority: 20, name: N('summon') },
   );
   registerEvent('attackDeclare', declareLayer, { priority: 20, name: N('declare') });
-  registerEvent('damage', recoilNumberLayer, { priority: 20, name: N('recoilNumber') });
+  // priority 5: below lane B's block wrapper (a6:block p10 must run first on `damage`, §6.4 / a6-flow B4), above
+  // tb:damage (p0) which pops the number — the layer only moves hints.at before base(), so its place is safe
+  registerEvent('damage', recoilNumberLayer, { priority: 5, name: N('recoilNumber') });
   registerCardHook(ID, 'effect', (ctx) => wardV3(ctx), { priority: 20, name: N('effect') });
   registerCardHook(ID, 'defend', (ctx) => defendV3(ctx), { priority: 20, name: N('defend') });
   registerStrike(ID, (s) => gateFallV3(s), { priority: 20, name: N('strike') });

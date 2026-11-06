@@ -1007,3 +1007,58 @@ The critic's evidence is in `shots/v3/kart-f/shield_titan/r3-integration/`. My e
 - The camera base for kdWallWeak needs a refresh once wisp_imp's strike is final (`camera-base-r3.json` is ready).
 - Shared-code items that are still orchestrator requests: the per-art `guardGlint: false` opt-out, and battleV3's COUNTER_FLASH white blob on the blocked attacker at the contact frame.
 - `plateStep` reaches StatBadge's private flash state through a cast. A public `flashDigits()` on StatBadge would make that a contract.
+
+## 18. Gate fix (after the adversarial verifier, 2026-11-06)
+
+The verifier did not ship the card because of three failures. Each was traced to its root cause. Evidence is in
+`shots/v3/kart-f/shield_titan/gatefix/`.
+
+### 18.1 `tests/v3/a6-flow.test.ts` B4 registration: `a6:block` must be first on `damage` (this card's bug, fixed)
+
+- **Cause.** The recoil-number layer (`recoilNumberLayer`, round 3 #4) was registered as a global `damage` handler at
+  **priority 20**. That put it ahead of lane B's block wrapper `a6:block (p10)`, but §6.4 requires the block wrapper
+  to run first on `damage`. Round 3's "601/601" did not include this suite, so the failure was missed.
+- **Fix.** The layer is now registered at **priority 5**, below `a6:block (p10)` and above `tb:damage (p0)`, which
+  pops the number. The layer only rewrites `hints.at` and then calls `base()`. `blockV3` neither reads nor writes
+  `hints.at`, and it also hands straight to `base()`. So the new position changes nothing on screen: the number is
+  still moved before `tb:damage` places it.
+- **Check.** The damage chain is now `a6:block (p10)`, then `kart-f:shield_titan:recoilNumber (p5)`, then
+  `tb:damage (p0)`. Running `tests/v3/a6-flow.test.ts` and `tests/art/shield_titan.test.ts` together gives 80/80.
+  measure (kd* + m1Shield): the number still lands on the contact frame everywhere (kdWall / m1Shield 2750 = 2750).
+
+### 18.2 The camera "drift" in m1Shield (lane base) and kdWallWeak (card base) is rig geometry, not a cinematic
+
+Lean #0 is battle/declare.ts:394, `ctx.focus(lerpXY(attacker.core(), target.core(), 0.5), pan 0.32)`. It fires at
+t = 17 ms, before any hook of this card runs. maxScrollPx follows the later battle lean (battle.ts:388) toward the
+same target core. The live cores were read in the page (`--eval`, `gatefix/*-t0.png` runs):
+
+| unit (now) | core | core − anchor |
+|---|---|---|
+| shield_titan, P2 DEF, v3 rig | (339, 117) | (−13, −27). stone_sentinel is (3, −30), so this is house-consistent: the face, where blows land |
+| shade_assassin | (292, 154) | — |
+| wisp_imp, lane B v3 rig | (289, 143) | (1, −27) |
+| placeholder totem shield_titan / wisp_imp | — | (0, −15) / (0, −10) |
+
+- **m1Shield vs the lane base.** The base (3eb974a, 2026-10-31 20:14) had `shield_titan.ts` **excluded** in
+  `src/art/monsters/index.ts`, so the titan was the placeholder totem with its core at (352, 129). The midpoint with
+  shade_assassin is (322, 141.5), which gives lean (1, −12) and maxScroll 13, exactly the base. With the card's own
+  rig the midpoint is (316, 136), giving lean (−1, −14) and 16, exactly the current run.
+- **kdWallWeak vs the card base.** The base (a3092ae + this card's WIP, 2026-10-31 22:36) still had `wisp_imp.ts`
+  excluded, so wisp_imp was a placeholder with its core at (288, 166). The midpoint with the titan is (314, 142),
+  giving (−2, −12) and 14, exactly the base. Lane B's wisp_imp v3 rig has since been merged and lifts its core by
+  23 px. The midpoint is now (314, 130), giving (−2, −16) and 17, exactly the current run. The titan's core did not
+  move between that base and now: m1Shield lean #0 is (316, 136) in both.
+- **A/B proof that this card's cinematics add no camera motion.** The same tree was measured with every
+  registration of this card switched off by a temporary query guard (`&stAB=off`, now reverted). Cinematics off and
+  on give **identical** camera records: m1Shield 3 focus calls, leans (−1, −14) (0, −16) (−2, −14), maxScroll 16;
+  kdWallWeak 2 focus calls, (−2, −16) (0, −17), maxScroll 17; kdWall the same as m1Shield. The "off" run is really
+  off: the contact moves (2933 vs 2750). See `gatefix/measure-cinematics-off.json` and `gatefix/measure.json`.
+- **Not moving the core instead.** Moving the titan's core down to the old placeholder's 15 px would put hit sparks
+  and lock-ons at his knees, only to match a base that sampled a totem. The base is wrong, not the rig.
+
+### 18.3 New camera base (current rigs, this card's cinematics off) and the gate against it
+
+Following HANDBOOK-lane-B §9 ("re-base on the placeholder cinematics"), `shots/v3/kart-f/shield_titan/camera-base-v2.json`
+was measured over kd* + m1Shield + m1Board5. It uses the current tree with this card's registrations off (generic
+cinematics), so it holds today's rigs and none of this card's presentation. The old bases are kept unchanged, so the
+history of the drift stays visible. The gate of the current run (cinematics on) against it is in 18.4.
