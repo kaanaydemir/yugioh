@@ -24,6 +24,17 @@ function vsDusk(p: PlayerId): StageSpec {
   return p === 0 ? { p0: me, p1: them } : { active: 1, p1: me, p0: them };
 }
 
+/**
+ * The CPU check (DoD 8): P2 holds only the magus with a sentinel to tribute and P1's set trap as the effect's
+ * target, so the bot's one real play is this card. Not a --fresh scenario (qa.scenario() restages in hot-seat):
+ *   node tools/shot.mjs "?dev=duel&s=eMagusCpuP2&look=v3&mode=vsBot" --film 24 --every 400 --cols 6 --out …
+ */
+const cpuP2: StageSpec = {
+  active: 1,
+  p1: { hand: ['abyss_magus'], monsters: ['stone_sentinel', null, null] },
+  p0: { monsters: [null, 'tide_golem', null], spellTraps: [{ id: 'mirror_barrier', faceUp: false }, null, null] },
+};
+
 const summon =
   (p: PlayerId): Step =>
   (D) =>
@@ -44,6 +55,7 @@ const PACK: Record<string, Scenario> = {
   eMagusInspectP2: { desc: 'Uçurum Büyücüsü (P2): inceleme paneli — aynalı', stage: stage(1), steps: inspect },
   eMagusSummon: { desc: 'Uçurum Büyücüsü (P1): kurbanla çağrı — kart yüzü uçuşta', stage: stage(0), steps: [summon(0)] },
   eMagusSummonP2: { desc: 'Uçurum Büyücüsü (P2): kurbanla çağrı', stage: stage(1), steps: [summon(1)] },
+  eMagusCpuP2: { desc: 'Uçurum Büyücüsü (P2 bilgisayar, &mode=vsBot): tek hamlesi büyücüyü çağırmak', stage: cpuP2, steps: [] },
 };
 
 export default PACK;
