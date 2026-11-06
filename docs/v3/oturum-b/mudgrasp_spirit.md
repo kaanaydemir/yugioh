@@ -11,12 +11,80 @@ the 600 Hz suction "şlop", §5.2 ending "sıvı olup karoya geri akar"). Handbo
 ## Status by stage
 | Stage | State | Notes |
 |---|---|---|
-| Sprite rig (`src/art/monsters-v3/mudgrasp_spirit*.ts`) | **FIX r2 done** (gloss, chest folds, melt lobes, overhand release, hit squash; gates 21 ok) — **round 3 done** (planted claw hands, dark wet pool; gates 21 ok / 0 FAIL, tests 16/16) — round 2 done (readability redesign for the owner blocker; all 13 anims re-checked, gates 21 ok / 0 FAIL, test 11/11) | registered in v3 (file `mudgrasp_spirit.ts`); frame now 92×78, anchor (40, 71) |
+| Sprite rig (`src/art/monsters-v3/mudgrasp_spirit*.ts`) | **FIX r3 done** (climb 14 f with reach/strain/haul, liquid death sheet, compact arms, idle glance + hood bubble; gates 21 ok, tests 16/16) — **FIX r2 done** (gloss, chest folds, melt lobes, overhand release, hit squash; gates 21 ok) — **round 3 done** (planted claw hands, dark wet pool; gates 21 ok / 0 FAIL, tests 16/16) — round 2 done (readability redesign for the owner blocker; all 13 anims re-checked, gates 21 ok / 0 FAIL, test 11/11) | registered in v3 (file `mudgrasp_spirit.ts`); frame now 92×78, anchor (40, 71) |
 | Card art (`src/art/cardart-v3/mudgrasp_spirit.ts`) + `portrait()` | **done, round 2** (value pass for the owner's "brown mass" note) | `portrait()` wired in `monsters-v3/mudgrasp_spirit.ts` (unchanged); see *Card art* below |
 | `DEATH_PRESETS` | **done**: `material: 'water', accent: 'shadow'` (stone/ash endings are reserved) | `src/cinematics/_v3/presets.ts` own line |
 | `MONSTER_GLOW` | **done**: `void4 / void3 / white` emissive, `near void2`, `spill void3` (no body tone) | `src/view/light/profiles.ts` own line |
 | Scenarios (`src/duel/scenarios/mudgrasp_spirit.ts`) | **done** (21 keys, P1 + P2) | see *Cinematics stage* below |
-| Cinematics / SFX | **FIX r1 done** (wet-mud FX rework, see FIX round 1) — **round 1 done** (summon, strike, death, pin effect + persistent aura; sound set wired, mgGrab reworked) | `src/cinematics/kart-b/mudgrasp_spirit.ts` (+ `-fx.ts`), `src/audio/v3/mudgrasp_spirit.ts` |
+| Cinematics / SFX | **FIX r3 done** (splat grows only, round clod + quick toss, liquid tongues into ink/violet seams, chunky front-grab hands, wide aura with big stirs + bubble pops, peristaltic crawl, mgGrab +3 dB, drier mgGlk) — **FIX r1 done** (wet-mud FX rework, see FIX round 1) — **round 1 done** (summon, strike, death, pin effect + persistent aura; sound set wired, mgGrab reworked) | `src/cinematics/kart-b/mudgrasp_spirit.ts` (+ `-fx.ts`), `src/audio/v3/mudgrasp_spirit.ts` |
+
+## FIX round 3 (critic r3 → fixes), 2026-11-06
+
+Critic report: `shots/v3/kart-b/mudgrasp_spirit/critic-r3/` (0 blockers, 5 majors, 5 minors). Evidence of this round:
+`shots/v3/kart-b/mudgrasp_spirit/fix-r3/`.
+
+**Majors**
+- **Splat went lump → eye → lump → splat** → `mudSplat` rewritten so the spread only GROWS and FLATTENS: step 0 (the
+  contact frame, held through the hit-stop) is already the widest, flattest pancake (core 10×4, petals out at 0.6),
+  steps 1–5 push the petals to 1.0–1.25, flatten the core further, fling fat drops past the tips. The centred violet
+  disc (the "eyeball") is gone: 1–2 violet px sit in a crease below-left of the centre. Evidence
+  `fix-r3/mgAttack-z2.png` (t 1450–1700), `fix-r3/mgAttackP2-z2.png` (t 1500–1780).
+- **Lump read as a drumstick, hovered on adjacent throws, contact arm a rod/punch** → `drawBall` is ONE fat round
+  clod (r 5.2) that stretches along its velocity and squashes across it (rotated ellipse, area kept), with two rim
+  knobs that turn with the wobble, a broad lit crest and a violet ember crease; no attached tail — drops are shed as
+  separate pixels from the trailing rim every 40 ms. Flight `clamp(120 + d·0.9, 175, 380)` ms, arc apex
+  `clamp(hdx·0.26 + 12, 22, 42)` px (min 22 px toss). Attack f7 is now a follow-through that comes DOWN in front of
+  the mask (nx 29, ny −22) and f8–f9 sink the hand into its OWN puddle (nx 28/27) — the arm stays inside its tile.
+  Evidence `fix-r3/mgAttack-z2.png`, `fix-r3/mgAttackP2-z2.png`, `fix-r3/mgDirect-z2.png` (round clod over the whole arc).
+- **Death mid-phase read as rubble / potatoes** → the sprite's four lobes are replaced by ONE continuous glossy sheet
+  (a low dome under the floating mask: ink edge, lit wet rim, travelling ripple band, dark skirt, violet leaking at its
+  thin edges) that widens and thins every frame; the death f5 crown-arm stub is gone. FX `cracks`: the seams are real
+  cuts (two ink lips with violet glow inside, hot points pulsing); the lobes are replaced by liquid TONGUES running out
+  of the pool along every seam (3 px at the pool, tapering to a 1-px lip, ink edge + lit crest from `wet()`); on the
+  drain their tails leave the pool and they run on INTO the cracks; the FX pool is as flat as the sprite's own (1 : 3.2)
+  and shrinks 28 → 14 while the tongues advance. Evidence `fix-r3/mgKill-z3.png` (t 1725–2275), `fix-r3/sheet-p1/mudgrasp_spirit-v3-death.png`.
+- **Pin at 1×: twig hands, aura hidden under body + badge** → the grab hands are chunky (w 3: 6-px wrist, 7-px palm,
+  3-px fingers, WET_HAND crest), ALL on the front raster (above the attacker's feet), bursting up 14 px in front of
+  the feet and clamping DOWN over them. The ring (`ringOf`) reaches feet + 8 (min 20) up to the tile's half-width. The
+  aura's hands moved to the SIDE arcs (outside the stat badge): two big ones take turns rising 13 px with splayed
+  fingers then clawing at the nearest foot (one every 1.2 s), a small one paws front-right; between the rises a violet
+  bubble swells and POPS on the front arc with a light pulse (1.25 → 0.8). Evidence `fix-r3/mgPin-z2.png`,
+  `fix-r3/mgPin-grab-z3.png` (t 2450–2950), `fix-r3/mgPinLock-1x.png` (hands visible beside the wolf at 1×).
+- **Climb: posts, then a pop** → summon is 14 frames (was 13): f2 burst (arm roots lean in toward the body centre →
+  the arms lean OUT, no upright posts; `under()` in the rig), f3 REACH toward the tile's outer corners, f4 SLAP onto the
+  rim (fingers curl over the lip, gripMarks), f5 strain (elbows bend, only the hood breaks the surface), f6 haul 1
+  (mask sunk), f7 strain PAUSE (160 ms, it trembles, the mask half out, mud oozes between the fingers, a small shake),
+  f8 haul 2, f9 haul 3, f10 land. Sink steps 42 → 41 → 38 → 34 → 28 → 25 → 15 → 5 → 0. The FX burst hands lean out
+  from near the vortex centre and reach to the f3 wrists (no straight wrist column). Cinematic beats moved
+  (slap f4, haul f5, strain f7, clods f8, land mark 10). Evidence `fix-r3/mgSummon-z3.png` (t 860–2160),
+  `fix-r3/mgSummonP2-z3.png`.
+
+**Minors**
+- Neighbour overlap: NEUTRAL near hand nx 23 → 19, far hand fx 33 → 27 (the summon-end keys follow). `fix-r3/sheet-p1/…-idle.png`.
+- Idle: the whole near iris slides ±1 px with `look` (core ±2) — a visible glance; a bubble swells on the hood's crown
+  over two frames and pops (violet flash, two flecks) twice per loop. The finger drum is unchanged (ndh 3).
+- Crawl: a chain of overlapping blobs with a peristaltic bulge wave toward the head, widening to it (body = last third
+  only), 2–3 trailing beads; the dried trail is always separate spots. `fix-r3/mgPinKill-crawl-z2.png`.
+- SFX: mgGrab −14.3/−21.3 → **−11.2/−19.5** (cups + knocks louder) and mgClamp played at 0.7 (was 0.8) → the grab
+  sits ≈ 4 dB nearer the clamp. mgGlk −13.0/−25.3 → **−10.6/−21.4** (verb 0.5 → 0.3, a louder choked bubble + a dry
+  click on top).
+- Closed: the "dark blue blob above the dying body" is ember_wolf's fire smoke (absent with a crystal_wyrm killer).
+
+**Gates / tests**: monster-gates `--class medium --ref none` → **21 ok, 0 FAIL** (`fix-r3/gates.txt`). Sheet budget
+KK-13: 125 frames (summon 14) fits 3.6 MB. `tests/art/mudgrasp_spirit*` 16/16. tsc: no mudgrasp errors. Smoke
+(no console errors): mgPinFlipP2, mgPinKillP2, mgSummon. v1: every change is v3-only art / LOOK_V3-gated / v3 recipes.
+
+**Open after FIX r3**
+- Attack f7 (follow-through) passes diagonally in front of the mask for one 70-ms frame — reads as the arm falling,
+  but a critic may want it to sweep below the mask instead.
+- Adjacent-tile lob in P1 (mgAttack) still travels only ≈ 30 px horizontally (the target stands close and high); it
+  is now a quick 175–200 ms toss with a 22-px arc.
+- The hood bubble's violet pop is often covered by the crown arm at 1×.
+- The pin hands now cover most of the attacker's legs during the clamp (intended), and the stat badge still covers the
+  ring's front lip (the side arcs carry the read).
+- Death: the liquid sheet + FX pool still show a thin horizontal rim line through the mid-phase (the sprite pool's lip).
+- Previous opens still stand: `sourceOwnsDeath` fallback material, `plateLockOf` private peek, struck-body mud
+  material sound (decision 4), shared teal placement diamond.
 
 ## FIX round 2 (critic r2 → fixes), 2026-11-06
 
@@ -98,9 +166,7 @@ v1: every change is in v3-only art (monsters-v3), LOOK_V3-gated registrations or
 - Shared `cardSlide` still fires with mgClamp in `forceGuard` (kept quiet, 0.45); the mud's own guard / hit reactions use
   the shared shieldBlock / impactLight (decision 4: no struck-body mud material) — open.
 - The teal placement diamond is the shared summon kit's; the vortex now waits for it to fade instead of replacing it.
-- The dark blue blob above the dying body (mgKill t≈1450–1700, `fix-r2/mgKill-z3.png`) is still there; none of our
-  rasters draw at that height (all floor-level or on the sprite), most likely ember_wolf's fire-hit smoke — NOT yet
-  verified with a non-fire killer film.
+- ~~The dark blue blob above the dying body~~ — CLOSED (r3): ember_wolf's fire-hit smoke, absent with a crystal_wyrm killer.
 - The crawl's stream body on a long diagonal still reads a little rod-like mid-crawl (it is a moving stream with a
   pulling head; the trail now beads).
 - Aura hands are smaller than the pin's hands at 1× (they are a resting status, sized under the badge).

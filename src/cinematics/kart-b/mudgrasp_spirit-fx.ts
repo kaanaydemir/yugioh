@@ -12,7 +12,8 @@
 //   gripMarks      the summon's grip on the TILE EDGES: fingers curled over the tile's lip, smears that stay
 //   cracks         the death: violet-lit seams in the tile, glossy tongues of mud running out along them and
 //                  sucked back in, a counter-turning spiral in the shrinking puddle
-//   drawBall       the "Çamur Atışı" lump (8–9 px, glossy, violet ember, squash & stretch, a dripping tail)
+//   drawBall       the "Çamur Atışı" lump (one fat ~11-px clod, glossy, violet ember crease, squash & stretch along
+//                  its velocity; drops are shed as separate pixels, never an attached tail)
 //   mudSplat       the contact "şlap": violet pop, fat radial splash, droplets; gooDecal: the glob that slides
 //   pinGrab        the pin: the floor darkens / bulges / leaks violet, wet hands burst, wrap the real feet
 //                  (scanned from the attacker's frame), the feet sink into a glossy ring with a violet pit
@@ -1365,13 +1366,14 @@ export function mudCrawl(sc: Phaser.Scene, from: XY, to: XY, ms: number, depth: 
       r.draw((g) => {
         // the wet trail it leaves (dark, flat; dries back in three steps)
         tr.clear();
-        const tw = dry < 0.34 ? 2.4 : dry < 0.67 ? 1.5 : 0.8;
+        const tw = dry < 0.34 ? 1.6 : dry < 0.67 ? 1.1 : 0.7;
         if (dry < 1)
           for (let i = 0; i <= 30; i++) {
             const q = i / 30;
             if (q > Math.min(k, tail + 0.02) || q > 1 - dry) continue;
             // as it dries it beads up into separate wet spots (never a lingering stick)
-            if (i % 5 >= (dry === 0 ? 4 : dry < 0.5 ? 3 : 2)) continue;
+            // FIX r3: the trail is ALWAYS a row of separate wet spots (never a continuous rope)
+            if (i % 4 >= (dry < 0.5 ? 2 : 1)) continue;
             const p = at(q);
             tr.ell(p.x, p.y + 1, tw + 1.6, Math.max(0.8, tw * 0.8));
           }

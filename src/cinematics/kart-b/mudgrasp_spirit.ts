@@ -3,13 +3,14 @@
 //
 // Summon — "the climb" (one of the two climb entrances, §5):
 //   0     the tile softens into a glossy turning vortex (4 spiral arms, a violet pit + its light; mgVortex sustained)
-//   f2    two hands BURST up out of the mud (mgBurst: the 600 Hz şlop) — clods fly, a violet flash from below
-//   f2    (held 170 ms) two fat wet FX hands claw at the air over the sprite wrists; f3 the palms SLAP onto the tile's side
-//         edges and the fingers hook over its lip (gripMarks, mgSlap), smears stay; the plate pops at the eye-ignite beat
-//   f4–6  the body is hauled up between the gripping hands (mgHaul: a long wet drag, a strained grunt); the mask surfaces
-//   f7    land: out of the mud (mgLand), the grips let go, the vortex closes in steps, wet ripple rings (no white ring)
-//   f8    the mask seats with a click and the violet eyes ignite (a light flash on the face) — the plate pops here
-//   f9    shake-off: wet clods thrown off the body
+//   f2    two hands BURST up out of the mud (mgBurst: the 600 Hz şlop), the forearms leaning OUT from the centre —
+//         clods fly, a violet flash from below; f3 they REACH out toward the tile's outer corners
+//   f4    the palms SLAP onto the tile's rim and the fingers hook over its lip (gripMarks, mgSlap), smears stay
+//   f5–9  the haul (mgHaul): a strain (elbows bend, only the hood breaks the surface), haul 1 (mask sunk), a strain
+//         PAUSE (it trembles half out, mud oozes between the fingers), haul 2 (mask up), haul 3 — seven sink steps
+//   f10   land: out of the mud (mgLand), the grips let go, the vortex closes in steps, wet ripple rings (no white ring)
+//   f11   the mask seats with a click and the violet eyes ignite (a light flash on the face) — the plate pops here
+//   f12   shake-off: wet clods thrown off the body
 // Strike — "Çamur Atışı":
 //   the hand digs a fistful out of the mound (mgCharge, from the declaration), cocks it behind the hood, swings and
 //   RELEASES (mgRelease: suction pull-off + throw) — a sticky lump with a violet ember lobs over in a high arc with its

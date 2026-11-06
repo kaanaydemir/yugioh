@@ -255,7 +255,7 @@ const HM_HOLDS = [50, 60, 80, 90, 100, 110, 120, 140];
 
 // ------------------------------------------------------------------ summon (13): the climb out of the vortex
 
-const SU_N = 16;
+const SU_N = 14; // 13 keys + home (sheet budget KK-13: 125 frames total)
 const SUNK: Partial<Pose> = { sink: 46, mound: 0, eye: 0, mask: 1, bubK: 0, drip: -1, aa: -92, ab: -2, al: 0, climb: 1, nx: 26, ny: 14, fx: 30, fy: 14, rx: -24, ry: 14 };
 /** the grip on the tile's rim (f4–f8): palms planted out at the edges, fingers curled over the lip */
 const GRIP: Partial<Pose> = { nx: 31, ny: -1, nc: 1, fx: 33, fy: -4, fc: 1, rx: -28, ry: -1, rc: 1 };
@@ -283,17 +283,16 @@ const SUMMON_KEYS: Partial<Pose>[] = [
   // haul 3: nearly out, the grips relax
   { ...SUNK, climb: 0, al: 1, sink: 5, mound: 0.9, swirl: 0, nx: 28, ny: -1, nc: 0.8, fx: 30, fy: -4, fc: 0.8, rx: -27, ry: -1, rc: 0.8, lean: 3, hy: 1, eye: 0.6, lid: 1, aa: -98, ab: -6, bubK: 1 },
   // land: out, the mud settles (ripple ring)
-  { sink: 0, mound: 1, nx: 24, ny: -2, nc: 0.5, rx: -25, lean: 1, hy: 1, eye: 0.4, lid: 2, my: -2, ripple: 0.2, splash: 0.3, sx: 2, sy: -2, bubK: 1 },
+  { sink: 0, mound: 1, nx: 22, ny: -2, nc: 0.5, rx: -25, lean: 1, hy: 1, eye: 0.4, lid: 2, my: -2, ripple: 0.2, splash: 0.3, sx: 2, sy: -2, bubK: 1 },
   // the mask seats (a click down) and the eyes ignite
-  { sink: 0, nx: 23, lean: 0, hy: 0, my: 0, eye: 2, lid: 0, ripple: 0.45, bubK: 2, glint: 2 },
+  { sink: 0, nx: 20, lean: 0, hy: 0, my: 0, eye: 2, lid: 0, ripple: 0.45, bubK: 2, glint: 2 },
   // shake-off: bubbles burst all over, the crown hand flexes
   { swell: 1, eye: 1.6, ripple: 0.7, bubK: 2, aa: -94, ab: -4, ac: 0.6, glint: 1 },
-  { swell: 0, eye: 1.2, ripple: 0.9, aa: -104, ab: -12, ac: 0.1 },
 ];
 export function summonPose(f: number): Pose {
   return table(SUMMON_KEYS, f, SU_N);
 }
-const SU_HOLDS = [110, 170, 150, 80, 90, 130, 100, 160, 100, 90, 110, 120, 110, 120, 130, 140];
+const SU_HOLDS = [110, 170, 150, 80, 90, 130, 100, 160, 100, 90, 110, 120, 130, 170];
 
 // ------------------------------------------------------------------ death (10): it liquefies into the puddle, the mask sinks last
 
