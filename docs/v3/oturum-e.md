@@ -24,6 +24,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
 | Kart | Resim | Sinematik | SFX | Eleştiri turları | Kanıt |
 |---|---|---|---|---|---|
 | puppet_string (Kukla İpi) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı piksel, 4 kare | tamam: haç, 5 ip, 3 sarsak sıçrama, End Phase'de ipler kopar ve dönüş; alma 5,22 sn (≤5,3), dönüş ~2,0 sn (≤2,19); CPU senaryosu ePuppetBot | tamam: 14 e_puppet tarifi, her vuruşun sesi var | 5,5 / 6,5 / 7 | shots/e/puppet_string/ |
+| auger_lance (Burgu Mızrağı) | büyük + elle yeniden kurulmuş küçük; §10 dama sınırı içinde (büyük ≤22/26, küçük ≤3/6), x1/x3/x6 bakıldı | tamam: yarık, mızrak, burgu; elden 3566 ms / set 3366 ms (≤3675); set kartı mızrak çıkınca yatırılır; CPU senaryosu eAugerCpu | tamam: 14 e_* tarifi, her vuruşta ses, kırpma yok (tepe ≤ -1,9 dB) | 6 / 7,5 / 7 | shots/e/auger_lance/ |
 | (doldurulacak) | | | | | |
 
 ### S3 Boşluk Gözü (`void_eye`)
@@ -223,3 +224,10 @@ kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe aç�
 - `palcheck` tüm kare/tahta kırpımlarında FAIL (Δoff ~4–5): arena arka planı ve ışık katmanı gürültüsü, kartın kendi renkleri değil.
 - `tests/art/cloud_hatchling.test.ts` başarısız: A kulvarının süren işi, bu kartla ilgisiz.
 - Cila: yüzü kapalı dönüşte iniş adımı `e_puppetHook` sesini kullanıyor, yüzü açık dönüş `e_puppetStep` kullanıyor.
+
+### auger_lance
+- Ortak açılış (spells/_kit set yolu + TileCard derinliği): set büyü/tuzak ~0,5 sn dik dururken arkadaki canavarı örtüyor, stat rozeti kart yüzünün üstüne çiziliyor. Ortak dosya, düzeltilmedi.
+- cardart-render küçük/büyük değer yerleşimi bayrağı 0,56 < 0,75 (araç bayrağı, §10 sayısı değil; küçük kasıtlı elle kurgu).
+- Saldırıya hızlı cevap: temas düz saldırıdan 5,1 sn sonra (açılma 1,1 sn + hedef seçimi + 3,0 sn imza). Sahibin süre sınırı yok kararıyla kabul.
+- palcheck (a5) el filminde t=900'de bir karede Δoff +1,27 pt: yarığın zemindeki ışık havuzu (izinli ışık katmanı).
+- eAugerCpu tools/measure.mjs ile ölçülemez (hot-seat'e yeniden başlar); &mode=vsBot ile, --fresh olmadan filme alın.
