@@ -54,17 +54,19 @@ import type Phaser from 'phaser';
 import type { CardId } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
 import { PAL, PLAYER_RAMP } from '../../art/palette';
-import { BOARD_CENTER, DEPTH, LOOK_V3, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { BOARD_COLS, BOARD_MID_COL, BOARD_ROWS, DEPTH, LANE_MID, LOOK_V3, type XY, duelistXY, isoToScreen, monsterRow, unitDepth, zoneXY } from '../../view/layout';
 import { Raster, floorRing, onFrame, run } from '../../vfx/setpieces';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import { wait } from '../../vfx/core';
-import { fxRng, numberUnderBar, rimClimb, silhouetteOf } from '../_v3/spellfx';
-import { impactNumber } from '../_v3/number';
+import { fxRng, rimClimb, silhouetteOf } from '../_v3/spellfx';
+import { boostNumber, numberWidth } from './_lucky_die_number';
 import { panAt, play as playV3 } from '../_v3/sound';
 import { cardLeaves } from '../_v3/card';
+import { ARENA_NT } from '../../view/board-nt/flag';
+import { SCREENS } from '../../view/board-nt/layout-nt';
 import { registerCardHook } from '../api';
 import { registerLaneE, type LaneECtx } from '../b2e/dispatch';
-import { GOLD_FX, bg, castFloor, castSpot, evAt, ip, lightFlash, lightPool, relax, setTileOf, spellOpening, type ActCtx, type AnyCtx } from './_kit';
+import { GOLD_FX, bg, castSpot, evAt, ip, lightFlash, lightPool, relax, setTileOf, spellOpening, type ActCtx, type AnyCtx } from './_kit';
 import type { SfxName } from '../../audio/sfx';
 import { KZ, PIPS, type M3, type DieLook, groundDir, mul, paintDie, pipOffsets, rot, upright } from './_lucky_die_cube';
 
@@ -133,6 +135,11 @@ interface DieState {
   cut: number;
   shadow: number;
   el: number;
+  /** At rest on the floor: sorted with the bodies by its floor point; airborne / rolling it flies over every body and
+   *  stat badge (DEPTH.FX — a badge is never drawn across the tumbling die). */
+  grounded: boolean;
+  /** Its depth at rest: over the badges (FX − 10) unless a body stands in front of it (then sorted by its floor). */
+  restDepth: number;
 }
 
 interface DieView {
@@ -156,7 +163,7 @@ function makeDie(sc: Phaser.Scene, s: DieState, seed: number): DieView {
     const ox = c.x - BOX / 2;
     const oy = c.y - BOX / 2;
     ras.moveTo(ox, oy);
-    ras.img.setDepth(unitDepth(s.fy) + 0.5);
+    ras.img.setDepth(s.grounded ? s.restDepth : DEPTH.FX);
     ras.begin();
     if (s.h > 0) {
       paintDie(ras.pc, BOX / 2, BOX / 2, s.h, s.M, s.look);
@@ -221,6 +228,41 @@ function dust(sc: Phaser.Scene, at: XY, k: number, seed: number): void {
     sp.add({ x: at.x + side * 4, y: at.y - 2, vx: side * (20 + rnd() * 40), vy: -(50 + rnd() * 60) * k, ay: 420, life: 300 + rnd() * 160, colors: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], shape: 'px', fadeAt: 1, floor: at.y + 2, bounce: 0.3 });
   }
   sp.release();
+}
+
+/**
+ * A badge's count step: a 1-px gold4 frame round the plate for two frames (white corners on the first), drawn just over
+ * the badge — the eye sees each +100 land.
+ */
+function badgeBlink(sc: Phaser.Scene, img: Phaser.GameObjects.Image): void {
+  if (!img.active || !img.visible) return;
+  const b = img.getBounds();
+  const x0 = Math.floor(b.x) - 1;
+  const y0 = Math.floor(b.y) - 1;
+  const w = Math.ceil(b.width) + 2;
+  const h = Math.ceil(b.height) + 2;
+  const ras = new Raster(sc, x0, y0, w, h, img.depth + 1);
+  let n = 0;
+  onFrame(sc, () => {
+    if (!ras.alive) return false;
+    if (n >= 2) {
+      ras.destroy();
+      return false;
+    }
+    ras.begin();
+    for (let x = 1; x < w - 1; x++) {
+      ras.pc.set(x, 0, PAL.gold4);
+      ras.pc.set(x, h - 1, PAL.gold3);
+    }
+    for (let y = 1; y < h - 1; y++) {
+      ras.pc.set(0, y, PAL.gold4);
+      ras.pc.set(w - 1, y, PAL.gold3);
+    }
+    if (n === 0) for (const [cx, cy] of [[1, 1], [w - 2, 1], [1, h - 2], [w - 2, h - 2]] as const) ras.pc.set(cx, cy, PAL.white);
+    ras.end();
+    n++;
+    return true;
+  });
 }
 
 // ================================================================ the face in the air (the readable number)
@@ -425,14 +467,16 @@ function sparkField(sc: Phaser.Scene, box: { x0: number; y0: number; x1: number;
 
 /**
  * A rocket climbs from `from` to `burst` (a 2-px white head over a gold-and-fire spark tail, wobbling as it climbs),
- * then BURSTS: a flash cross, an outer ring of 2-px stars in the ramp, an inner ring of plus-sparks, and glitter that
- * hangs, blinks and falls — all stepped palette tones, no blend glow (the light layer gives the bloom).
+ * then BURSTS over a boosted monster: a white star flash, an outer ring of 2-px stars in the ramp (two speeds: a ring
+ * inside a ring), an inner ring of plus-sparks, a crown of long-lived blinking glitter, and a short GOLD GLITTER RAIN
+ * that falls onto the monster under it (`onto`: its head) — all stepped palette tones, no blend glow; the light layer
+ * gives an air bloom only (no floor pool: the burst hangs in the air).
  */
-async function firework(sc: Phaser.Scene, from: XY, burst: XY, ramp: readonly number[], seed: number): Promise<void> {
+async function firework(sc: Phaser.Scene, from: XY, burst: XY, onto: XY, ramp: readonly number[], seed: number, pitch: number): Promise<void> {
   const rnd = fxRng(seed);
   const tail = new PxSparks(sc, DEPTH.FX_TOP + 5);
   const head = new Raster(sc, 0, 0, 4, 4, DEPTH.FX_TOP + 6);
-  const UP = 250;
+  const UP = 230;
   let px = from.x;
   let py = from.y;
   await run(sc, UP, (t, _el, dt) => {
@@ -458,29 +502,36 @@ async function firework(sc: Phaser.Scene, from: XY, burst: XY, ramp: readonly nu
   });
   head.destroy();
   tail.release();
-  playV3('e_dieFirework', { volume: 0.6, pan: panAt(burst.x), pitch: 0.92 + rnd() * 0.16 });
-  void lightFlash(sc, burst.x, burst.y, ramp[3], 56, 520, { floorY: burst.y, intensity: 1, air: 1 });
+  playV3('e_dieFirework', { volume: 0.75, pan: panAt(burst.x), pitch });
+  // air bloom only: the floor pool is sent far below the screen (a pool painted at the burst's height lay on the
+  // tiles as a patch with no cause)
+  void lightFlash(sc, burst.x, burst.y, ramp[3], 60, 560, { floorY: 640, intensity: 0.9, air: 1 });
   const sp = new PxSparks(sc, DEPTH.FX_TOP + 5);
   // the flash: a white star for a few frames
-  sp.add({ x: burst.x, y: burst.y, life: 110, colors: [PAL.white, ramp[4]], shape: 'star', size: 7, fadeAt: 1 });
-  // the outer ring: 2-px stars flying out, slowing, sagging, stepping down the ramp
-  const n = 28;
+  sp.add({ x: burst.x, y: burst.y, life: 120, colors: [PAL.white, PAL.white, ramp[4]], shape: 'star', size: 9, fadeAt: 1 });
+  // the outer rings: 2-px stars flying out, slowing, sagging, stepping down the ramp (a fast ring and a slower one)
+  const n = 36;
   for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2 + rnd() * 0.08;
-    const v = 105 + (i % 3) * 14;
-    sp.add({ x: burst.x, y: burst.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.9, drag: 2.4, ay: 46, life: 640 + rnd() * 200, colors: [PAL.white, ramp[4], ramp[3], ramp[3], ramp[2], ramp[1]], shape: 'sq', size: 2, fadeAt: 1 });
+    const a = (i / n) * Math.PI * 2 + rnd() * 0.06;
+    const v = i % 2 === 0 ? 132 + (i % 3) * 8 : 92 + (i % 3) * 6;
+    sp.add({ x: burst.x, y: burst.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.85, drag: 2.6, ay: 50, life: 700 + rnd() * 220, colors: [PAL.white, ramp[4], ramp[4], ramp[3], ramp[3], ramp[2], ramp[1]], shape: 'sq', size: 2, fadeAt: 1 });
   }
   // the inner ring: plus-sparks, slower, white-hot
-  for (let i = 0; i < 14; i++) {
-    const a = (i / 14) * Math.PI * 2 + 0.2;
-    const v = 52 + (i % 2) * 10;
-    sp.add({ x: burst.x, y: burst.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.9, drag: 2.6, ay: 30, life: 480 + rnd() * 120, colors: [PAL.white, PAL.gold4, ramp[4], ramp[3]], shape: 'plus', fadeAt: 1 });
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2 + 0.2;
+    const v = 50 + (i % 2) * 12;
+    sp.add({ x: burst.x, y: burst.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.85, drag: 2.6, ay: 30, life: 520 + rnd() * 140, colors: [PAL.white, PAL.gold4, ramp[4], ramp[3]], shape: 'plus', fadeAt: 1 });
   }
-  // glitter that hangs and falls, blinking
-  for (let i = 0; i < 22; i++) {
+  // a crown of glitter that hangs and blinks
+  for (let i = 0; i < 26; i++) {
     const a = rnd() * Math.PI * 2;
-    const r = 10 + rnd() * 34;
-    sp.add({ x: burst.x + Math.cos(a) * r, y: burst.y + Math.sin(a) * r * 0.85, vy: 10 + rnd() * 12, ay: 26, life: 700 + rnd() * 500, delay: 200 + rnd() * 260, colors: [PAL.white, PAL.gold4, ramp[4], ramp[3]], shape: 'px', flicker: true, fadeAt: 1 });
+    const r = 12 + rnd() * 40;
+    sp.add({ x: burst.x + Math.cos(a) * r, y: burst.y + Math.sin(a) * r * 0.8, vy: 8 + rnd() * 10, ay: 22, life: 640 + rnd() * 420, delay: 180 + rnd() * 240, colors: [PAL.white, PAL.gold4, ramp[4], ramp[3]], shape: 'px', flicker: true, fadeAt: 1 });
+  }
+  // the GOLD GLITTER RAIN onto the boosted monster below: it lands on its head and stops there
+  for (let i = 0; i < 18; i++) {
+    const x = onto.x + R((rnd() - 0.5) * 30);
+    sp.add({ x: burst.x + (x - burst.x) * 0.3 + (rnd() - 0.5) * 8, y: burst.y + 6 + rnd() * 10, vx: (x - burst.x) * 0.7, vy: 30 + rnd() * 30, ay: 120, life: 520 + rnd() * 240, delay: 120 + i * 18, colors: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], shape: i % 4 === 0 ? 'plus' : 'px', flicker: true, fadeAt: 1, floor: onto.y + 6 + R(rnd() * 6), bounce: 0.2 });
   }
   sp.release();
 }
@@ -498,16 +549,24 @@ interface DieRun {
   gi: number;
 }
 
+type Box = { x0: number; y0: number; x1: number; y1: number };
+const area = (a: Box, b: Box): number => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+/** The duelist avatar's box (its feet on duelistXY). */
+const avatarBox = (p: PlayerId): Box => {
+  const d = duelistXY(p);
+  return { x0: d.x - 12, y0: d.y - 42, x1: d.x + 12, y1: d.y + 4 };
+};
+
 /**
- * Where the die comes to rest: the free-est floor spot (whole pixels) on the board's middle strip (between the two
- * monster rows) or the caster's own front strip (between its monster and spell/trap rows). A spot loses points for every
- * body standing IN FRONT of the die (it would hide it), for every stat badge under the die or under the face in the air
- * (the badges must stay readable while they count), and for its distance from the middle of the board.
+ * Where the die comes to rest: always on the CASTER's side, in front of its own monsters — the free-est floor spot
+ * (whole pixels) on a grid over the caster's half of the bridge (preferred: the die is the caster's luck, thrown in
+ * front of its own row) back through its monster row to its front strip. Never past the bridge's middle line. A spot
+ * loses points for every body standing IN FRONT of the die (it would hide it) or under it, for every stat badge under
+ * the die or under the face in the air (the badges must stay readable while they count), for a duelist under it, for
+ * its distance from the boosted monsters (the sparks make a short fan) and from the preferred row.
  */
-function restSpot(ctx: AnyCtx, player: PlayerId, from: XY): XY {
-  type Box = { x0: number; y0: number; x1: number; y1: number };
-  const area = (a: Box, b: Box): number => Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
-  const bodies: { box: Box; floor: number; badge: Box }[] = [];
+function restSpot(ctx: AnyCtx, player: PlayerId, from: XY, targets: readonly XY[]): XY & { occluded: boolean; faceDx: number } {
+  const bodies: { box: Box; floor: number; badge: Box; mine: boolean }[] = [];
   for (const p of [0, 1] as const)
     for (const slot of ctx.state.players[p].monsters) {
       if (!slot) continue;
@@ -516,44 +575,90 @@ function restSpot(ctx: AnyCtx, player: PlayerId, from: XY): XY {
       const sil = silhouetteOf(u.sprite);
       const h = u.home;
       const box = sil ? { x0: sil.left, y0: sil.top, x1: sil.right, y1: sil.bottom } : { x0: h.x - 14, y0: h.y - 40, x1: h.x + 14, y1: h.y };
-      bodies.push({ box, floor: h.y, badge: { x0: h.x - 16, y0: h.y + 5, x1: h.x + 16, y1: h.y + 17 } });
+      bodies.push({ box, floor: h.y, badge: { x0: h.x - 18, y0: h.y + 4, x1: h.x + 18, y1: h.y + 18 }, mine: p === player });
     }
-  // the strips, from the board's own zones (3 or 5 lanes): the middle one between the two monster rows, the caster's
-  // front one between its monster and spell/trap rows; both run along the rows and reach half a lane past the ends
-  const n = ctx.state.players[player].monsters.length;
-  const row = (p: PlayerId, spot: 'monster' | 'spellTrap'): XY[] => Array.from({ length: n }, (_, i) => zoneXY(p, spot, i));
-  const mean = (ps: XY[]): XY => ({ x: ps.reduce((a, q) => a + q.x, 0) / ps.length, y: ps.reduce((a, q) => a + q.y, 0) / ps.length });
-  const mine = row(player, 'monster');
-  const lane = { x: (mine[n - 1].x - mine[0].x) / Math.max(1, n - 1), y: (mine[n - 1].y - mine[0].y) / Math.max(1, n - 1) };
-  const strip = (c: XY): [XY, XY] => {
-    const k = (n - 1) / 2 + 0.5;
-    return [
-      { x: c.x - lane.x * k, y: c.y - lane.y * k },
-      { x: c.x + lane.x * k, y: c.y + lane.y * k },
-    ];
-  };
-  const mid = mean([mean(row(0, 'monster')), mean(row(1, 'monster'))]);
-  const front = mean([mean(mine), mean(row(player, 'spellTrap'))]);
-  const lines: [XY, XY][] = [strip(mid), strip(front)];
-  let best: XY = { x: BOARD_CENTER.x, y: BOARD_CENTER.y };
+  const avatars = [avatarBox(0), avatarBox(1)];
+  const mr = monsterRow(player);
+  // grid rows run from the bridge's middle line (exclusive) toward the caster; +1 = toward the caster
+  const back = player === 0 ? 1 : -1;
+  const mid = (monsterRow(0) + monsterRow(1)) / 2;
+  // the caster's half of the bridge through its own monster row: no preference inside that band; nearer the middle
+  // line than its inner edge reads as the opponent's ground (steep cost); behind the monster row costs a little
+  const inner = mid + back * 0.4;
+  const outer = mr;
+  const aim = targets.length ? { x: targets.reduce((a, q) => a + q.x, 0) / targets.length, y: targets.reduce((a, q) => a + q.y, 0) / targets.length } : zoneXY(player, 'monster', LANE_MID);
+  let best: XY & { occluded: boolean; faceDx: number } = { ...isoToScreen(BOARD_MID_COL, (inner + outer) / 2), occluded: false, faceDx: 0 };
+  const screens: readonly Box[] = ARENA_NT ? SCREENS.map((r) => ({ x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h })) : [];
   let bestScore = Infinity;
-  for (const [a, b] of lines)
-    for (let i = 0; i <= 16; i++) {
-      const q = { x: R(a.x + ((b.x - a.x) * i) / 16), y: R(a.y + ((b.y - a.y) * i) / 16) };
-      if (Math.hypot(q.x - from.x, q.y - from.y) < 72) continue;
-      // the face in the air (≈ 72 px over the floor) and the fireworks over it must stay clear of the top HUD and the
-      // portrait screens: never too far up the board, never out at the strip's ends
-      if (q.y < 116 || i < 1 || i > 15) continue;
+  for (let k = 0.15; k <= Math.abs(mr - mid) + 0.6 + 1e-6; k += 0.05)
+    for (let col = 0.4; col <= BOARD_COLS - 1.4 + 1e-6; col += 0.1) {
+      const row = mid + back * k;
+      const f = isoToScreen(col, row);
+      const q = { x: R(f.x), y: R(f.y) };
+      // the throw needs room for its three bounces and two rolls
+      const reach = Math.hypot(q.x - from.x, q.y - from.y);
+      if (reach < 44) continue;
+      // the face in the air (≈ 72 px over the floor) must stay clear of the top HUD
+      if (q.y < 108) continue;
       const die: Box = { x0: q.x - 19, y0: q.y - 34, x1: q.x + 19, y1: q.y + 3 };
-      const face: Box = { x0: q.x - 17, y0: q.y - 72, x1: q.x + 17, y1: q.y - 38 };
-      let score = Math.hypot(q.x - BOARD_CENTER.x, q.y - BOARD_CENTER.y) * 2.5;
+      const d = (row - mid) * back; // distance from the middle line toward the caster
+      const dIn = (inner - mid) * back;
+      const dOut = (outer - mid) * back;
+      let score = Math.max(0, 70 - reach) * 12 + Math.hypot(q.x - aim.x, q.y - aim.y) * 1.2 + (d < dIn ? (dIn - d) * 160 : d > dOut ? (d - dOut) * 30 : 0);
       for (const bd of bodies) {
-        if (bd.floor > q.y) score += area(die, bd.box) * 3;
-        score += area(die, bd.badge) * 6 + area(face, bd.badge) * 3;
+        score += area(die, bd.box) * (bd.floor > q.y ? 4 : 1.5);
+        score += area(die, bd.badge) * 3;
       }
+      for (const a of avatars) score += area(die, a) * 6;
+      // the face in the air: straight over the die, or slid a little sideways when that is clearer
+      let faceBest = Infinity;
+      let faceDx = 0;
+      for (const dx of [0, 14, -14, 26, -26]) {
+        const face: Box = { x0: q.x + dx - 17, y0: q.y - 72, x1: q.x + dx + 17, y1: q.y - 38 };
+        let fs = Math.abs(dx) * 2;
+        for (const bd of bodies) {
+          fs += area(face, bd.badge) * 3;
+          // the face over an enemy body would read as aiming at it
+          if (!bd.mine) fs += area(face, bd.box) * 1.5;
+        }
+        for (const a of avatars) fs += area(face, a) * 2;
+        // the portrait screens and the phase bar stay clear
+        for (const sr of screens) fs += area(face, sr) * 6;
+        if (face.y0 < 52) fs += (52 - face.y0) * 30;
+        if (fs < faceBest) {
+          faceBest = fs;
+          faceDx = dx;
+        }
+      }
+      score += faceBest;
       if (score < bestScore) {
         bestScore = score;
-        best = q;
+        best = { ...q, occluded: bodies.some((bd) => bd.floor > q.y && area(die, bd.box) > 0), faceDx };
+      }
+    }
+  return best;
+}
+
+/**
+ * Where the die is born out of a card in the hand: in the air over the BOARD floor (never over the arena wall), just
+ * in front of the card's upper half and clear of the caster's duelist (the throw then never crosses the avatar).
+ */
+function handSpawn(player: PlayerId, card: XY): { spawn: XY; floor: number } {
+  const dir = player === 0 ? 1 : -1;
+  const target = { x: card.x + dir * 22, y: card.y - 18 };
+  const av = avatarBox(player);
+  const LIFT = 22;
+  let best = { spawn: { x: target.x, y: target.y }, floor: target.y + LIFT };
+  let bestScore = Infinity;
+  for (let row = -0.25; row <= BOARD_ROWS - 0.75 + 1e-6; row += 0.05)
+    for (let col = -0.2; col <= BOARD_COLS - 0.8 + 1e-6; col += 0.05) {
+      const f = isoToScreen(col, row);
+      const s = { x: R(f.x), y: R(f.y) - LIFT };
+      const die: Box = { x0: s.x - 19, y0: s.y - 19, x1: s.x + 19, y1: s.y + 19 };
+      const score = Math.hypot(s.x - target.x, s.y - target.y) + area(die, av) * 8;
+      if (score < bestScore) {
+        bestScore = score;
+        best = { spawn: s, floor: R(f.y) };
       }
     }
   return best;
@@ -580,8 +685,20 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
   const sfx = (name: SfxName, o: { volume?: number; pitch?: number; at?: number } = {}) => playV3(name, { volume: o.volume ?? 0.9, pitch: o.pitch, pan: o.at !== undefined ? panAt(o.at) : pan });
   const rnd = fxRng(r.spawn.x * 7 + N * 31 + r.player);
 
+  // ---- who is boosted (their statChanges are this scene's): the rest spot is chosen near them
+  const targets = r.stats
+    .map((i) => ({ i, e: evAt(ctx, i, 'statChange') }))
+    .filter((q): q is { i: number; e: Extract<GameEvent, { type: 'statChange' }> } => !!q.e)
+    .map((q) => ({ ...q, u: ctx.unit(q.e.uid) }));
+  for (const q of targets) ctx.consumeAt(q.i);
+  const live = targets.filter((q) => q.u && !q.u.retired && q.u.sprite.visible);
+  const aims = live.map((q) => {
+    const p = q.u!.worldPoint('core');
+    return { x: R(p.x), y: R(p.y) };
+  });
+
   // ---- the path: spawn → three bounces → two rolls → rest
-  const rest = restSpot(ctx, r.player, { x: r.spawn.x, y: r.spawnFloor });
+  const rest = restSpot(ctx, r.player, { x: r.spawn.x, y: r.spawnFloor }, live.map((q) => ({ x: R(q.u!.home.x), y: R(q.u!.home.y) })));
   const d = groundDir(rest.x - r.spawn.x, rest.y - r.spawnFloor);
   const axis: readonly [number, number, number] = [-d[1], d[0], 0]; // z × d: a forward roll
   const step = floorStep(d);
@@ -598,10 +715,10 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
   const PS = { start: QT * 1.5, b1: 0 };
   const pose = (th: number, ph: number, ps: number): M3 => mul(rot([0, 0, 1], snap(ps)), mul(rot(axis, snap(th)), mul(rot(d, snap(ph)), final)));
 
-  const S: DieState = { fx: r.spawn.x, fy: r.spawnFloor, z: (r.spawnFloor - r.spawn.y) / KZ, jx: 0, jy: 0, h: 0, M: pose(TH.start, PH.start, PS.start), look: {}, cut: -1, shadow: 1, el: 0 };
+  const S: DieState = { fx: r.spawn.x, fy: r.spawnFloor, z: (r.spawnFloor - r.spawn.y) / KZ, jx: 0, jy: 0, h: 0, M: pose(TH.start, PH.start, PS.start), look: {}, cut: -1, shadow: 1, el: 0, grounded: false, restDepth: rest.occluded ? unitDepth(rest.y) + 0.5 : DEPTH.FX - 10 };
   const die = makeDie(sc, S, r.spawn.x * 3 + N);
-  const pool = lightPool(sc, r.spawn.x, r.spawn.y, { color: PAL.gold3, radius: 22, floorY: r.spawnFloor, air: 0.5, airRadius: 14, intensity: 0, anim: 'breathe', fadeIn: 0 });
-  pool.setIntensity(0.6, 120);
+  const pool = lightPool(sc, r.spawn.x, r.spawn.y, { color: PAL.gold3, radius: 26, floorY: r.spawnFloor, air: 0.5, airRadius: 14, intensity: 0, anim: 'breathe', fadeIn: 0 });
+  pool.setIntensity(0.9, 120);
   const follow = onFrame(sc, () => {
     if (!pool.alive) return false;
     const c = die.centre();
@@ -752,6 +869,7 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
   S.fy = restP.y;
   S.z = H;
   S.M = final;
+  S.grounded = true;
 
   // ---- STOP: the rolled face is in
   const C = die.centre();
@@ -779,7 +897,7 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
 
   // ---- PIPS LIFT into the face in the air
   await wait(sc, T.pipsAfter);
-  const faceAt: XY = { x: C.x, y: C.y - 46 };
+  const faceAt: XY = { x: C.x + rest.faceDx, y: C.y - 46 };
   const face = airFace(sc, faceAt, N, dud);
   face.frame(true);
   const pipFrom = pipOffsets(final, H, N).map((o) => ({ x: C.x + R(o.x), y: C.y + R(o.y) }));
@@ -800,27 +918,27 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
   if (six) {
     sfx('e_dieJackpot', { volume: 1 });
     const ramps = [[PAL.gold0, PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4], PLAYER_RAMP[r.player], [PAL.fire0, PAL.fire1, PAL.fire2, PAL.fire3, PAL.fire4]] as const;
-    const bursts: XY[] = [
-      { x: C.x - 64, y: Math.max(48, C.y - 88) },
-      { x: C.x + 6, y: Math.max(40, C.y - 110) },
-      { x: C.x + 70, y: Math.max(52, C.y - 80) },
-    ];
-    bursts.forEach((b, i) => shows.push(wait(sc, 40 + i * 110).then(() => firework(sc, { x: C.x + (i - 1) * 6, y: C.y - 10 }, b, ramps[i], 50 + i * 7))));
+    // the bursts hang over the CASTER's boosted monsters (left → right), each raining glitter onto the head under it;
+    // with fewer than three boosted monsters the rest burst beside the die
+    const heads = live.map((q) => {
+      const t = q.u!.worldPoint('top');
+      return { x: R(t.x), y: R(t.y) };
+    });
+    heads.sort((p, q) => p.x - q.x);
+    const pick: XY[] = heads.length >= 3 ? [heads[0], heads[Math.floor(heads.length / 2)], heads[heads.length - 1]] : [...heads];
+    const extra = [{ x: C.x - 40, y: C.y - 30 }, { x: C.x + 40, y: C.y - 30 }, { x: C.x, y: C.y - 40 }];
+    for (let i = 0; pick.length < 3; i++) pick.push(extra[i]);
+    const pitches = [0.9, 1.06, 1.2];
+    pick.forEach((h, i) => {
+      // a little back toward the caster (the row behind a caster's head is the opponent's)
+      const b = { x: h.x + (r.player === 0 ? -14 : 14), y: Math.max(52, h.y - 16) };
+      shows.push(wait(sc, 40 + i * 120).then(() => firework(sc, { x: C.x + (i - 1) * 6, y: C.y - 10 }, b, h, ramps[i], 50 + i * 7, pitches[i])));
+    });
   }
 
   // ---- SPARKS: each pip bursts and sends one spark to every boosted monster; each arrival = +100 on its badge
   await wait(sc, T.sparksAfter);
-  const targets = r.stats
-    .map((i) => ({ i, e: evAt(ctx, i, 'statChange') }))
-    .filter((q): q is { i: number; e: Extract<GameEvent, { type: 'statChange' }> } => !!q.e)
-    .map((q) => ({ ...q, u: ctx.unit(q.e.uid) }));
-  for (const q of targets) ctx.consumeAt(q.i);
-  const live = targets.filter((q) => q.u && !q.u.retired && q.u.sprite.visible);
   let box = { x0: faceAt.x - 30, y0: faceAt.y - 30, x1: faceAt.x + 30, y1: faceAt.y + 30 };
-  const aims = live.map((q) => {
-    const p = q.u!.worldPoint('core');
-    return { x: R(p.x), y: R(p.y) };
-  });
   for (const a of aims) box = { x0: Math.min(box.x0, a.x - 30), y0: Math.min(box.y0, a.y - 50), x1: Math.max(box.x1, a.x + 30), y1: Math.max(box.y1, a.y + 30) };
   const field = sparkField(sc, box);
   const counts = live.map(() => 0);
@@ -839,9 +957,11 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
           if (u.retired) return;
           const k = counts[m];
           const e = q.e;
-          // the badge counts up one pip at a time (the last one lands exactly on the engine's values)
-          if (k >= N) void u.setStats(e.atk, e.def, true);
-          else void u.setStats(e.prevAtk + 100 * k, e.prevDef + 100 * k, true);
+          // the badge COUNTS: it steps exactly +100 per spark (no roll in between: 1700 → 1800 → 1900 …; the last one
+          // lands exactly on the engine's values) and its plate blinks gold for two frames
+          if (k >= N) void u.setStats(e.atk, e.def, false);
+          else void u.setStats(e.prevAtk + 100 * k, e.prevDef + 100 * k, false);
+          badgeBlink(sc, u.badge.image);
           sfx('e_dieTick', { pitch: Math.pow(2, PENTA[Math.min(5, k - 1)] / 12), volume: 0.5, at: to.x });
           const sp = new PxSparks(sc, u.sprite.depth + 1);
           for (let j = 0; j < 5; j++) {
@@ -861,22 +981,33 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
   field.destroy();
   face.destroy();
 
-  // ---- every spark is in: the edge climbs gold, ONE number per monster
+  // ---- every spark is in: the edge climbs gold, ONE number per monster — pinned low on ITS monster's body,
+  // never above its head (above a caster's head is the opponent's row on this board), a 3-px float, gone in 0.9 s;
+  // two numbers that would touch fan apart sideways and pop 90 ms apart
   sfx('e_dieBoost', { volume: 0.85, at: aims[0]?.x ?? C.x });
-  const spots: XY[] = [];
+  const spots: { x: number; y: number; w: number }[] = [];
   const finals = live.map(async (q, m) => {
-    await wait(sc, m * 50);
     const u = q.u!;
-    if (u.retired) return;
     const e = q.e;
-    const rim = rimClimb(sc, u.sprite, { ramp: [PAL.gold2, PAL.gold3, PAL.gold4], from: 'feet', stepMs: 45, holdMs: 140, fadeMs: 120, depth: u.sprite.depth + 0.6 });
-    const t = u.worldPoint('top');
-    let n = { x: R(t.x), y: numberUnderBar(t.y - 4).y };
-    // never on top of a number already up: step aside AND up a little (neighbours alternate height)
-    for (const s of spots) if (Math.abs(n.x - s.x) < 34 && Math.abs(n.y - s.y) < 12) n = { x: n.x, y: s.y - 12 };
-    spots.push(n);
     const delta = Math.abs(e.atk - e.prevAtk) || 100 * N;
-    await Promise.all([rim, impactNumber(sc, n.x, n.y, delta, { kind: 'heal', rise: numberUnderBar(n.y).rise })]);
+    const w = numberWidth(sc, delta);
+    // low on its own body (its legs, just over its own badge): far from the row behind it, whose badges sit at this
+    // monster's head height
+    const core = { x: R(u.home.x), y: R(u.home.y) - 13 };
+    let n = { x: core.x, y: core.y, w };
+    let delay = m * 50;
+    for (const sp of spots)
+      if (Math.abs(n.x - sp.x) < (n.w + sp.w) / 2 + 2 && Math.abs(n.y - sp.y) < 12) {
+        // fan away from the other number (toward this monster's own side of it), and come a beat later
+        const side = core.x >= sp.x ? 1 : -1;
+        n = { ...n, x: sp.x + side * R((n.w + sp.w) / 2 + 3) };
+        delay += 90;
+      }
+    spots.push(n);
+    await wait(sc, delay);
+    if (u.retired) return;
+    const rim = rimClimb(sc, u.sprite, { ramp: [PAL.gold2, PAL.gold3, PAL.gold4], from: 'feet', stepMs: 45, holdMs: 140, fadeMs: 120, depth: u.sprite.depth + 0.6 });
+    await Promise.all([rim, boostNumber(sc, n.x, n.y, delta, { rise: 3 })]);
   });
   // statChanges of monsters that are not on screen just settle
   for (const q of targets) if (!live.includes(q) && q.u && !q.u.retired) void q.u.setStats(q.e.atk, q.e.def, false);
@@ -909,7 +1040,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   const player = ev.player;
   const di = ctx.findType('diceRoll', (e) => e.sourceUid === ev.uid, { until: (e) => e.type === 'activate' || e.type === 'turnStart' });
   const set = setTileOf(ctx);
-  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player, from: set ? 'set' : 'hand', zone: ev.zone, hold: 200, releaseFrom: 'bottom', setRelease: 'flow' });
+  const op = await spellOpening(ctx, { uid: ev.uid, cardId: ev.cardId, player, from: set ? 'set' : 'hand', zone: ev.zone, hold: 200, releaseFrom: set ? 'bottom' : 'top', setRelease: 'flow' });
   relax(ctx, 300);
   const roll = evAt(ctx, di, 'diceRoll');
   if (!roll) {
@@ -919,11 +1050,13 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   ctx.consumeAt(di);
   const stats = statRun(ctx, di);
   const gi = ctx.findType('toGraveyard', (e) => e.uid === ev.uid && e.from === 'resolved', { from: di + 1 + stats.length, until: (e) => e.type === 'activate' || e.type === 'turnStart' });
-  // the die forms in the caster's cupped light just in front of the card (toward the board)
+  // the die forms in the caster's cupped light just in front of the card, always over the board floor (a hand card
+  // hovers beside its duelist, out over the arena wall: the die is born on the board edge in front of its top corner)
   const c = ip(op.center);
   const dir = player === 0 ? 1 : -1;
-  const floor = set ? R(ip(set.home).y) : castFloor(c);
-  const spawn: XY = set ? { x: c.x + dir * 22, y: c.y + 4 } : { x: c.x + dir * 26, y: c.y + 16 };
+  const born = set ? { spawn: { x: c.x + dir * 22, y: c.y + 4 }, floor: R(ip(set.home).y) } : handSpawn(player, c);
+  const floor = born.floor;
+  const spawn: XY = born.spawn;
   await op.release(spawn, { path: 'arc', lift: 10, ms: 140, size: 2, ramp: GOLD_FX, floorTo: floor });
   await playDie(ctx, { player, value: roll.value, spawn, spawnFloor: floor, stats, gi });
 });
@@ -936,9 +1069,9 @@ registerLaneE(
   async (ctx: LaneECtx<'diceRoll'>) => {
     const ev = ctx.ev;
     const c = castSpot(ev.player);
-    const dir = ev.player === 0 ? 1 : -1;
     const stats = statRun(ctx, ctx.index);
     const gi = ctx.findType('toGraveyard', (e) => e.uid === ev.sourceUid && e.from === 'resolved', { from: ctx.index + 1 + stats.length, until: (e) => e.type === 'activate' || e.type === 'turnStart' });
-    await playDie(ctx, { player: ev.player, value: ev.value, spawn: { x: c.x + dir * 26, y: c.y + 16 }, spawnFloor: castFloor(c), stats, gi });
+    const born = handSpawn(ev.player, c);
+    await playDie(ctx, { player: ev.player, value: ev.value, spawn: born.spawn, spawnFloor: born.floor, stats, gi });
   },
 );

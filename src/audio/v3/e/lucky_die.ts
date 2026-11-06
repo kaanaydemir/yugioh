@@ -20,7 +20,7 @@
 //   e_dieBoost     every spark has landed: a quick rising pentatonic marimba flourish under the +N00 numbers
 //   e_dieJackpot   a SIX: a bright struck chord (marimba + bells, the pentatonic chord) with a sparkling tail
 //   e_dieFirework  one firework: a short whistle up, a pop, a crackle of glitter (×3 on a six)
-//   e_dieDud       a ONE: a single dull low "tok" (damped, no ring) and a falling sigh of air
+//   e_dieDud       a ONE: a single dull "tok" on felt (muffled 240 Hz body, no ring) and a falling sigh of air
 //   e_dieFade      the die dissolves into gold motes: soft high wooden ticks drifting up into air
 
 import type { Recipe } from '../../sounds';
@@ -105,20 +105,23 @@ export const RECIPES = {
   e_dieTak: {
     cap: 3,
     gap: 0.05,
-    verb: 0.38,
+    verb: 0.36,
     play(v) {
-      // one bounce: "TA-K" — the die's corner strikes, then its face slaps flat (two hard knocks 16 ms apart, high and
-      // bright: a small hard-wood cube, not a log or a ratchet), two tiny chatter re-hits as it leaves, a light floor thud
-      dieKnock(v, 0, 1500, 0.36, { snap: 1.6, body: 0.9, dec: 0.035 });
-      dieKnock(v, 0.016, 1240, 0.42, { snap: 1, body: 1.1, dec: 0.05 });
-      v.noise('white', { g: perc(0.22, 0.004, 0.0002), to: v.filt('bandpass', 5200, 1.6) });
-      dieKnock(v, 0.045, 1800, 0.07, { snap: 0.6, body: 0.4, dec: 0.015 });
-      dieKnock(v, 0.07, 2000, 0.04, { snap: 0.5, body: 0.3, dec: 0.012 });
-      thump(v, 0.012, 150, 85, 0.1, 0.05);
-      // the die's own "clack": a hard cube rings a short, high, glassy-dry resonance (3.1 kHz, Q 9) on the slap
-      const ring = v.filt('bandpass', 3100, 9);
-      v.noise('white', { t: 0.016, g: perc(2.4, 0.03, 0.0003), to: ring });
-      v.tone('sine', 3100, { t: 0.016, g: perc(0.05, 0.05, 0.0005) });
+      // one bounce: "TA—K" — the die's CORNER strikes (a tiny, very bright tick), then 30 ms later its FACE slaps flat
+      // (the main clack): a small hard cube, so the body is short and HIGH (2.1 / 1.75 kHz) and the slap rings a
+      // glassy-dry cube resonance at 3.7 kHz — brighter and shorter than any lane-E knock (a straw "tok", a windlass
+      // click); two tiny chatter re-hits as it leaves, a light floor tap under it
+      dieKnock(v, 0, 3000, 0.24, { snap: 1.8, body: 0.6, dec: 0.016 });
+      dieKnock(v, 0.03, 2150, 0.44, { snap: 1.2, body: 0.9, dec: 0.03 });
+      v.noise('white', { t: 0.03, g: perc(0.4, 0.004, 0.0002), to: v.filt('bandpass', 7200, 1.6) });
+      dieKnock(v, 0.058, 2600, 0.06, { snap: 0.6, body: 0.35, dec: 0.01 });
+      dieKnock(v, 0.08, 2900, 0.035, { snap: 0.5, body: 0.3, dec: 0.008 });
+      // (no floor thump: the die is light — the low end belongs to the logs and the straw)
+      // the cube's own ring on the slap (Q 11: a pitched, glassy-dry "k")
+      const ring = v.filt('bandpass', 4700, 12);
+      v.noise('white', { t: 0.03, g: perc(3.4, 0.03, 0.0003), to: ring });
+      v.tone('sine', 4700, { t: 0.03, g: perc(0.09, 0.05, 0.0004) });
+      v.tone('sine', 4700 * 1.47, { t: 0.03, g: perc(0.025, 0.025, 0.0004) });
     },
   },
   e_dieRoll: {
@@ -202,11 +205,17 @@ export const RECIPES = {
     gap: 0.06,
     verb: 0.55,
     play(v) {
-      // the rocket's short whistle up, the pop, the glitter crackling out
-      v.tone('sine', [[0, 1800], [0.16, 3600, 'e']], { g: [[0, 0], [0.03, 0.035], [0.16, 0.0001, 'e']] });
-      v.noise('white', { t: 0.17, g: perc(0.3, 0.03, 0.0005), to: v.filt('bandpass', 1400, 0.9) });
-      thump(v, 0.17, 140, 60, 0.18, 0.12);
-      v.crackle({ t: 0.22, d: 0.55, n: 22, g: 0.06, f: 5200, q: 2.5, dec: 0.008, curve: 1.6 });
+      // the rocket's whistle up (clear, rising), the POP (bright, little body), then the glitter crackling out wide —
+      // the crackle is the point: dense, bright, spread over half a second (the scene pitches each of the three)
+      v.tone('sine', [[0, 1600], [0.17, 3900, 'e']], { g: [[0, 0], [0.03, 0.07], [0.15, 0.05], [0.17, 0.0001, 'e']] });
+      v.tone('sine', [[0, 3200], [0.17, 7800, 'e']], { g: [[0, 0], [0.04, 0.012], [0.17, 0.0001, 'e']] });
+      v.noise('white', { t: 0.17, g: perc(0.34, 0.025, 0.0004), to: v.filt('bandpass', 2400, 0.9) });
+      v.noise('white', { t: 0.17, g: perc(0.16, 0.012, 0.0003), to: v.filt('highpass', 5000, 0.7) });
+      thump(v, 0.17, 150, 90, 0.05, 0.06);
+      v.crackle({ t: 0.2, d: 0.6, n: 40, g: 0.16, f: 5600, q: 2.2, dec: 0.009, curve: 1.5 });
+      v.crackle({ t: 0.24, d: 0.5, n: 22, g: 0.09, f: 8200, q: 3, dec: 0.006, curve: 1.8 });
+      // the glitter's shimmer: a few high pentatonic sparks
+      [24, 28, 31].forEach((st, i) => v.tone('sine', midiHz(ROOT + st), { t: 0.22 + i * 0.07, g: perc(0.02, 0.12, 0.001) }));
     },
   },
   e_dieDud: {
@@ -214,10 +223,13 @@ export const RECIPES = {
     gap: 0.3,
     verb: 0.15,
     play(v) {
-      // a ONE: a single dull low "tok" — damped wood (no ring, no snap brightness) — and a falling sigh
-      v.tone('triangle', [[0, 260], [0.03, 210, 'e']], { g: perc(0.3, 0.05, 0.0012), to: v.filt('lowpass', 700, 0.7) });
-      thump(v, 0, 120, 75, 0.22, 0.09);
-      v.noise('pink', { g: perc(0.06, 0.02, 0.001), to: v.filt('bandpass', 900, 1.5) });
+      // a ONE: a single dull "tok" — the die lands on felt: a muffled 240 Hz wood body (low-passed, no ring, no snap
+      // brightness), a soft felt thud of filtered noise, and a falling sigh. (Its body sits above Kovuk Devi's 180 Hz
+      // hollow log.)
+      v.tone('triangle', [[0, 300], [0.025, 245, 'e']], { g: perc(0.34, 0.055, 0.0012), to: v.filt('lowpass', 620, 0.7) });
+      v.tone('sine', 490, { g: perc(0.06, 0.03, 0.001) });
+      v.noise('pink', { g: perc(0.12, 0.03, 0.001), to: v.filt('lowpass', 520, 0.8) });
+      v.noise('pink', { g: perc(0.05, 0.015, 0.001), to: v.filt('bandpass', 1100, 1.5) });
       sweep(v, 0.06, 0.4, [900, 700, 300], 0.04, { q: 1.2, kind: 'pink', peakAt: 0.2 });
     },
   },

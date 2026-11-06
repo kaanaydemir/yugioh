@@ -73,7 +73,6 @@ import { shake, wait } from '../../vfx/core';
 import { E, Raster, freeze, lerp, onFrame, qbez, run, spriteBox } from '../../vfx/setpieces';
 import { frameRGBA } from '../../art/atlas';
 import type { TileCard } from '../../view/TileCard';
-import { burnAway } from '../../view/CardSprite';
 import { isoCanvas } from '../../art/cards';
 import { FlungLinks, PixBag, chainLinks } from './_spite_axe_chain';
 import { Sparks as PxSparks } from '../../vfx/combat';
@@ -321,6 +320,7 @@ registerCardHook(ID, 'equip', async (ctx: EquipCtx) => {
   try {
     await axeScene(ctx, u, ci);
   } finally {
+    restoreBadges([...HIDDEN_BADGES]);
     forging.delete(u.uid);
     if (!u.retired && u.sprite.active) u.settle();
   }
@@ -498,7 +498,8 @@ function planBite(ctx: EquipCtx, u: MonsterUnit): BitePlan {
   // the front first, then the back; then the same a little nearer / farther from the camera: the least covered wins
   let best: (BitePlan & { box: { l: number; r: number; t: number; b: number } }) | null = null;
   let bestA = Infinity;
-  for (const dy of [5, 10, 0])
+  // dy 16: the front corner of its own tile, nearer the camera than any neighbour's feet (the crowded fallback)
+  for (const dy of [5, 10, 0, 16])
     for (const side of [facing, -facing]) {
       const plan = build(side, home.y + dy);
       const a = overlap(plan.box);
@@ -512,6 +513,40 @@ function planBite(ctx: EquipCtx, u: MonsterUnit): BitePlan {
   const b = best!.box;
   const cover = others.filter((o) => b.l < o.r + 1 && b.r > o.l - 1 && b.t < o.b && b.b > o.t + 4);
   return { ...best!, depth: Math.max(s.depth, ...cover.map((o) => o.d)) + 1 };
+}
+
+// ---------------------------------------------------------------- badges out of the way of the axe
+
+const HIDDEN_BADGES = new Set<MonsterUnit>();
+
+/** Hide every visible ATK/DEF badge whose rectangle overlaps the planted axe (head, haft and grip). */
+function hideBadgesOver(ctx: EquipCtx, plan: BitePlan): MonsterUnit[] {
+  const lg: AxeOpts = { size: 'lg', angle: plan.angle, mirror: plan.mirror };
+  const pts = [axeOffset(lg, -31, 0), axeOffset(lg, 9, 11), axeOffset(lg, -2, 15), axeOffset(lg, 6, -10)].map((d) => ({ x: plan.plantO.x + d.x, y: plan.plantO.y + d.y }));
+  const l = Math.min(...pts.map((q) => q.x)) - 4 - REACH_PX;
+  const r = Math.max(...pts.map((q) => q.x)) + 4 + REACH_PX;
+  const t = Math.min(...pts.map((q) => q.y)) - 4;
+  const b = Math.max(plan.floorY, ...pts.map((q) => q.y)) + 4;
+  const out: MonsterUnit[] = [];
+  for (const p of ctx.state.players)
+    for (const m of p.monsters) {
+      if (!m) continue;
+      const o = ctx.unit(m.uid);
+      if (!o || o.retired || !o.badge.visible) continue;
+      const bb = o.badge.image.getBounds();
+      if (bb.right < l || bb.left > r || bb.bottom < t || bb.top > b) continue;
+      o.badge.setVisible(false);
+      HIDDEN_BADGES.add(o);
+      out.push(o);
+    }
+  return out;
+}
+
+function restoreBadges(us: readonly MonsterUnit[]): void {
+  for (const o of us) {
+    if (!HIDDEN_BADGES.delete(o)) continue;
+    if (!o.retired && !o.badge.visible) o.badge.setVisible(true);
+  }
 }
 
 // ---------------------------------------------------------------- the vein (1-px fire ramp up the body's near edge)
@@ -587,6 +622,9 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   const bag = new PixBag();
   const rest = { x: R(s.x), y: R(s.y) };
   const alive = (): boolean => !u.retired && s.active;
+  // the ATK/DEF badges that would cover the haft and the grip (the wielder's own, a crowded neighbour's) step aside
+  // for the beat and come back before the +800 rolls (restored in axeScene's caller's finally too)
+  const hidden = hideBadgesOver(ctx, plan);
   /** The wielder: a pose and an offset toward the bite (stepped, whole pixels). */
   const body = (p: Pose | null, dx: number, dy = 0): void => {
     if (!alive()) return;
@@ -946,6 +984,7 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   axe.destroy();
   void light.fadeOut(260);
 
+  restoreBadges(hidden);
   // ---- THE OATH: the vein flares to the head, the eyes ignite, +800
   playV3('e_axeIgnite', { volume: 1, pan: panAt(home.x) });
   veinHot = 1;
@@ -1091,14 +1130,78 @@ async function crumbleTile(sc: Phaser.Scene, tile: TileCard, uid: Uid, cardId: C
   for (let i = 0; i < fxCount(16); i++)
     sp.add({ x: home.x + (rnd() - 0.5) * 30, y: home.y + (rnd() - 0.5) * 12, vx: (rnd() - 0.5) * 16, vy: -18 - rnd() * 30, life: 380 + rnd() * 320, colors: EMBER_DOWN, shape: 'px', fadeAt: 1 });
   sp.release();
-  // it burns away in EMBER (the kit's burn front with the fire ember, not the card's teal accent dissolve)
+  // it crumbles to EMBER from the crack outward (palette-only, never the card's teal accent dissolve)
   const img = (tile as unknown as { img?: Phaser.GameObjects.Image }).img;
-  if (img && img.active && tile.cardId) {
-    await burnAway(sc, img, isoCanvas(tile.cardId, tile.orientation, tile.player), 300, PAL.fire3, { keep: 0.8, seed: uid * 7 + 3 });
+  if (tile.active) {
+    // the transform: the tile's image when it has one, else the tile itself (centred on its home)
+    const src = img && img.active ? img : (tile as unknown as Phaser.GameObjects.Image);
+    const shim = src === img ? src : ({ getWorldTransformMatrix: () => tile.getWorldTransformMatrix(), originX: 0.5, originY: 0.5 } as unknown as Phaser.GameObjects.Image);
+    const hideTile = { setVisible: (v: boolean) => tile.setVisible(v) } as unknown as Phaser.GameObjects.Image;
+    await emberCrumble(sc, shim, isoCanvas(tile.cardId ?? cardId, tile.orientation, tile.player), path, 420, uid * 7 + 3, tile.depth + 0.6, hideTile);
     if (tile.active) tile.setVisible(false);
   } else await tile.dissolve(240);
   crack.destroy();
   if (tile.active) tile.destroy();
+}
+
+/**
+ * The card's own pixels crumble to embers: a ragged front runs out from the crack (`crack`, world points); a pixel
+ * ahead of it keeps its colour, AT it flares white → fire4, behind it either goes out or lifts off as a 1-px ember
+ * (fire3 → fire2 → crim2 → stone0 by age, rising with a sway, whole pixels). Palette tones only, no alpha. Hides img.
+ */
+function emberCrumble(sc: Phaser.Scene, img: Phaser.GameObjects.Image, pc: { w: number; h: number; get(x: number, y: number): number | null }, crack: readonly XY[], ms: number, seed: number, depth: number, hide?: Phaser.GameObjects.Image): Promise<void> {
+  const m = img.getWorldTransformMatrix().decomposeMatrix();
+  const cos = Math.cos(m.rotation);
+  const sin = Math.sin(m.rotation);
+  const ox = img.originX * pc.w;
+  const oy = img.originY * pc.h;
+  const rnd = fxRng(seed);
+  interface P {
+    x: number;
+    y: number;
+    c: number;
+    tb: number;
+    flies: boolean;
+    vx: number;
+    vy: number;
+    ph: number;
+    life: number;
+  }
+  const parts: P[] = [];
+  let maxD = 1;
+  const dist = (x: number, y: number): number => crack.reduce((a, q) => Math.min(a, Math.hypot(q.x - x, (q.y - y) * 2)), Infinity);
+  for (let y = 0; y < pc.h; y++)
+    for (let x = 0; x < pc.w; x++) {
+      const c = pc.get(x, y);
+      if (c === null) continue;
+      const lx = (x + 0.5 - ox) * m.scaleX;
+      const ly = (y + 0.5 - oy) * m.scaleY;
+      const wx = R(m.translateX + lx * cos - ly * sin);
+      const wy = R(m.translateY + lx * sin + ly * cos);
+      const d = dist(wx, wy) + rnd() * 3;
+      maxD = Math.max(maxD, d);
+      parts.push({ x: wx, y: wy, c, tb: d, flies: rnd() < 0.35, vx: (rnd() - 0.5) * 22, vy: -(26 + rnd() * 60), ph: rnd() * 6.28, life: 240 + rnd() * 260 });
+    }
+  const burn = ms * 0.55;
+  for (const p of parts) p.tb = (p.tb / maxD) * burn;
+  const ras = new Raster(sc, 0, 0, 640, 360, depth);
+  (hide ?? img).setVisible(false);
+  const AGE = [PAL.fire3, PAL.fire3, PAL.fire2, PAL.crim2, PAL.stone0] as const;
+  return run(sc, ms, (_t, el) => {
+    ras.begin();
+    for (const p of parts) {
+      const dt = el - p.tb;
+      if (dt < -40) ras.px(p.x, p.y, p.c);
+      else if (dt < 0) ras.px(p.x, p.y, PAL.fire1);
+      else if (dt < 30) ras.px(p.x, p.y, dt < 15 ? PAL.white : PAL.fire4);
+      else if (p.flies && dt < p.life) {
+        const k = dt / p.life;
+        const s2 = dt / 1000;
+        ras.px(R(p.x + p.vx * s2 + Math.sin(p.ph + dt * 0.014) * 2 * k), R(p.y + p.vy * s2 - 60 * s2 * s2), AGE[Math.min(AGE.length - 1, Math.floor(k * AGE.length))]);
+      }
+    }
+    ras.end();
+  }).then(() => ras.destroy());
 }
 
 registerCardHook(ID, 'destroyed', async (ctx: DestroyCtx) => {
@@ -1317,7 +1420,8 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
   // ---- THE LASH: a red-hot chain whips out of the pile in an S-wave and CRACKS on the owner's LP panel
   const lp = lpPoint(ctx, owner);
   const pr = panelRect(owner);
-  const tip: XY = { x: R(lp.x), y: R(lp.y) };
+  // it strikes the panel's top frame over the LP digits (the crack reads on the dark rim, not on the white numbers)
+  const tip: XY = { x: R(lp.x), y: R(pr.y + 1) };
   const root: XY = { x: R(deck.x), y: R(deck.y - 6) };
   const whip = new Raster(sc, 0, 0, 640, 360, DEPTH.HUD + 6);
   playV3('e_axeLash', { volume: 1, pan: panAt(tip.x) });
@@ -1334,22 +1438,31 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
       const dx = q.x - p.x;
       const dy = q.y - p.y;
       const l = Math.hypot(dx, dy) || 1;
-      const w = Math.sin(s2 * Math.PI * 5 - phase) * amp * Math.sin(Math.min(1, s2 / Math.max(0.05, k)) * Math.PI);
+      // three crests travelling down the chain toward the tip, the amplitude growing toward the middle of the run
+      const w = Math.sin((s2 / Math.max(0.05, k)) * Math.PI * 6 - phase) * amp * Math.sin(Math.min(1, s2 / Math.max(0.05, k)) * Math.PI);
       pts.push({ x: p.x - (dy / l) * w, y: p.y + (dx / l) * w });
     }
     return pts;
   };
-  const drawWhip = (pts: readonly XY[], hot: number): void => {
+  let smear: XY[] = [];
+  const drawWhip = (pts: readonly XY[], hot: number, tipOn = true): void => {
     whip.begin();
+    // the chain's weight: last frame's line, one flat crimson tone, under the links (no alpha)
+    for (const q of smear) whip.px(q.x, q.y, PAL.crim1);
     bag.clear();
     chainLinks(bag, pts, { heat: (i) => (hot >= 2 ? 2 : i % 4 === 0 ? 2 : hot) });
+    // the tip: a hot iron hook (3×3, white core) that reads at 1×
+    const h = pts[pts.length - 1];
+    if (tipOn)
+      for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]] as const) bag.set(h.x + dx, h.y + dy, dx === 0 && dy === 0 ? PAL.white : PAL.fire4);
     bag.flush(whip);
     whip.end();
+    smear = pts.map((q) => ({ x: R(q.x), y: R(q.y) + 1 }));
   };
   // out: the chain unrolls with the wave
   await run(sc, RET.lashMs, (t, el) => {
     const k = E.inQuad(t);
-    const pts = chainAt(k, 6 * (1 - t * 0.5), el / 22, over);
+    const pts = chainAt(k, 10 * (1 - t * 0.6), el / 16, over);
     drawWhip(pts, t > 0.5 ? 1 : 0);
     const h = pts[pts.length - 1];
     sparks.add({ x: h.x, y: h.y, life: 80, colors: [PAL.fire4, PAL.fire3], shape: 'px', fadeAt: 1 });
@@ -1360,10 +1473,15 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
       const col = Math.abs(i) <= 1 ? PAL.white : Math.abs(i) <= size - 2 ? PAL.fire4 : PAL.fire3;
       r.px(c.x + i, c.y, col);
       r.px(c.x, c.y + i, col);
-      if (Math.abs(i) <= size - 2) {
+      if (Math.abs(i) <= size - 3) {
         r.px(c.x + i, c.y + i, col);
         r.px(c.x + i, c.y - i, col);
       }
+    }
+    // the burst: eight short broken rays beyond the star
+    for (let a = 0; a < 8; a++) {
+      const an = (a / 8) * Math.PI * 2 + Math.PI / 8;
+      for (let d = size + 2; d <= size + 4; d++) r.px(R(c.x + Math.cos(an) * d), R(c.y + Math.sin(an) * d * 0.8), d === size + 2 ? PAL.fire4 : PAL.fire3);
     }
   };
   drawWhip(chainAt(1, 0, 0, tip), 2);
@@ -1371,7 +1489,7 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
   bag.clear();
   chainLinks(bag, chainAt(1, 0, 0, tip), { heat: () => 2 });
   bag.flush(whip);
-  crackStar(whip, tip, 6);
+  crackStar(whip, tip, 8);
   whip.end();
   try {
     ctx.views.hud.shake(owner, 2, 200);
@@ -1391,8 +1509,6 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
   }
   sparkHud.release();
   void shake(sc, 140, 2);
-  let dmg: Promise<void> = Promise.resolve();
-  if (di >= 0 && !ctx.isConsumed(di)) dmg = ctx.play(di, { delivered: true });
   const edge = [PAL.white, PAL.white, PAL.fire4, PAL.fire3, PAL.fire3, PAL.fire2, PAL.fire1] as const;
   bg(
     (async () => {
@@ -1415,11 +1531,15 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
       panel.destroy();
     })(),
   );
-  await freeze(sc, 50);
+  // the crack frame is HELD on its own; the −500 pops as it releases
+  await freeze(sc, 100);
+  let dmg: Promise<void> = Promise.resolve();
+  if (di >= 0 && !ctx.isConsumed(di)) dmg = ctx.play(di, { delivered: true });
+  smear = [];
   // the recoil: the chain jerks back off the panel in a wave and slithers into the pile
   await run(sc, RET.backMs, (t, el) => {
     const k = 1 - E.inOutSine(t);
-    if (k > 0.04) drawWhip(chainAt(k, 4 * (1 - t), -el / 18, tip), t < 0.3 ? 1 : 0);
+    if (k > 0.04) drawWhip(chainAt(k, 7 * (1 - t), -el / 14, tip), t < 0.3 ? 1 : 0, false);
     else {
       whip.begin();
       whip.end();
