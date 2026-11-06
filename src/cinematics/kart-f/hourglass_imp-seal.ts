@@ -53,6 +53,36 @@ export function bodyOf(u: MonsterUnit): { cx: number; top: number; floor: number
   return { cx: Math.round(t.x), top: Math.round(t.y), floor: Math.round(u.home.y), hw: Math.round(box.w / 2) };
 }
 
+/**
+ * Round 2 #3: the emblem's anchor — the unit's HEAD (its `head` point on idle f0, else the front of a long body or the
+ * centre of a tall one), and the top
+ * of its silhouette in that head's column (±2 px), in world space. Never the cage's bbox: a long body (a wolf with
+ * back flames) would put the emblem over its back, under the arena's wall props.
+ */
+export function headOf(u: MonsterUnit): { x: number; top: number } {
+  const pc = monsterFrame(u.cardId, 'idle', 0);
+  const b = pc.bounds() ?? { x: 0, y: 0, w: u.art.w, h: u.art.h };
+  const hp = u.art.points ? u.art.points('idle', 0).head : undefined;
+  // without a head point (a v1 art): monsters face RIGHT in their frame — on a long body (a wolf, a drake) the head
+  // sits just behind its muzzle (never the back flames in the middle); on a tall one, the bbox centre
+  let hx = Math.round(b.x + b.w / 2);
+  if (hp) hx = Math.round(hp.x);
+  else if (b.w >= b.h) hx = Math.round(Math.max(b.x + b.w * 0.6, Math.min(b.x + b.w - 3, u.art.muzzle.x - 4)));
+  // the top of the silhouette in the head's own column (±2 px); a head point lower than that is kept as the floor
+  let top = hp ? Math.round(hp.y) : Infinity;
+  for (let y = 0; y < pc.h; y++) {
+    let hit = false;
+    for (let x = hx - 2; x <= hx + 2; x++) if (pc.isOpaque(x, y)) hit = true;
+    if (hit) {
+      top = Math.min(top, y);
+      break;
+    }
+  }
+  if (!Number.isFinite(top)) top = b.y;
+  const w = u.framePoint(hx + 0.5, top);
+  return { x: Math.round(w.x), top: Math.round(w.y) };
+}
+
 /** The 1-px rim of light just outside the unit's CURRENT frame silhouette (world px). */
 export function rimOf(u: MonsterUnit): XY[] {
   const fi = u.frameInfo();
@@ -229,6 +259,8 @@ export interface EmblemLook {
   flash?: boolean;
   /** the lower bulb's heap (rows 0…2) */
   heap: number;
+  /** Round 2 #3: the outer gold halo (default on) */
+  halo?: boolean;
 }
 
 /** Paint the emblem with its bottom-centre at (cx, by) on a raster (world px). Lit side `side` (−1 left). */
@@ -253,9 +285,26 @@ export function paintEmblem(r: Raster, cx: number, by: number, side: -1 | 1, o: 
     solid.add(`${x},10`);
   }
   for (const w of W) for (let x = w.a; x <= w.b; x++) solid.add(`${x},${w.y}`);
+  // Round 2 #3: a 1-px gold halo outside the ink (gold3 on the lit side, gold2 on the other) so the emblem is the
+  // brightest point over the monster and separates from any wall prop behind it; then the ink backing
+  const ink = new Set<string>();
   for (const k of solid) {
     const [x, y] = k.split(',').map(Number);
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!solid.has(`${x + dx},${y + dy}`)) P(x + dx, y + dy, PAL.ink);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!solid.has(`${x + dx},${y + dy}`)) ink.add(`${x + dx},${y + dy}`);
+  }
+  if (o.halo !== false)
+    for (const k of ink) {
+      const [x, y] = k.split(',').map(Number);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const q = `${x + dx},${y + dy}`;
+        if (solid.has(q) || ink.has(q)) continue;
+        const litSide = side < 0 ? x + dx <= 4 : x + dx >= 4;
+        P(x + dx, y + dy, o.flash ? PAL.gold4 : litSide ? PAL.gold3 : PAL.gold2);
+      }
+    }
+  for (const k of ink) {
+    const [x, y] = k.split(',').map(Number);
+    P(x, y, PAL.ink);
   }
   // caps: brass
   for (let x = 1; x <= 7; x++) {
@@ -287,9 +336,9 @@ export function paintEmblem(r: Raster, cx: number, by: number, side: -1 | 1, o: 
     for (let y = 5; y <= 8; y++) if ((y + o.run) % 3 !== 0) P(4, y, (y + o.run) % 3 === 2 ? PAL.gold4 : PAL.gold3);
   } else if (o.top > 0) {
     const d = o.dash;
-    P(4, 5 + d, PAL.gold3);
-    P(4, 6 + d, PAL.gold3);
-    P(4, 7 + d, PAL.gold4);
+    P(4, 5 + d, PAL.gold4);
+    P(4, 6 + d, PAL.gold4);
+    P(4, 7 + d, PAL.gold3);
   }
 }
 
@@ -309,6 +358,8 @@ interface Seal {
   tight: number;
   flashUntil: number;
   twitchUntil: number;
+  /** Round 2 #3: the strain's grains climbing its legs (px, 0 none) */
+  climb: number;
   /** a beat drives the emblem itself (thaw / drop) */
   busy: boolean;
   dead: boolean;
@@ -344,7 +395,8 @@ export function sealSpot(views: DuelViews, uid: Uid): { cx: number; by: number; 
   if (a.unit) {
     const b = bodyOf(a.unit);
     const u = a.unit;
-    return { cx: Math.round(u.sprite.x - u.rest0.x + b.cx), by: Math.max(22, b.top - 4), fx: Math.round(u.home.x), fy: Math.round(u.home.y + 1), rx: Math.max(9, Math.min(18, b.hw + 3)), side: u.player === 1 ? 1 : -1, unit: u };
+    const hd = headOf(u);
+    return { cx: Math.round(u.sprite.x - u.rest0.x + hd.x), by: Math.max(22, hd.top - 3), fx: Math.round(u.home.x), fy: Math.round(u.home.y + 1), rx: Math.max(9, Math.min(18, b.hw + 3)), side: u.player === 1 ? 1 : -1, unit: u };
   }
   if (a.tile) {
     const h = a.tile.home;
@@ -370,8 +422,8 @@ export function addSeal(scene: Phaser.Scene, views: DuelViews, uid: Uid, o: { fr
   if (!sp) return;
   const em = new Raster(scene, 0, 0, 640, 360, DEPTH.FX - 2);
   const fl = new Raster(scene, 0, 0, 640, 360, DEPTH.SHADOW + 1);
-  const pool = lightPool(scene, sp.cx, sp.by - 6, { color: PAL.gold3, radius: 9, intensity: 0.45, air: 0.5, floorY: sp.fy, anim: 'breathe', fadeIn: o.fresh ? 60 : 200 });
-  const s: Seal = { uid, scene, views, em, fl, pool, stop: () => undefined, born: scene.time.now, tight: 0, flashUntil: 0, twitchUntil: 0, busy: false, dead: false, last: null, side: sp.side };
+  const pool = lightPool(scene, sp.cx, sp.by - 6, { color: PAL.gold3, radius: 10, intensity: 0.7, air: 0.5, floorY: sp.fy, anim: 'breathe', fadeIn: o.fresh ? 60 : 200 });
+  const s: Seal = { uid, scene, views, em, fl, pool, stop: () => undefined, born: scene.time.now, tight: 0, flashUntil: 0, twitchUntil: 0, climb: 0, busy: false, dead: false, last: null, side: sp.side };
   seals.set(uid, s);
   let el = 0;
   s.stop = onFrame(scene, (dt) => {
@@ -396,10 +448,23 @@ function drawSeal(s: Seal, el: number): void {
   const bob = Math.floor(el / 640) % 2 ? -1 : 0;
   const twitch = now < s.twitchUntil || el % 2400 > 2280 ? 1 : 0;
   const by = sp.by + bob;
-  s.em.draw((r) => paintEmblem(r, sp.cx, by, sp.side, { top: 3, dash: twitch, heap: 1, flash: now < s.flashUntil }));
+  const flash = now < s.flashUntil;
+  s.em.draw((r) => {
+    paintEmblem(r, sp.cx, by, sp.side, { top: 3, dash: twitch, heap: 1, flash });
+    // the strain: sand grains climb its legs (front of the body) in whole px, then hold
+    if (s.climb > 0) {
+      const n = 7;
+      for (let i = 0; i < n; i++) {
+        const x = sp.fx + Math.round(((i - (n - 1) / 2) * (sp.rx - 2)) / ((n - 1) / 2) * 0.55);
+        const h = Math.max(1, s.climb - (i % 2));
+        for (let k = 0; k < h; k++) r.px(x, sp.fy - k, k === h - 1 ? PAL.gold3 : k === 0 ? PAL.earth3 : PAL.earth4);
+        r.px(x + 1, sp.fy, PAL.earth3);
+      }
+    }
+  });
   s.em.img.setDepth(sp.unit ? unitDepth(sp.fy) + 0.6 : DEPTH.UNIT + sp.fy + 0.6);
   const glint = (el % 1200) / 1200;
-  s.fl.draw((r) => floorRing(r, sp.fx, sp.fy, sp.rx - s.tight, PAL.gold2, PAL.gold1, glint));
+  s.fl.draw((r) => floorRing(r, sp.fx, sp.fy, sp.rx - s.tight, flash ? PAL.gold4 : PAL.gold2, flash ? PAL.gold3 : PAL.gold1, glint));
   s.pool?.setPosition(sp.cx, by - 6, sp.fy);
 }
 
@@ -431,13 +496,14 @@ function dropSeal(s: Seal): void {
 export function biteSeal(uid: Uid, delay = 0): void {
   const s = seals.get(uid);
   if (!s || s.busy) return;
-  void animate(s.scene, delay + 360, (_k, el) => {
+  void animate(s.scene, delay + 420, (_k, el) => {
     if (el < delay) return;
     const t = el - delay;
     const now = s.scene.time.now;
-    if (t < 70) s.flashUntil = now + 20;
-    if (t > 80 && t < 200) s.twitchUntil = now + 20;
-    if (t > 120) s.tight = 1;
+    // Round 2 #3: a 2-beat gold4 flash (emblem + ring) and the ring stepping IN 2 px, readable at 1×
+    if (t < 90 || (t > 150 && t < 230)) s.flashUntil = now + 20;
+    if (t > 80 && t < 260) s.twitchUntil = now + 20;
+    s.tight = t < 60 ? 0 : t < 120 ? 1 : 2;
   }).then(() => undefined);
   const at = s.last;
   void s.scene.time.delayedCall(delay, () => play('hgiBite', { volume: 0.8, pan: panAt(at?.cx ?? 320) }));
@@ -455,7 +521,9 @@ export function strainSeal(uid: Uid, delay = 0): void {
     if (el < delay) return;
     const t = el - delay;
     const now = sc.time.now;
-    s.tight = t < 160 ? 1 : t < 320 ? 2 : 1;
+    s.tight = t < 160 ? 2 : t < 320 ? 3 : 2;
+    // Round 2 #3: grains climb 3 px up its legs (1 → 2 → 3), hold, then slide back
+    s.climb = t < 60 ? 1 : t < 120 ? 2 : t < 380 ? 3 : t < 440 ? 2 : 0;
     if ((t > 40 && t < 140) || (t > 220 && t < 320)) s.twitchUntil = now + 20;
     if (t > 160 && t < 320) s.flashUntil = now + 20;
     // a whole-pixel 1-px nudge forward (it tries), then back (it cannot)
@@ -467,6 +535,7 @@ export function strainSeal(uid: Uid, delay = 0): void {
       }
     }
   }).then(() => {
+    s.climb = 0;
     if (u && nudged && u.sprite.active) u.sprite.x = u.rest0.x;
   });
   void sc.time.delayedCall(delay, () => play('hgiStrain', { volume: 0.85, pan: panAt(s.last?.cx ?? 320) }));

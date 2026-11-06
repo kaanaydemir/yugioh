@@ -295,7 +295,7 @@ const specialPose = (f: number): Pose => (f >= SP.length ? IDLE0 : mk(IDLE0, SP[
 export const SPECIAL_THUNK = 11;
 /** The three drain steps the effect holds in sync with the cage's fill (Round 2 #7). */
 export const SPECIAL_DRAIN = [6, 7, 8] as const;
-const SP_HOLDS = [70, 160, 80, 70, 70, 60, 100, 100, 120, 90, 80, 110, 120, 130];
+const SP_HOLDS = [70, 160, 80, 70, 70, 60, 100, 100, 120, 80, 90, 110, 120, 130];
 
 // ------------------------------------------------------------------ victory (10 frames): balanced on one fingertip
 

@@ -34,6 +34,7 @@
 //                    from bulb to bulb (falling then rising), a low B♭3 bulb swell (hgiFlip is the attack's only)
 //   hgiLitTick       effect: one grain of the still time line lights
 //   hgiHush          effect: silent; pulls the music down before THE STOP
+//   hgiCreak         death f8: the full glass rocks, the cap creaks on its rim
 //   hgiBounce        death: the lying glass's 1-px bounce re-thud
 //   hgiEep           death f2: the imp's descending "eep" as he clutches the glass
 //   hgiBite          the frozen turn starts: a muffled tick + a refused 80 ms trickle (cap 6, gap 8 ms)
@@ -333,8 +334,8 @@ export const HOURGLASS_IMP_RECIPES = {
     verb: 0.3,
     duck: 0.2,
     play(v) {
-      sweep(v, 0, 0.22, [1600, 1400, 900], 0.15, { q: 2, kind: 'pink', peakAt: 0.3 });
-      grains(v, 0, 0.26, 90, 0.5, { rate1: 30, shape: (k) => 1 - k });
+      sweep(v, 0, 0.22, [1600, 1400, 900], 0.21, { q: 2, kind: 'pink', peakAt: 0.3 });
+      grains(v, 0, 0.26, 90, 0.68, { rate1: 30, shape: (k) => 1 - k });
     },
   },
   /** Re-cork + right: a thumb press, the glass turned upright and thunked, two jumps of sand, the trickle back. */
@@ -381,8 +382,8 @@ export const HOURGLASS_IMP_RECIPES = {
     duck: 0,
     vary: 0.06,
     play(v) {
-      tick(v, 0, 0.32, { f: 5200 });
-      v.tone('sine', F5 * 4, { g: perc(0.03, 0.03, 0.0005) });
+      tick(v, 0, 1, { f: 5200 });
+      v.tone('sine', F5 * 4, { g: perc(0.09, 0.03, 0.0005) });
     },
   },
   /** The glass builds round the target: three stepped glass tings B♭5 D6 F6 (dry: no tail may fill the seal's gap). */
@@ -466,9 +467,9 @@ export const HOURGLASS_IMP_RECIPES = {
     verb: 0.15,
     duck: 0.25,
     play(v) {
-      tick(v, 0, 0.6, { f: 3000 });
-      tick(v, 0.012, 0.5, { f: 1800 });
-      grains(v, 0.03, 0.08, 240, 0.4);
+      tick(v, 0, 0.8, { f: 3000 });
+      tick(v, 0.012, 0.6, { f: 1800 });
+      grains(v, 0.03, 0.08, 240, 0.5);
       v.tone('sine', BB4, { t: 0.03, g: [[0, 0], [0.01, 0.06], [0.08, 0.06], [0.082, 0.0001, 'l']] });
       tink(v, 0.11, 0.06, { f: 1580, dec: 0.08 });
     },
@@ -504,9 +505,9 @@ export const HOURGLASS_IMP_RECIPES = {
     verb: 0.3,
     duck: 0.2,
     play(v) {
-      v.tone('sine', [[0, F5], [0.12, BB4 * 0.75, 'e']], { g: perc(0.1, 0.13, 0.003) });
-      tick(v, 0.12, 0.45, { f: 3200 });
-      grains(v, 0.12, 0.16, 160, 0.5, { shape: (k) => 1 - k });
+      v.tone('sine', [[0, F5], [0.12, BB4 * 0.75, 'e']], { g: perc(0.13, 0.13, 0.003) });
+      tick(v, 0.12, 0.6, { f: 3200 });
+      grains(v, 0.12, 0.16, 160, 0.62, { shape: (k) => 1 - k });
     },
   },
   // ---------------------------------------------------------------- death: "Kendi kum saatine akar"
@@ -541,16 +542,25 @@ export const HOURGLASS_IMP_RECIPES = {
     verb: 0.35,
     duck: 0.6,
     play(v) {
-      // creak: a slow scraped friction on the cap's rim
-      const cr = v.filt('bandpass', [[0, 420], [0.06, 300, 'e']], 6);
-      v.tone('sawtooth', [[0, 92], [0.06, 70, 'e']], { g: [[0, 0], [0.01, 0.07], [0.06, 0.0001, 'e']], to: cr });
-      const t = 0.07;
+      const t = 0;
       base(v, t, 0.75, { f0: 130, f1: 62 });
       crack(v, t + 0.02, 0.26, { hp: 4000, lp: 11000, n: 3, gap: 0.006, dec: 0.01 });
       // the crack rings: harmonic partials of B♭5 only, 150 ms
       for (const [k, g] of [[1, 0.06], [2, 0.035], [3, 0.02]] as const) v.tone('sine', BB4 * 2 * k, { t: t + 0.02, g: perc(g, 0.15, 0.001) });
       // the slosh inside: a grain burst whose rate and band fall
       grains(v, t + 0.03, 0.32, 280, 0.42, { rate1: 40, lo: 1400, hi: 2000, shape: (k) => (1 - k) * (1 - k) });
+    },
+  },
+  /** Death f8: the full glass rocks top-heavy on its foot — a 60 ms creak of the wood cap on its rim (pre-tip). */
+  hgiCreak: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.25,
+    duck: 0.2,
+    play(v) {
+      const cr = v.filt('bandpass', [[0, 420], [0.09, 300, 'e']], 6);
+      v.tone('sawtooth', [[0, 92], [0.09, 70, 'e']], { g: [[0, 0], [0.012, 0.9], [0.05, 0.6], [0.09, 0.0001, 'e']], to: cr });
+      v.bursts([0.01, 0.034, 0.05], [0.7, 0.55, 0.45], { dec: 0.008, f: 600, q: 3, kind: 'pink' });
     },
   },
   /** The 1-px bounce of the lying glass: a small re-thud ≈ −9 dB under the topple + a tiny grain shiver. */
@@ -571,8 +581,8 @@ export const HOURGLASS_IMP_RECIPES = {
     verb: 0.25,
     duck: 0.3,
     play(v) {
-      blip(v, 0, 1000, 600, 0.2, 0.12);
-      blip(v, 0.13, 760, 520, 0.1, 0.08);
+      blip(v, 0, 1000, 600, 0.12, 0.12);
+      blip(v, 0.13, 760, 520, 0.06, 0.08);
     },
   },
   /** The bleed: the trickle thinning from 80 grains / s to 4 and stopping (≈ 0.4 s). */

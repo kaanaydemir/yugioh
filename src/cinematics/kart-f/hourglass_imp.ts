@@ -61,6 +61,7 @@ import {
   biteSeal,
   bodyOf,
   capBar,
+  floorRing,
   frozenUids,
   hash,
   lerp,
@@ -69,6 +70,7 @@ import {
   reconcileSeals,
   rimOf,
   rint,
+  sealSpot,
   sealUids,
   strainSeal,
   thawSeal,
@@ -186,6 +188,32 @@ const HANG_TOP = 48;
 /** The hanging glass: upside down, its stopper hole right over the sprite's pour column (frame x 20–21, y ≈ 18, ≈ 42 px over the tile: low enough to read as his own glass, above the cone crest). */
 const HANG: GlassPose = { ...GLASS0, a: 180, ox: 21, oy: -10, sA: 0.95, sB: 0.08, flow: 1, open: 1 };
 
+/** A 2:1 earth dust ring on the tile: steps out 3 × 50 ms, then fades in palette steps (whole px). */
+async function dustRing(sc: Phaser.Scene, at: XY, depth: number): Promise<void> {
+  const r = new Raster(sc, 0, 0, 640, 360, depth);
+  const cx = Math.round(at.x);
+  const cy = Math.round(at.y + 1);
+  try {
+    for (const [rx, front, back, rim] of [
+      [7, PAL.earth3, PAL.earth4, PAL.gold3],
+      [11, PAL.earth3, PAL.earth4, PAL.gold3],
+      [14, PAL.earth3, PAL.earth3, PAL.gold2],
+      [15, PAL.earth2, PAL.earth2, PAL.earth3],
+      [16, PAL.earth1, PAL.earth1, PAL.earth2],
+    ] as const) {
+      r.draw((q) => {
+        floorRing(q, cx, cy, rx, front, back, -1);
+        q.px(cx - rx, cy, rim);
+        q.px(cx + rx, cy, rim);
+        q.px(cx, cy + Math.round(rx / 2), rim);
+      });
+      await sleep(sc, 50);
+    }
+  } finally {
+    r.destroy();
+  }
+}
+
 /** Is the batch waiting for THIS imp's target pick (the effect follows in the next batch)? */
 function aimPending(ctx: CinematicContext, uid: Uid): boolean {
   const pd = ctx.after.pending;
@@ -204,6 +232,9 @@ async function pourV3(S: Stage, aim: boolean): Promise<void> {
   const LAND = u.markFrame('summon', 'land', 9);
   const T = HANG_TOP;
   const mz = { x: 20, y: HANG.oy + 28 + T };
+  // ---- 0. Round 2 #8: our own landing mark over the shared card slam — a one-step 2:1 earth dust ring with a gold3
+  //      rim that steps out and settles (the slam's player-colour tile flash is the shared kit's; see the doc)
+  void dustRing(sc, S.home, unitDepth(S.home.y) - 0.2);
   // ---- 1. the glass pops in: one frame of a gold4 outline, then the full glass
   layer.draw((p) => glassOn(p, HANG, T, from, { ghost: true }));
   await sleep(sc, 50);
@@ -520,10 +551,14 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
     // ---- 6. condense: the giant glass steps into the emblem over its head (4 steps)
     play('hgiCondense', { volume: 0.9, pan });
     drawLine(1);
-    const em = { top: Math.max(14, cage.top - 4 - 12), bot: Math.max(25, cage.top - 4 - 1) };
+    // Round 2 #3: condense onto the emblem's real spot (the head anchor), not the cage's top
+    const spot = sealSpot(ctx.views, tuid);
+    const emBy = spot ? spot.by : Math.max(25, cage.top - 5);
+    const emCx = spot ? spot.cx : cage.cx;
+    const em = { top: emBy - 11, bot: emBy - 2 };
     for (let s = 1; s <= 4; s++) {
       const k = s / 4;
-      const g: CageGeo = { cx: cage.cx, top: Math.round(lerp(cage.top, em.top + 1, k)), bot: Math.round(lerp(cage.bot, em.bot, k)), R: Math.max(3, Math.round(lerp(cage.R, 3, k))) };
+      const g: CageGeo = { cx: Math.round(lerp(cage.cx, emCx, k)), top: Math.round(lerp(cage.top, em.top + 1, k)), bot: Math.round(lerp(cage.bot, em.bot, k)), R: Math.max(3, Math.round(lerp(cage.R, 3, k))) };
       if (s === 2) drawLine(2);
       if (s === 3) {
         drawLine(3);
@@ -879,17 +914,22 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
     }
     const DIS = u.markFrame('death', 'dissolve', 4);
     const TOP = Math.min(n - 3, DEATH_TOPPLE);
+    // Round 2 #5: the imp's "eep" on the clutch (f2), the drain, a creak as the full glass rocks top-heavy, the
+    // topple's thud + slosh + ringing crack where the glass LANDS, the 1-px bounce re-thud on the bounce frame
+    atFrame(u, 'death', 2, () => play('hgiEep', { volume: 0.8, pan }), { late: false, maxMs: 1500 });
     atFrame(u, 'death', DIS, () => (drainH.h = start('hgiDrain', { volume: 0.9, pan })), { late: true, maxMs: 3000 });
     atFrame(
       u,
       'death',
-      TOP,
+      TOP - 1,
       () => {
         drainH.h?.stop(40);
-        play('hgiTopple', { volume: 1, pan });
+        play('hgiCreak', { volume: 0.9, pan });
       },
       { late: true, maxMs: 3000 },
     );
+    atFrame(u, 'death', n - 2, () => play('hgiTopple', { volume: 1, pan }), { late: true, maxMs: 3000 });
+    atFrame(u, 'death', n - 1, () => play('hgiBounce', { volume: 0.9, pan }), { late: true, maxMs: 3000 });
     atFrame(
       u,
       'death',
@@ -920,7 +960,12 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
     // Round 1 #9: the rivulet runs OFF the card onto the bare tile, drawn over the card (and the glass's foot), 12 px
     const riv = new Raster(sc, 0, 0, 640, 360, u.sprite.depth + 0.2);
     rivR = riv;
-    const rivAt = (i: number): XY => ({ x: s0.x - face * i, y: s0.y + Math.floor((i + 1) / 2) });
+    // Round 2 #11: 20 grains over ≈ 29 px, OFF the card's edge onto the bare tile (2:1 diagonal)
+    const RIV = 20;
+    // down-screen for both sides: the lying glass covers the up-screen side (P2's back edge), and a rivulet hidden
+    // behind it does not read — in front, it runs off the card's front corner onto the bare tile
+    const back = 1;
+    const rivAt = (i: number): XY => ({ x: s0.x - face * Math.round(i * 1.45), y: s0.y + back * Math.round(i * 0.72) });
     const drawRiv = (len: number, dark: boolean, grain: number) =>
       riv.draw((r) => {
         for (let i = 0; i < len; i++) {
@@ -931,7 +976,9 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
           r.px(q.x, q.y + 1, dark ? PAL.earth2 : head ? PAL.earth4 : PAL.earth2);
         }
         if (!dark && len > 0) r.px(rivAt(len - 1).x - face, rivAt(len - 1).y, PAL.gold4);
-        if (grain > 0) r.px(s0.x, s0.y - 3 + grain, PAL.gold4);
+        // the last grain: a gold4 pixel at the rivulet's head that falls 3 px, then blinks (grain ≥ 4: blink phase)
+        if (grain > 0 && grain <= 3) r.px(rivAt(RIV - 1).x - face, rivAt(RIV - 1).y - 3 + grain, PAL.gold4);
+        if (grain === 4 || grain === 6) r.px(rivAt(RIV - 1).x - face, rivAt(RIV - 1).y, PAL.gold4);
       });
     const crackPx = (p: PixelCanvas) => {
       // a clear mist zig-zag across the bulb's lit face, with a white glint where it starts
@@ -945,18 +992,18 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
       });
     u.sprite.setVisible(false);
     const bleed = start('hgiBleed', { volume: 0.85, pan });
-    for (let st = 1; st <= 4; st++) {
-      frame(st / 4, false);
-      drawRiv(st * 3, false, 0);
-      await sleep(sc, 55);
+    for (let st = 1; st <= 5; st++) {
+      frame(st / 5, false);
+      drawRiv(st * 4, false, 0);
+      await sleep(sc, 42);
     }
     bleed.stop(40);
     // ---- the clock stops: the glass goes dark; the last grain falls from the crack
     play('hgiLastGrain', { volume: 0.9, pan });
     frame(1, true);
-    for (let gy = 1; gy <= 3; gy++) {
-      drawRiv(12, true, gy);
-      await sleep(sc, 25);
+    for (let gy = 1; gy <= 6; gy++) {
+      drawRiv(RIV, true, gy);
+      await sleep(sc, gy <= 3 ? 28 : 22);
     }
     born();
     // ---- the generic pixel dissolve of the empty glass, the hat and the rivulet (150 ms, 3 steps)
@@ -970,11 +1017,12 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
           for (let x = 0; x < pc.w; x++) {
             const c = pc.get(x, y);
             if (c === null || hash(x * 7 + ev.uid, y) < k) continue;
-            p.set(x, y, c);
+            // Round 2 #11: the empty glass dries off in sand steps (ink edge → gold3, then everything earth3 → earth2)
+            p.set(x, y, ki === 0 ? (c === PAL.ink ? PAL.gold3 : c) : ki === 1 ? PAL.earth3 : PAL.earth2);
           }
       });
       riv.draw((r) => {
-        for (let i = 0; i < 12; i++) if (hash(i + ev.uid, ki) >= k) r.px(rivAt(i).x, rivAt(i).y, PAL.earth3);
+        for (let i = 0; i < RIV; i++) if (hash(i + ev.uid, ki) >= k) r.px(rivAt(i).x, rivAt(i).y, ki === 0 ? PAL.earth3 : PAL.earth2);
       });
       ki++;
       await sleep(sc, 50);
