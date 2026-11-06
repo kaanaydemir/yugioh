@@ -10,7 +10,7 @@ Per-card design + critique log: docs/v3/oturum-f/<id>.md.
 | windmane_knight | ✓ | ✓ | ✓ | 3/3 | ✓ | ✓ |
 | shield_titan | ✓ | ✓ | ✓ | 3/3 | ✓ | ✓ |
 | hourglass_imp | ✓ | ✓ | ✓ | 3/3 | ✓ | ✓ |
-| wing_lady | — | — | — | 0/3 | — | — |
+| wing_lady | ✓ | ✓ | ✓ | 3/3 | ✓ | ✓ |
 
 ## Log
 - 2026-10-31: scaffolding — lane sound index `src/audio/v3/kart-f.ts` + four empty per-card sound files, wired
@@ -53,6 +53,18 @@ Per-card design + critique log: docs/v3/oturum-f/<id>.md.
   r2-unique,r2-fix,r3-integration,r3-fix,verify1,gfix,verify2}/ (gfix/gates.txt, gfix/gate-card.txt, gfix/gate-lane.txt,
   gfix/filmdiff.txt, verify2/filmdiff-v1.txt, verify2/filmdiff-a6v1.txt, verify2/gates.txt, verify2/gate-lane.txt,
   verify2/sameness.txt, verify2/palcheck.txt).
+
+- 2026-11-06: **wing_lady (Kanat Hanımı) shipped.** Fix rounds 1–3 (craft / unique / integration) + gate fixes 1–2
+  (sameness: blind test scored, 7 out-of-plan pairs UYARI; palcheck root cause = shared light layer / scene opening /
+  holograms, not her pixels) + critic round r4 (verdict pass), logged in docs/v3/oturum-f/wing_lady.md. Gates at ship:
+  `npm run typecheck` clean; vitest 1478 pass / 6 fail (none ours: arena-nt-platform ×2, board-nt-layout, cardface-v3 G1,
+  dusk_ashen, crag_axeman); `tests/art/wing_lady.test.ts` + `tests/cinematics/wing_lady-aura.test.ts` pass;
+  monster-gates `--class medium --ref none` (P1 + P2) 24 rows, 21 ok / 0 FAIL / 2 n/a / 1 info (3.05 MB);
+  filmdiff v1 17/17 (r5) + a6v1 26/26 (verify3) IDENTICAL; camera gate vs card base 28 ok + 6 NOBASE, vs lane base
+  (m1Aura / m1AuraAttack / m1Board5) 3 ok, 0 FAIL; sameness worst UYARI, no KALIR. Evidence:
+  shots/v3/kart-f/wing_lady/{r1-craft,fix1,r2-unique,r2-fix,r3-integration,r3-fix,verify1,gfix,gfix2,verify2,verify3}/
+  (verify3/gates.txt, verify3/camera.txt, verify3/camera-m1.txt, verify3/filmdiff-a6v1.txt, r5/filmdiff-v1.txt,
+  verify3/same/sameness.txt, verify3/pal-*-ref4.txt, timing-base-r3.json).
 
 ## Resume instructions (lane F is PAUSED — resume only when the orchestrator says so)
 
@@ -105,6 +117,11 @@ to re-exclude them.
   measured on the approved `sbSentinelDies` — re-measure with `--ref 4` in the final gate run.
 - Camera gate against the lane base `shots/v3/kart-f/camera-base.json`: `m1Imp` (wisp_imp, not lane F) FAILs
   maxScroll 15 → 18 (lean #0 (0,-13) → (0,-16)); not caused by hourglass_imp — needs a rebase by its owner lane.
+- wing_lady: palcheck `--ref 4` (verify3) still flags khAttack (Δoff +1.01 on one frame, t=2600) and khKill (+2.84
+  from t≈2600: the LP-roll / hologram scene material identical to the approved sbSentinelDies, plus the lit floor
+  uncovered by her fall) — shared light layer / scene, not her art (wing_lady.md Gate fix §2). The dark dithered blob
+  above her tile in khKill belongs to ember_wolf's battle path; the round hit rings on khAttackLose are the wolf's shared
+  `fx.hitReact`. SFX verified on timeline/levels only (the MP4s in gfix2/clips are for the owner's ears).
 
 ## Final merge checklist (orchestrator, 2026-11-06 07:17 UTC)
 The orchestrator merges only a head where every card is finished and green; send ONE mergeable report. Before the final gate run:
