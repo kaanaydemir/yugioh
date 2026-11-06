@@ -633,7 +633,7 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   // ---- …and DIVES head-first, its chains streaming behind
   playV3('e_axeFall', { volume: 0.95, pan: panAt(bite.x) });
   const light = lightPool(sc, sky.x, sky.y, { color: PAL.fire4, radius: 11, floorY: bite.y, air: 0.5, airRadius: 12, intensity: 0, anim: 'flicker', fadeIn: 0 });
-  light.setIntensity(0.5, 200);
+  light.setIntensity(0.3, 200);
   const fdx = plantO.x - sky.x;
   const fdy = plantO.y - sky.y;
   const fl = Math.hypot(fdx, fdy) || 1;
@@ -669,7 +669,7 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   cracks.glow(4);
   light.setPosition(bite.x, bite.y - 8, bite.y);
   light.setIntensity(0.3, 200);
-  void lightFlash(sc, bite.x, bite.y - 4, PAL.fire4, 30, 160, { floorY: bite.y, intensity: 1 });
+  void lightFlash(sc, bite.x, bite.y - 4, PAL.fire4, 20, 140, { floorY: bite.y, intensity: 0.8 });
   void shake(sc, 170, 3);
   // the floor flash: one frame of a hot floor ellipse round the bite
   const floorFlash = Raster.around(sc, bite.x, bite.y, 80, 40, DEPTH.TILE_FX + 2);

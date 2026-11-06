@@ -10,7 +10,7 @@ const PALSET = new Set<number>(Object.values(PAL));
 
 describe('spite_axe v3', () => {
   it('card art: every frame paints palette colours only, big and small', () => {
-    for (let f = 0; f < art.frames; f++) {
+    for (let f = 0; f < (art.frames ?? 1); f++) {
       const r = renderArt(art, f);
       for (const p of [r.bigPx, r.smallPx])
         for (let y = 0; y < p.h; y++)

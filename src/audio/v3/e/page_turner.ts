@@ -168,17 +168,18 @@ export const RECIPES = {
       const room = v.echo(0.052, 0.3, { wet: 0.4, tone: 4200 });
       const hit = v.filt('bandpass', 1500, 0.55);
       hit.connect(room);
-      v.noise('white', { g: perc(1.8, 0.06, 0.0004), to: hit });
+      v.noise('white', { g: perc(2.4, 0.06, 0.0004), to: hit });
       v.noise('white', { t: 0.002, g: perc(0.8, 0.03, 0.0003), to: v.filt('highpass', 2600, 0.7) });
       // … the hand-clap body of the boards: a hard 1–3 kHz slap (two layers, the second 6 ms late = the far board)
       const clap = v.filt('bandpass', 2000, 1.1);
       clap.connect(room);
-      v.noise('white', { g: perc(3.0, 0.12, 0.0006), to: clap });
-      v.noise('white', { t: 0.006, g: perc(1.4, 0.06, 0.0006), to: v.filt('bandpass', 1200, 1.3) });
+      v.noise('white', { g: perc(4.4, 0.17, 0.0006), to: clap });
+      v.noise('white', { t: 0.001, g: perc(1.6, 0.07, 0.0004), to: v.filt('bandpass', 2900, 1.4) });
+      v.noise('white', { t: 0.006, g: perc(2.0, 0.06, 0.0006), to: v.filt('bandpass', 1200, 1.3) });
       // … the trapped air bursting out of the pages (a short low puff) …
       puff(v, 0, 0.7, 0.1, 1300, { kind: 'white', att: 0.0008 });
       // … and the body of the closed tome (dull, dry: a quick low drop, no ring)
-      thump(v, 0, 165, 62, 0.72, 0.12, { drive: 2.4 });
+      thump(v, 0, 165, 62, 0.95, 0.16, { drive: 2.6 });
       // the paper inside settles a beat later
       flap(v, 0.07, 0.09, { f: 3200, d: 0.05 });
     },

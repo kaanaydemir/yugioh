@@ -1117,7 +1117,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
             sfx('e_pageDust', { volume: 0.8 });
             // dust lifts out of the bare gutter and drifts up over the top edge (earth tones: it reads over the paper)
             const g = book.world(SX, TOP + 4);
-            for (let i = 0; i < 26; i++) air.add({ x: g.x + R((rnd() - 0.5) * 10), y: g.y + R(rnd() * PH * 0.6), vx: (rnd() - 0.5) * 50, vy: -(40 + rnd() * 50), ay: -4, drag: 0.7, life: 520 + rnd() * 320, colors: [PAPER_D, PAL.earth3, PAL.earth2, PAL.earth2], shape: rnd() < 0.3 ? 'streak' : 'px', fadeAt: 0.6 });
+            for (let i = 0; i < 38; i++) air.add({ x: g.x + R((rnd() - 0.5) * 12), y: g.y + R(rnd() * PH * 0.6), vx: (rnd() - 0.5) * 60, vy: -(50 + rnd() * 60), ay: -4, drag: 0.7, life: 620 + rnd() * 380, colors: i % 2 ? [PAPER, PAPER_M, PAPER_D, PAL.earth3] : [PAPER_D, PAL.earth3, PAL.earth2, PAL.earth2], shape: rnd() < 0.3 ? 'streak' : 'px', fadeAt: 0.6 });
           }
         }
         fl.push(PI * Math.ceil((u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u)) * 8) / 8);
@@ -1126,15 +1126,20 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     });
     S.flips = [];
     el = b0 + bareLen;
-    // the shrug: the tome sags a pixel and lifts again
-    S.squash = 1;
-    await wait(sc, 70);
+    // the shrug: the tome hitches up 2 px, sags into a 1-px squash, then lifts — straight into the inhale
+    bobOn = false;
+    await run(sc, 120, (t) => {
+      const f = Math.min(3, Math.floor(t * 4));
+      S.dy = [2, 3, 0, 1][f];
+      S.squash = f === 2 ? 1 : 0;
+    });
     S.squash = 0;
-    el += 70;
+    bobOn = true;
+    el += 120;
   }
 
   // ---- INHALE → PAT
-  await at(el + T.inhaleAfter);
+  await at(el + (nPages === 0 ? 0 : T.inhaleAfter));
   sfx('e_pageInhale');
   await run(sc, T.inhaleMs, (t) => {
     S.lid = Math.min(3, Math.floor(t * 4));
@@ -1267,7 +1272,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
           // a near pile gets a quick leaf (no hovering queue over it), a far one the full glide
           const dist = Math.hypot(gTop.x - edge.x, gTop.y - edge.y);
           const lms = R(Math.max(300, Math.min(T.leafMs, 200 + dist * 2.2)) + lane * 40);
-          const m = leafFlight(sc, { from: edge, to: { x: gTop.x + (lane - 1) * 3, y: gTop.y - 4 }, face: cardFaceCanvas(d.cardId), ms: lms, seed: d.uid + j, arc: [8, 22, 36][lane], out: ownSide * (14 + lane * 10) });
+          const m = leafFlight(sc, { from: edge, to: { x: gTop.x + (lane - 1) * 6, y: gTop.y - 4 }, face: cardFaceCanvas(d.cardId), ms: lms, seed: d.uid + j, arc: [8, 22, 36][lane], out: ownSide * (14 + lane * 10) });
           landings.push(
             m.done.then(() => {
               grave.set(landingCount(grave.count, ctx.after.players[q].graveyard.length), d.cardId);
