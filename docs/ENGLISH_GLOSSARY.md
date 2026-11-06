@@ -1,5 +1,7 @@
 # English switch — glossary (source of truth)
 
+Game name: **Prism Duel** (was "Neon Düello").
+
 Owner decision 2026-11-01, executed 2026-11-06: the whole game (UI, card names, card text, log lines) is English.
 Use these terms everywhere so the game reads consistently. The pixel fonts are CAPS-only (sm/md), so text is
 written in normal case in code and renders in caps where the font is caps.
@@ -149,5 +151,5 @@ Card text style: short, imperative, YGO-like grammar but our own words
 ("When Tribute Summoned: destroy 1 Spell/Trap your opponent controls.").
 
 ## Not translated (for now)
-- The logo "NEON DÜELLO" (brand decision pending with the owner).
+- (The game is now named **Prism Duel** — owner decision 2026-11-06; the logo is redrawn.)
 - Developer-only text: src/dev/**, src/duel/scenarios/**, src/hd/**, src/artlab/**, code comments, docs.

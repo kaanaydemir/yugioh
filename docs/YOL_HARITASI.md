@@ -164,3 +164,6 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   (src/dev, senaryolar) Türkçe kaldı. v1 filmleri yazı yüzünden artık birebir değil → yeni temel çekildi.
   Açık: galeri ızgarası 80 kartta taşıyor (kaydırma/sayfa gerek); Magic Hat / Mirror Barrier / Wing Lady adları
   marka temizliğinde gözden geçirilecek. Test sürümü 24.
+- 2026-11-06: SAHİP KARARI — oyunun adı **Prism Duel** (eski: Neon Düello). Logo PRISM / DUEL olarak yeniden
+  çiziliyor, kart arkası monogramı prizma amblemi. localStorage anahtarları ('neon-duello:*') ve paket adı kayıtlı
+  desteler bozulmasın diye aynı kaldı. Steam öncesi resmi marka araması yapılmalı.
