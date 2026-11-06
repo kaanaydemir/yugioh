@@ -736,3 +736,12 @@ alçak katmanlı kayan sis; hologramlar parlak, tribünler kaldırılmış.
 Açık konular: P2 kürsüsü uzak kenarın arkasında ve P1'den küçük görünüyor; P1 kürsüsü dışarı çıkıntı olduğundan blok hafif
 L-çentikli okunuyor (hedefte kürsü sahnenin üstünde — iki doğrulayıcı turu zıt yön istedi, son karar: dışarı çıkıntı); tahta hedeften
 biraz serin (palette sıcak gri yok); kenar sisi mavimsi sınırda; ön sisin çoğu HUD altında.
+
+## Orchestrator correction after the final commit (2026-11-06 ~03:00 UTC)
+The final fixer (verifier item 1) moved the near-left stage edge back in (`PLATE_R1` 6.0 → 5.0625), which brought back a
+clear L-shaped notch round the protruding P1 dais (owner: "no L-shape"). Reverted that one change: `layout-nt.ts`, `pads.ts`
+and the two geometry tests are back to the pixel/polish round-3 state (`40c2458` / `3eac3f7`, the stage that the gates passed
+on), while the final fixer's other improvements (darker empty tile floors, narrower top light band, brighter sconce pools,
+darker pillar shade) are kept. Result: one compact chamfered octagon with the P1 dais standing on the stage
+(`shots/arena/fix-orch.png` = `docs/v3/ref/arena-sonrasi.png`). Re-checked: typecheck clean, arena tests 34/34, palcheck PASS
+(off 0.11 %, white 0.88 %), filmdiff v1 / a6v1 re-run (see below).
