@@ -41,10 +41,10 @@ describe('placeholder card pictures', () => {
       }
   });
   it('emblems follow the id first, then the race', () => {
-    expect(emblemFor('seal_head', 'Büyücü')).toBe('eye');
-    expect(emblemFor('seal_leg_l', 'Büyücü')).toBe('bootL');
-    expect(emblemFor('hourglass_imp', 'Büyücü')).toBe('hourglass');
-    expect(emblemFor('whatever', 'Makine')).toBe('gear');
+    expect(emblemFor('seal_head', 'Spellcaster')).toBe('eye');
+    expect(emblemFor('seal_leg_l', 'Spellcaster')).toBe('bootL');
+    expect(emblemFor('hourglass_imp', 'Spellcaster')).toBe('hourglass');
+    expect(emblemFor('whatever', 'Machine')).toBe('gear');
     expect(emblemFor('whatever', '???')).toBe('crystal');
   });
 });

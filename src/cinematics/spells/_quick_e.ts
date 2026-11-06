@@ -215,7 +215,7 @@ export interface QuickWordOpts {
  * "HIZLI BÜYÜ!" (v3): stamped over the standing card on a small dark plate with turquoise chevron ends; the
  * letters slide in from the right (speed), held a beat, then whip out to the left. World space, ≈ 0.4 s.
  */
-export function quickWord(scene: Phaser.Scene, at: XY, text = 'HIZLI BÜYÜ!', o: QuickWordOpts = {}): Promise<void> {
+export function quickWord(scene: Phaser.Scene, at: XY, text = 'QUICK-PLAY!', o: QuickWordOpts = {}): Promise<void> {
   const cx = Math.round(at.x);
   const cy = Math.round(at.y);
   const L = pixelLetters(scene, cx, cy, text, { size: 'lg', color: PAL.white, originX: 0.5, originY: 0.5, shadow: 1 });

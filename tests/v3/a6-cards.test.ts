@@ -892,15 +892,15 @@ describe('A6-A A2 — the v3 inspect panel (K12) and its pile view (S-9)', { tim
     expect(rgbAt(l0, mid, 6)).toBeNull();
   });
 
-  it('pile words name counts only (KO-11), in Turkish; a hidden card stays "Kapalı Kart"', async () => {
+  it('pile words name counts only (KO-11), in English; a hidden card stays "Face-down Card"', async () => {
     await load('v3');
     const iv = await import('../../src/view/v3/inspectV3');
-    expect(iv.pileWords('deck', 0, 12).name).toBe('Deste · 12 kart');
-    expect(iv.pileWords('hand', 1, 4).name).toBe('Rakibin eli · 4 kart');
-    expect(iv.pileWords('graveyard', 0, 3).name).toBe('Mezarlık · 3 kart');
-    expect(iv.pileWords('deck', 1, 0).type).toBe('OYUNCU 2');
+    expect(iv.pileWords('deck', 0, 12).name).toBe('Deck · 12 cards');
+    expect(iv.pileWords('hand', 1, 4).name).toBe("Opponent's Hand · 4 cards");
+    expect(iv.pileWords('graveyard', 0, 3).name).toBe('Graveyard · 3 cards');
+    expect(iv.pileWords('deck', 1, 0).type).toBe('PLAYER 2');
     const hidden = iv.cardWords(null);
-    expect(hidden.name).toBe('Kapalı Kart');
+    expect(hidden.name).toBe('Face-down Card');
     expect(iv.trimFor(null, 1)).toBe('p2');
     expect(iv.trimFor(null, null)).toBe('neutral');
     expect(iv.trimFor('judgment_bolt', 0)).toBe('spell');

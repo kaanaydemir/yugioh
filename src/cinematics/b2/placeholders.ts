@@ -89,7 +89,7 @@ registerEvent(
     }
     ctx.sfx('whoosh', { volume: 0.7 });
     sparks(scene, from, color, 8, 14);
-    const word = floatWord(scene, { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - 34 }, ev.reason === 'take' ? 'ELE GEÇİRİLDİ' : 'SAHİBİNE DÖNDÜ', color, 1000);
+    const word = floatWord(scene, { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - 34 }, ev.reason === 'take' ? 'TAKEN!' : 'RETURNED', color, 1000);
     // the glide: an arc over the board's middle line
     const o = { t: 0 };
     const starts = movers.map((m) => ({ m: m as unknown as { x: number; y: number }, x: (m as unknown as { x: number }).x, y: (m as unknown as { y: number }).y }));
@@ -144,7 +144,7 @@ registerEvent(
       sparks(scene, at, color, 8, 16, 480);
     }
     const mid = zoneXY(ev.player === 0 ? 1 : 0, 'monster', 2);
-    void floatWord(scene, { x: mid.x, y: mid.y - 40 }, src ? `${CARDS[src].name.toLocaleUpperCase('tr')}!` : 'YOK ET!', color, 900);
+    void floatWord(scene, { x: mid.x, y: mid.y - 40 }, src ? `${CARDS[src].name.toLocaleUpperCase('en')}!` : 'DESTROY!', color, 900);
     await wait(scene, 420);
   },
   { name: 'b2:massDestroy' },
@@ -211,7 +211,7 @@ registerEvent(
     const w = scene.add.image(R(at.x), R(at.y - 4), TEX.spark).setTint(PAL.void4).setBlendMode(ADD).setDepth(DEPTH.FX).setScale(2);
     sparks(scene, at, PAL.void3, 8, 12);
     void tween(scene, { targets: w, y: R(at.y - 40), alpha: 0, scale: 0.5, duration: 600, ease: 'Quad.In', onComplete: () => w.destroy() });
-    await floatWord(scene, { x: at.x, y: at.y - 18 }, `${CARDS[ev.cardId].name}: OYUNDAN ÇIKTI`, PAL.void4, 800);
+    await floatWord(scene, { x: at.x, y: at.y - 18 }, `${CARDS[ev.cardId].name}: BANISHED`, PAL.void4, 800);
   },
   { name: 'b2:banish' },
 );
@@ -233,7 +233,7 @@ registerEvent(
       tile.destroy();
     }
     sparks(scene, deck, PAL.fire3, 8, 12);
-    await floatWord(scene, { x: deck.x, y: deck.y - 16 }, `${CARDS[ev.cardId].name}: DESTEYE DÖNDÜ`, PAL.fire4, 800);
+    await floatWord(scene, { x: deck.x, y: deck.y - 16 }, `${CARDS[ev.cardId].name}: BACK TO DECK`, PAL.fire4, 800);
   },
   { name: 'b2:toDeck' },
 );

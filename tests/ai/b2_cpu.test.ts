@@ -104,7 +104,7 @@ describe('CPU heuristics for the batch-2 cards', () => {
 describe('Mıknatıs preset', () => {
   it('is legal, holds the three pieces and one or two Sovereigns; no other preset runs a Sovereign', () => {
     const p = presetById('miknatis')!;
-    expect(p.name).toBe('Mıknatıs');
+    expect(p.name).toBe('Magnet');
     expect(validateDeck(p.cards).ok).toBe(true);
     for (const id of MAGNET_PIECE_IDS) expect(copiesOf(p.cards, id)).toBeGreaterThanOrEqual(2);
     expect(copiesOf(p.cards, 'polar_sovereign')).toBeGreaterThanOrEqual(1);

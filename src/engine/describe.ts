@@ -1,6 +1,6 @@
-// Short Turkish battle-log lines for engine events, with proper suffix harmony on card names
-// ("Kor Kurdu'nu çağırdı", "Taş Muhafız'a saldırıyor"). Hidden information (drawn cards, set
-// cards) is never revealed. Returns null for events that should not appear in the log.
+// Short English battle-log lines for engine events ("Ember Wolf attacks Stone Sentinel!").
+// Hidden information (drawn cards, set cards) is never revealed. Returns null for events that
+// should not appear in the log.
 //
 // `state` is used only to resolve card names (state.cards never changes during a game), so
 // either the state before or after the action works.
@@ -9,128 +9,29 @@ import { CARDS, type CardId } from '../data/cards';
 import type { GameEvent, GameState, PendingDecision, PlayerId, Uid, ZoneRef } from './types';
 import { uidAt } from './query';
 
-/** Card names whose last word carries the 3rd-person possessive (compound nouns): buffer "n". */
-const POSSESSIVE_NAMES: ReadonlySet<CardId> = new Set<CardId>([
-  'abyss_magus', // Uçurum Büyücüsü
-  'magma_titan', // Magma Titanı
-  'coral_serpent', // Mercan Yılanı
-  'ember_wolf', // Kor Kurdu
-  'tide_golem', // Gelgit Golemi
-  'storm_hawk', // Fırtına Atmacası
-  'lumen_sprite', // Işık Perisi
-  'volt_lizard', // Şimşek Kertenkelesi
-  'judgment_bolt', // Yıldırım Hükmü
-  'healing_spring', // Şifa Pınarı
-  'soul_recall', // Ruh Çağrısı
-  'dragon_blade', // Ejder Kılıcı
-  'volcano_arena', // Volkan Arenası
-  'mirror_barrier', // Ayna Kalkanı
-  'chains_of_light', // Işık Zincirleri
-  'chasm_trap', // Yer Yarığı
-  // spell/trap batch 1: names whose last word carries the possessive
-  'fate_trade', // Kader Takası
-  'battle_cry', // Savaş Narası
-  'purging_wave', // Arınma Dalgası
-  'tidal_bay', // Gelgit Körfezi
-  'shadow_cavern', // Gölge Mağarası
-  'festival_square', // Şenlik Meydanı
-  'spell_seal', // Büyü Mührü
-  'sandstorm', // Kum Fırtınası
-  // batch 2
-  'dial_jester', // Kadran Soytarısı
-  'cloud_hatchling', // Bulut Yavrusu
-  'scrap_raiders', // Hurda Akıncıları
-  'hollow_ogre', // Kovuk Devi
-  'reed_heron', // Sazlık Balıkçılı
-  'mudgrasp_spirit', // Çamur Pençe Ruhu
-  'steppe_spiralhorn', // Bozkır Boynuzlusu
-  'polar_needle', // Kutup İğnesi
-  'polar_anvil', // Kutup Örsü
-  'polar_coil', // Kutup Bobini
-  'polar_sovereign', // Kutup Hükümdarı
-  'well_pail', // Kuyu Kovası
-  'puppet_string', // Kukla İpi
-  'void_eye', // Boşluk Gözü
-  'sweeping_gale', // Süpürge Rüzgarı
-  'winnow_sieve', // Harman Eleği
-  'auger_lance', // Burgu Mızrağı
-  'soul_leash', // Ruh Tasması
-  'spite_axe', // Hınç Baltası
-  'lucky_die', // Talih Zarı
-]);
-
-const VOWELS = 'aeıioöuü';
-
-function lastVowel(word: string): string {
-  const w = word.toLocaleLowerCase('tr');
-  for (let i = w.length - 1; i >= 0; i--) if (VOWELS.includes(w[i])) return w[i];
-  return 'e';
-}
-
-/** Two-way harmony (a/e). */
-function h2(v: string): string {
-  return 'aıou'.includes(v) ? 'a' : 'e';
-}
-
-/** Four-way harmony (ı/i/u/ü). */
-function h4(v: string): string {
-  if ('aı'.includes(v)) return 'ı';
-  if ('ei'.includes(v)) return 'i';
-  if ('ou'.includes(v)) return 'u';
-  return 'ü';
-}
-
+/**
+ * Kept for API compatibility: the log used to be Turkish and inflected names with case suffixes.
+ * English needs no inflection, so every case renders as the bare name, except the genitive, which
+ * takes the English possessive ("Ember Wolf's").
+ */
 export type GrammaticalCase = 'nom' | 'acc' | 'dat' | 'gen' | 'loc' | 'abl';
 
-/** A word with a case suffix after an apostrophe, e.g. inflect('Kor Kurdu', 'acc', true) → "Kor Kurdu'nu". */
-export function inflect(name: string, kase: GrammaticalCase, possessive = false): string {
-  if (kase === 'nom') return name;
-  const lower = name.toLocaleLowerCase('tr');
-  const endsVowel = VOWELS.includes(lower[lower.length - 1]);
-  const v = lastVowel(lower);
-  const lastChar = lower[lower.length - 1];
-  const hard = 'fstkçşhp'.includes(lastChar);
-  let suffix: string;
-  switch (kase) {
-    case 'acc':
-      suffix = (endsVowel ? (possessive ? 'n' : 'y') : '') + h4(v);
-      break;
-    case 'dat':
-      suffix = (endsVowel ? (possessive ? 'n' : 'y') : '') + h2(v);
-      break;
-    case 'gen':
-      suffix = (endsVowel ? 'n' : '') + h4(v) + 'n';
-      break;
-    case 'loc':
-      suffix = (endsVowel && possessive ? 'n' : '') + (hard ? 't' : 'd') + h2(v);
-      break;
-    case 'abl':
-      suffix = (endsVowel && possessive ? 'n' : '') + (hard ? 't' : 'd') + h2(v) + 'n';
-      break;
-  }
-  return `${name}'${suffix}`;
+/** A name in a grammatical case: unchanged, except 'gen' → possessive ("Ember Wolf's", "Wings'"). */
+export function inflect(name: string, kase: GrammaticalCase, _possessive = false): string {
+  if (kase !== 'gen') return name;
+  return /s$/i.test(name) ? `${name}'` : `${name}'s`;
 }
 
 /** Card name in a grammatical case. */
 export function cardName(id: CardId, kase: GrammaticalCase = 'nom'): string {
-  return inflect(CARDS[id].name, kase, POSSESSIVE_NAMES.has(id));
+  return inflect(CARDS[id].name, kase);
 }
 
-/** "Oyuncu 1" / "Oyuncu 2" with case suffixes (numbers read "bir" / "iki"). */
+/** "Player 1" / "Player 2" in a grammatical case. */
 export function playerName(p: PlayerId, kase: GrammaticalCase = 'nom'): string {
-  const n = p + 1;
-  const base = `Oyuncu ${n}`;
-  if (kase === 'nom') return base;
-  // bir → bire, birin, birde, birden; iki → ikiye, ikinin, ikide, ikiden
-  const sfx: Record<Exclude<GrammaticalCase, 'nom'>, [string, string]> = {
-    acc: ['i', 'yi'],
-    dat: ['e', 'ye'],
-    gen: ['in', 'nin'],
-    loc: ['de', 'de'],
-    abl: ['den', 'den'],
-  };
-  return `${base}'${sfx[kase][n === 1 ? 0 : 1]}`;
+  return inflect(`Player ${p + 1}`, kase);
 }
+
 
 function nameOf(state: GameState, uid: Uid, kase: GrammaticalCase = 'nom'): string {
   const card = state.cards[uid];
@@ -142,7 +43,7 @@ function refName(state: GameState, ref: ZoneRef): string | null {
   if (uid === null) return null;
   const ps = state.players[ref.player];
   const slot = ref.zone === 'monster' ? ps.monsters[ref.index] : ref.zone === 'spellTrap' ? ps.spellTraps[ref.index] : ps.fieldSpell;
-  if (!slot || !slot.faceUp) return ref.zone === 'monster' ? 'kapalı canavar' : 'kapalı kart';
+  if (!slot || !slot.faceUp) return ref.zone === 'monster' ? 'a face-down monster' : 'a face-down card';
   return nameOf(state, uid);
 }
 
@@ -153,21 +54,21 @@ function isFaceDownMonster(state: GameState, uid: Uid): boolean {
 
 /** Short outcome note appended to the log line of the spell/trap batch 1 traps. */
 const TRAP_NOTE: Partial<Record<CardId, string>> = {
-  spell_seal: 'Büyü geçersiz kılındı.',
-  homecoming: 'Saldıran canavar geri döndü.',
-  sandstorm: 'Saldırı durdu, rakip canavarlar savunmaya geçti.',
-  hidden_reinforcement: 'Hedef güçlendi.',
+  spell_seal: 'The Spell is negated.',
+  homecoming: 'The attacker returns to the hand.',
+  sandstorm: 'The attack stops; the opposing monsters switch to Defense.',
+  hidden_reinforcement: 'The target grows stronger.',
 };
 
 const WIN_REASON: Record<string, string> = {
-  lp: 'LP sıfırlandı',
-  deckout: 'deste bitti',
-  surrender: 'rakip teslim oldu',
-  seals: 'Beş Mühür tamamlandı',
+  lp: 'LP reached 0',
+  deckout: 'deck ran out',
+  surrender: 'opponent surrendered',
+  seals: 'Five Seals complete',
 };
 
 /**
- * One short Turkish log line for `ev`, or null if the event should not be logged.
+ * One short English log line for `ev`, or null if the event should not be logged.
  * `batch` (optional): the event list `ev` belongs to (e.g. the events of one apply). With it the
  * describer can look ahead — an attacked face-down target is not named before its flip, and a
  * target that the same batch destroys is still named.
@@ -176,51 +77,55 @@ export function describeEvent(state: GameState, ev: GameEvent, batch?: readonly 
   const later = batch ? batch.slice(batch.indexOf(ev) + 1) : [];
   switch (ev.type) {
     case 'gameStart':
-      return `Düello başladı! İlk sıra ${playerName(ev.firstPlayer, 'loc')}.`;
+      return `The duel begins! ${playerName(ev.firstPlayer)} goes first.`;
     case 'shuffle':
-      return `${playerName(ev.player)} destesini karıştırdı.`;
+      return `${playerName(ev.player)} shuffles their Deck.`;
     case 'draw':
-      return ev.initial ? null : `${playerName(ev.player)} bir kart çekti.`;
+      return ev.initial ? null : `${playerName(ev.player)} draws a card.`;
     case 'turnStart':
-      return `Tur ${ev.turn} - ${playerName(ev.player)}`;
+      return `Turn ${ev.turn} - ${playerName(ev.player)}`;
     case 'phaseChange':
-      if (ev.phase === 'battle') return `${playerName(ev.player)} Savaş Aşamasına geçti!`;
-      if (ev.phase === 'end') return `${playerName(ev.player)}: Bitiş Aşaması.`;
+      if (ev.phase === 'battle') return `${playerName(ev.player)} enters the Battle Phase!`;
+      if (ev.phase === 'end') return `${playerName(ev.player)}: End Phase.`;
       return null;
     case 'tribute':
-      return `${playerName(ev.player)}, ${cardName(ev.cardId, 'acc')} kurban etti.`;
+      return `${playerName(ev.player)} Tributes ${cardName(ev.cardId)}.`;
     case 'summon':
       switch (ev.method) {
         case 'normal':
-          return `${playerName(ev.player)}, ${cardName(ev.cardId, 'acc')} çağırdı.`;
+          return `${playerName(ev.player)} Normal Summons ${cardName(ev.cardId)}.`;
         case 'tribute':
-          return `${playerName(ev.player)}, ${cardName(ev.cardId, 'acc')} kurbanla çağırdı!`;
+          return `${playerName(ev.player)} Tribute Summons ${cardName(ev.cardId)}!`;
         case 'special':
-          if (ev.from === 'token') return `${playerName(ev.player)} bir ${cardName(ev.cardId)} jetonu çağırdı.`;
-          if (ev.from === 'hand') return `${playerName(ev.player)}, ${cardName(ev.cardId, 'acc')} elinden özel çağırdı!`;
-          return `${playerName(ev.player)}, ${cardName(ev.cardId, 'acc')} mezarlıktan özel çağırdı!`;
+          if (ev.from === 'token') return `${playerName(ev.player)} Summons a ${cardName(ev.cardId)} Token.`;
+          if (ev.from === 'hand') return `${playerName(ev.player)} Special Summons ${cardName(ev.cardId)} from the hand!`;
+          return `${playerName(ev.player)} Special Summons ${cardName(ev.cardId)} from the Graveyard!`;
         case 'flip':
-          return `${playerName(ev.player)}, ${cardName(ev.cardId, 'acc')} çevirerek çağırdı!`;
+          return `${playerName(ev.player)} Flip Summons ${cardName(ev.cardId)}!`;
       }
       return null;
     case 'setMonster':
-      return `${playerName(ev.player)} kapalı bir canavar koydu.`;
+      return `${playerName(ev.player)} Sets a monster.`;
     case 'setSpellTrap':
-      return `${playerName(ev.player)} kapalı bir kart koydu.`;
+      return `${playerName(ev.player)} Sets a card.`;
     case 'positionChange':
-      return `${nameOf(state, ev.uid)} ${ev.position === 'defense' ? 'savunma' : 'saldırı'} pozisyonuna geçti.`;
+      return `${nameOf(state, ev.uid)} switches to ${ev.position === 'defense' ? 'Defense' : 'Attack'} Position.`;
     case 'flip':
-      return ev.cause === 'attacked' || ev.cause === 'reveal' ? `Kapalı kart açıldı: ${cardName(ev.cardId)}!` : null;
+      return ev.cause === 'attacked' || ev.cause === 'reveal' ? `Face-down card flipped: ${cardName(ev.cardId)}!` : null;
     case 'counter':
-      return ev.value === 0 ? `${cardName(ev.cardId)} sona erdi.` : ev.prev === 0 ? null : `${cardName(ev.cardId)}: ${ev.value} tur kaldı.`;
+      return ev.value === 0
+        ? `${cardName(ev.cardId)} has ended.`
+        : ev.prev === 0
+          ? null
+          : `${cardName(ev.cardId)}: ${ev.value} turn${ev.value === 1 ? '' : 's'} left.`;
     case 'activate':
       if (ev.kind === 'spell' && ev.cardId === 'guardian_charm' && ev.from === 'spellTrap')
-        return `${cardName(ev.cardId)} canavarı korudu!`;
-      if (ev.kind === 'spell') return `${playerName(ev.player)} büyü kartı açtı: ${cardName(ev.cardId)}!`;
-      if (ev.kind === 'trap') return `${playerName(ev.player)} tuzak kartı açtı: ${cardName(ev.cardId)}!${TRAP_NOTE[ev.cardId] ? ' ' + TRAP_NOTE[ev.cardId] : ''}`;
-      return `${cardName(ev.cardId, 'gen')} etkisi!`;
+        return `${cardName(ev.cardId)} protects the monster!`;
+      if (ev.kind === 'spell') return `${playerName(ev.player)} activates a Spell: ${cardName(ev.cardId)}!`;
+      if (ev.kind === 'trap') return `${playerName(ev.player)} activates a Trap: ${cardName(ev.cardId)}!${TRAP_NOTE[ev.cardId] ? ' ' + TRAP_NOTE[ev.cardId] : ''}`;
+      return `${cardName(ev.cardId, 'gen')} effect!`;
     case 'target': {
-      if (ev.graveyardUid !== undefined) return `Mezarlıktan hedef: ${nameOf(state, ev.graveyardUid)}.`;
+      if (ev.graveyardUid !== undefined) return `Target in the Graveyard: ${nameOf(state, ev.graveyardUid)}.`;
       const names = ev.targets
         .map((t) => {
           const gone = later.find(
@@ -229,34 +134,34 @@ export function describeEvent(state: GameState, ev: GameEvent, batch?: readonly 
           return gone && gone.type === 'destroy' ? cardName(gone.cardId) : refName(state, t);
         })
         .filter((n): n is string => n !== null);
-      return names.length ? `Hedef: ${names.join(', ')}.` : null;
+      return names.length ? `Target: ${names.join(', ')}.` : null;
     }
     case 'attackDeclare': {
       const a = nameOf(state, ev.attackerUid);
-      if (ev.targetUid === null) return `${a} doğrudan saldırıyor!`;
+      if (ev.targetUid === null) return `${a} attacks directly!`;
       const flipsLater = later.some((e) => e.type === 'flip' && e.cause === 'attacked' && e.uid === ev.targetUid);
-      if (flipsLater || isFaceDownMonster(state, ev.targetUid)) return `${a} kapalı canavara saldırıyor!`;
-      return `${a}, ${nameOf(state, ev.targetUid, 'dat')} saldırıyor!`;
+      if (flipsLater || isFaceDownMonster(state, ev.targetUid)) return `${a} attacks a face-down monster!`;
+      return `${a} attacks ${nameOf(state, ev.targetUid)}!`;
     }
     case 'attackNegated':
-      return `${nameOf(state, ev.attackerUid, 'gen')} saldırısı geçersiz kılındı!`;
+      return `${nameOf(state, ev.attackerUid, 'gen')} attack is negated!`;
     case 'battle': {
       if (ev.targetUid === null) return null;
       const pos = ev.targetPosition === 'defense' ? 'DEF' : 'ATK';
-      return `${nameOf(state, ev.attackerUid)} (ATK ${ev.attackerAtk}) ile ${nameOf(state, ev.targetUid)} (${pos} ${ev.targetValue}) çarpıştı!`;
+      return `${nameOf(state, ev.attackerUid)} (ATK ${ev.attackerAtk}) clashes with ${nameOf(state, ev.targetUid)} (${pos} ${ev.targetValue})!`;
     }
     case 'damage':
-      return `${playerName(ev.player)}, ${ev.amount} hasar aldı! (LP ${ev.lpAfter})`;
+      return `${playerName(ev.player)} takes ${ev.amount} damage! (LP ${ev.lpAfter})`;
     case 'lpGain':
-      return `${playerName(ev.player)}, ${ev.amount} LP kazandı. (LP ${ev.lpAfter})`;
+      return `${playerName(ev.player)} gains ${ev.amount} LP. (LP ${ev.lpAfter})`;
     case 'destroy':
-      return ev.reason === 'rule' ? `${cardName(ev.cardId)} yok oldu.` : `${cardName(ev.cardId)} yok edildi!`;
+      return ev.reason === 'rule' ? `${cardName(ev.cardId)} is gone.` : `${cardName(ev.cardId)} is destroyed!`;
     case 'toGraveyard':
       return null;
     case 'equip':
-      return `${nameOf(state, ev.targetUid)}, ${nameOf(state, ev.spellUid, 'acc')} kuşandı!`;
+      return `${nameOf(state, ev.targetUid)} is equipped with ${nameOf(state, ev.spellUid)}!`;
     case 'fieldSpell':
-      return ev.active ? `Saha dönüştü: ${cardName(ev.cardId)}!` : `${cardName(ev.cardId)} sona erdi.`;
+      return ev.active ? `The field transforms: ${cardName(ev.cardId)}!` : `${cardName(ev.cardId)} has ended.`;
     case 'statChange': {
       const n = nameOf(state, ev.uid);
       const parts: string[] = [];
@@ -265,79 +170,79 @@ export function describeEvent(state: GameState, ev: GameEvent, batch?: readonly 
       return parts.length ? `${n}: ${parts.join(', ')}.` : null;
     }
     case 'discard':
-      return `${playerName(ev.player)} elinden ${cardName(ev.cardId, 'acc')} attı.`;
+      return `${playerName(ev.player)} discards ${cardName(ev.cardId)}.`;
     case 'toHand':
-      return `${cardName(ev.cardId)} sahibinin eline döndü.`;
+      return `${cardName(ev.cardId)} returns to its owner's hand.`;
     case 'toDeck':
-      if (ev.from === 'spellTrap') return `${cardName(ev.cardId)} sahibinin destesinin üstüne döndü.`;
-      return `${playerName(ev.owner, 'gen')} mezarlığından ${cardName(ev.cardId)} desteye karıştırıldı.`;
+      if (ev.from === 'spellTrap') return `${cardName(ev.cardId)} returns to the top of its owner's Deck.`;
+      return `${cardName(ev.cardId)} is shuffled from ${playerName(ev.owner, 'gen')} Graveyard into the Deck.`;
     case 'controlChange': {
-      const n = ev.cardId ? cardName(ev.cardId, 'acc') : 'kapalı canavarı';
+      const n = ev.cardId ? cardName(ev.cardId) : 'a face-down monster';
       return ev.reason === 'take'
-        ? `${playerName(ev.to)}, ${n} kontrolüne aldı!`
-        : `${ev.cardId ? cardName(ev.cardId) : 'Kapalı canavar'} sahibine döndü.`;
+        ? `${playerName(ev.to)} takes control of ${n}!`
+        : `${ev.cardId ? cardName(ev.cardId) : 'The face-down monster'} returns to its owner.`;
     }
     case 'massDestroy': {
       const src = ev.sourceUid !== null ? state.cards[ev.sourceUid] : undefined;
-      return src ? `${cardName(src.cardId)}: ${ev.refs.length} kart yok oluyor!` : null;
+      return src ? `${cardName(src.cardId)}: ${ev.refs.length} card${ev.refs.length === 1 ? '' : 's'} destroyed!` : null;
     }
     case 'coinToss':
-      return `Para atıldı: ${ev.result === 'heads' ? 'TURA' : 'YAZI'}! ${playerName(ev.player)} ${ev.win ? 'bildi' : 'bilemedi'}.`;
+      return `Coin toss: ${ev.result === 'heads' ? 'HEADS' : 'TAILS'}! ${playerName(ev.player)} called it ${ev.win ? 'right' : 'wrong'}.`;
     case 'diceRoll':
-      return `Zar atıldı: ${ev.value}!`;
+      return `Die roll: ${ev.value}!`;
     case 'banish':
-      return `${cardName(ev.cardId)} oyundan çıkarıldı.`;
+      return `${cardName(ev.cardId)} is banished.`;
     case 'tokenVanish':
-      return `${cardName(ev.cardId)} dağıldı.`;
+      return `${cardName(ev.cardId)} fades away.`;
     case 'decision':
       return null;
     case 'hatsShuffled':
-      return `${playerName(ev.player)} canavarını şapkaların altına gizledi ve karıştırdı!`;
+      return `${playerName(ev.player)} hides their monster under the hats and shuffles!`;
     case 'hatChosen':
-      return `${playerName(ev.player)} ${ev.zone + 1}. alandaki şapkayı seçti.`;
+      return `${playerName(ev.player)} picks the hat in zone ${ev.zone + 1}.`;
     case 'decoyPopped':
-      return 'Sahte şapka patladı, altı boştu.';
+      return 'A decoy hat pops: it was empty.';
     case 'hatRevealed':
       return null; // the following flip event names the card
     case 'hatRestore':
-      return ev.restored ? 'Şapkalar kalktı, canavar yerine döndü.' : null;
+      return ev.restored ? 'The hats lift; the monster is back in place.' : null;
     case 'responseDeclined':
-      return `${playerName(ev.player)} tuzak açmadı.`;
+      return `${playerName(ev.player)} does not respond.`;
     case 'deckOut':
-      return `${playerName(ev.player, 'gen')} destesi bitti!`;
+      return `${playerName(ev.player, 'gen')} Deck has run out!`;
     case 'gameOver':
-      return `${playerName(ev.winner)} kazandı! (${WIN_REASON[ev.reason] ?? ev.reason})`;
+      return `${playerName(ev.winner)} wins! (${WIN_REASON[ev.reason] ?? ev.reason})`;
   }
   return null;
 }
 
-/** Turkish prompt for a pending decision (shown to `pending.player`). */
+/** English prompt for a pending decision (shown to `pending.player`). */
 export function describePending(state: GameState, pd: PendingDecision): string {
   switch (pd.kind) {
     case 'trapResponse':
       if (pd.options.some((u) => state.cards[u] && CARDS[state.cards[u].cardId].kind === 'spell'))
-        return `${playerName(pd.player)}: Tuzak ya da hızlı büyü açmak ister misin?`;
-      return `${playerName(pd.player)}: Tuzak kartı açmak ister misin?`;
+        return `${playerName(pd.player)}: Activate a Trap or Quick-Play Spell?`;
+      return `${playerName(pd.player)}: Activate a Trap card?`;
     case 'chooseTarget': {
       const card = state.cards[pd.sourceUid];
-      const what = pd.candidates.every((c) => c.zone === 'monster') ? 'canavarı' : 'kartı';
+      const what = pd.candidates.every((c) => c.zone === 'monster') ? 'monster' : 'card';
       if (card && CARDS[card.cardId].kind === 'monster' && (CARDS[card.cardId] as { effect: string }).effect === 'summonFreezeAttack')
-        return `${cardName(card.cardId, 'gen')} etkisi: bir sonraki turunda saldıramayacak canavarı seç.`;
-      if (card && card.cardId === 'magic_hat') return `${cardName(card.cardId)}: saldıracağın şapkayı seç.`;
-      if (card && card.cardId === 'decoy_target') return `${cardName(card.cardId)}: saldırının yöneleceği kendi canavarını seç.`;
-      if (card && card.cardId === 'straw_decoys') return `${cardName(card.cardId)}: saldırının yöneleceği korkuluğu seç.`;
-      return card ? `${cardName(card.cardId, 'gen')} etkisi: yok edilecek ${what} seç.` : `Yok edilecek ${what} seç.`;
+        return `${cardName(card.cardId, 'gen')} effect: choose a monster that cannot attack next turn.`;
+      if (card && card.cardId === 'magic_hat') return `${cardName(card.cardId)}: choose the hat to attack.`;
+      if (card && card.cardId === 'decoy_target') return `${cardName(card.cardId)}: choose your monster to take the attack.`;
+      if (card && card.cardId === 'straw_decoys') return `${cardName(card.cardId)}: choose the decoy to take the attack.`;
+      return card ? `${cardName(card.cardId, 'gen')} effect: choose a ${what} to destroy.` : `Choose a ${what} to destroy.`;
     }
     case 'discard':
       // fate_trade asks for its cost in the Main Phase; the hand limit asks in the End Phase
-      if (pd.cost) return `${playerName(pd.player)}: Bedel olarak elinden ${pd.count} kart at.`;
-      return `${playerName(pd.player)}: El sınırı 6. Elinden ${pd.count} kart at.`;
+      if (pd.cost) return `${playerName(pd.player)}: Discard ${pd.count} card${pd.count === 1 ? '' : 's'} as the cost.`;
+      return `${playerName(pd.player)}: Hand limit is 6. Discard ${pd.count} card${pd.count === 1 ? '' : 's'}.`;
     case 'coinCall':
-      return `${playerName(pd.player)}: Yazı mı, Tura mı?`;
+      return `${playerName(pd.player)}: Heads or Tails?`;
     case 'chooseCount': {
       const card = state.cards[pd.sourceUid];
-      const who = card ? `${cardName(card.cardId, 'gen')} etkisi: ` : '';
-      return `${who}oyundan çıkarılacak canavar sayısını seç (${pd.min}–${pd.max}).`;
+      const who = card ? `${cardName(card.cardId, 'gen')} effect: ` : '';
+      return `${who}${who ? 'choose' : 'Choose'} how many monsters to banish (${pd.min}–${pd.max}).`;
     }
   }
 }

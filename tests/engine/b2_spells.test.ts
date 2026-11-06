@@ -36,17 +36,17 @@ const setST = (s: GameState, id: CardId, p: PlayerId, zone: number): Action => (
 // ---------------------------------------------------------------------------------------------
 describe('batch 2 spell data', () => {
   const rows: [CardId, string, SpellCardDef['spellType'], string][] = [
-    ['well_pail', 'Kuyu Kovası', 'normal', 'draw2'],
-    ['puppet_string', 'Kukla İpi', 'normal', 'controlUntilEnd'],
-    ['void_eye', 'Boşluk Gözü', 'normal', 'destroyAllMonsters'],
-    ['sweeping_gale', 'Süpürge Rüzgarı', 'normal', 'destroyAllOppSpellTrap'],
-    ['winnow_sieve', 'Harman Eleği', 'normal', 'draw3Discard2'],
-    ['auger_lance', 'Burgu Mızrağı', 'quick', 'destroySpellTrapQuick'],
-    ['soul_leash', 'Ruh Tasması', 'equip', 'equipControl'],
-    ['straw_decoys', 'Saman Korkuluklar', 'quick', 'strawTokens'],
-    ['spite_axe', 'Hınç Baltası', 'equip', 'equipAtk800Return'],
-    ['page_turner', 'Sayfa Çeviren', 'normal', 'handRefreshBoth'],
-    ['lucky_die', 'Talih Zarı', 'normal', 'diceBoost100'],
+    ['well_pail', 'Well Pail', 'normal', 'draw2'],
+    ['puppet_string', 'Puppet String', 'normal', 'controlUntilEnd'],
+    ['void_eye', 'Void Eye', 'normal', 'destroyAllMonsters'],
+    ['sweeping_gale', 'Sweeping Gale', 'normal', 'destroyAllOppSpellTrap'],
+    ['winnow_sieve', 'Winnowing Sieve', 'normal', 'draw3Discard2'],
+    ['auger_lance', 'Auger Lance', 'quick', 'destroySpellTrapQuick'],
+    ['soul_leash', 'Soul Leash', 'equip', 'equipControl'],
+    ['straw_decoys', 'Straw Decoys', 'quick', 'strawTokens'],
+    ['spite_axe', 'Spite Axe', 'equip', 'equipAtk800Return'],
+    ['page_turner', 'Page Turner', 'normal', 'handRefreshBoth'],
+    ['lucky_die', 'Lucky Die', 'normal', 'diceBoost100'],
   ];
   it('11 spells (Yaldızlı Kafes dropped): names, types, effects; the two quick spells', () => {
     for (const [id, name, type, eff] of rows) {
@@ -55,8 +55,8 @@ describe('batch 2 spell data', () => {
       expect(SPELL_IDS).toContain(id);
       expect(d.text.length).toBeGreaterThan(10);
     }
-    expect(S('auger_lance').text).toMatch(/^Hızlı Büyü\./);
-    expect(S('straw_decoys').text).toMatch(/^Hızlı Büyü\./);
+    expect(S('auger_lance').text).toMatch(/^Quick-Play Spell\./);
+    expect(S('straw_decoys').text).toMatch(/^Quick-Play Spell\./);
     expect(Object.values(CARDS).filter((c) => isSpell(c) && c.spellType === 'quick').map((c) => c.id).sort()).toEqual(['auger_lance', 'straw_decoys']);
   });
 });

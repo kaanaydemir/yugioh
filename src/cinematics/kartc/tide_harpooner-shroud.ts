@@ -342,7 +342,7 @@ export function shroudReject(scene: Phaser.Scene, views: DuelViews, state: GameS
   if (!on) return false;
   const u = views.field.unitAt(h.player, h.index);
   try {
-    views.hud.flashHint('Gelgit Körfezi korunuyor: Kabuk Zıpkıncı hedef alınamaz', { style: 'neutral', ms: 1200 });
+    views.hud.flashHint('Tidal Bay shields Shell Harpooner: it cannot be targeted', { style: 'neutral', ms: 1200 });
   } catch {
     /* the hint is optional */
   }

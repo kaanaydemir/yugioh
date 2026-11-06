@@ -198,36 +198,36 @@ export function copiesOf(ids: readonly string[], id: string): number {
   return n;
 }
 
-/** The reasons (Turkish) a deck is not playable; `ok` when there are none. */
+/** The reasons (English) a deck is not playable; `ok` when there are none. */
 export function validateDeck(ids: readonly string[]): DeckCheck {
   const stats = deckStats(ids);
   const issues: DeckIssue[] = [];
-  if (stats.unknown.length) issues.push({ code: 'unknown', text: `Eksik kart: ${stats.unknown.length} (artık oyunda yok)` });
+  if (stats.unknown.length) issues.push({ code: 'unknown', text: `Missing cards: ${stats.unknown.length} (no longer in the game)` });
   if (stats.over.length) {
     const names = stats.over.map((d) => CARDS[d as CardId].name).slice(0, 2).join(', ');
     const single = stats.over.some((d) => isSingleCopy(d) && !isSealCard(d));
-    issues.push({ code: 'copies', text: `Çok kopya: ${names}${stats.over.length > 2 ? '…' : ''} (en çok ${MAX_COPIES}, Mühür ${SEAL_COPIES}${single ? ', tek kopyalık kart 1' : ''})` });
+    issues.push({ code: 'copies', text: `Too many copies: ${names}${stats.over.length > 2 ? '…' : ''} (max ${MAX_COPIES}, Seal ${SEAL_COPIES}${single ? ', single-copy card 1' : ''})` });
   }
-  if (stats.size < DECK_MIN) issues.push({ code: 'size', text: `Deste en az ${DECK_MIN} kart olmalı: ${DECK_MIN - stats.size} eksik` });
-  else if (stats.size > DECK_MAX) issues.push({ code: 'size', text: `Deste en çok ${DECK_MAX} kart olabilir: ${stats.size - DECK_MAX} fazla` });
+  if (stats.size < DECK_MIN) issues.push({ code: 'size', text: `Deck needs at least ${DECK_MIN} cards: ${DECK_MIN - stats.size} short` });
+  else if (stats.size > DECK_MAX) issues.push({ code: 'size', text: `Deck can hold at most ${DECK_MAX} cards: ${stats.size - DECK_MAX} too many` });
   const need = minMonsters(stats.size);
-  if (stats.monsters < need) issues.push({ code: 'monsters', text: `En az ${need} canavar gerek (şimdi ${stats.monsters})` });
+  if (stats.monsters < need) issues.push({ code: 'monsters', text: `Needs at least ${need} monsters (now ${stats.monsters})` });
   const cap = maxHigh(stats.size);
-  if (stats.high > cap) issues.push({ code: 'high', text: `En çok ${cap} canavar Sv ${DECK_HIGH_LEVEL}+ olabilir (şimdi ${stats.high})` });
+  if (stats.high > cap) issues.push({ code: 'high', text: `At most ${cap} monsters of Lv ${DECK_HIGH_LEVEL}+ (now ${stats.high})` });
   return { ok: issues.length === 0, issues, stats };
 }
 
 /** Would adding `id` to `ids` break a rule that adding more cards can never fix (copies / full / high cap)? */
 export function addBlocker(ids: readonly string[], id: CardId): string | null {
-  if (isRetired(id)) return 'Bu kart artık oyunda yok';
+  if (isRetired(id)) return 'This card is no longer in the game';
   const have = copiesOf(ids, id);
   const lim = maxCopies(id);
-  if (have >= lim) return lim === 1 ? 'Bu karttan destede zaten var (en çok 1)' : `Bu karttan en çok ${lim} kopya (zaten ${have})`;
-  if (ids.length >= DECK_MAX) return `Deste dolu (${DECK_MAX}/${DECK_MAX})`;
+  if (have >= lim) return lim === 1 ? 'This card is already in the deck (max 1)' : `Max ${lim} copies of this card (already ${have})`;
+  if (ids.length >= DECK_MAX) return `Deck is full (${DECK_MAX}/${DECK_MAX})`;
   const d = CARDS[id];
   if (d && isMonster(d) && d.level >= DECK_HIGH_LEVEL) {
     const cap = maxHigh(ids.length + 1);
-    if (deckStats(ids).high >= cap) return `En çok ${cap} canavar Sv ${DECK_HIGH_LEVEL}+ olabilir`;
+    if (deckStats(ids).high >= cap) return `At most ${cap} monsters of Lv ${DECK_HIGH_LEVEL}+`;
   }
   return null;
 }
@@ -364,14 +364,14 @@ export interface Preset {
 }
 
 export const PRESET_DEFS: readonly PresetDef[] = [
-  { id: 'ates', name: 'Ateş Saldırı', blurb: 'Yüksek ATK, yakıp geçen hızlı saldırılar.', role: 'aggro', attribute: 'FIRE', pins: ['magma_titan', 'ember_wolf', 'storm_hawk', 'shade_assassin', 'judgment_bolt', 'dragon_blade', 'volcano_arena', 'scrap_raiders', 'spite_axe'], backRow: 6 },
-  { id: 'su', name: 'Su Kontrol', blurb: 'Tuzaklar, delici hasar ve sabırlı savunma.', role: 'control', attribute: 'WATER', pins: ['coral_serpent', 'tide_golem', 'mirror_barrier', 'chains_of_light', 'chasm_trap', 'thorn_lurker', 'tide_harpooner', 'reed_heron', 'tidal_bay', 'auger_lance'], backRow: 8 },
-  { id: 'isik', name: 'Işık Destek', blurb: 'Can kazan, kartları geri getir, uzun oyna.', role: 'support', attribute: 'LIGHT', pins: ['crystal_wyrm', 'lumen_sprite', 'volt_lizard', 'hourglass_imp', 'healing_spring', 'soul_recall', 'well_pail', 'winnow_sieve', 'reflection_archer'], backRow: 7 },
-  { id: 'muhur', name: 'Karanlık Mühür', blurb: 'Beş Mühür parçasını elde topla, anında kazan.', role: 'seal', attribute: 'DARK', pins: [...SEAL_IDS, 'wisp_imp', 'steel_silencer', 'soul_recall'], backRow: 5 },
-  { id: 'toprak', name: 'Toprak Savunma', blurb: 'Kalın DEF, sağlam muhafızlar, geç ama kesin.', role: 'defense', attribute: 'EARTH', pins: ['stone_sentinel', 'shield_titan', 'thorn_lurker', 'windmane_knight', 'mirror_barrier', 'healing_spring', 'mudgrasp_spirit', 'straw_decoys'], backRow: 7 },
-  { id: 'dengeli', name: 'Dengeli', blurb: 'Her elementten biraz; her duruma bir cevap.', role: 'balanced', pins: ['crystal_wyrm', 'abyss_magus', 'magma_titan', 'coral_serpent', 'ember_wolf', 'judgment_bolt', 'mirror_barrier', 'void_eye', 'puppet_string'], backRow: 7 },
+  { id: 'ates', name: 'Fire Assault', blurb: 'High ATK and fast attacks that burn through.', role: 'aggro', attribute: 'FIRE', pins: ['magma_titan', 'ember_wolf', 'storm_hawk', 'shade_assassin', 'judgment_bolt', 'dragon_blade', 'volcano_arena', 'scrap_raiders', 'spite_axe'], backRow: 6 },
+  { id: 'su', name: 'Water Control', blurb: 'Traps, piercing damage and patient defense.', role: 'control', attribute: 'WATER', pins: ['coral_serpent', 'tide_golem', 'mirror_barrier', 'chains_of_light', 'chasm_trap', 'thorn_lurker', 'tide_harpooner', 'reed_heron', 'tidal_bay', 'auger_lance'], backRow: 8 },
+  { id: 'isik', name: 'Light Support', blurb: 'Gain LP, bring cards back, play the long game.', role: 'support', attribute: 'LIGHT', pins: ['crystal_wyrm', 'lumen_sprite', 'volt_lizard', 'hourglass_imp', 'healing_spring', 'soul_recall', 'well_pail', 'winnow_sieve', 'reflection_archer'], backRow: 7 },
+  { id: 'muhur', name: 'Dark Seal', blurb: 'Gather the Five Seals in hand and win at once.', role: 'seal', attribute: 'DARK', pins: [...SEAL_IDS, 'wisp_imp', 'steel_silencer', 'soul_recall'], backRow: 5 },
+  { id: 'toprak', name: 'Earth Defense', blurb: 'Thick DEF, sturdy guards: slow but certain.', role: 'defense', attribute: 'EARTH', pins: ['stone_sentinel', 'shield_titan', 'thorn_lurker', 'windmane_knight', 'mirror_barrier', 'healing_spring', 'mudgrasp_spirit', 'straw_decoys'], backRow: 7 },
+  { id: 'dengeli', name: 'Balanced', blurb: 'A bit of every element; an answer for everything.', role: 'balanced', pins: ['crystal_wyrm', 'abyss_magus', 'magma_titan', 'coral_serpent', 'ember_wolf', 'judgment_bolt', 'mirror_barrier', 'void_eye', 'puppet_string'], backRow: 7 },
   // batch 2: the polar fusion deck (docs/v3/YENI_KARTLAR.md §1 "Mıknatıs"): pieces x2, the Sovereign, revive + decoys to keep pieces alive
-  { id: 'miknatis', name: 'Mıknatıs', blurb: "Üç Kutup parçasını diz, Kutup Hükümdarı'nı çağır.", role: 'defense', attribute: 'EARTH', pins: ['polar_needle', 'polar_anvil', 'polar_coil', 'polar_sovereign', 'soul_recall', 'straw_decoys'], backRow: 7 },
+  { id: 'miknatis', name: 'Magnet', blurb: 'Line up the three Polar pieces, summon Polar Sovereign.', role: 'defense', attribute: 'EARTH', pins: ['polar_needle', 'polar_anvil', 'polar_coil', 'polar_sovereign', 'soul_recall', 'straw_decoys'], backRow: 7 },
 ];
 
 /** Back-row ranking per role, keyed by effect (unknown effects score 2). */

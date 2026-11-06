@@ -61,7 +61,7 @@ const NAME_Y = 152;
 const TEXT_W = R.w - 14;
 /** Off-screen x of the panel (slid out). */
 const OUT_X = -R.w - 12;
-const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan', continuous: 'Devamlı', quick: 'Hızlı' };
+const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Equip', field: 'Field', continuous: 'Continuous', quick: 'Quick-Play' };
 
 export const INSPECT3 = Object.freeze({
   slideMs: 120,
@@ -172,19 +172,19 @@ export function paintEmptySlot(): PixelCanvas {
 
 /** The words of a card (name, type line, text) as the panel shows them. */
 export function cardWords(id: CardId | null): { name: string; type: string; text: string; flavor: boolean } {
-  if (!id) return { name: 'Kapalı Kart', type: 'Gizli', text: 'Bu kartın ne olduğu rakibinden gizli.', flavor: false };
+  if (!id) return { name: 'Face-down Card', type: 'Hidden', text: 'This card is hidden from the opponent.', flavor: false };
   const d = cardDef(id);
   if (isMonster(d)) return { name: d.name, type: `${ATTRIBUTE_NAMES[d.attribute]} / ${d.race} ★${d.level}`, text: d.text || `"${d.flavor}"`, flavor: !d.text };
-  if (isSpell(d)) return { name: d.name, type: `Büyü · ${SPELL_TYPE[d.spellType] ?? 'Normal'}`, text: d.text, flavor: false };
-  return { name: d.name, type: 'Tuzak · Normal', text: d.text, flavor: false };
+  if (isSpell(d)) return { name: d.name, type: `Spell · ${SPELL_TYPE[d.spellType] ?? 'Normal'}`, text: d.text, flavor: false };
+  return { name: d.name, type: 'Trap · Normal', text: d.text, flavor: false };
 }
 
 /** The words of a pile (KO-11: counts only, nothing hidden is named). */
 export function pileWords(kind: PileKind, player: PlayerId, count: number): { name: string; type: string; text: string } {
-  const who = `OYUNCU ${player + 1}`;
-  if (kind === 'deck') return { name: `Deste · ${count} kart`, type: who, text: count ? 'Çekilecek kartlar kapalı; sıraları gizli.' : 'Destede kart kalmadı.' };
-  if (kind === 'hand') return { name: `Rakibin eli · ${count} kart`, type: who, text: 'Rakibinin elindeki kartlar sana gizli.' };
-  return { name: `Mezarlık · ${count} kart`, type: who, text: count ? 'Mezarlık herkese açıktır.' : 'Mezarlık boş.' };
+  const who = `PLAYER ${player + 1}`;
+  if (kind === 'deck') return { name: `Deck · ${count} card${count === 1 ? '' : 's'}`, type: who, text: count ? 'Cards to draw are face-down; their order is hidden.' : 'No cards left in the Deck.' };
+  if (kind === 'hand') return { name: `Opponent's Hand · ${count} card${count === 1 ? '' : 's'}`, type: who, text: "Your opponent's hand is hidden from you." };
+  return { name: `Graveyard · ${count} card${count === 1 ? '' : 's'}`, type: who, text: count ? 'The Graveyard is public.' : 'The Graveyard is empty.' };
 }
 
 function canvasKey(scene: Phaser.Scene, key: string, paint: () => PixelCanvas): string {

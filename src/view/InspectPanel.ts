@@ -39,7 +39,7 @@ const R = UI.inspect;
 const CARD_CX = 64;
 const CARD_CY = 74;
 const TEXT_W = R.w - 14;
-const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan', continuous: 'Devamlı', quick: 'Hızlı' };
+const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Equip', field: 'Field', continuous: 'Continuous', quick: 'Quick-Play' };
 
 function capY(size: TextSize, capTop: number): number {
   return capTop - textMetrics(size).capTop;
@@ -243,9 +243,9 @@ class InspectPanelV1 {
 
   private fillText(id: CardId | null): void {
     const accent = id ? cardAccent(id) : PAL.steel;
-    let name = 'Kapalı Kart';
-    let type = 'Gizli';
-    let text = 'Bu kartın ne olduğu rakibinden gizli.';
+    let name = 'Face-down Card';
+    let type = 'Hidden';
+    let text = 'This card is hidden from the opponent.';
     let flavor = false;
     if (id) {
       const d = cardDef(id);
@@ -255,10 +255,10 @@ class InspectPanelV1 {
         text = d.text || `"${d.flavor}"`;
         flavor = !d.text;
       } else if (isSpell(d)) {
-        type = `Büyü · ${SPELL_TYPE[d.spellType] ?? 'Normal'}`;
+        type = `Spell · ${SPELL_TYPE[d.spellType] ?? 'Normal'}`;
         text = d.text;
       } else {
-        type = 'Tuzak · Normal';
+        type = 'Trap · Normal';
         text = d.text;
       }
     }
@@ -633,9 +633,9 @@ class InspectPanelV2 {
   private fillText(id: CardId | null): void {
     const R = this.R;
     const accent = id ? cardAccent(id) : PAL.steel;
-    let name = 'Kapalı Kart';
-    let type = 'Gizli';
-    let text = 'Bu kartın ne olduğu rakibinden gizli.';
+    let name = 'Face-down Card';
+    let type = 'Hidden';
+    let text = 'This card is hidden from the opponent.';
     let flavor = false;
     if (id) {
       const d = cardDef(id);
@@ -646,10 +646,10 @@ class InspectPanelV2 {
         text = d.text || `"${d.flavor}"`;
         flavor = !d.text;
       } else if (isSpell(d)) {
-        type = `Büyü Kartı · ${SPELL_TYPE[d.spellType] ?? 'Normal'}`;
+        type = `Spell Card · ${SPELL_TYPE[d.spellType] ?? 'Normal'}`;
         text = d.text;
       } else {
-        type = 'Tuzak Kartı · Normal';
+        type = 'Trap Card · Normal';
         text = d.text;
       }
     }
@@ -719,10 +719,10 @@ class InspectPanelV2 {
       const spell = d.kind === 'spell';
       const ramp = spell ? RAMPS.teal : RAMPS.mag;
       const icon = sc.add.image(x, V2.starY + 1, spell ? ICON.spell : ICON.trap).setOrigin(0).setTint(ramp[4]);
-      const kind = pixelText(sc, x + 12, capY('md', V2.starY + 2), spell ? 'BÜYÜ' : 'TUZAK', { size: 'md', color: ramp[3] });
-      const sub = isSpell(d) ? SPELL_TYPE[d.spellType] ?? 'Normal' : 'Karşı Hamle';
+      const kind = pixelText(sc, x + 12, capY('md', V2.starY + 2), spell ? 'SPELL' : 'TRAP', { size: 'md', color: ramp[3] });
+      const sub = isSpell(d) ? SPELL_TYPE[d.spellType] ?? 'Normal' : 'Response';
       const subT = pixelText(sc, x, capY('sm', V2.atkY + 4), sub, { size: 'sm', color: mix(ramp[4], PAL.white, 0.3) });
-      const when = pixelText(sc, x, capY('sm', V2.defY + 2), spell ? 'Ana Aşama' : 'Rakip turu', { size: 'sm', color: PAL.steel });
+      const when = pixelText(sc, x, capY('sm', V2.defY + 2), spell ? 'Main Phase' : 'Opp. turn', { size: 'sm', color: PAL.steel });
       this.side.add([icon, kind, subT, when]);
       return;
     }

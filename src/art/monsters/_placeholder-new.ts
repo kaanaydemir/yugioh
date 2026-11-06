@@ -241,12 +241,12 @@ export function emblemFor(id: string, race: string): Emblem {
     case 'grim_warden': return 'crystal';
   }
   switch (race) {
-    case 'Makine': return 'gear';
-    case 'Kanatlı': return 'wings';
-    case 'Savaşçı': return 'blade';
-    case 'Şeytan': return 'flame';
-    case 'Ejderha': return 'fang';
-    case 'Büyücü': return 'hourglass';
+    case 'Machine': return 'gear';
+    case 'Winged': return 'wings';
+    case 'Warrior': return 'blade';
+    case 'Fiend': return 'flame';
+    case 'Dragon': return 'fang';
+    case 'Spellcaster': return 'hourglass';
   }
   return 'crystal';
 }

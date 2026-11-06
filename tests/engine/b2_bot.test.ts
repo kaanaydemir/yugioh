@@ -152,43 +152,43 @@ describe('the CPU answers each new decision', () => {
   });
 });
 
-describe('Turkish log lines for the new events and decisions', () => {
+describe('English log lines for the new events and decisions', () => {
   it('coin, dice, control, mass destruction, banish, token and the axe return', () => {
     const s = scenario({ p0: { monsters: ['dial_jester'] }, p1: { monsters: ['crystal_wyrm'] } });
     let r = play(s, { type: 'activateMonster', player: 0, zone: 0 });
-    expect(describePending(r.state, r.state.pending!)).toBe('Oyuncu 1: Yazı mı, Tura mı?');
+    expect(describePending(r.state, r.state.pending!)).toBe('Player 1: Heads or Tails?');
     r = play(r.state, { type: 'callCoin', player: 0, call: 'heads' });
     const lines = describeEvents(s, r.events);
-    expect(lines.some((l) => /^Para atıldı: (TURA|YAZI)! Oyuncu 1 (bildi|bilemedi)\.$/.test(l))).toBe(true);
-    expect(lines.some((l) => l.startsWith("Kadran Soytarısı: "))).toBe(true);
+    expect(lines.some((l) => /^Coin toss: (HEADS|TAILS)! Player 1 called it (right|wrong)\.$/.test(l))).toBe(true);
+    expect(lines.some((l) => l.startsWith("Dial Jester: "))).toBe(true);
 
     const p = scenario({ p0: { hand: ['puppet_string'] }, p1: { monsters: ['crystal_wyrm'] } });
     const pr = play(p, sp(p, 'puppet_string', 0, { target: { kind: 'monster', ref: ref(1, 'monster', 0) } }));
-    expect(describeEvents(p, pr.events)).toContain("Oyuncu 1, Kristal Ejder'i kontrolüne aldı!");
+    expect(describeEvents(p, pr.events)).toContain('Player 1 takes control of Crystal Wyrm!');
     const back = play(pr.state, { type: 'endTurn', player: 0 });
-    expect(describeEvents(p, back.events)).toContain('Kristal Ejder sahibine döndü.');
+    expect(describeEvents(p, back.events)).toContain('Crystal Wyrm returns to its owner.');
 
     const d = scenario({ p0: { hand: ['lucky_die'], monsters: ['ember_wolf'] } });
-    expect(describeEvents(d, play(d, sp(d, 'lucky_die')).events).some((l) => /^Zar atıldı: [1-6]!$/.test(l))).toBe(true);
+    expect(describeEvents(d, play(d, sp(d, 'lucky_die')).events).some((l) => /^Die roll: [1-6]!$/.test(l))).toBe(true);
 
     const o = scenario({ p0: { monsters: ['hollow_ogre'], graveyard: ['ember_wolf'] } });
-    expect(describeEvents(o, play(o, { type: 'activateMonster', player: 0, zone: 0 }).events)).toContain('Kor Kurdu oyundan çıkarıldı.');
+    expect(describeEvents(o, play(o, { type: 'activateMonster', player: 0, zone: 0 }).events)).toContain('Ember Wolf is banished.');
     const o2 = scenario({ p0: { monsters: ['hollow_ogre'], graveyard: ['ember_wolf', 'tide_golem'] } });
     const o2s = play(o2, { type: 'activateMonster', player: 0, zone: 0 }).state;
-    expect(describePending(o2s, o2s.pending!)).toBe("Kovuk Devi'nin etkisi: oyundan çıkarılacak canavar sayısını seç (1–2).");
+    expect(describePending(o2s, o2s.pending!)).toBe("Hollow Ogre's effect: choose how many monsters to banish (1–2).");
 
     const t = scenario({ p0: { hand: ['straw_decoys'] } });
-    expect(describeEvents(t, play(t, sp(t, 'straw_decoys')).events)).toContain('Oyuncu 1 bir Saman Korkuluk jetonu çağırdı.');
+    expect(describeEvents(t, play(t, sp(t, 'straw_decoys')).events)).toContain('Player 1 Summons a Straw Decoy Token.');
 
     const ax = scenario({ p0: { monsters: ['ember_wolf'], spellTraps: [{ id: 'spite_axe', equippedTo: 0 }] }, p1: { hand: ['purging_wave'] }, active: 1, turn: 4 });
     const axr = play(ax, sp(ax, 'purging_wave', 1, { target: { kind: 'card', ref: ref(0, 'spellTrap', 0) } }));
-    expect(describeEvents(ax, axr.events)).toContain('Hınç Baltası sahibinin destesinin üstüne döndü.');
+    expect(describeEvents(ax, axr.events)).toContain("Spite Axe returns to the top of its owner's Deck.");
 
     const q = scenario({ active: 1, turn: 4, phase: 'battle', p1: { monsters: ['crystal_wyrm'] }, p0: { spellTraps: [{ id: 'straw_decoys', setTurn: 3 }] } });
     const qs = play(q, atk(1, 0, null)).state;
-    expect(describePending(qs, qs.pending!)).toBe('Oyuncu 1: Tuzak ya da hızlı büyü açmak ister misin?');
+    expect(describePending(qs, qs.pending!)).toBe('Player 1: Activate a Trap or Quick-Play Spell?');
     const fus = scenario({ p0: { monsters: ['polar_needle', 'polar_anvil', 'polar_coil'], hand: ['polar_sovereign'] } });
     const fa = legalActions(fus).find((a) => a.type === 'specialSummon')!;
-    expect(describeEvents(fus, play(fus, fa).events)).toContain("Oyuncu 1, Kutup Hükümdarı'nı elinden özel çağırdı!");
+    expect(describeEvents(fus, play(fus, fa).events)).toContain('Player 1 Special Summons Polar Sovereign from the hand!');
   });
 });

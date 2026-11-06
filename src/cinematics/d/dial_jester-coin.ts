@@ -50,7 +50,7 @@ import { SPIN_W, arenaDial, blitCoin, coinCanvas, flatCoin, foldRect, jesterOffs
 const ID = 'dial_jester';
 type Ctx<T extends GameEvent['type']> = CinematicContext<Extract<GameEvent, { type: T }>>;
 type Face = 'heads' | 'tails';
-const faceWord = (f: Face): string => (f === 'heads' ? 'TURA' : 'YAZI');
+const faceWord = (f: Face): string => (f === 'heads' ? 'HEADS' : 'TAILS');
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 const R = Math.round;
 
@@ -345,7 +345,7 @@ registerEvent(
     await sleep(sc, 230);
     // the result: stacked over the face word, a full 'lg' line (with the İ's dot and the outline) plus 2 px apart —
     // they never overlap; kept on screen
-    const verdict = ev.win ? 'BİLDİ!' : 'BİLEMEDİ!';
+    const verdict = ev.win ? 'CALLED IT!' : 'MISSED!';
     const lineH = Math.max(measureText(faceWord(ev.result), 'lg').h, measureText(verdict, 'lg').h);
     const res = word(sc, { x: L2.x, y: Math.max(lineH + 2, FACE_Y - lineH - 2) }, verdict, ev.win ? PAL.white : PAL.crim4, 'lg');
     s.words.push(res);

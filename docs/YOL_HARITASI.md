@@ -158,3 +158,9 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   sweeping_gale, soul_leash, spite_axe, page_turner, lucky_die, straw_decoys), dawn_swords yeni imza+SFX, crystal_wyrm ve
   abyss_magus kart resimleri. TÜM KART ŞERİTLERİ (A–F) BİTTİ. Vitest bilinen 1 (dusk_ashen). En zayıf eleştiri puanları
   (6–7.5): abyss_magus, soul_leash, winnow_sieve, spite_axe → 4. tur adayı. Ayrıntı docs/v3/oturum-e.md. Test sürümü 23.
+- 2026-11-06: İNGİLİZCE GEÇİŞ yapıldı (sözlük: docs/ENGLISH_GLOSSARY.md). Kart adları/yazıları/türleri, savaş kaydı,
+  düello arayüzü (HUD, plakalar, tuzak sorusu, sonuç), menüler, nasıl oynanır, ayarlar, galeri, deste oluşturma.
+  upper()/lower() artık İngilizce harf kuralı. Logo "NEON DÜELLO" sahip kararına kadar aynı. Geliştirici metinleri
+  (src/dev, senaryolar) Türkçe kaldı. v1 filmleri yazı yüzünden artık birebir değil → yeni temel çekildi.
+  Açık: galeri ızgarası 80 kartta taşıyor (kaydırma/sayfa gerek); Magic Hat / Mirror Barrier / Wing Lady adları
+  marka temizliğinde gözden geçirilecek. Test sürümü 24.

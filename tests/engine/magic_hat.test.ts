@@ -43,11 +43,11 @@ describe('magic_hat card data', () => {
   it('is a Turkish trap in TRAP_IDS with the specified text', () => {
     const d = CARDS.magic_hat;
     expect(isTrap(d)).toBe(true);
-    expect(d.name).toBe('Sihirli Şapka');
+    expect(d.name).toBe('Magic Hat');
     expect((d as { effect: string }).effect).toBe('hatShuffle');
     expect(TRAP_IDS).toContain('magic_hat');
     expect((d as { text: string }).text).toBe(
-      'Rakibin canavarı saldırı ilan edince: saldırılan canavarını ve 2 sahte şapkayı kapalı karıştır; rakip birini seçip saldırır.',
+      "When your monster is attacked: hide it among 2 decoy hats and shuffle; the attacker picks one.",
     );
   });
 });
@@ -100,7 +100,7 @@ describe('hat layout: decoy count and zones', () => {
       const cands = (r.state.pending as { candidates: { player: PlayerId; zone: string; index: number }[] }).candidates;
       expect(cands.map((c) => c.index)).toEqual([0, 1, 2]);
       expect(cands.every((c) => c.player === d && c.zone === 'monster')).toBe(true);
-      expect(describePending(r.state, r.state.pending!)).toContain('Sihirli Şapka');
+      expect(describePending(r.state, r.state.pending!)).toContain('Magic Hat');
     }
   });
 

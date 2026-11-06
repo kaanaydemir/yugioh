@@ -1374,7 +1374,7 @@ registerCardHook('auger_lance', 'activate', async (ctx) => {
   if (response) {
     // the quick answer: the reveal (with the card's name under "HIZLI BÜYÜ!"), then the card lies down cocked;
     // the target comes in the next batch (the 'target' hook below fires it — no second opening)
-    const q = await quickReveal(ctx, { sub: 'BURGU MIZRAĞI', hold: 20 });
+    const q = await quickReveal(ctx, { sub: 'AUGER LANCE', hold: 20 });
     await prime(ctx, q, ev.uid);
     return;
   }

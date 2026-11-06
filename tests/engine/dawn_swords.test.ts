@@ -38,12 +38,12 @@ function toOpponentBattle(s: GameState, p: PlayerId): GameState {
 const BOARD = (zones: 3 | 5) => ({ zones, turn: 3 });
 
 describe('dawn_swords data', () => {
-  it('is a continuous spell with the Turkish name and text, listed in SPELL_IDS', () => {
+  it('is a continuous spell with the English name and text, listed in SPELL_IDS', () => {
     const d = CARDS.dawn_swords as { spellType: string; effect: string; name: string; text: string };
     expect(d.spellType).toBe('continuous');
     expect(d.effect).toBe('attackLock3');
-    expect(d.name).toBe('Şafak Kılıçları');
-    expect(d.text).toBe('Rakibin tüm kapalı canavarlarını aç. Bu kart sahadayken rakibin canavarları saldıramaz. Rakibin 3. turunun sonunda bu kart yok olur.');
+    expect(d.name).toBe('Swords of Dawn');
+    expect(d.text).toBe("Flip opposing Set monsters face-up. Opposing monsters cannot attack. Ends after their 3rd turn.");
     expect(SPELL_IDS).toContain('dawn_swords');
   });
 });

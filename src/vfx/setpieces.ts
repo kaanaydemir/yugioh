@@ -3391,7 +3391,7 @@ export async function trapSpring(scene: Phaser.Scene, x: number, y: number): Pro
     return { x, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.6 - 30, drag: 3, ay: -20, life: rr(320, 560), ramp: TRAP_RAMP, tex: rnd() < 0.35 ? TEX.plus : TEX.px1, trail: rnd() < 0.4 };
   });
   // rising "TUZAK" energy
-  const word = pixelTextSafe(scene, x, cy - 6, 'TUZAK', PAL.mag3);
+  const word = pixelTextSafe(scene, x, cy - 6, 'TRAP', PAL.mag3);
   const fx = run(scene, 650, (t, el) => {
     burst.draw((g) => {
       // impact lines: shoot out fast, then retract outward

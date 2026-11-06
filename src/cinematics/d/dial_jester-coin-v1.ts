@@ -46,7 +46,7 @@ registerEvent(
     const base = loc && 'player' in loc && 'index' in loc ? zoneXY(loc.player as PlayerId, 'monster', loc.index as number) : zoneXY(ev.player, 'monster', 2);
     const x = R(base.x);
     const y0 = R(base.y - 30);
-    const face = (f: 'heads' | 'tails') => (f === 'heads' ? 'TURA' : 'YAZI');
+    const face = (f: 'heads' | 'tails') => (f === 'heads' ? 'HEADS' : 'TAILS');
     const coin = scene.add.container(x, y0).setDepth(DEPTH.FX_TOP);
     const g = scene.add.graphics();
     g.fillStyle(PAL.gold1).fillCircle(0, 0, 11);
@@ -55,7 +55,7 @@ registerEvent(
     const label = pixelText(scene, 0, 0, face(ev.call), { size: 'sm', color: PAL.night0, outline: false }).setOrigin(0.5);
     coin.add([g, label]);
     ctx.sfx('uiClick', { volume: 0.8, pitch: 1.6 });
-    void floatWord(scene, { x, y: y0 - 20 }, `${ev.player === 0 ? 'OYUNCU 1' : 'OYUNCU 2'}: ${face(ev.call)}`, PLAYER_COLOR[ev.player], 900);
+    void floatWord(scene, { x, y: y0 - 20 }, `${ev.player === 0 ? 'PLAYER 1' : 'PLAYER 2'}: ${face(ev.call)}`, PLAYER_COLOR[ev.player], 900);
     // up, spinning (scaleX flips), down
     const o = { t: 0 };
     let lastHalf = -1;
@@ -84,7 +84,7 @@ registerEvent(
     const color = ev.win ? PAL.leaf4 : PAL.crim4;
     ctx.sfx(ev.win ? 'uiConfirm' : 'uiError', { volume: 0.9 });
     sparks(scene, { x, y: y0 }, ev.win ? PAL.gold4 : PAL.crim3, 14, 22);
-    await floatWord(scene, { x, y: y0 - 18 }, ev.win ? `${face(ev.result)} — BİLDİ!` : `${face(ev.result)} — BİLEMEDİ!`, color, 1000);
+    await floatWord(scene, { x, y: y0 - 18 }, ev.win ? `${face(ev.result)} — CALLED IT!` : `${face(ev.result)} — MISSED!`, color, 1000);
     await tween(scene, { targets: coin, alpha: 0, duration: 160 });
     coin.destroy();
   },

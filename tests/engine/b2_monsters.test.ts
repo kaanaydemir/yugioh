@@ -36,21 +36,21 @@ const call = (p: 0 | 1, c: 'heads' | 'tails'): Action => ({ type: 'callCoin', pl
 // ---------------------------------------------------------------------------------------------
 describe('batch 2 card data (exactly as the spec)', () => {
   const rows: [CardId, string, string, string, number, number, number, string, boolean][] = [
-    ['tide_harpooner', 'Kabuk Zıpkıncı', 'WATER', 'Su', 5, 1700, 1500, 'tidalBayShroud', true],
-    ['dial_jester', 'Kadran Soytarısı', 'LIGHT', 'Büyücü', 2, 700, 300, 'coinWipe', false],
-    ['cloud_hatchling', 'Bulut Yavrusu', 'WIND', 'Ejderha', 3, 1100, 900, 'jesterAging', false],
-    ['reflection_archer', 'Yansıyan Okçu', 'LIGHT', 'Büyücü', 4, 1800, 1000, 'none', false],
-    ['scrap_raiders', 'Hurda Akıncıları', 'FIRE', 'Savaşçı', 4, 2000, 0, 'attackThenDefense', false],
-    ['hollow_ogre', 'Kovuk Devi', 'EARTH', 'Canavar-Savaşçı', 4, 1400, 900, 'banishGraveBoost400', false],
-    ['crag_axeman', 'Kaya Baltacı', 'EARTH', 'Savaşçı', 4, 1600, 1300, 'none', false],
-    ['reed_heron', 'Sazlık Balıkçılı', 'WATER', 'Kanatlı Canavar', 4, 1400, 1500, 'none', false],
-    ['kite_fencer', 'Uçurtma Eskrimci', 'WIND', 'Savaşçı', 3, 900, 600, 'doubleAttackMonster', false],
-    ['mudgrasp_spirit', 'Çamur Pençe Ruhu', 'EARTH', 'Şeytan', 4, 700, 1800, 'defenseAttackedPin', false],
-    ['steppe_spiralhorn', 'Bozkır Boynuzlusu', 'WIND', 'Canavar', 4, 1500, 1400, 'none', false],
-    ['polar_needle', 'Kutup İğnesi', 'EARTH', 'Kaya', 4, 1500, 1100, 'magnetPiece', false],
-    ['polar_anvil', 'Kutup Örsü', 'EARTH', 'Kaya', 4, 1100, 1700, 'magnetPiece', false],
-    ['polar_coil', 'Kutup Bobini', 'EARTH', 'Kaya', 4, 1300, 1400, 'magnetPiece', false],
-    ['polar_sovereign', 'Kutup Hükümdarı', 'EARTH', 'Kaya', 8, 3000, 2800, 'magnetFusion', true],
+    ['tide_harpooner', 'Shell Harpooner', 'WATER', 'Aqua', 5, 1700, 1500, 'tidalBayShroud', true],
+    ['dial_jester', 'Dial Jester', 'LIGHT', 'Spellcaster', 2, 700, 300, 'coinWipe', false],
+    ['cloud_hatchling', 'Cloud Hatchling', 'WIND', 'Dragon', 3, 1100, 900, 'jesterAging', false],
+    ['reflection_archer', 'Reflection Archer', 'LIGHT', 'Spellcaster', 4, 1800, 1000, 'none', false],
+    ['scrap_raiders', 'Scrap Raiders', 'FIRE', 'Warrior', 4, 2000, 0, 'attackThenDefense', false],
+    ['hollow_ogre', 'Hollow Ogre', 'EARTH', 'Beast-Warrior', 4, 1400, 900, 'banishGraveBoost400', false],
+    ['crag_axeman', 'Crag Axeman', 'EARTH', 'Warrior', 4, 1600, 1300, 'none', false],
+    ['reed_heron', 'Reed Heron', 'WATER', 'Winged Beast', 4, 1400, 1500, 'none', false],
+    ['kite_fencer', 'Kite Fencer', 'WIND', 'Warrior', 3, 900, 600, 'doubleAttackMonster', false],
+    ['mudgrasp_spirit', 'Mudgrasp Spirit', 'EARTH', 'Fiend', 4, 700, 1800, 'defenseAttackedPin', false],
+    ['steppe_spiralhorn', 'Steppe Spiralhorn', 'WIND', 'Beast', 4, 1500, 1400, 'none', false],
+    ['polar_needle', 'Polar Needle', 'EARTH', 'Rock', 4, 1500, 1100, 'magnetPiece', false],
+    ['polar_anvil', 'Polar Anvil', 'EARTH', 'Rock', 4, 1100, 1700, 'magnetPiece', false],
+    ['polar_coil', 'Polar Coil', 'EARTH', 'Rock', 4, 1300, 1400, 'magnetPiece', false],
+    ['polar_sovereign', 'Polar Sovereign', 'EARTH', 'Rock', 8, 3000, 2800, 'magnetFusion', true],
   ];
   it('15 monsters with the spec stats, names, attributes, races and effects', () => {
     for (const [id, name, attr, race, level, a, d, eff, ace] of rows) {
@@ -61,20 +61,20 @@ describe('batch 2 card data (exactly as the spec)', () => {
       expect(COLLECTIBLE_CARD_IDS).toContain(id);
     }
   });
-  it('effect monsters carry their Turkish text, vanilla ones a flavor line', () => {
+  it('effect monsters carry their English text, vanilla ones a flavor line', () => {
     for (const [id, , , , , , , eff] of rows) {
       const c = M(id);
       if (eff === 'none') expect(c.flavor.length, id).toBeGreaterThan(10);
       else expect(c.text.length, id).toBeGreaterThan(20);
     }
-    expect(M('dial_jester').text).toMatch(/^Turda 1 kez/); // owner decision 5: once per turn
-    expect(M('polar_needle').text).toContain('Kutup Örsü ve Kutup Bobini');
-    expect(M('polar_anvil').text).toContain('Kutup İğnesi ve Kutup Bobini');
-    expect(M('polar_coil').text).toContain('Kutup İğnesi ve Kutup Örsü');
+    expect(M('dial_jester').text).toMatch(/^Once per turn/); // owner decision 5: once per turn
+    expect(M('polar_needle').text).toContain('Polar Anvil and Polar Coil');
+    expect(M('polar_anvil').text).toContain('Polar Needle and Polar Coil');
+    expect(M('polar_coil').text).toContain('Polar Needle and Polar Anvil');
   });
   it('the straw token is a card id but outside the pool; Kül Ejderi stays vanilla (owner decision 2)', () => {
     const t = M('straw_decoy_token');
-    expect([t.name, t.level, t.atk, t.def, t.token]).toEqual(['Saman Korkuluk', 1, 0, 0, true]);
+    expect([t.name, t.level, t.atk, t.def, t.token]).toEqual(['Straw Decoy', 1, 0, 0, true]);
     expect(ALL_CARDS.some((c) => c.id === 'straw_decoy_token')).toBe(false);
     expect(EXPANDED_POOL).not.toContain('straw_decoy_token');
     expect(M('ashen_drake').effect).toBe('none');

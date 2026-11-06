@@ -948,7 +948,7 @@ async function stormSettle(ctx: Ctx<'statChange'>, u: MonsterUnit): Promise<void
   holding = false;
   void u.setStats(ev.atk, ev.def, true);
   play('wmkStormTick', { volume: 0.4, pan, pitch: 0.8 });
-  await chip(sc, badgePoint(u), '-500 DİNDİ', PAL.mist, { rise: -3, ms: 600 });
+  await chip(sc, badgePoint(u), '-500 CALMED', PAL.mist, { rise: -3, ms: 600 });
 }
 
 if (LOOK_V3)

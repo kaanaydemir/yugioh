@@ -167,12 +167,12 @@ registerCardHook(
   'negate',
   async (ctx) => {
     if (!ctx.hints.bound) return ctx.base();
-    ctx.log('Saldırı geçersiz kılındı!', PAL.mag3);
+    ctx.log('Attack negated!', PAL.mag3);
     void ctx.unfocus(300);
     // v3: the one short result, under the phase bar — never a second full-width band
-    if (LOOK_V3) return resultPlate(ctx.scene, 'SAVAŞ BİTTİ');
+    if (LOOK_V3) return resultPlate(ctx.scene, 'BATTLE OVER');
     const o: BannerOpts & { stagger: number } = { style: 'trap', hold: 120, stagger: 18 };
-    await banner(ctx.scene, 'SAVAŞ BİTTİ', o);
+    await banner(ctx.scene, 'BATTLE OVER', o);
   },
   { name: 'tb:chains_of_light:negate' },
 );

@@ -173,7 +173,7 @@ export async function trapOpening(ctx: ActCtx, o: { focus?: XY } = {}): Promise<
   }
   // then "TUZAK!" slams (the letters drop faster than the default trap banner)
   const opts: BannerOpts & { stagger: number } = { style: 'trap', hold: 40, stagger: 24 };
-  const ban = banner(sc, 'TUZAK!', opts);
+  const ban = banner(sc, 'TRAP!', opts);
   // the set piece starts as the letters have landed (the band is still on its way out)
   await Promise.race([ban, wait(sc, 350)]);
   const stopAura = () => stopAuraRef.fn();
@@ -375,7 +375,7 @@ function floorCracks(scene: Phaser.Scene, at: XY): void {
  * The single short "TUZAK!" accent (v3): stamped letter by letter over the standing card on a small
  * magenta plate, held a beat, gone — world space, ≈ 0.32 s, never a full-width band. Resolves when gone.
  */
-export function trapWord(scene: Phaser.Scene, at: XY, text = 'TUZAK!'): Promise<void> {
+export function trapWord(scene: Phaser.Scene, at: XY, text = 'TRAP!'): Promise<void> {
   const cx = Math.round(at.x);
   const cy = Math.round(at.y);
   const L = pixelLetters(scene, cx, cy, text, { size: 'lg', color: PAL.white, originX: 0.5, originY: 0.5, shadow: 1 });

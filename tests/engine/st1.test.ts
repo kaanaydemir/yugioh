@@ -88,15 +88,15 @@ describe('card data', () => {
     expect(ALL_CARDS.slice(0, 20).map((c) => c.id)).toEqual(DEFAULT_DECK);
     expect(EXPANDED_POOL).toEqual(expect.arrayContaining(NEW_CARDS));
   });
-  it('Turkish names inflect with the possessive where the last word has it', () => {
-    expect(cardName('fate_trade', 'acc')).toBe("Kader Takası'nı");
-    expect(cardName('tidal_bay', 'acc')).toBe("Gelgit Körfezi'ni");
-    expect(cardName('spell_seal', 'acc')).toBe("Büyü Mührü'nü");
-    expect(cardName('sandstorm', 'dat')).toBe("Kum Fırtınası'na");
-    expect(cardName('double_offering', 'acc')).toBe("Çifte Kurban'ı");
-    expect(cardName('homecoming', 'acc')).toBe("Eve Dönüş'ü");
-    expect(cardName('kneel_down', 'acc')).toBe("Diz Çöktürme'yi");
-    expect(cardName('purging_wave', 'acc')).toBe("Arınma Dalgası'nı");
+  it('English names: no inflection, the genitive is the possessive', () => {
+    expect(cardName('fate_trade', 'acc')).toBe('Fate Trade');
+    expect(cardName('tidal_bay', 'acc')).toBe('Tidal Bay');
+    expect(cardName('spell_seal', 'gen')).toBe("Spell Seal's");
+    expect(cardName('sandstorm', 'dat')).toBe('Sandstorm');
+    expect(cardName('double_offering', 'acc')).toBe('Double Offering');
+    expect(cardName('homecoming', 'acc')).toBe('Homecoming');
+    expect(cardName('kneel_down', 'acc')).toBe('Kneel Down');
+    expect(cardName('purging_wave', 'acc')).toBe('Purging Wave');
   });
 });
 
@@ -121,8 +121,8 @@ describe('fate_trade (Kader Takası): draw 2, discard 1', () => {
         // the main phase goes on (summon right is unspent)
         expect(legalActions(out.state).some((a) => a.type === 'normalSummon')).toBe(true);
         const log = describeEvents(out.state, [...r.events, ...out.events]).join(' | ');
-        expect(log).toContain('Kader Takası');
-        expect(describePending(r.state, r.state.pending!)).toContain('Bedel');
+        expect(log).toContain('Fate Trade');
+        expect(describePending(r.state, r.state.pending!)).toContain('cost');
       });
   it('is not offered with fewer than 3 cards in the deck (no deck-out suicide)', () => {
     const s = scenario({ p0: { hand: ['fate_trade'], deck: ['stone_sentinel', 'stone_sentinel'] } });
@@ -262,7 +262,7 @@ describe('cycle_of_graves (Devir Daim): shuffle the last 3 graveyard cards into 
         expect(r.state.players[p].hand).toHaveLength(1);
         // deterministic: the same action on the same state gives the same deck order
         expect(apply(s, sp(s, 'cycle_of_graves', p)).state).toEqual(apply(s, sp(s, 'cycle_of_graves', p)).state);
-        expect(describeEvents(r.state, r.events).join('|')).toContain('desteye karıştırıldı');
+        expect(describeEvents(r.state, r.events).join('|')).toContain('into the Deck');
       });
   it('needs 3 graveyard cards and cannot recycle itself', () => {
     const two = scenario({ p0: { hand: ['cycle_of_graves'], graveyard: ['ember_wolf', 'tide_golem'] } });
@@ -404,7 +404,7 @@ describe('guardian_charm (Koruyucu Tılsım): the equip is destroyed instead of 
         expect(e).not.toContain('destroy:ember_wolf');
         expect(r.state.players[opp(p)].monsters[z]).not.toBeNull();
         expect(r.state.players[opp(p)].graveyard.map((u) => r.state.cards[u].cardId)).toEqual(['guardian_charm']);
-        expect(describeEvents(r.state, r.events).join('|')).toContain('canavarı korudu');
+        expect(describeEvents(r.state, r.events).join('|')).toContain('protects the monster');
       });
   it('protects from an effect once; the second destruction goes through', () => {
     const s = scenario({ p0: { hand: ['judgment_bolt', 'judgment_bolt'] }, p1: { monsters: ['crystal_wyrm'], spellTraps: [{ id: 'guardian_charm', equippedTo: 0 }] } });
@@ -485,7 +485,7 @@ describe('field spells: tidal_bay, shadow_cavern, festival_square', () => {
     expect(e[0]).toBe('activate:tidal_bay');
     expect(e).toEqual(expect.arrayContaining(['statChange:tide_golem:1100>1500', 'statChange:ember_wolf:1700>1300', 'statChange:coral_serpent:2000>2400']));
     expect(e).toContain('fieldSpell:tidal_bay');
-    expect(describeEvents(r.state, r.events).join('|')).toContain('Saha dönüştü: Gelgit Körfezi');
+    expect(describeEvents(r.state, r.events).join('|')).toContain('The field transforms: Tidal Bay');
     // source leaves the field: the opposing purging_wave
     const w = scenario({ ...board, p0: { ...board.p0, field: 'tidal_bay' }, p1: { ...board.p1, hand: ['purging_wave'] }, active: 1 });
     const d = play(w, sp(w, 'purging_wave', 1, { target: card(0, 'field', 0) }));
@@ -544,7 +544,7 @@ describe('spell_seal (Büyü Mührü): negates a Spell activation', () => {
         expect(evs(r.state, r.events)).toEqual(['activate:spell_seal', 'toGraveyard:judgment_bolt', 'toGraveyard:spell_seal']);
         expect(r.state.players[opp(p)].monsters[0]).not.toBeNull();
         expect(r.state.pending).toBeNull();
-        expect(describeEvents(r.state, r.events).join('|')).toContain('Büyü geçersiz kılındı');
+        expect(describeEvents(r.state, r.events).join('|')).toContain('The Spell is negated');
         // declining lets the spell resolve
         const d = play(w.state, respond(w.state, null, opp(p)));
         expect(d.state.players[opp(p)].monsters[0]).toBeNull();
@@ -663,7 +663,7 @@ describe('homecoming (Eve Dönüş): the attacker goes back to its owner\'s hand
         expect(actingPlayer(r.state)).toBe(p);
         // the other monster can still attack
         expect(legalActions(r.state).some((a) => a.type === 'attack' && a.attackerZone !== z)).toBe(true);
-        expect(describeEvents(r.state, r.events).join('|')).toContain('sahibinin eline döndü');
+        expect(describeEvents(r.state, r.events).join('|')).toContain("returns to its owner's hand");
       });
   it('five seals: the returned piece completes the set in its owner\'s hand (re-check on return)', () => {
     const s = scenario({
@@ -736,7 +736,7 @@ describe('decoy_target (Sahte Hedef): the defender picks which own monster takes
         expect(r1.state.pending).toMatchObject({ kind: 'chooseTarget', player: opp(p) });
         const cands = (r1.state.pending as { candidates: { index: number }[] }).candidates.map((c) => c.index);
         expect(cands).toEqual(zones === 5 ? [1, 3, 4] : [1]);
-        expect(describePending(r1.state, r1.state.pending!)).toContain('Sahte Hedef');
+        expect(describePending(r1.state, r1.state.pending!)).toContain('Decoy Target');
         const r2 = play(r1.state, { type: 'chooseTarget', player: opp(p), target: { player: opp(p), zone: 'monster', index: 1 } });
         const e = evs(r2.state, r2.events);
         expect(e).toContain('battle:attackerDestroyed'); // 1900 vs 2800
