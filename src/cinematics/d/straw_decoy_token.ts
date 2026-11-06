@@ -270,7 +270,7 @@ const usable = (u: MonsterUnit | null | undefined): u is MonsterUnit => !!u && !
  * The v3 vanish: the binding comes undone, the straw spills and lies on the floor, the stake topples, the wind
  * takes the straw. `push`: the blow's direction (the wind follows it), `struck`: it starts on a contact.
  */
-async function vanishV3(sc: Phaser.Scene, field: FieldView, ev: VanishEv, o: { push?: XY; struck?: boolean } = {}): Promise<void> {
+async function vanishV3(sc: Phaser.Scene, field: FieldView, ev: VanishEv, o: { push?: XY; struck?: boolean; depth?: number } = {}): Promise<void> {
   const { tile, unit: u } = field.release(ev.uid);
   const home: XY = tile ? { x: tile.home.x, y: tile.home.y } : zoneXY(ev.player, 'monster', ev.zone);
   if (!u) {
@@ -287,7 +287,15 @@ async function vanishV3(sc: Phaser.Scene, field: FieldView, ev: VanishEv, o: { p
   const pan = panAt(ground.x);
   const face: 1 | -1 = u.flipX ? -1 : 1;
   const wind: 1 | -1 = o.push && Math.abs(o.push.x) > 0.05 ? (o.push.x > 0 ? 1 : -1) : ((-face) as 1 | -1);
-  const litter = new Litter(sc, ground, FLOOR_DEPTH + 1);
+  // `depth`: a vanish that starts where a blow left it (in front of a unit on the lane) keeps that lifted depth to the
+  // end — the untie, the sack drop, the hat and the topple are never hidden behind a neighbour; its straw lies in front too
+  const lifted = o.depth;
+  const keepDepth = (): void => {
+    if (lifted !== undefined && s.active && s.depth !== lifted) s.setDepth(lifted);
+  };
+  keepDepth();
+  if (lifted !== undefined) sc.events.on(Phaser.Scenes.Events.PRE_RENDER, keepDepth);
+  const litter = new Litter(sc, ground, lifted !== undefined ? lifted - 0.5 : FLOOR_DEPTH + 1);
   try {
     // ---- the binding comes undone
     const showsGuard = (() => {
@@ -362,10 +370,10 @@ async function vanishV3(sc: Phaser.Scene, field: FieldView, ev: VanishEv, o: { p
       await sleep(sc, f === D_F.topple ? 60 : Math.round(u.frameMs('death', f) * (f >= 4 ? 0.8 : 1)));
     }
     beats[GUST]();
-    for (const [f, a] of [[GUST, 0.66], [GUST + 1, 0.33]] as const) {
+    // the remains thin out pixel by pixel on the last two frames (the sheet's dissolve), the sprite stays opaque
+    for (const f of [GUST, GUST + 1]) {
       if (!s.active) break;
       if (f <= last) u.asClaimant(() => u.pose('death', f));
-      s.setAlpha(a);
       await sleep(sc, 60);
     }
     if (s.active) s.setVisible(false);
@@ -373,6 +381,7 @@ async function vanishV3(sc: Phaser.Scene, field: FieldView, ev: VanishEv, o: { p
   } catch (e) {
     console.error('[straw vanish]', e);
   } finally {
+    if (lifted !== undefined) sc.events.off(Phaser.Scenes.Events.PRE_RENDER, keepDepth);
     litter.destroy();
     u.posed = false;
     if (!u.retired) u.retire();
@@ -477,6 +486,36 @@ registerEvent(
 
 // ================================================================ strike
 
+/**
+ * Where a beaten token lands to come undone: along the way home, the first spot whose fall footprint (the stake
+ * topples onto the floor, the sack and hat roll off: about ±28 px wide, 48 px tall) covers the fewest pixels of
+ * another unit, so the untie, the sack drop and the topple are never read against (or behind) a neighbour's body.
+ */
+function kickSpot(others: MonsterUnit[], feet: XY, home: XY, dist: number): XY {
+  const boxes = others.map((o) => worldBox(o));
+  const cover = (p: XY): number => {
+    const x0 = p.x - 28, x1 = p.x + 28, y0 = p.y - 48, y1 = p.y + 2;
+    let a = 0;
+    for (const b of boxes) a += Math.max(0, Math.min(x1, b.x + b.w) - Math.max(x0, b.x)) * Math.max(0, Math.min(y1, b.y + b.h) - Math.max(y0, b.y));
+    return a;
+  };
+  const t0 = Math.min(0.45, 22 / Math.max(1, dist));
+  let best: XY | null = null;
+  let bestA = Infinity;
+  for (let i = 0; i <= 8; i++) {
+    const t = t0 + ((1 - t0) * i) / 8;
+    const p = { x: R(feet.x + (home.x - feet.x) * t), y: R(feet.y + (home.y - feet.y) * t) };
+    // a cost for distance (px² of cover per px thrown): the nearest clear spot wins, a long throw only when it
+    // really clears the view of a body standing there
+    const a = cover(p) + 12 * Math.hypot(p.x - feet.x, p.y - feet.y);
+    if (a < bestA) {
+      bestA = a;
+      best = p;
+    }
+  }
+  return best ?? { x: R(feet.x + (home.x - feet.x) * t0), y: R(feet.y + (home.y - feet.y) * t0) };
+}
+
 /** Where the feet stand so the straw hand (tipR) of `frame` lands on `aim` (world px; offsets are position-free). */
 function feetFor(u: MonsterUnit, aim: XY, frame: number): XY {
   const tip = strawPoint(u, 'tipR', { anim: 'attack', frame });
@@ -559,13 +598,14 @@ registerStrike(
         // the counter blow knocks it back one long hop toward home (out of the defender's shadow, in the open),
         // and it comes undone where it lands
         await sleep(sc, 60);
-        const kick: XY = { x: R(feet.x + (feetHome.x - feet.x) * Math.min(0.45, 22 / Math.max(1, dist))), y: R(feet.y + (feetHome.y - feet.y) * Math.min(0.45, 22 / Math.max(1, dist))) };
+        const kick = kickSpot(ctx.views.field.units().filter((o) => o !== u && o.sprite.active && !o.retired), feet, feetHome, dist);
+        const kd = Math.hypot(kick.x - feet.x, kick.y - feet.y);
         if (spr.active && !u.claimed) u.pose('hitHeavy', 1);
-        await animate(sc, 170, (t) => place({ x: feet.x + (kick.x - feet.x) * t, y: feet.y + (kick.y - feet.y) * t }, Math.sin(Math.PI * t) * 10));
+        await animate(sc, Math.min(300, 150 + R(kd * 2)), (t) => place({ x: feet.x + (kick.x - feet.x) * t, y: feet.y + (kick.y - feet.y) * t }, Math.sin(Math.PI * t) * Math.min(16, 9 + kd * 0.12)));
         place(kick);
         play('scarecrowHop', { volume: 0.6, pan: panAt(kick.x) });
         chaffBurst(sc, { x: kick.x, y: kick.y - 1 }, { x: -blow.x, y: -0.3 }, kick.y, 5, DEPTH.FX - 1);
-        await vanishV3(sc, ctx.views.field, ctx.events[vi] as VanishEv, { struck: true, push: { x: -blow.x, y: 0 } });
+        await vanishV3(sc, ctx.views.field, ctx.events[vi] as VanishEv, { struck: true, push: { x: -blow.x, y: 0 }, depth: unitDepth(kick.y) + STRIKE_LIFT });
       }
       return;
     }

@@ -238,8 +238,9 @@ const DEATH: Partial<Pose>[] = [
   { ...FALL, hfx2: 11, hfy2: -9, topple: 0.5, spill: 1, wrap: 0.3 },
   { ...FALL, topple: 0.72, aL: -5, droop: 1, spill: 1, wrap: 0.2, dust: 0.3 },
   { ...FALL, topple: FALLEN, aL: -5, droop: 1, spill: 1, wrap: 0.2, dust: 0.7 },
-  { ...FALL, topple: FALLEN - 0.05, aL: -5, droop: 1, spill: 1, wrap: 0.2, dust: 0.4, diss: 0.12 },
-  { ...FALL, topple: FALLEN, aL: -5, droop: 1, spill: 1, wrap: 0.2, diss: 0.2 },
+  // the gust thins the remains pixel by pixel (jacket, sack and hat too): no whole-sprite alpha at the end
+  { ...FALL, topple: FALLEN - 0.05, aL: -5, droop: 1, spill: 1, wrap: 0.2, dust: 0.4, diss: 0.5 },
+  { ...FALL, topple: FALLEN, aL: -5, droop: 1, spill: 1, wrap: 0.2, diss: 0.9 },
 ];
 export function deathPose(f: number): Pose {
   return K(DEATH[Math.min(f, D_N - 1)], f / (D_N - 1));

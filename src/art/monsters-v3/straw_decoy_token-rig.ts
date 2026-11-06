@@ -670,8 +670,22 @@ export function drawStraw(p: PixelCanvas, o: Pose, light: 'left' | 'right'): voi
     for (let y = 0; y < H; y++)
       for (let x = 0; x < W; x++) {
         if (!p.isOpaque(x, y)) continue;
-        if (hash2(x >> 1, y >> 1) < o.diss * (0.6 + 0.4 * ((GY - y) / 40))) p.erase(x, y);
+        if (hash2(Math.floor(x / 3), Math.floor(y / 3)) < o.diss * (0.6 + 0.4 * ((GY - y) / 40))) p.erase(x, y); // 3-px clumps: whole tufts go, not speckle
       }
+    // a strong dissolve (the gust's last frames) also loses the stray single pixels left between the clumps
+    // (a pixel with < 2 opaque neighbours, or none of its own colour: a speck the clumps cut off a tone band)
+    if (o.diss > 0.3) {
+      const c = p.clone();
+      const op = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H && c.isOpaque(x, y);
+      for (let y = 0; y < H; y++)
+        for (let x = 0; x < W; x++) {
+          if (!op(x, y)) continue;
+          const k = c.get(x, y);
+          const nb: [number, number][] = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]];
+          const n = nb.filter(([a, b]) => op(a, b)).length;
+          if (n < 2 || !nb.some(([a, b]) => op(a, b) && c.get(a, b) === k)) p.erase(x, y);
+        }
+    }
   }
   // a whole-frame tremble (hitMagic / topple bounce): whole px only
   if (o.shake) {

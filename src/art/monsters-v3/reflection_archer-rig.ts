@@ -587,11 +587,11 @@ function sheenPass(p: PixelCanvas, o: Pose): void {
   const s = clamp(o.pud, 0, 1);
   const c = sheenAt(o, s);
   for (let y = rnd(pcy(s) - G.ry * s); y <= rnd(pcy(s) + G.ry * s); y++)
-    for (let w = 0; w < 3; w++) {
+    for (let w = 0; w < 2; w++) {
       const x = rnd(c - 2 * (y - pcy(s))) + w;
       const d = inPuddle(x, y, s);
       if (d > 0.72) continue;
-      p.set(x, y, w === 1 && d < 0.35 ? PAL.white : w === 2 ? PAL.steel : PAL.mist);
+      p.set(x, y, w === 0 && d < 0.35 ? PAL.white : PAL.mist);
     }
 }
 
@@ -607,6 +607,9 @@ function reflShows(x: number, y: number, rv: number): boolean {
   if (a >= 0.24) return (y & 3) === 0;
   return false;
 }
+
+/** The idle frames whose neighbours are the archer's quiet transitions: the reflection's shimmer beats (HA-17). */
+const SHIMMER = [4, 5, 10, 13, 17];
 
 /** The last opaque x of the run through (x, y) going `d` (−1 left, +1 right). */
 function rowEdge(q: PixelCanvas, x: number, y: number, d: -1 | 1): number {
@@ -655,10 +658,13 @@ function drawReflection(p: PixelCanvas, o: Pose, light: Light): void {
     const ph = o.rip % 1;
     const ry = G.cy + G.ry * (0.3 + ph * 0.62) * 0.6;
     if (Math.abs(y - ry) < 1) return fl(ph * 8) % 2 ? 1 : -1;
-    // the water's own shimmer: a band of three rows, stepping down the twin frame by frame, sits a px aside
-    const band = ((fl(o.t * 40) * 2 + 15) % 17 + 17) % 17;
-    return Math.abs(y - (rnd(G.my) + band)) <= 3 ? -1 : 0;
+    return 0;
   };
+  // the water's own shimmer: on the idle's quiet beats (the frames where the archer itself holds still) a band of
+  // the twin's rows catches the light a step brighter, a different band each time — it keeps moving on its own
+  const sk0 = rnd(o.t * 20);
+  const at = o.rip >= 0 ? SHIMMER.indexOf(sk0) : -1;
+  const shimmer = (y: number): boolean => at >= 0 && Math.abs(y - (rnd(G.my) + 2 + at * 2)) <= 1;
   // the reflection's face is the focal point (its eyes look at the viewer): its hood stays whole once surfaced
   const [fhx, fhy] = reflView().T(skeleton(r).head);
   const face = (x: number, y: number): boolean => rv >= 0.9 && o.rbreak <= 0 && Math.abs(x + 0.5 - fhx) <= 4.5 && Math.abs(y + 0.5 - fhy) <= 3.5;
@@ -669,7 +675,7 @@ function drawReflection(p: PixelCanvas, o: Pose, light: Light): void {
       if (c === null) continue;
       if (onRim(x, y, 1)) continue;
       if (!reflShows(x, y, rv) && !face(x, y)) continue;
-      p.set(x, y, c);
+      p.set(x, y, shimmer(y) ? REFL_LADDER[clamp(REFL_LADDER.indexOf(c) + 1, 0, REFL_LADDER.length - 1)] ?? c : c);
     }
   }
   // the far water line the reflection hangs from: a 1-px glass line under its feet, lit where it touches them
@@ -688,6 +694,9 @@ function drawReflection(p: PixelCanvas, o: Pose, light: Light): void {
     if (r.look >= 0.5) {
       p.set(rnd(hx) - 2, ey, c).set(rnd(hx) + 1, ey, c);
       p.set(rnd(hx) - 2, ey + 1, PAL.night0).set(rnd(hx) + 1, ey + 1, PAL.night0);
+      // the dark face round the eyes (the 14-px twin's look must read at 1×): a night mask behind them
+      for (const dx of [-3, -1, 0, 2]) p.set(rnd(hx) + dx, ey, PAL.night0);
+      p.set(rnd(hx) - 2, ey - 1, PAL.night1).set(rnd(hx) + 1, ey - 1, PAL.night1);
     } else {
       p.set(rnd(hx) + 2, ey, c).set(rnd(hx) + 3, ey, PAL.water3);
     }

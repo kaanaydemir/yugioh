@@ -1,7 +1,8 @@
 // Yansıyan Okçu (reflection_archer, v3 art, registered): every anim the v3 contract needs exists with holds and marks,
 // validateArt (normal tier, projectile attack) is clean, a frame is deterministic, P2 is a relight of the SAME silhouette,
-// every frame keeps its 2-px margin, the archer stands tall in a puddle whose dark-blue reflection lies UNDER the ground
-// line, the reflection looks at the viewer once per idle loop (two eyes), it breaks in death before the archer does,
+// every frame keeps its 2-px margin, the archer stands tall in a puddle on the tile's back half (beside the feet, clear
+// of the ATK/DEF badge: nothing below anchor + 6) whose dark-blue inverted reflection hangs from its far water line, the
+// reflection looks at the viewer once per idle loop (two eyes), it breaks in death before the archer does,
 // the summon's f7 is the archer as the reflection's mirror image, and both card pictures paint within budget.
 import { describe, expect, it } from 'vitest';
 import art from '../../src/art/monsters-v3/reflection_archer';
@@ -15,18 +16,18 @@ const ALL: readonly AnyMonsterAnim[] = ['idle', 'guard', 'attack', 'roar', 'hit'
 type S = { frames: number; holds?: number[]; marks?: Record<string, number> };
 const spec = (a: AnyMonsterAnim): S => (art.anims as Record<string, S>)[a] ?? (art.extraAnims as Record<string, S>)[a];
 const REFL = new Set<number>([PAL.water1, PAL.water2, PAL.water3, PAL.night0, PAL.night1]);
-/** Reflection-tone pixels below the ground line (inside the puddle). */
+/** Reflection-tone pixels in the puddle beside the feet (P1 sheet: right of the feet, at the floor rows). */
 const reflPx = (a: AnyMonsterAnim, f: number) => {
   const p = drawFrame(art, a, f, 'left');
   let n = 0;
-  for (let y = art.anchorY + 1; y < p.h; y++) for (let x = 0; x < p.w; x++) if (REFL.has(p.get(x, y) as number)) n++;
+  for (let y = art.anchorY - 10; y < p.h; y++) for (let x = art.anchorX + 7; x < p.w; x++) if (REFL.has(p.get(x, y) as number)) n++;
   return n;
 };
-/** White pixels in the reflection's head rows (its eyes). */
+/** White pixels in the reflection's head rows (its eyes: the inverted twin's head is its lowest part). */
 const reflEyes = (f: number) => {
   const p = drawFrame(art, 'idle', f, 'left');
   let n = 0;
-  for (let y = art.anchorY + 8; y < p.h; y++) for (let x = art.anchorX - 6; x <= art.anchorX + 6; x++) if (p.get(x, y) === PAL.white || p.get(x, y) === PAL.water4) n++;
+  for (let y = art.anchorY + 1; y < p.h; y++) for (let x = art.anchorX + 6; x <= art.anchorX + 20; x++) if (p.get(x, y) === PAL.white) n++;
   return n;
 };
 
@@ -54,16 +55,28 @@ describe('reflection_archer', () => {
     const b = drawFrame(art, 'idle', 5, 'left');
     expect(a.data.every((v: number, i: number) => v === b.data[i])).toBe(true);
     const r = drawFrame(art, 'idle', 5, 'right');
+    // the figure (above the floor rows and the puddle's rising motes) is the same silhouette; the puddle lies on the sheet's other side in the P2
+    // relight sheet (shown flipped, it lands on the tile's screen-right half too)
     let diff = 0;
-    for (let y = 0; y < a.h; y++) for (let x = 0; x < a.w; x++) if (a.isOpaque(x, y) !== r.isOpaque(x, y)) diff++;
+    for (let y = 0; y < art.anchorY - 27; y++) for (let x = 0; x < a.w; x++) if (a.isOpaque(x, y) !== r.isOpaque(x, y)) diff++;
     expect(diff).toBe(0);
+    const side = (q: typeof a) => {
+      let sx = 0;
+      let n = 0;
+      for (let y = art.anchorY + 1; y < q.h; y++) for (let x = 0; x < q.w; x++) if (q.isOpaque(x, y)) { sx += x; n++; }
+      return sx / Math.max(1, n) - art.anchorX;
+    };
+    expect(side(a)).toBeGreaterThan(2);
+    expect(side(r)).toBeLessThan(-2);
   });
 
   it('is a tall archer over a wide puddle and every frame keeps a 2-px margin', { timeout: 60000 }, () => {
     const p = drawFrame(art, 'idle', 0, 'left');
     const b = p.bounds()!;
     expect(art.anchorY - b.y).toBeGreaterThanOrEqual(50);
-    expect(b.y + b.h - 1 - art.anchorY).toBeGreaterThanOrEqual(12);
+    // the puddle ends above the stat badge (tile centre + 7)
+    expect(b.y + b.h - 1 - art.anchorY).toBeGreaterThanOrEqual(4);
+    expect(b.y + b.h - 1 - art.anchorY).toBeLessThanOrEqual(6);
     for (const a of ALL) {
       for (let i = 0; i < spec(a).frames; i++) {
         const q = drawFrame(art, a, i, 'left').bounds();
@@ -74,7 +87,7 @@ describe('reflection_archer', () => {
   });
 
   it('the reflection lives under the ground line, looks at the viewer once per loop and breaks first in death', () => {
-    expect(reflPx('idle', 0)).toBeGreaterThan(120);
+    expect(reflPx('idle', 0)).toBeGreaterThan(90);
     // f12 (the turned head) shows two eyes in the reflection's head rows; f0 shows its profile eye
     expect(reflEyes(12)).toBeGreaterThan(reflEyes(0));
     // death f4: the reflection is gone while the archer still stands (flat)
@@ -85,7 +98,7 @@ describe('reflection_archer', () => {
   it('summon: the drop first, then the puddle and the reflection, the archer unfolding up', () => {
     const f0 = drawFrame(art, 'summon', 0, 'left').bounds()!;
     expect(f0.w).toBeLessThanOrEqual(4);
-    expect(reflPx('summon', 6)).toBeGreaterThan(80);
+    expect(reflPx('summon', 6)).toBeGreaterThan(60);
     const h7 = art.anchorY - drawFrame(art, 'summon', 7, 'left').bounds()!.y;
     const h10 = art.anchorY - drawFrame(art, 'summon', 10, 'left').bounds()!.y;
     expect(h7).toBeLessThan(h10 / 2);
