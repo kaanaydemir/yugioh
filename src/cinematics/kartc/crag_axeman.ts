@@ -40,8 +40,8 @@ import { atFrame, panAt, play, takeCharge } from '../_v3/sound';
 import { E, RR, Sparks, TAU, lerp, norm, onFrame, overlay, seed, sleep, sub } from '../strikes-a/_kit';
 import { Seam, SEAM_DEPTH, climbBody, climbLine, linePts } from './crag_axeman-yarik';
 import { PixelCanvas } from '../../art/pixel';
-import { H, W, drawAxeman } from '../../art/monsters-v3/crag_axeman-rig';
-import { WALK_POSES } from '../../art/monsters-v3/crag_axeman-anims';
+import { H, W, drawAxeman, type Pose } from '../../art/monsters-v3/crag_axeman-rig';
+import { WALK_POSES, framePose } from '../../art/monsters-v3/crag_axeman-anims';
 
 const ID = 'crag_axeman';
 const CHIPS = [PAL.stone4, PAL.stone3, PAL.stone2] as const;
@@ -144,11 +144,12 @@ export function cutPlan(home: XY, aim: XY, front: number, sgn: number, reachX: n
   // to the guard's front edge and dies there in its "Y")
   const gap = o.blocked ? 18 : BITE_GAP + BLADE_FRONT;
   const b = along(front - sgn * gap);
-  const bite = { x: Math.round(b.x), y: Math.round(b.y) };
-  // he plants where the contact frame's buried edge lands EXACTLY on the bite (r3 blocker: planting him on the line put
-  // the blade ~7 px off it — for P2 the seam then started on bare floor below the blade): the feet are the bite less
-  // the frame's own edge offset, both axes
-  const land = { x: bite.x - reachX, y: bite.y - (o.reachY ?? 0) };
+  // he plants ON the attack line, a reach short of that point; the bite is then where the contact frame's buried edge
+  // ACTUALLY lands (his feet plus the frame's own edge offset, both axes). r3 blocker: the bite used to stay on the line
+  // while the blade was drawn a slope × reach (~7–11 px) off it — for P2 the seam started on bare floor below the
+  // blade. The seam runs from this bite toward the target (its end and the toes are re-derived from it).
+  const land = along(Math.round(b.x) - reachX);
+  const bite = { x: Math.round(land.x + reachX), y: Math.round(land.y + (o.reachY ?? 0)) };
   const start = { x: home.x - dir.x * SPIN_BACK, y: home.y - dir.y * SPIN_BACK };
   const steps = STEP_SPLIT.map((k) => ({ x: lerp(start.x, land.x, k), y: lerp(start.y, land.y, k) }));
   return { bite, land, start, steps, dir };
@@ -322,11 +323,12 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     SP = plan.steps;
     const dir = plan.dir;
     if (s.blocked) {
-      // it dies 3 px in front of the guard's front edge (where the line first meets the drawn guard): the fork lies on
+      // it dies 7 px in front of the guard's front edge (where the line first meets the drawn guard): the fork (its prongs
+      // reach ~4 px on) lies on
       // open floor, never under the guard
       const aimG = { x: aim.x, y: aim.y };
       const hit = entryOnLine(s.target, bite, aimG);
-      seamTo = hit ? backOff(hit, bite, 3) : onLineAtX(bite, aimG, front - sgn * 3);
+      seamTo = hit ? backOff(hit, bite, 7) : onLineAtX(bite, aimG, front - sgn * 7);
     } else {
       seamTo = { x: Math.round(aim.x + dir.x * 12), y: Math.round(aim.y + dir.y * 12) };
       // the toes: the climb starts the frame the running head reaches them (where the line meets the drawn body)
@@ -343,7 +345,7 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
   const plates: { back: ((keep: (x: MonsterUnit) => boolean) => void) | null } = { back: null };
   atFrame(u, 'attack', spinF0, () => {
     grip.stop(60);
-    play('caxSpin', { volume: 0.95, pan });
+    play('caxSpin', { volume: 0.6, pan });
     if (!s.direct) plates.back = platesOff([s.target ?? null, u]);
   });
   atFrame(u, 'attack', cockF, () => play('caxCock', { volume: 0.9, pan }));
@@ -362,6 +364,8 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
   let squash = 0;
   let creep = 0;
   let at: XY = { ...homeFeet };
+  /** set when the attacker loses: where it stands for its death */
+  let lostAt: XY | null = null;
   const fwd = norm(sub(land, homeFeet.x === land.x && homeFeet.y === land.y ? { x: homeFeet.x - sgn, y: homeFeet.y } : homeFeet));
   const glide = (a: XY, b: XY, t: number, from: number): { p: XY; lift: number } => {
     if (t <= from) return { p: a, lift: 0 };
@@ -422,7 +426,8 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
       return;
     }
     // ---- the BITE
-    play('caxBite', { volume: 1, pan: panAt(bite.x) });
+    // (r3 mix: the bite is the onset, the ARRIVAL ~100 ms later is the blow's peak — the number and the flash land on it)
+    play('caxBite', { volume: 0.72, pan: panAt(bite.x) });
     // the lunge stays alive while the seam runs and climbs (never a dead frame): pressed 1 px into the floor, back up,
     // then the weight leans on 1 px along the axis as the seam reaches the toes, and settles
     squash = 1;
@@ -444,7 +449,7 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     const runMs = s.direct ? 150 : 75;
     // (the points under the buried blade are open already: the first visible chunk starts AT the blade's edge, P1 and P2)
     const lead = Math.min(BLADE_FRONT + 4, bladeCover(u, bite, seamTo));
-    const seam = new Seam(sc, { from: bite, to: seamTo, feet, runMs, tailMs: 50, chunks: s.direct ? 6 : 3, lead, persistMs: s.blocked ? 760 : 1500, fork: s.blocked, spark: !s.blocked, forkHoldMs: 80 });
+    const seam = new Seam(sc, { from: bite, to: seamTo, feet, runMs, tailMs: 50, chunks: s.direct ? 6 : 3, lead, persistMs: s.blocked ? 760 : 1500, fork: s.blocked, spark: !s.blocked });
     const screenR = seamTo.x >= bite.x;
     play(screenR ? 'caxRunR' : 'caxRunL', { volume: s.blocked ? 0.75 : 1 });
     await seam.reached;
@@ -468,6 +473,8 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
       play('caxFork', { volume: 0.8, pan: panAt(seamTo.x) });
       play('caxRing', { volume: 0.9, pan: panAt(bite.x) });
       hitAt = { x: Math.round(seamTo.x), y: Math.round(s.to.y) };
+      // the Y is SEEN before the guard answers: its split flash and white prongs hold ~80 ms, then the guard's recoil
+      await sleep(sc, 80);
     }
     // the kit's contact flash (a white banded oval beside the line) and its shared burst are hidden: the contact IS the
     // seam's own bloom on the climb column (climbBody: white → earth4 in palette steps, symmetric, on the body only)
@@ -480,8 +487,12 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     // the seam's own light on the struck body: white (the kit's contact light is the attribute's earth tone)
     if (!s.blocked) void lightFlash(sc, hitAt.x, hitAt.y, PAL.white, 20, 260, { floorY: s.direct ? seamTo.y : s.toGround.y, intensity: 0.8 });
     if (loses) {
-      // the stronger side answers on this frame: the battle owns the attacker now (it dies where it stands)
+      // the stronger side answers on this frame: the battle owns the attacker now (it dies where it stands). r3: no
+      // recover / idle frame in between — the bite holds through the stop, then straight into the death's reaction
+      // frame where he stands (the death picks it up from there)
       driving = false;
+      lostAt = { ...at };
+      struckInBite(sc, u, conF);
       return;
     }
     // ---- hold the bite through the stop, then the heave
@@ -491,7 +502,8 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
       // staggers back a step, the haft dragging, and walks home
       driving = false;
       const bounceUp = u.has('hitHeavy');
-      if (u.pose('attack', recF)) {
+      // (the bite pose itself kicks up: the same frame, lifted — never a different axe pose between bite and stagger)
+      if (u.pose('attack', conF)) {
         placeAt(u, at, 3);
         biteChips(sc, bite, back, 5);
         await sleep(sc, 50);
@@ -519,7 +531,7 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     } else {
       driving = false;
       atFrame(u, 'attack', recF, () => {
-        play('caxWrench', { volume: 0.85, pan: panAt(bite.x) });
+        play('caxWrench', { volume: 0.62, pan: panAt(bite.x) });
         biteChips(sc, bite, back, 7);
         const sp = new Sparks(sc, unitDepth(bite.y) + 0.4);
         sp.add({ x: bite.x, y: bite.y - 2, vx: back.x * RR(30, 50), vy: -110, ay: 420, life: 460, colors: CLODS, shape: 'sq', size: 3, floor: bite.y + 2, bounce: 0.2, fadeAt: 1 });
@@ -540,7 +552,9 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     driving = false;
     plates.back?.((x) => !((x === s.target && targetDies) || (x === u && loses)));
     if (u.sprite.active) u.sprite.setAlpha(1);
-    if (u.sprite.active && !u.retired && !u.claimed) {
+    if (lostAt && u.sprite.active && !u.retired) {
+      // he lost: he stays where he bit, in the reaction frame (never walked or snapped home before he dies)
+    } else if (u.sprite.active && !u.retired && !u.claimed) {
       placeAt(u, homeFeet);
       const settle = () => {
         if (!u.retired && !u.claimed && u.sprite.active) u.rest();
@@ -563,6 +577,74 @@ function hideKitContact(sc: Phaser.Scene, before: number, bodyDepth: number | nu
     if (o.type === 'Image' && o.texture?.key.startsWith('fx:cflash:') && o.setCrop) o.setCrop(0, 0, 0, 0);
     if (bodyDepth !== null && o.type === 'Graphics' && typeof o.depth === 'number' && o.depth >= bodyDepth - 0.45 && o.depth < bodyDepth - 0.05 && o.setVisible) o.setVisible(false);
   }
+}
+
+/** Rig-drawn "struck in the bite" frames (the bite crouch, the head snapped back; then the hands loosening on the haft). */
+const STRUCK = new Map<string, PixelCanvas>();
+function struckCanvas(conF: number, i: number, light: 'left' | 'right'): PixelCanvas {
+  const k = `${conF}:${i}:${light}`;
+  let pc = STRUCK.get(k);
+  if (!pc) {
+    const b = framePose('attack', conF);
+    const d: Partial<Pose>[] = [
+      { hx: b.hx - 3, hy: b.hy - 1, tilt: -1, eye: 0, bead: -2, cape: 5, mant: 3, chips: 0, spark: 0, crackK: 0.7 },
+      { hx: b.hx - 3, hy: b.hy - 2, tilt: -1, eye: 0, sink: b.sink - 2, lean: b.lean - 2, bead: 2, cape: 3, mant: 1, chips: 0, spark: 0, crackK: 0.5 },
+      { chips: 0, spark: 0 },
+    ];
+    pc = new PixelCanvas(W, H);
+    drawAxeman(pc, { ...b, ...d[i] }, light);
+    STRUCK.set(k, pc);
+  }
+  return pc;
+}
+
+/**
+ * He LOST the exchange while his axe is buried in the floor (r3: no standing recoil or idle frame between the bite and
+ * his death): the bite holds through the stop, then the counter-blow snaps his head back IN the crouch, his grip
+ * loosens — drawn on an overlay over the (transparent, still shadow-casting) sprite whatever recoil the kit plays under
+ * it — until his own death reaches the planted-axe frame (death f2: he lets go and rears up behind the axe still buried
+ * where he bit). The sprite comes back the frame the death shows it (or after 1.6 s as a safety).
+ */
+function struckInBite(sc: Phaser.Scene, u: MonsterUnit, conF: number): void {
+  const light: 'left' | 'right' = u.flipX ? 'right' : 'left';
+  if (!u.sprite.active || u.retired) return;
+  const f0 = u.frameInfo();
+  if (f0.anim === 'death' && f0.frame >= 2) return;
+  // from this very frame: the bite itself (2), then — the frame the counter-blow changes his frame (the kit's recoil or
+  // his death starting) — the head snapped back (0), then the grip loosening (1)
+  const ov = overlay(u, struckCanvas(conF, 2, light), { depth: u.sprite.depth });
+  u.sprite.setAlpha(0);
+  // (the death's own start shows the sprite again within the same tick: keep it transparent after every update)
+  const hide = () => {
+    if (u.sprite.active && u.sprite.alpha !== 0) u.sprite.setAlpha(0);
+  };
+  sc.events.on('postupdate', hide);
+  let k = 2;
+  let struckAt = -1;
+  onFrame(
+    sc,
+    (_dt, el) => {
+      if (!u.sprite.active || u.retired || el > 1800) return false;
+      const fi = u.frameInfo();
+      if (fi.anim === 'death' && fi.frame >= 2) return false;
+      ov.img.setDepth(u.sprite.depth);
+      if (struckAt < 0 && !(fi.anim === 'attack' && fi.frame === conF)) {
+        struckAt = el;
+        k = 0;
+        ov.redraw(struckCanvas(conF, 0, light));
+      }
+      if (k === 0 && struckAt >= 0 && el - struckAt > 100) {
+        k = 1;
+        ov.redraw(struckCanvas(conF, 1, light));
+      }
+      return true;
+    },
+    () => {
+      sc.events.off('postupdate', hide);
+      ov.destroy();
+      if (u.sprite.active) u.sprite.setAlpha(1);
+    },
+  );
 }
 
 /** animate(), awaited (a local alias keeps the call sites short). */

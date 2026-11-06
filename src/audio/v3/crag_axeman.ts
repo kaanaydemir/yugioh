@@ -186,8 +186,12 @@ export const V3_AXEMAN_RECIPES = {
     gap: 0.05,
     verb: 0.2,
     play(v) {
-      sweep(v, 0, 0.075, [800, 2200, 600], 0.75, { kind: 'white', q: 1.3, peakAt: 0.35 });
-      sweep(v, 0, 0.09, [260, 340, 140], 0.45, { kind: 'pink', q: 1, peakAt: 0.4 });
+      // r3: a HEAVY crescent falling through the air, not a tear: a deep air "WHUM" (pink, 240 → 520 → 170 Hz, the
+      // stone head's mass) under a thin edge whistle way above the tear's band (3.4 → 5 kHz → 2.8), and a short airy
+      // swish between them (white bp 800 → 2200 → 600, kept low) — no crackle grain anywhere
+      sweep(v, 0, 0.09, [240, 520, 170], 1.1, { kind: 'pink', q: 1.5, peakAt: 0.42 });
+      sweep(v, 0, 0.075, [3400, 5000, 2800], 0.22, { kind: 'white', q: 3.2, peakAt: 0.36 });
+      sweep(v, 0, 0.07, [800, 2200, 600], 0.18, { kind: 'white', q: 1.2, peakAt: 0.35 });
     },
   },
   /**
@@ -200,7 +204,7 @@ export const V3_AXEMAN_RECIPES = {
     verb: 0.35,
     duck: 0.7,
     play(v) {
-      thump(v, 0, 40, 28, 0.62, 0.22, { drive: 2.2 });
+      thump(v, 0, 40, 28, 0.62, 0.14, { drive: 2.2 });
       crack(v, 0, 0.5, { hp: 1800, lp: 9000, n: 2, gap: 0.01, dec: 0.014 });
       // STONE, not wood: a gravel burst flung off the edge (2.8 kHz, dense) and a short ringing stone "klak" (600 Hz,
       // a narrow band with its inharmonic partials: the rock floor answering) — no woody mid-band puff
@@ -254,6 +258,11 @@ export const V3_AXEMAN_RECIPES = {
     play(v) {
       crack(v, 0, 0.75, { hp: 2200, lp: 10000, n: 2, gap: 0.006, dec: 0.01 });
       thump(v, 0, 70, 45, 0.7, 0.12, { drive: 1.8 });
+      // (r3 mix: the arrival is the blow's PEAK — a held body under the "tak": the stone splitting through the target,
+      // a 55 → 34 Hz drop and a dense low grind over the first 60 ms, so its loudest 50 ms tops the bite's)
+      thump(v, 0.006, 55, 34, 0.8, 0.2, { drive: 2 });
+      v.noise('brown', { g: perc(1.3, 0.09, 0.002), to: v.filt('lowpass', 420, 0.9) });
+      v.crackle({ t: 0.004, d: 0.07, n: 16, g: 0.45, f: 2400, q: 0.8, dec: 0.004, curve: 1.6 });
       v.noise('white', { g: perc(0.4, 0.03, 0.0004), to: v.filt('highpass', 3000, 0.7) });
       // the stone ringing where the seam stopped: a short 600 Hz "klak"
       v.noise('white', { t: 0.002, g: perc(0.28, 0.04, 0.0005), to: v.filt('bandpass', 640, 8) });
@@ -340,13 +349,14 @@ export const V3_AXEMAN_RECIPES = {
     play(v) {
       // the LEATHER SLAP leads (bp 1.2 kHz, Q 2, 20 ms) with a fur brush at 2.5 kHz: a light hit is heard as a slap on
       // the hide, never as his step; the chest knock only under it (kept ≥ 9 dB LSD from C11's hide + horn)
-      v.noise('white', { t: 0.002, g: perc(1.6, 0.02, 0.0004), to: v.filt('bandpass', 1200, 2) });
-      v.noise('white', { t: 0.015, g: perc(0.6, 0.014, 0.0003), to: v.filt('bandpass', 1700, 2.6) });
-      v.noise('pink', { t: 0.004, g: perc(0.7, 0.07, 0.004), to: v.filt('bandpass', 2500, 0.9) });
-      thump(v, 0, 120, 70, 0.2, 0.05, { drive: 1.2 });
-      v.noise('pink', { g: perc(0.12, 0.06, 0.002), to: v.filt('lowpass', 900, 0.8) });
-      // the beads clack on the chest
-      for (const t of [0.03, 0.055]) v.noise('white', { t, g: perc(0.12, 0.006, 0.0002), to: v.filt('bandpass', 3300, 3) });
+      // (r3: a FOCUSED slap — one narrow leather band at 1–1.3 kHz over the hide's 110 Hz knock, nothing bright above
+      // 2 kHz and a gap at 400–600 Hz: away from C11's horn clack (bright 2.5–8 kHz) and C6's log (broad 400 Hz–2 kHz))
+      v.noise('white', { t: 0.002, g: perc(1.8, 0.022, 0.0004), to: v.filt('bandpass', 1200, 3.2) });
+      v.noise('white', { t: 0.012, g: perc(0.8, 0.018, 0.0003), to: v.filt('bandpass', 1050, 4) });
+      thump(v, 0, 110, 60, 0.15, 0.06, { drive: 1.2 });
+      v.noise('pink', { g: perc(0.1, 0.07, 0.002), to: v.filt('lowpass', 650, 0.8) });
+      // one bead clacks on the chest (small, low in the mix)
+      v.noise('white', { t: 0.035, g: perc(0.05, 0.006, 0.0002), to: v.filt('bandpass', 2600, 6) });
     },
   },
   /** Heavy: the same body blow, deeper and longer, the cloak flopping, and the baritone grunt (breath knocked out). */
@@ -384,10 +394,15 @@ export const V3_AXEMAN_RECIPES = {
     duck: 0.3,
     play(v) {
       const D = 0.44;
-      const am = v.amp(0.5, { to: v.panner([[0, -0.45], [D, 0]]) });
+      // r3: the ROLLING is the gravel, not a thump — the 6 → 3 Hz AM (slowing) drives a loud 3 kHz gravel crackle and a
+      // grinding mid band (stone over grit, 600 Hz – 1.4 kHz); the low bed is thin and high-passed (no 70–100 Hz body:
+      // that band is C6's club and steps)
+      const am = v.amp(0.85, { to: v.panner([[0, -0.45], [D, 0]]) });
       v.lfo(am.gain, [[0, 6], [D, 3, 'e']], 0.45, { d: D, w: 'sine' });
-      v.noise('brown', { g: env([[0, 0], [0.06, 0.55], [0.34, 0.5], [D, 0.0001, 'e']]), to: v.filt('lowpass', 300, 0.9, { to: am }) });
-      v.crackle({ d: D * 0.92, n: 30, g: 0.16, f: 3000, q: 0.8, dec: 0.006, to: am });
+      v.noise('brown', { g: env([[0, 0], [0.06, 0.22], [0.34, 0.2], [D, 0.0001, 'e']]), to: v.filt('bandpass', 420, 1.2, { to: am }) });
+      v.noise('pink', { g: env([[0, 0], [0.05, 0.35], [0.34, 0.3], [D, 0.0001, 'e']]), to: v.filt('bandpass', [[0, 1400], [D, 800, 'e']], 1.6, { to: am }) });
+      v.crackle({ d: D * 0.92, n: 60, g: 0.55, f: 3000, q: 0.8, dec: 0.005, curve: 1.3, to: am });
+      v.crackle({ t: 0.01, d: D * 0.9, n: 24, g: 0.28, f: 5200, q: 1, dec: 0.003, to: am });
     },
   },
   /** Summon: one bounce of the boulder (the cinematic plays it twice, the second louder). */
@@ -480,14 +495,15 @@ export const V3_AXEMAN_RECIPES = {
     gap: 0.06,
     verb: 0.2,
     play(v) {
-      // the haft SLAPPED across the chest: a hollow wooden knock high up (1.1 → 1.4 kHz, a ringing narrow band) — no low
-      // thump (the struck hide owns the body's weight)
-      v.noise('white', { g: perc(1.4, 0.035, 0.0004), to: v.filt('bandpass', 1250, 10) });
-      v.tone('triangle', [[0, 1180], [0.07, 1120, 'e']], { g: perc(0.4, 0.07, 0.0004) });
-      v.tone('sine', [[0, 1420], [0.05, 1400]], { g: perc(0.18, 0.05, 0.0004) });
-      v.noise('white', { t: 0.003, g: perc(0.45, 0.012, 0.0003), to: v.filt('bandpass', 2600, 2) });
-      // the grip creaks on the haft
-      v.noise('white', { t: 0.02, g: perc(0.06, 0.05, 0.004), to: v.filt('bandpass', 760, 4) });
+      // the haft SLAPPED across the chest (r3: low and woody, away from the heron's ~1–2 kHz TAK): a 700 Hz wooden knock
+      // (narrow ringing band + a 690 Hz partial), the HAFT SLAP on skin and fur under it (a broad 300–500 Hz flat-hand
+      // slap with a 160 → 110 Hz knock), and the grip creaking on the haft — no bright click on top
+      v.noise('white', { g: perc(1.1, 0.04, 0.0005), to: v.filt('bandpass', 700, 9) });
+      v.tone('triangle', [[0, 700], [0.08, 680, 'e']], { g: perc(0.42, 0.08, 0.0005) });
+      v.tone('sine', [[0, 1060], [0.05, 1050]], { g: perc(0.08, 0.04, 0.0005) });
+      v.noise('pink', { t: 0.004, g: perc(0.9, 0.03, 0.0008), to: v.filt('bandpass', 380, 1.3) });
+      thump(v, 0.002, 160, 110, 0.4, 0.05);
+      v.noise('white', { t: 0.025, g: perc(0.07, 0.06, 0.004), to: v.filt('bandpass', 520, 3) });
     },
   },
   /** Struck: a short baritone grunt (low, closed vowel) — the human under the material. */

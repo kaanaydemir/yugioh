@@ -240,23 +240,24 @@ const R_N = 10;
  * the chest pushed out, and the axe THRUST UP one-handed overhead — the arm out to the side clear of the face, the haft
  * at ~70° and the crescent high above and IN FRONT of the skull (never resting on it), its edge to the sky.
  */
-const RAISED: Partial<Pose> = { hl: 18, hd: 1, nx: 24, ny: -58, ba: -70, elx: 1, ely: 0, az: 0, mouth: 2, eye: 2, hy: -2, hx: -1, chy: -1, shr: -2, mant: -1, lean: 0, fx: -15, fy: -36 };
+const RAISED: Partial<Pose> = { hl: 18, hd: 1, nx: 24, ny: -54, ba: -70, elx: 1, ely: 0, az: 0, mouth: 2, eye: 2, hy: -2, hx: -1, chy: -1, shr: -2, mant: -1, lean: 0, fx: -15, fy: -36 };
 export function roarPose(f: number): Pose {
   const n = R_N;
   if (f >= n - 1) return home();
   switch (f) {
-    case 0: return key({ nx: 13, ny: -34, ba: -122, chy: 1, hy: 1, bead: 1 }, f, n);
-    case 1: return key({ nx: 13, ny: -34, ba: -125, sink: 2, chy: 1, hy: 2, hx: -1, eye: 0, bead: 2, tilt: -1, fx: -11, fy: -27 }, f, n);
-    // the breath: sunk, the chest filled, the axe dipped off the shoulder behind him (the wind-up of the thrust)
-    case 2: return key({ nx: 15, ny: -36, ba: -150, sink: 3, chy: 2, hy: 3, hx: -1, eye: 0, bead: 2, tilt: -1, cape: 1, fx: -10, fy: -26 }, f, n);
+    // the gather: the axe swung down off the shoulder in front of him, then low by the knee in a deep crouch, the chest
+    // filling, head down — so the burst is ONE big underhand swing from the floor to overhead (never a plain arm-raise)
+    case 0: return key({ nx: 16, ny: -36, ba: -40, hl: 24, hd: 1, chy: 1, hy: 1, bead: 1, cape: 1 }, f, n);
+    case 1: return key({ nx: 16, ny: -28, ba: 40, hl: 22, hd: 1, az: 1, sink: 3, lean: 2, chy: 1, hy: 2, hx: 0, eye: 0, bead: 2, tilt: -1, fx: -11, fy: -27, cape: 1 }, f, n);
+    case 2: return above(key({ nx: 17, ny: -26, ba: 62, hl: 22, hd: 1, az: 1, sink: 5, lean: 3, chy: 2, hy: 3, hx: 0, eye: 0, bead: 3, tilt: -1, cape: 2, fx: -10, fy: -26 }, f, n), GY - 3);
     // the BURST: up on the voice, the axe thrust overhead (the one glint at its apex)
-    case 3: return key({ ...RAISED, ny: -59, sink: 1, bead: -2, cape: -2, glint: 1 }, f, n);
+    case 3: return key({ ...RAISED, ny: -55, sink: 1, bead: -2, cape: -2, glint: 1 }, f, n);
     // the held shout is a LIVING three-frame cycle on the voice's beats (the summon runs 4 → 5 → 6 → 4 → 5 at ~70 ms):
     // the jaw works (wide / half / wide), the raised axe trembles a px up and forward, the chest heaves, the beads and
     // the cloak hem shake, the floor seam breathes with the voice
     case 4: return key({ ...RAISED, bead: -1, cape: -3, glint: 1, fseam: 16, fseamK: 1 }, f, n);
-    case 5: return key({ ...RAISED, mouth: 1, chy: 0, ny: -59, nx: 25, hy: -1, bead: 1, cape: -2, mant: 0, fseam: 16, fseamK: 0.75 }, f, n);
-    case 6: return key({ ...RAISED, ny: -58, nx: 24, ba: -72, bead: 2, cape: -1, chy: -2, fseam: 15, fseamK: 1 }, f, n);
+    case 5: return key({ ...RAISED, mouth: 1, chy: 0, ny: -55, nx: 25, hy: -1, bead: 1, cape: -2, mant: 0, fseam: 16, fseamK: 0.75 }, f, n);
+    case 6: return key({ ...RAISED, ny: -53, nx: 24, ba: -73, bead: 2, cape: -1, chy: -2, fseam: 15, fseamK: 1 }, f, n);
     // the voice spent: the mouth shuts, the axe comes down over the shoulder
     case 7: return key({ nx: 21, ny: -50, ba: -98, hl: 20, hd: 1, elx: 1, ely: 0.4, az: 0, eye: 1, bead: 1, cape: 0, hy: -1, fseam: 10, fseamK: 0.5 }, f, n);
     default: return snap(key({ ...mix(key({ nx: 15, ny: -40, ba: -124, hl: 26, az: 0 }, f, n), IDLE0, 0.5) }, f, n));
@@ -351,8 +352,8 @@ export function summonPose(f: number): Pose {
   if (f === 5) return key({ hide: true, bould: 3, roll: 0, bk: 0.5, chips: 0.6 }, f, n);
   if (f === 6) return key({ hide: true, bould: 3, roll: 0, bk: 1, chips: 0.9 }, f, n);
   // f7–8: he RISES from a deep crouch behind the falling halves (their bases still hide his legs): head low, then up
-  if (f === 7) return key({ ...CROUCH, sink: 9, lean: 4, hy: 3, bould: 4, bk: 26, fseam: 4, fseamK: 1 }, f, n);
-  if (f === 8) return key({ ...CROUCH, sink: 6, lean: 3, bould: 4, bk: 50, fseam: 6, fseamK: 1, bead: 1 }, f, n);
+  if (f === 7) return key({ ...CROUCH, sink: 9, lean: 4, hy: 3, bould: 4, bk: 18, fseam: 4, fseamK: 1 }, f, n);
+  if (f === 8) return key({ ...CROUCH, sink: 6, lean: 3, bould: 4, bk: 34, fseam: 6, fseamK: 1, bead: 1 }, f, n);
   if (f === 9) return key({ ...CROUCH, sink: 3, lean: 1, bould: 5, bk: 0, fseam: 8, fseamK: 1, nx: 15, ny: -34, ba: -42, bead: 1 }, f, n);
   return key({ ...CROUCH, sink: 2, lean: 1, f1x: 3, dust: 0.4, fseam: 8, fseamK: 1, nx: 17, ny: -37, ba: -60, hl: 25, bead: -1, cape: -1 }, f, n);
 }

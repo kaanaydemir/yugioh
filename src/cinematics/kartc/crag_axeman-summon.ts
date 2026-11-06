@@ -228,15 +228,15 @@ async function boulderEntrance(S: Stage): Promise<void> {
     // the raised axe shaking a px, the beads trembling, the floor seam between the halves breathing with the voice);
     // on the voice's beats the floor answers — a stepped dust ring and pebbles hopping round his boots
     // (r3: a real three-frame cycle — jaw wide / half / wide, the axe trembling a px, beads and hem shaking — held
-    // ~350 ms, and the ATK/DEF plate pops in the middle of it, so the hold is never a still picture)
-    const beats: [number, number][] = [[2, 100], [3, 90], [4, 70], [5, 70], [6, 70], [4, 70], [5, 70], [6, 80], [7, 100], [8, 90]];
+    // ~300 ms, and the ATK/DEF plate pops in the middle of it, so the hold is never a still picture)
+    const beats: [number, number][] = [[2, 100], [3, 90], [4, 70], [5, 70], [6, 70], [4, 70], [5, 80], [7, 100], [8, 90]];
     let i = 0;
     for (const [f, ms] of beats) {
       if (!u.sprite.active) break;
       u.pose('roar', f);
       if (f === 2) play('caxNara', { volume: 0.95, pan });
       if (i === 5) void u.badge.pop();
-      if (f === 3 || (f === 4 && i === 5) || (f === 6 && i === 7)) shoutBeat(sc, home, f === 3 ? 2 : f === 4 ? 1 : 0);
+      if (f === 3 || i === 5 || i === 6) shoutBeat(sc, home, f === 3 ? 2 : i === 5 ? 1 : 0);
       i++;
       await sleep(sc, ms);
     }
