@@ -42,7 +42,7 @@ describe('dawn_swords data', () => {
     const d = CARDS.dawn_swords as { spellType: string; effect: string; name: string; text: string };
     expect(d.spellType).toBe('continuous');
     expect(d.effect).toBe('attackLock3');
-    expect(d.name).toBe('Swords of Dawn');
+    expect(d.name).toBe('Dawnlock Blades');
     expect(d.text).toBe("Flip opposing Set monsters face-up. Opposing monsters cannot attack. Ends after their 3rd turn.");
     expect(SPELL_IDS).toContain('dawn_swords');
   });

@@ -620,7 +620,7 @@ const PAGES: Page[] = [
     lines: [
       'Activate Spells in your Main Phase from your hand or the field (even the turn you Set them).',
       'Traps are Set face-down and cannot be activated the turn they are Set.',
-      'A Trap activates in response to your opponent\'s move: an attack declaration (Mirror Barrier, Chains of Light) or the Summon of a monster with ATK ≥ 1000 (Earth Rift).',
+      'A Trap activates in response to your opponent\'s move: an attack declaration (Prism Ward, Chains of Light) or the Summon of a monster with ATK ≥ 1000 (Earth Rift).',
       'When the prompt opens, choose "Activate" or "Pass".',
     ],
     async run(st) {
@@ -642,7 +642,7 @@ const PAGES: Page[] = [
       );
       for (;;) {
         // ---- trap
-        title.setText('TRAP: MIRROR BARRIER').setTint(PAL.mag3);
+        title.setText('TRAP: PRISM WARD').setTint(PAL.mag3);
         cap.setText('The Set Trap activates when an attack is declared');
         setCard.setVisible(true);
         const titan = st.monster('magma_titan', P1.x, P1.y, 0);

@@ -32,7 +32,7 @@ written in normal case in code and renders in caps where the font is caps.
 | hourglass_imp | Hourglass Imp |
 | windmane_knight | Windmane Knight |
 | shield_titan | Shield Titan |
-| wing_lady | Wing Lady |
+| wing_lady | Gale Herald |
 | tide_harpooner | Shell Harpooner |
 | dial_jester | Dial Jester |
 | cloud_hatchling | Cloud Hatchling |
@@ -49,6 +49,9 @@ written in normal case in code and renders in caps where the font is caps.
 | polar_coil | Polar Coil |
 | polar_sovereign | Polar Sovereign |
 | straw_decoy_token | Straw Decoy |
+| seal_head | Sealed Crown (Five Seals set) |
+| seal_arm_r / seal_arm_l | Sealed Right / Left Gauntlet |
+| seal_leg_r / seal_leg_l | Sealed Right / Left Greave |
 
 ### Spells / traps
 | id | English |
@@ -58,7 +61,7 @@ written in normal case in code and renders in caps where the font is caps.
 | soul_recall | Soul Recall |
 | dragon_blade | Dragon Blade |
 | volcano_arena | Volcano Arena |
-| mirror_barrier | Mirror Barrier |
+| mirror_barrier | Prism Ward |
 | chains_of_light | Chains of Light |
 | chasm_trap | Earth Rift |
 | fate_trade | Fate Trade |
@@ -72,7 +75,7 @@ written in normal case in code and renders in caps where the font is caps.
 | tidal_bay | Tidal Bay |
 | shadow_cavern | Shadow Cavern |
 | festival_square | Festival Square |
-| dawn_swords | Swords of Dawn |
+| dawn_swords | Dawnlock Blades |
 | spell_seal | Spell Seal |
 | toppling_tower | Toppling Tower |
 | homecoming | Homecoming |
@@ -80,7 +83,7 @@ written in normal case in code and renders in caps where the font is caps.
 | last_breath | Last Breath |
 | sandstorm | Sandstorm |
 | hidden_reinforcement | Hidden Reinforcements |
-| magic_hat | Magic Hat |
+| magic_hat | Shell Game |
 | well_pail | Well Pail |
 | puppet_string | Puppet String |
 | void_eye | Void Eye |
@@ -153,3 +156,9 @@ Card text style: short, imperative, YGO-like grammar but our own words
 ## Not translated (for now)
 - (The game is now named **Prism Duel** — owner decision 2026-11-06; the logo is redrawn.)
 - Developer-only text: src/dev/**, src/duel/scenarios/**, src/hd/**, src/artlab/**, code comments, docs.
+
+## Brand cleanup (2026-11-06)
+Renamed to avoid echoing Yu-Gi-Oh! card names: Wing Lady → Gale Herald, Mirror Barrier → Prism Ward,
+Swords of Dawn → Dawnlock Blades, Magic Hat → Shell Game. Five Seals pieces renamed (Crown / Gauntlets / Greaves)
+and their stats changed (Crown Lv3 1200/800, Gauntlets Lv1 300/200, Greaves Lv1 100/400) so they no longer
+mirror Exodia's numbers.

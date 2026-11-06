@@ -241,11 +241,11 @@ export type CardDef = MonsterCardDef | SpellCardDef | TrapCardDef;
 export const SEAL_IDS = ['seal_head', 'seal_arm_r', 'seal_arm_l', 'seal_leg_r', 'seal_leg_l'] as const satisfies readonly MonsterId[];
 const SEAL_TEXT = 'Five Seals: if all five pieces are in your hand, you win the duel at once.';
 const SEAL_PIECES: readonly [MonsterId, string, number, number, number][] = [
-  ['seal_head', 'Sealed Head', 3, 1000, 1000],
-  ['seal_arm_r', 'Right Arm Seal', 1, 200, 300],
-  ['seal_arm_l', 'Left Arm Seal', 1, 200, 300],
-  ['seal_leg_r', 'Right Leg Seal', 1, 200, 300],
-  ['seal_leg_l', 'Left Leg Seal', 1, 200, 300],
+  ['seal_head', 'Sealed Crown', 3, 1200, 800],
+  ['seal_arm_r', 'Sealed Right Gauntlet', 1, 300, 200],
+  ['seal_arm_l', 'Sealed Left Gauntlet', 1, 300, 200],
+  ['seal_leg_r', 'Sealed Right Greave', 1, 100, 400],
+  ['seal_leg_l', 'Sealed Left Greave', 1, 100, 400],
 ];
 
 const MONSTERS: MonsterCardDef[] = [
@@ -568,7 +568,7 @@ const MONSTERS_B1: MonsterCardDef[] = [
   {
     id: 'wing_lady',
     kind: 'monster',
-    name: 'Wing Lady',
+    name: 'Gale Herald',
     attribute: 'WIND',
     race: 'Winged Beast',
     level: 4,
@@ -865,7 +865,7 @@ const TRAPS: TrapCardDef[] = [
   {
     id: 'mirror_barrier',
     kind: 'trap',
-    name: 'Mirror Barrier',
+    name: 'Prism Ward',
     effect: 'attackDestroyAllAttackPosition',
     text: 'When an opponent\'s monster attacks: destroy all Attack Position monsters your opponent controls.',
   },
@@ -980,7 +980,7 @@ const SPELLS_B1: SpellCardDef[] = [
     id: 'dawn_swords',
     kind: 'spell',
     spellType: 'continuous',
-    name: 'Swords of Dawn',
+    name: 'Dawnlock Blades',
     effect: 'attackLock3',
     text: 'Flip opposing Set monsters face-up. Opposing monsters cannot attack. Ends after their 3rd turn.',
   },
@@ -1039,7 +1039,7 @@ const TRAPS_B1: TrapCardDef[] = [
   {
     id: 'magic_hat',
     kind: 'trap',
-    name: 'Magic Hat',
+    name: 'Shell Game',
     effect: 'hatShuffle',
     text: 'When your monster is attacked: hide it among 2 decoy hats and shuffle; the attacker picks one.',
   },
