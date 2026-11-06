@@ -68,11 +68,14 @@ export function headOf(u: MonsterUnit): { x: number; top: number } {
   let hx = Math.round(b.x + b.w / 2);
   if (hp) hx = Math.round(hp.x);
   else if (b.w >= b.h) hx = Math.round(Math.max(b.x + b.w * 0.6, Math.min(b.x + b.w - 3, u.art.muzzle.x - 4)));
-  // the top of the silhouette in the head's own column (±2 px); a head point lower than that is kept as the floor
+  // Round 3 #8: over the BACK of the skull, not in front of the face — the head point moved 3 px toward the body
+  // (frame space faces right, so −x; framePoint mirrors it for a flipped unit), and the top of the silhouette over
+  // that column ±4 px (a head point lower than that is kept as the floor)
+  if (hp || b.w >= b.h) hx = Math.max(b.x + 2, hx - 3);
   let top = hp ? Math.round(hp.y) : Infinity;
   for (let y = 0; y < pc.h; y++) {
     let hit = false;
-    for (let x = hx - 2; x <= hx + 2; x++) if (pc.isOpaque(x, y)) hit = true;
+    for (let x = hx - 4; x <= hx + 4; x++) if (pc.isOpaque(x, y)) hit = true;
     if (hit) {
       top = Math.min(top, y);
       break;
@@ -261,6 +264,10 @@ export interface EmblemLook {
   heap: number;
   /** Round 2 #3: the outer gold halo (default on) */
   halo?: boolean;
+  /** Round 3 #5: dormant (the slot is borrowed by the side whose turn it is not): a gold2 dash, a dim gold1 halo */
+  dormant?: boolean;
+  /** Round 3 #3: the crack frame: the whole glass white */
+  white?: boolean;
 }
 
 /** Paint the emblem with its bottom-centre at (cx, by) on a raster (world px). Lit side `side` (−1 left). */
@@ -299,7 +306,7 @@ export function paintEmblem(r: Raster, cx: number, by: number, side: -1 | 1, o: 
         const q = `${x + dx},${y + dy}`;
         if (solid.has(q) || ink.has(q)) continue;
         const litSide = side < 0 ? x + dx <= 4 : x + dx >= 4;
-        P(x + dx, y + dy, o.flash ? PAL.gold4 : litSide ? PAL.gold3 : PAL.gold2);
+        P(x + dx, y + dy, o.white ? PAL.white : o.flash ? PAL.gold4 : o.dormant ? PAL.gold1 : litSide ? PAL.gold3 : PAL.gold2);
       }
     }
   for (const k of ink) {
@@ -336,9 +343,14 @@ export function paintEmblem(r: Raster, cx: number, by: number, side: -1 | 1, o: 
     for (let y = 5; y <= 8; y++) if ((y + o.run) % 3 !== 0) P(4, y, (y + o.run) % 3 === 2 ? PAL.gold4 : PAL.gold3);
   } else if (o.top > 0) {
     const d = o.dash;
-    P(4, 5 + d, PAL.gold4);
-    P(4, 6 + d, PAL.gold4);
-    P(4, 7 + d, PAL.gold3);
+    P(4, 5 + d, o.dormant ? PAL.gold2 : PAL.gold4);
+    P(4, 6 + d, o.dormant ? PAL.gold2 : PAL.gold4);
+    P(4, 7 + d, o.dormant ? PAL.gold1 : PAL.gold3);
+  }
+  if (o.white) {
+    // the crack: the glass flashes white with a 1-px ink zig-zag through the top bulb
+    for (const w of W) for (let x = w.a; x <= w.b; x++) P(x, w.y, PAL.white);
+    for (const [x, y] of [[3, 2], [4, 3], [3, 4], [4, 5]] as const) P(x, y, PAL.ink);
   }
 }
 
@@ -365,9 +377,14 @@ interface Seal {
   dead: boolean;
   last: { cx: number; by: number; fx: number; fy: number; rx: number } | null;
   side: -1 | 1;
+  /** Round 3 #5: borrowed by the side whose turn the seal does not name (it cannot bite this turn) */
+  dormant: boolean;
 }
 
 const seals = new Map<Uid, Seal>();
+/** Uids on the field in the last reconciled engine state (a seal whose anchor is gone only for a moment — a control
+ *  change rebuilding its unit — hides instead of dropping). */
+const onFieldNow = new Set<Uid>();
 /** Targets whose seal is being animated by the effect right now (the reconcile must not pop one in). */
 export const animating = new Set<Uid>();
 
@@ -375,6 +392,7 @@ onDuelStart(() => {
   for (const s of [...seals.values()]) disposeSeal(s);
   seals.clear();
   animating.clear();
+  onFieldNow.clear();
 });
 
 export function hasSeal(uid: Uid): boolean {
@@ -423,7 +441,7 @@ export function addSeal(scene: Phaser.Scene, views: DuelViews, uid: Uid, o: { fr
   const em = new Raster(scene, 0, 0, 640, 360, DEPTH.FX - 2);
   const fl = new Raster(scene, 0, 0, 640, 360, DEPTH.SHADOW + 1);
   const pool = lightPool(scene, sp.cx, sp.by - 6, { color: PAL.gold3, radius: 10, intensity: 0.7, air: 0.5, floorY: sp.fy, anim: 'breathe', fadeIn: o.fresh ? 60 : 200 });
-  const s: Seal = { uid, scene, views, em, fl, pool, stop: () => undefined, born: scene.time.now, tight: 0, flashUntil: 0, twitchUntil: 0, climb: 0, busy: false, dead: false, last: null, side: sp.side };
+  const s: Seal = { uid, scene, views, em, fl, pool, stop: () => undefined, born: scene.time.now, tight: 0, flashUntil: 0, twitchUntil: 0, climb: 0, busy: false, dead: false, last: null, side: sp.side, dormant: false };
   seals.set(uid, s);
   let el = 0;
   s.stop = onFrame(scene, (dt) => {
@@ -438,6 +456,12 @@ export function addSeal(scene: Phaser.Scene, views: DuelViews, uid: Uid, o: { fr
 function drawSeal(s: Seal, el: number): void {
   const sp = sealSpot(s.views, s.uid);
   if (!sp) {
+    if (onFieldNow.has(s.uid)) {
+      // still on the field (a control change is moving its unit): hidden for the moment
+      s.em.draw(() => undefined);
+      s.fl.draw(() => undefined);
+      return;
+    }
     // the anchor is gone (the monster left the field): the emblem falls with it
     dropSeal(s);
     return;
@@ -445,12 +469,12 @@ function drawSeal(s: Seal, el: number): void {
   s.last = { cx: sp.cx, by: sp.by, fx: sp.fx, fy: sp.fy, rx: sp.rx };
   s.side = sp.side;
   const now = s.scene.time.now;
-  const bob = Math.floor(el / 640) % 2 ? -1 : 0;
-  const twitch = now < s.twitchUntil || el % 2400 > 2280 ? 1 : 0;
+  const bob = !s.dormant && Math.floor(el / 640) % 2 ? -1 : 0;
+  const twitch = !s.dormant && (now < s.twitchUntil || el % 2400 > 2280) ? 1 : 0;
   const by = sp.by + bob;
   const flash = now < s.flashUntil;
   s.em.draw((r) => {
-    paintEmblem(r, sp.cx, by, sp.side, { top: 3, dash: twitch, heap: 1, flash });
+    paintEmblem(r, sp.cx, by, sp.side, { top: 3, dash: twitch, heap: 1, flash, dormant: s.dormant });
     // the strain: sand grains climb its legs (front of the body) in whole px, then hold
     if (s.climb > 0) {
       const n = 7;
@@ -464,7 +488,7 @@ function drawSeal(s: Seal, el: number): void {
   });
   s.em.img.setDepth(sp.unit ? unitDepth(sp.fy) + 0.6 : DEPTH.UNIT + sp.fy + 0.6);
   const glint = (el % 1200) / 1200;
-  s.fl.draw((r) => floorRing(r, sp.fx, sp.fy, sp.rx - s.tight, flash ? PAL.gold4 : PAL.gold2, flash ? PAL.gold3 : PAL.gold1, glint));
+  s.fl.draw((r) => floorRing(r, sp.fx, sp.fy, sp.rx - s.tight, flash ? PAL.gold4 : s.dormant ? PAL.gold1 : PAL.gold2, flash ? PAL.gold3 : s.dormant ? PAL.earth1 : PAL.gold1, s.dormant ? -1 : glint));
   s.pool?.setPosition(sp.cx, by - 6, sp.fy);
 }
 
@@ -488,6 +512,56 @@ function dropSeal(s: Seal): void {
     const sp = new Sparks(s.scene, DEPTH.FX - 2);
     for (let i = 0; i < 8; i++) sp.add({ x: at.cx + Math.round((hash(s.uid, i) - 0.5) * 8), y: at.by + 4, vx: (hash(s.uid, i + 9) - 0.5) * 60, vy: -20 - hash(s.uid, i + 3) * 30, ay: 260, floor: at.fy + 1, bounce: 0.1, life: 300, colors: [PAL.earth4, PAL.earth3, PAL.gold3], shape: 'px', fadeAt: 1 });
     sp.release();
+    disposeSeal(s);
+  });
+}
+
+/**
+ * Round 3 #3: the sealed monster is struck down — at CONTACT (not when its body is gone): one white crack frame, then
+ * the emblem falls to the floor ring (below the damage number's band) in ≈ 150 ms and bursts into grains that
+ * scatter along the hairline; the hairline fades in palette steps.
+ */
+export function crackSeal(uid: Uid): void {
+  const s = seals.get(uid);
+  if (!s || s.busy || s.dead) return;
+  const sp = sealSpot(s.views, uid);
+  if (sp) s.last = { cx: sp.cx, by: sp.by, fx: sp.fx, fy: sp.fy, rx: sp.rx };
+  const at = s.last;
+  if (!at) {
+    disposeSeal(s);
+    return;
+  }
+  s.busy = true;
+  const sc = s.scene;
+  s.pool?.fadeOut(120);
+  s.pool = null;
+  play('hgiEmblemDrop', { volume: 0.8, pan: panAt(at.cx) });
+  s.em.img.setDepth(DEPTH.FX - 2);
+  const land = at.fy - 1;
+  const ring = (c: number, b: number, dr = 0) => s.fl.draw((r) => floorRing(r, at.fx, at.fy, at.rx - s.tight + dr, c, b, -1));
+  // 1. the crack (one white frame, 40 ms)
+  s.em.draw((r) => paintEmblem(r, at.cx, at.by, s.side, { top: 3, dash: 1, heap: 1, white: true }));
+  ring(PAL.gold4, PAL.gold3);
+  void animate(sc, 40 + 150, (_k, el) => {
+    if (el < 40) return;
+    // 2. it falls (ease-in, whole px) to the floor ring, tumbling: the sand spills from the top bulb as it goes
+    const k = Math.min(1, (el - 40) / 150);
+    const y = Math.round(lerp(at.by, land, k * k));
+    s.em.draw((r) => paintEmblem(r, at.cx, y, s.side, { top: k < 0.5 ? 2 : 1, dash: 1, heap: 2, halo: k < 0.5 }));
+    ring(PAL.gold2, PAL.gold1);
+  }).then(async () => {
+    // 3. it lands on the hairline and bursts: grains scatter ALONG the ring (both ways), the ring flashes and fades
+    s.em.draw(() => undefined);
+    const g = new Sparks(sc, unitDepth(at.fy) + 0.7);
+    for (let i = 0; i < 12; i++) {
+      const dir = i % 2 ? 1 : -1;
+      g.add({ x: at.cx + dir * (1 + (i >> 1)), y: land - (i % 3), vx: dir * (40 + hash(s.uid, i) * 70), vy: -10 - hash(s.uid, i + 5) * 34, ay: 300, floor: at.fy + (i % 3) - 1, bounce: 0.15, drag: 2, life: 380 + (i % 4) * 40, colors: i % 3 === 0 ? [PAL.gold4, PAL.gold3] : [PAL.earth4, PAL.earth3], shape: 'px', fadeAt: 0.8 });
+    }
+    g.release();
+    for (const [c, b, dr] of [[PAL.gold4, PAL.gold3, 1], [PAL.gold2, PAL.gold1, 1], [PAL.gold1, PAL.earth1, 2], [PAL.earth1, PAL.earth0, 2]] as const) {
+      ring(c, b, dr);
+      await new Promise<void>((res) => sc.time.delayedCall(70, res));
+    }
     disposeSeal(s);
   });
 }
@@ -606,6 +680,20 @@ export function reconcileSeals(scene: Phaser.Scene, views: DuelViews, st: GameSt
   }
   const onField = new Set<Uid>();
   for (const p of [0, 1] as PlayerId[]) for (const m of st.players[p].monsters) if (m) onField.add(m.uid);
+  onFieldNow.clear();
+  for (const u of onField) onFieldNow.add(u);
+  // Round 3 #5: a seal is dormant while its slot is held by the side whose turn the freeze does NOT name (borrowed by
+  // the imp's side on turn T: it may attack now); re-lit when it goes back (controlChange 'return')
+  for (const f of frozenUids(st)) {
+    const s = seals.get(f.uid);
+    if (!s) continue;
+    const turnPlayer = (f.until - st.turn) % 2 === 0 ? st.activePlayer : ((1 - st.activePlayer) as PlayerId);
+    const dormant = f.player !== turnPlayer;
+    if (dormant !== s.dormant) {
+      s.dormant = dormant;
+      s.pool?.setIntensity(dormant ? 0 : 0.7, 160);
+    }
+  }
   // expired on the field: gone silently; left the field: drawSeal() sees the anchor go and drops it
   for (const s of [...seals.values()]) if (!want.has(s.uid) && !s.busy && onField.has(s.uid)) disposeSeal(s);
 }

@@ -4,7 +4,7 @@
 // next turn), lumen_sprite 400 / 600, shade_assassin 1900 / 400, ember_wolf 1700 / 1000, volt_lizard 1500 / 1200,
 // stone_sentinel 500 / 2100, wisp_imp 300 / 200, crystal_wyrm 2800.
 import type { Scenario, Step } from '../scenarios';
-import type { Action, PlayerId } from '../../engine/types';
+import type { Action, PlayerId, ZoneRef } from '../../engine/types';
 import type { CardId } from '../../data/cards';
 
 const attack = (attackerZone: number, targetZone: number | null, player: PlayerId = 0): Action => ({ type: 'attack', player, attackerZone, targetZone });
@@ -12,7 +12,10 @@ const summon = (id: CardId, zone: number, player: PlayerId = 0): Step => (D) => 
 const pick = (player: PlayerId, index: number): Action => ({ type: 'chooseTarget', player, target: { player: (1 - player) as PlayerId, zone: 'monster', index } });
 const endTurn = (player: PlayerId): Action => ({ type: 'endTurn', player });
 const battle = (player: PlayerId): Action => ({ type: 'enterBattle', player });
+const spellOn = (p: PlayerId, id: CardId, target: ZoneRef): Step => (D) => ({ type: 'activateSpell', player: p, uid: D.uid(id, p), target: { kind: 'monster', ref: target } }) as Action;
+const mon = (player: PlayerId, index: number): ZoneRef => ({ player, zone: 'monster', index });
 const IMP = 'hourglass_imp' as CardId;
+const N = null;
 const DEF = { id: IMP, position: 'defense' as const };
 
 const scenarios: Record<string, Scenario> = {
@@ -41,6 +44,27 @@ const scenarios: Record<string, Scenario> = {
     desc: 'The seal across turns: the bite at P2 turn start, the strain on entering battle, the thaw at its end phase',
     stage: { p0: { hand: [IMP] }, p1: { monsters: ['ember_wolf', null, 'volt_lizard'] } },
     steps: [summon(IMP, 1), pick(0, 0), endTurn(0), battle(1), endTurn(1)],
+  },
+  ksFreezeTurnP2: {
+    desc: 'The seal across turns for player 2: the P2 imp seals the P1 Kor Kurdu; bite, strain and thaw on P1\'s turn',
+    stage: { active: 1, p0: { monsters: ['ember_wolf', null, 'volt_lizard'] }, p1: { hand: [IMP] } },
+    steps: [summon(IMP, 1, 1), pick(1, 0), endTurn(1), battle(0), endTurn(0)],
+  },
+  ksBoard5: {
+    desc: 'The crowded 5+5 board: Kor Kurdu is mud-pinned, then the imp seals its neighbour Volt Kertenkele; bite, strain, thaw',
+    stage: {
+      zones: 5,
+      active: 1,
+      phase: 'battle',
+      p0: { hand: [IMP], monsters: ['lumen_sprite', { id: 'mudgrasp_spirit', position: 'defense' }, N, 'stone_sentinel', 'volt_lizard'] },
+      p1: { monsters: ['shade_assassin', 'ember_wolf', 'volt_lizard', 'lumen_sprite', 'crystal_wyrm'] },
+    },
+    steps: [attack(1, 1, 1), endTurn(1), summon(IMP, 2), pick(0, 2), endTurn(0), battle(1), endTurn(1)],
+  },
+  ksFreezeSteal: {
+    desc: 'The imp seals Kor Kurdu, then Kukla İpi borrows it: the emblem lies dormant while the thief attacks with it, re-lit when it goes back, then bites',
+    stage: { zones: 5, p0: { hand: [IMP, 'puppet_string'] }, p1: { monsters: [N, 'ember_wolf', N, 'volt_lizard', N] } },
+    steps: [summon(IMP, 2), pick(0, 1), spellOn(0, 'puppet_string', mon(1, 1)), battle(0), attack(0, 3), endTurn(0), battle(1), endTurn(1)],
   },
   ksFreezeFlip: {
     desc: 'The sealed set card is flip-summoned next turn: the emblem follows the flip, the strain on entering battle',

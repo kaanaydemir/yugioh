@@ -39,7 +39,7 @@ import { BADGE_DEPTH } from '../../duel/StatBadge';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { Disposable } from '../../duel/types';
 import type { GameEvent, Uid } from '../../engine/types';
-import { DEPTH, LOOK_V3, type XY, unitDepth, zoneXY } from '../../view/layout';
+import { DEPTH, LOOK_V3, type XY, pileTagAnchor, tagLeft, unitDepth, zoneXY } from '../../view/layout';
 import { lightFlash, type LightHandle } from '../../view/light';
 import { Raster } from '../../vfx/setpieces';
 import { Sparks, animate, onFrame, sleep } from '../../vfx/combat';
@@ -61,6 +61,8 @@ import {
   biteSeal,
   bodyOf,
   capBar,
+  crackSeal,
+  hasSeal,
   floorRing,
   frozenUids,
   hash,
@@ -254,7 +256,12 @@ async function pourV3(S: Stage, aim: boolean): Promise<void> {
   u.pose('summon', 0);
   u.showSprite();
   const end = aim ? u.markFrame('summon', 'land', 9) + 2 : undefined;
-  const done = u.playRange('summon', 0, end, { hold: false });
+  // Round 3 #9: with a pick to follow, the pour and the cone's build (f0–f5) run 1.5× (≈ 220 ms game saved: the
+  // static pour column no longer hangs ≈ 1 s); the sculpt, the catch and the plant keep their full timing
+  const FAST = 6;
+  const done = aim
+    ? u.playRange('summon', 0, FAST, { timeScale: 1.5 }).then(() => (u.sprite.active && !u.retired ? u.playRange('summon', FAST, end, { hold: false }) : undefined))
+    : u.playRange('summon', 0, end, { hold: false });
   pool.setIntensity(0.45, 120);
   atFrame(u, 'summon', 3, () => pool.setIntensity(0.7, 120), { late: false });
   atFrame(u, 'summon', 6, () => play('hgiShed', { volume: 0.8, pan }), { late: false });
@@ -355,9 +362,19 @@ interface AimHandle extends Disposable {
   release(): void;
 }
 
+/** Imps holding the aim right now (one aim per imp: the hand summon and the revive watcher never both start one). */
+const aiming = new Set<Uid>();
+/** Imps whose seal has begun (a late revive watcher must not start an aim after the pick). */
+const sealing = new Set<Uid>();
+onDuelStart(() => {
+  aiming.clear();
+  sealing.clear();
+});
+
 function startAim(ctx: CinematicContext, u: MonsterUnit): void {
   const sc = ctx.scene;
-  if (!u.has('special')) return;
+  if (!u.has('special') || aiming.has(u.uid) || sealing.has(u.uid)) return;
+  aiming.add(u.uid);
   void u.playRange('special', 0, 1);
   // the stream's neck glints (a gold4 grain flicker) while he squints: the only motion of the held pose
   const layer = new ImpLayer(sc, u, 0, u.sprite.depth + 0.1);
@@ -380,6 +397,7 @@ function startAim(ctx: CinematicContext, u: MonsterUnit): void {
   const h: AimHandle = {
     release() {
       released = true;
+      aiming.delete(u.uid);
       stop();
       layer.destroy();
     },
@@ -391,6 +409,27 @@ function startAim(ctx: CinematicContext, u: MonsterUnit): void {
     },
   };
   ctx.keep('ks:aim', h);
+}
+
+/**
+ * Round 3 #4: the aim on a path that does not run our summon hook — the v3 revive (soul_recall's recallV3 consumes
+ * the summon event and plays the `revive` pose itself). Armed by the observer when a batch ends on THIS imp's target
+ * pick: once the revived body is whole and at rest (no cinematic owns the sprite), he shoulders the glass and aims.
+ */
+function watchAim(ctx: CinematicContext, uid: Uid): void {
+  if (aiming.has(uid) || sealing.has(uid)) return;
+  const sc = ctx.scene;
+  let el = 0;
+  onFrame(sc, (dt) => {
+    el += dt;
+    if (aiming.has(uid) || sealing.has(uid) || el > 6000) return false;
+    const u = live(ctx.unit(uid));
+    if (!u || u.claimed || u.posed || !u.sprite.visible) return true;
+    const fi = u.frameInfo();
+    if (fi.anim !== 'idle') return true;
+    startAim(ctx, u);
+    return false;
+  });
 }
 
 // ================================================================ effect: "Kum Mührü"
@@ -407,6 +446,7 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
   const tuid = slot.uid;
   ctx.consumeAt(ti);
   animating.add(tuid);
+  sealing.add(ev.uid);
   seed(ev.uid * 13 + tuid * 7);
   const aim = ctx.take('ks:aim') as AimHandle | null;
   aim?.release?.();
@@ -546,7 +586,7 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
     void lightFlash(sc, cage.cx, Math.round((cage.top + cage.bot) / 2), PAL.gold3, 26, 260, { floorY: cage.bot, air: 0.6, intensity: 0.7 });
     await sleep(sc, 40);
     stopDraw(false, 2);
-    label = pixelText(sc, cage.cx, cage.top - 7, 'SALDIRAMAZ', { size: 'sm', color: PAL.gold4, originX: 0.5, originY: 1 }).setDepth(DEPTH.FX_TOP);
+    label = placeLabel(pixelText(sc, cage.cx, cage.top - 7, 'SALDIRAMAZ', { size: 'sm', color: PAL.gold4, originX: 0.5, originY: 1 }).setDepth(DEPTH.FX_TOP), cage.cx, cage.top - 7);
     await sleep(sc, 220);
     // ---- 6. condense: the giant glass steps into the emblem over its head (4 steps)
     play('hgiCondense', { volume: 0.9, pan });
@@ -591,6 +631,7 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
       });
     }
   } finally {
+    sealing.delete(ev.uid);
     thread?.stop(40);
     fill?.stop(40);
     animating.delete(tuid);
@@ -606,6 +647,30 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
       void sleep(sc, 260).then(() => lb.destroy());
     }
   }
+}
+
+/**
+ * Round 3 #7: keep "SALDIRAMAZ" off the pile count tags (P1's deck tag sits right beside a back-row cage top on the
+ * 5+5 board: it read "SALDIRAMAZ5"). If its box meets a deck / graveyard tag (+3 px), it slides to the far side of
+ * the cage's centre line, away from the tag; always inside the screen.
+ */
+function placeLabel(lb: Phaser.GameObjects.BitmapText, cx: number, by: number): Phaser.GameObjects.BitmapText {
+  const w = Math.ceil(lb.width);
+  const h = Math.ceil(lb.height);
+  let x0 = Math.round(cx - w / 2);
+  const y0 = by - h;
+  for (const p of [0, 1] as const)
+    for (const kind of ['deck', 'graveyard'] as const) {
+      const a = pileTagAnchor(p, kind);
+      const tw = 13;
+      const tl = tagLeft(a, tw);
+      const hit = x0 < tl + tw + 3 && x0 + w > tl - 3 && y0 < a.y + 9 + 2 && y0 + h > a.y - 2;
+      if (!hit) continue;
+      x0 = tl + tw / 2 > cx ? Math.min(x0, tl - 3 - w, cx + 4 - w) : Math.max(x0, tl + tw + 3, cx - 4);
+    }
+  x0 = clamp(x0, 2, 638 - w);
+  lb.setOrigin(0, 1).setPosition(x0, by);
+  return lb;
 }
 
 // ================================================================ strike: "Kum Topu"
@@ -1071,14 +1136,21 @@ function turnBeats(ctx: Ctx<'turnStart'>): Promise<void> {
 function phaseBeats(ctx: Ctx<'phaseChange'>): Promise<void> {
   const st = ctx.stateNext;
   const ev = ctx.ev;
+  let thaw = false;
   if (ev.phase === 'battle' || ev.phase === 'end')
     for (const f of frozenUids(st)) {
       if (f.until !== st.turn || f.player !== ev.player) continue;
       const m = st.players[f.player].monsters[f.index];
       if (!m) continue;
       if (ev.phase === 'battle' && m.faceUp && m.position === 'attack') strainSeal(f.uid, 120);
-      if (ev.phase === 'end') thawSeal(f.uid, 80);
+      if (ev.phase === 'end' && hasSeal(f.uid)) {
+        // Round 3 #6: the run-out and the pop hold the end phase (≈ 300 ms) so "the stolen turn is spent" lands on
+        // ITS turn, before the next turn's slide; the grains' fall and the hairline's fade finish in the background
+        thawSeal(f.uid, 0);
+        thaw = true;
+      }
     }
+  if (thaw) return ctx.wait(300).then(() => ctx.base());
   return ctx.base();
 }
 
@@ -1115,6 +1187,26 @@ if (LOOK_V3) {
   // the seals follow the engine's truth (a staged board, a restore, a slot that left the field)
   registerObserver((ev, ctx) => {
     if (ev.type === 'turnStart' || ev.type === 'phaseChange') phaseSeq++;
+    // Round 3 #4: a batch that ends on this imp's pick without our summon hook (the v3 revive): aim once he is whole
+    const pd = ctx.after.pending;
+    if (pd && pd.kind === 'chooseTarget' && pd.sourceUid !== null && ctx.after.cards[pd.sourceUid]?.cardId === ID && ev.type !== 'summon') watchAim(ctx, pd.sourceUid);
+    // Round 3 #3: a sealed monster struck down in battle cracks its seal AT CONTACT; any other removal at its destroy
+    if (ev.type === 'battle') {
+      const hit: Uid[] = [];
+      if (ev.targetUid !== null && hasSeal(ev.targetUid) && (ev.result === 'targetDestroyed' || ev.result === 'bothDestroyed')) hit.push(ev.targetUid);
+      if (hasSeal(ev.attackerUid) && (ev.result === 'attackerDestroyed' || ev.result === 'bothDestroyed')) hit.push(ev.attackerUid);
+      if (hit.length) {
+        const sc = ctx.scene;
+        const onContact = (a: Uid) => {
+          if (a !== ev.attackerUid) return;
+          sc.events.off('v3:contact', onContact);
+          for (const h of hit) crackSeal(h);
+        };
+        sc.events.on('v3:contact', onContact);
+        sc.time.delayedCall(8000, () => sc.events.off('v3:contact', onContact));
+      }
+    }
+    if (ev.type === 'destroy' && hasSeal(ev.uid)) crackSeal(ev.uid);
     if (ev.type === 'target' || ev.type === 'activate') return;
     if (!frozenUids(ctx.stateNext).length && !sealUids().length) return;
     reconcileSeals(ctx.scene, ctx.views, ctx.stateNext);
