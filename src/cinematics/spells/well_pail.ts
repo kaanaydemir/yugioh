@@ -1523,7 +1523,8 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
       ([[u.sprite, 0.85], [u.badge.image, 0.45]] as [Phaser.GameObjects.Components.Alpha & Phaser.GameObjects.GameObject, number][]).forEach(([g, a]) => {
         if (!g || !g.active || crossed.has(g)) return;
         crossed.add(g);
-        void tween(sc, { targets: g, alpha: a, duration: 100 });
+        // never brighten a plate the scene has already stepped further back (the units behind the well)
+        void tween(sc, { targets: g, alpha: Math.min(a, g.alpha), duration: 100 });
       });
     }
   };

@@ -56,6 +56,14 @@ const PACK: Record<string, Scenario> = {
   eWellPailSeal: { desc: 'Kuyu Kovası (P1): ilk çekilen kart beşinci mühür — düello kazanılır, ikinci çekiş yok', stage: seals(0), steps: [pail(0)] },
   eWellPailSealP2: { desc: 'Kuyu Kovası (P2): ilk çekilen kart beşinci mühür — düello kazanılır', stage: seals(1), steps: [pail(1)] },
   eWellPailBot: { desc: 'Kuyu Kovası (P2 = bot, ekran P1 elinde): kartlar P2 mini eline küçülerek iner', stage: hand(1), steps: [viewAsP1, { ui: 'wait', ms: 700 }, pail(1)] },
+  // ---- the CPU casts it on its own (engine/bot.ts tryWellPail: deck ≥ 5), then plays on and ends its turn.
+  //      Film WITHOUT --fresh (a fresh restart is always hot-seat):
+  //      node tools/shot.mjs "?dev=duel&s=eWellPailCpu&look=v3&mode=vsBot" --film 30 --every 400 --cols 6 --out ...
+  eWellPailCpu: {
+    desc: 'Kuyu Kovası (P2 = bilgisayar; --fresh olmadan &mode=vsBot ile): bot kartı kendisi oynar, iki kart mini ele iner, tur sürer',
+    stage: { zones: 5, active: 1, p1: { hand: ['well_pail', 'ember_wolf'], deck: DECK, monsters: [null, 'crag_axeman'] }, p0: { monsters: [null, null, 'stone_sentinel'] } },
+    steps: [],
+  },
   // a person plays it with the mouse (the hand fan, the hover, then the card)
   eWellPailPlay: { desc: 'Kuyu Kovası (P1): elle oyna', stage: hand(0), steps: [] },
 };

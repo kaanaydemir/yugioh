@@ -69,6 +69,14 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
   ejder, gözbebeğine doğru uzayıp yutulan boynuzlu iblis).
 - Kanıt (tur 3): `shots/e/void_eye/r6/` (quick_full.png, eye_zoom.png, quick_rise2.png, quick_pull2.png, p2_full.png,
   set_full.png, frames/ + palcheck, art/, sfx/, measure.json).
+- DoD doğrulaması (2026-11-06): typecheck temiz; testler geçer (yalnız bilinen taban hataları); measure 9 senaryo
+  hatasız, zoom 1, closeUp 0, kamera 0 (eVoidQuick/One/Charm/Equip 5,43 sn; eVoid/P2 9,6–9,7 sn jetonla; Sovereign
+  10,9 sn parçalarla). Bulunan ve düzeltilen: Koruyucu Tılsım kurtarışından sonra tılsımın kuşanma kılıcı (auras-v3)
+  sahne bitince birimle geri gelip ~2,5 sn sonra senkronda kırılıyordu (genel, geç bir an) — artık kurtarış anında,
+  birim hayaletinin arkasında gizliyken sessizce kalkar (birimde başka kuşanma kalırsa dokunulmaz). Yeni senaryo
+  `eVoidCpu` (&mode=vsBot, --fresh OLMADAN filme alınır): CPU gözü kendi açar, tur biter, P1'e girdi döner; test
+  eklendi. magic_hat sahte şapkası kodda desteklenir ama sahnelenemez (şapkalar yalnız savaş evresinde var, göz normal
+  büyü). Kanıt: `shots/e/void_eye/dod/` (quick.png, p2.png, p2_end_fix.png, charm.png, cpu.png, tail_*.png).
 
 ### S5 Harman Eleği (`winnow_sieve`)
 - Resim: `src/art/cardart-v3/winnow_sieve.ts` (88×68 + elle 44×34, 4 kare yaşayan resim: gün ışığında — sıcak gök

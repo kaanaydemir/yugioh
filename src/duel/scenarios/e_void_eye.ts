@@ -94,6 +94,20 @@ const PACK: Record<string, Scenario> = {
     },
     steps: [eye(0)],
   },
+  // ---- the CPU casts it: open with &mode=vsBot (the bot plays player 2). No steps: the bot sees P1's bigger board
+  //      and opens the eye on its own (engine/bot.ts: void_eye only when the opponent's board is worth more).
+  //      Film WITHOUT --fresh (a fresh restart is always hot-seat):
+  //      node tools/shot.mjs "?dev=duel&s=eVoidCpu&look=v3&mode=vsBot" --film 24 --every 500 --cols 6 --out ...
+  eVoidCpu: {
+    desc: 'Boşluk Gözü (CPU, &mode=vsBot ile): bilgisayar P2 kendi kararıyla gözü açar, düello sürer',
+    stage: {
+      zones: 5,
+      active: 1,
+      p1: { hand: ['void_eye'], monsters: [null, 'ember_wolf'] },
+      p0: { monsters: ['magma_titan', 'crystal_wyrm', { id: 'thorn_lurker', faceUp: false, position: 'defense' }, 'abyss_magus'] },
+    },
+    steps: [],
+  },
 };
 
 export default PACK;

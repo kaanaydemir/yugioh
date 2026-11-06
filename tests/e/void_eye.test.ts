@@ -2,7 +2,7 @@
 // emit the events the presentation claims (one massDestroy from the spell, then the per-card destroys / vanishes /
 // the guardian charm's save).
 import { describe, expect, it } from 'vitest';
-import { apply, type Action, type GameEvent, type GameState } from '../../src/engine';
+import { apply, chooseAction, type Action, type GameEvent, type GameState } from '../../src/engine';
 import { buildStage, uidOf } from '../../src/duel/scenario';
 import PACK from '../../src/duel/scenarios/e_void_eye';
 import type { CardId } from '../../src/data/cards';
@@ -17,6 +17,15 @@ function runStage(key: string): { state: GameState; events: GameEvent[] } {
     const r = apply(state, a);
     state = r.state;
     events.push(...r.events);
+  }
+  if (sc.steps.length === 0) {
+    // a CPU stage (&mode=vsBot): the bot (player 2) plays its turn on its own until the turn passes
+    const bot = state.activePlayer;
+    for (let n = 0; n < 40 && state.activePlayer === bot && !state.winner; n++) {
+      const r = apply(state, chooseAction(state, 1));
+      state = r.state;
+      events.push(...r.events);
+    }
   }
   return { state, events };
 }
@@ -48,5 +57,10 @@ describe('e_void_eye stages', () => {
     const end = events.findIndex((e, k) => k > i && e.type === 'toGraveyard' && e.cardId === 'void_eye');
     const kinds = new Set(events.slice(i + 1, end).map((e) => e.type));
     expect([...kinds].sort()).toEqual(['activate', 'destroy', 'toGraveyard', 'tokenVanish']);
+  });
+  it('the CPU stage: the bot opens the eye on its own and its turn still ends (no stall)', () => {
+    const { state, events } = runStage('eVoidCpu');
+    expect(events.some((e) => e.type === 'massDestroy')).toBe(true);
+    expect(state.activePlayer).toBe(0);
   });
 });

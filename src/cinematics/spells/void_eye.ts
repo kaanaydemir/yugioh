@@ -1131,6 +1131,12 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
         if (tile) void tile.pulse(PAL.gold3, 360);
         playV3('e_voidSave', { volume: 0.9, pan: panAt(b?.floor.x ?? eye.x) });
         if (b) b.yank = el;
+        // the charm is spent on this save: its floating aura sword goes with it NOW, while the real unit is hidden
+        // behind its ghost (auras-v3: a break asked on a hidden sprite ends silently) — otherwise the sword came back
+        // with the unit after the scene and shattered on the post-scene sync, 2.5 s after the eye had closed (DoD r1)
+        const unit = field.unit(sv.saved);
+        const kept = ctx.after.players.some((p) => p.spellTraps.some((s) => s !== null && s.equippedTo === sv.saved));
+        if (unit && !kept && !unit.sprite.visible) unit.setAura('equip', null);
       });
     }
     // the choir and the swell stop dead 40 ms before the tick: the dry tick lands in a gap of silence

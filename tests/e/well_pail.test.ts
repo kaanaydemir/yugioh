@@ -3,6 +3,7 @@
 // activation, then the spell's own trip to the graveyard — or, when the first draw completes the seals, one draw and
 // the game over (no second draw).
 import { describe, expect, it } from 'vitest';
+import { chooseAction } from '../../src/engine/bot';
 import { apply, type Action, type GameEvent, type GameState } from '../../src/engine';
 import { buildStage, uidOf } from '../../src/duel/scenario';
 import PACK from '../../src/duel/scenarios/e_well_pail';
@@ -43,6 +44,21 @@ describe('e_well_pail stages', () => {
       expect(events.some((e) => e.type === 'gameOver'), key).toBe(true);
       expect(state.winner, key).toBe(PACK[key].stage.active ?? 0);
     }
+  });
+});
+
+describe('e_well_pail CPU stage', () => {
+  it('the bot casts the pail on its own and its turn goes on past the two draws (no stall)', () => {
+    let state = buildStage(PACK.eWellPailCpu.stage);
+    const types: string[] = [];
+    for (let n = 0; n < 40 && state.activePlayer === 1 && state.winner === null; n++) {
+      const a = chooseAction(state, n);
+      const r = apply(state, a);
+      state = r.state;
+      types.push(...r.events.map((e) => e.type));
+    }
+    expect(types.slice(0, 4)).toEqual(['activate', 'draw', 'draw', 'toGraveyard']);
+    expect(state.activePlayer).toBe(0); // the bot finished its turn
   });
 });
 
