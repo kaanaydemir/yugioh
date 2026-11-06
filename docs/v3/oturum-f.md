@@ -8,7 +8,7 @@ Per-card design + critique log: docs/v3/oturum-f/<id>.md.
 | card | design | rig + card art | cinematics + SFX | critique rounds | gates | pushed |
 |---|---|---|---|---|---|---|
 | windmane_knight | — | — | — | 0/3 | — | — |
-| shield_titan | — | — | — | 0/3 | — | — |
+| shield_titan | ✓ | ✓ | ✓ | 3/3 | ✓ | ✓ |
 | hourglass_imp | ✓ | ✓ | ✓ | 3/3 | ✓ | ✓ |
 | wing_lady | — | — | — | 0/3 | — | — |
 
@@ -32,6 +32,15 @@ Per-card design + critique log: docs/v3/oturum-f/<id>.md.
   filmdiff v1 17/17 + a6v1 26/26 IDENTICAL; camera gate (verify1 vs r3-integration base) 20 ok + 3 NOBASE, 0 FAIL.
   Evidence: shots/v3/kart-f/hourglass_imp/{final,fix1,fix2,fix3,r3-integration,verify1}/ (verify1/filmdiff-a6v1.txt,
   verify1/measure.json, verify1/sheet/, verify1/same/sameness.txt).
+
+- 2026-11-06: **shield_titan (Kalkan Devi) shipped.** Fix rounds 1–3 (craft / unique / integration) + gate fix
+  (a6-flow B4: recoil-number damage layer moved to p5 below `a6:block`; camera drift proven to be rig geometry, A/B
+  cinematics off/on identical) logged in docs/v3/oturum-f/shield_titan.md §15–§18. Gates at ship: `npm run typecheck`
+  clean; vitest 1476 pass / 8 fail (none ours, known list); a6-flow + `tests/art/shield_titan.test.ts` 80/80;
+  monster-gates `--class medium --ref none` (P1 + P2) 21 ok / 0 FAIL; filmdiff v1 17/17 + a6v1 26/26 IDENTICAL;
+  camera gate vs `camera-base-v2.json` 23 ok, 0 NOBASE, 0 FAIL. Evidence: shots/v3/kart-f/shield_titan/{r1-craft,r1-fix,
+  r2-unique,r2-fix,r3-integration,r3-fix,verify1,verify2,gatefix}/ (gatefix/camera-gate-v2.txt, gatefix/measure.json,
+  verify1/filmdiff-a6v1.txt, filmdiff-v1.txt, verify2/gates.txt, verify2/same.txt).
 
 ## Resume instructions (lane F is PAUSED — resume only when the orchestrator says so)
 
@@ -69,6 +78,10 @@ to re-exclude them.
    once its verify passes; then write the final summary here.
 
 ## Open issues
+- shield_titan: camera gate still FAILs m1Shield (lane base) / kdWallWeak (card base) against the pre-rig bases —
+  explained as base sampling placeholder totems (shield_titan.md §18.2); gated green against `camera-base-v2.json`.
+  Orchestrator requests: per-art `guardGlint: false` opt-out, battleV3 COUNTER_FLASH white blob on the blocked
+  attacker at contact, a public `StatBadge.flashDigits()` (plateStep uses a cast today).
 - hourglass_imp: shared edits for orchestrator review — `src/cinematics/v3small/turn.ts` (no ready ring on a
   sealed unit), `src/duel/HumanInput.ts` (seal refusal hint), `src/duel/StatBadge.ts` (sand freeze icon); the v1
   ready ring and a full legal-attackers query are orchestrator calls. ksBoard5: the sealed back-row emblem overlaps
