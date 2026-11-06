@@ -39,7 +39,7 @@ export const MUD = [PAL.earth0, PAL.earth1, PAL.earth2, PAL.earth3] as const;
 /** Wet mud: [underside, body, lit lip, gloss, hot catch]. */
 export const WET = [PAL.earth0, PAL.earth1, PAL.earth2, PAL.earth3, PAL.earth4] as const;
 /** The pin's hands: a value lighter body so they read on the dark ring and floor (still a dark underside). */
-export const WET_HAND = [PAL.earth0, PAL.earth2, PAL.earth3, PAL.earth3, PAL.earth4] as const;
+export const WET_HAND = [PAL.earth0, PAL.earth1, PAL.earth3, PAL.earth3, PAL.earth4] as const;
 /** The spirit's violet (eyes, pit, ember). */
 export const VIOLET = [PAL.void1, PAL.void2, PAL.void3, PAL.void4] as const;
 /** Wet droplets (sparks): a glossy catch first, then body tones. */
@@ -172,15 +172,17 @@ export class MudMask {
         const dn = this.f(x, y + 1);
         const lf = this.f(x - 1, y);
         const rt = this.f(x + 1, y);
+        // a wet tube lit from the top-left: lit rim on the top / left edge, a dark wet underside and right side,
+        // a glossy streak INSET one pixel from the lit rim, a hot catch where the two streaks meet
         let c = T[1];
-        if (!dn || (!this.f(x, y + 2) && !rt)) c = T[0];
-        else if (!rt && up && !this.f(x + 1, y + 1)) c = T[0];
-        if (!up) c = !rt && lf ? T[1] : T[2];
-        // the gloss: an inset streak one pixel under the lit lip, on lumps at least four pixels deep
-        if (o.gloss !== false && up && !this.f(x, y - 2) && dn && this.f(x, y + 2) && lf) {
-          const lead = !this.f(x - 2, y) || !this.f(x - 1, y - 1);
-          if (lead && rt) c = T[4];
-          else if (rt && ((x * 5 + y * 3 + ph) & 3) < 2) c = T[3];
+        if (!dn || !rt) c = T[0];
+        else if (!this.f(x, y + 2) && !this.f(x + 1, y + 1)) c = T[0];
+        if (!up || !lf) c = (!up && !rt) || (!lf && !dn) ? T[1] : T[2];
+        if (o.gloss !== false && up && lf && dn && rt && this.f(x + 1, y + 1)) {
+          const inTop = !this.f(x, y - 2);
+          const inLeft = !this.f(x - 2, y);
+          if (inTop && inLeft) c = T[4];
+          else if ((inTop || inLeft) && ((x * 5 + y * 3 + ph) & 3) < 2) c = T[3];
         }
         if (o.seepY !== undefined && !dn && y >= o.seepY - 1) c = PAL.void2;
         g.px(x, y, c);
@@ -349,23 +351,28 @@ export function mudVortex(sc: Phaser.Scene, at: XY, rx: number, depth: number, s
         g.ring(at.x, at.y, rr - 1, ry - 1, PAL.earth2, 1, Math.PI * 0.12, Math.PI * 0.88);
         g.ring(at.x, at.y, rr - 2, Math.max(1, ry - 2), PAL.earth1, 1, Math.PI * 0.2, Math.PI * 0.8);
       }
-      // four glossy spiral arms turning inward: 2 px thick, a lit crest, a hot head, violet where they near the pit
+      // four glossy spiral arms turning inward: continuous 2-px ribbons, a lit crest on top, a hot head at the rim,
+      // violet where they slide into the pit
       const dir = Math.sign(V.speed || 1);
       for (let arm = 0; arm < 4; arm++) {
         const a0 = ang + (arm * TAU) / 4;
-        const N = 16;
+        const N = 48;
+        let px0 = NaN;
+        let py0 = NaN;
         for (let s = 0; s <= N; s++) {
           const k = s / N;
-          const rad = rr * (0.95 - 0.78 * k);
-          const a = a0 + dir * k * 3.4;
+          const rad = rr * (0.95 - 0.8 * k);
+          const a = a0 + dir * k * 2.4;
           const x = Math.round(at.x + Math.cos(a) * rad);
           const y = Math.round(at.y + Math.sin(a) * rad * 0.5);
-          if (!mk.f(x, y)) continue;
-          const nearPit = k > 0.72;
-          const body = nearPit ? PAL.void2 : k < 0.15 ? PAL.earth3 : PAL.earth2;
-          g.px(x, y, body);
-          if (mk.f(x, y + 1)) g.px(x, y + 1, nearPit ? PAL.void1 : PAL.earth1);
-          if (s === 1 && rr > 9) g.px(x, y - 1, PAL.earth4);
+          if (x === px0 && y === py0) continue;
+          px0 = x;
+          py0 = y;
+          if (!mk.f(x, y) || !mk.f(x, y + 1)) continue;
+          const nearPit = k > 0.74;
+          g.px(x, y, nearPit ? PAL.void2 : k < 0.12 ? PAL.earth3 : PAL.earth2);
+          g.px(x, y + 1, nearPit ? PAL.void1 : PAL.earth1);
+          if (s <= 2 && rr > 9) g.px(x, y - 1, PAL.earth4);
         }
       }
       // bubbles: a glossy dome that swells and pops (a violet ring for a frame, two droplets)
@@ -503,7 +510,7 @@ export interface Cracks {
 }
 
 /** Six seams across the tile around `at` (reach rx; iso). */
-export function cracks(sc: Phaser.Scene, at: XY, rx: number, depth: number, seed: number): Cracks {
+export function cracks(sc: Phaser.Scene, at: XY, rx: number, depth: number, seed: number, seamDepth = depth): Cracks {
   const R = rng(seed);
   const lines: XY[][] = [];
   const n = 6;
@@ -522,6 +529,8 @@ export function cracks(sc: Phaser.Scene, at: XY, rx: number, depth: number, seed
     lines.push(pts);
   }
   const r = Raster.around(sc, at.x, at.y, rx * 2 + 16, rx + 16, depth);
+  // the seams are cut INTO the tile: under the card lying on it (nothing is drawn over the card)
+  const rs = Raster.around(sc, at.x, at.y, rx * 2 + 16, rx + 16, seamDepth);
   const mk = new MudMask(r.x, r.y, r.w, r.h);
   let alive = true;
   let ang = R() * TAU;
@@ -537,6 +546,7 @@ export function cracks(sc: Phaser.Scene, at: XY, rx: number, depth: number, seed
       alive = false;
       stop();
       r.destroy();
+      rs.destroy();
     },
   };
   /** Points along a polyline from t0 to t1 (whole px). */
@@ -558,7 +568,7 @@ export function cracks(sc: Phaser.Scene, at: XY, rx: number, depth: number, seed
     if (!alive) return false;
     el += dt;
     ang += (C.spin * dt) / 1000;
-    r.draw((g) => {
+    rs.draw((g) => {
       // 1. the seams: an ink cut with the spirit's violet light in it (hot points pulse along it)
       if (C.close < 3) {
         for (const pts of lines)
@@ -573,16 +583,19 @@ export function cracks(sc: Phaser.Scene, at: XY, rx: number, depth: number, seed
             if (hot && k > 0.1) g.px(p.x, p.y, PAL.void4);
           });
       }
+    });
+    r.draw((g) => {
       // 2. the tongues + the puddle: one glossy mud mask
       mk.clear();
       if (C.puddle >= 1) mk.ell(at.x, at.y, Math.round(C.puddle), Math.max(1, Math.round(C.puddle / 3)));
       if (C.flow > 0 && C.close < 1) {
         const head = Math.min(C.grow, C.flow) * (1 - C.drain);
-        const thick = C.drain < 0.5 ? 1.3 : C.drain < 0.85 ? 0.9 : 0.5;
+        // fat glossy tongues (5 px, a 6-px head) that thin as they are sucked back in
+        const thick = C.drain < 0.34 ? 2 : C.drain < 0.67 ? 1.5 : 1;
         for (const pts of lines) {
           along(pts, 0, head, (p, k) => {
-            const near = head - k < 0.1;
-            mk.disc(p.x, p.y, near ? thick + 0.7 : thick * (1 - k * 0.3));
+            const near = head - k < 0.08;
+            mk.disc(p.x, p.y, near ? thick + 0.8 : thick * (1 - k * 0.25));
           });
         }
       }
@@ -652,7 +665,7 @@ export function drawBall(g: Raster, mk: MudMask, p: XY, sq: number, vx: number, 
 export function mudSplat(sc: Phaser.Scene, at: XY, floorY: number, depth: number, small: boolean, seed: number): Promise<void> {
   const R = rng(seed);
   const n = small ? 6 : 8;
-  const lobes = Array.from({ length: n }, (_, i) => ({ a: (i / n) * TAU + (R() - 0.5) * 0.6, len: (small ? 6 : 9) + R() * (small ? 4 : 6), fat: 1.6 + R() * 0.9 }));
+  const lobes = Array.from({ length: n }, (_, i) => ({ a: (i / n) * TAU + (R() - 0.5) * 0.6, len: (small ? 4 : 6) + R() * (small ? 3 : 4), fat: 1.8 + R() * 1, drop: 3 + R() * 4 }));
   const r = Raster.around(sc, at.x, at.y, 64, 48, depth);
   const mk = new MudMask(r.x, r.y, r.w, r.h);
   // fat droplets: glossy 2–3 px clods arcing out, landing on the floor and lying there a beat
@@ -678,14 +691,18 @@ export function mudSplat(sc: Phaser.Scene, at: XY, floorY: number, depth: number
         }
         mk.clear();
         const k = [0, 0.6, 0.9, 1, 1, 1][step];
-        const shrink = step >= 4 ? 0.6 : 1;
-        mk.ell(at.x, at.y, small ? 4 : 5, small ? 3 : 4);
+        const shrink = step >= 4 ? 0.7 : 1;
+        // a fat splash: a big wet core, short petals, fat drops flung past their tips (no thin legs)
+        mk.ell(at.x, at.y, (small ? 5 : 7) * shrink, (small ? 3 : 5) * shrink);
         for (const lb of lobes) {
           const L = lb.len * k;
           const ex = at.x + Math.cos(lb.a) * L;
           const ey = at.y + Math.sin(lb.a) * L * 0.7;
-          mk.capsule(at.x, at.y, ex, ey, lb.fat * 0.6 * shrink);
-          mk.disc(ex, ey, lb.fat * shrink);
+          mk.capsule(at.x, at.y, ex, ey, lb.fat * shrink);
+          if (step >= 2 && step <= 4) {
+            const D = L + lb.drop * (step - 1) * 0.6;
+            mk.disc(at.x + Math.cos(lb.a) * D, at.y + Math.sin(lb.a) * D * 0.7 + (step - 2), step === 4 ? 0.8 : 1.2);
+          }
         }
         mk.wet(g, { phase: step });
         if (step <= 2) {
@@ -1015,6 +1032,7 @@ export function pinGrab(sc: Phaser.Scene, u: MonsterUnit, seed: number): PinGrab
   const mkP = new MudMask(X0, Y0, W, H);
   const mkB = new MudMask(X0, Y0, W, H);
   const mkF = new MudMask(X0, Y0, W, H);
+  const mkC = new MudMask(X0, Y0, W, H);
   // one hand per foot (max 4), alternating behind / in front of the leg
   const hands: GrabHand[] = feet.slice(0, 4).map((f, i) => ({ foot: f, side: Math.sign(f.x - at.x) || (i % 2 ? 1 : -1), front: i % 2 === 0, ph: R() }));
   // violet seams out of the rim
@@ -1088,23 +1106,25 @@ export function pinGrab(sc: Phaser.Scene, u: MonsterUnit, seed: number): PinGrab
     const up = clamp01(G.burst) * (1 - clamp01(G.sink));
     mkB.clear();
     mkF.clear();
-    collars(mkF, at, feet, Math.round(G.collar), t);
+    mkC.clear();
+    collars(mkC, at, feet, Math.round(G.collar), t);
+    mkC.wet(front, { seepY: at.y, phase: Math.floor(t * 5) });
     const bases: XY[] = [];
     if (up > 0.02) {
       for (const h of hands) {
         const by = at.y + (h.front ? 2 : -2);
-        const base = { x: h.foot.x + h.side * (h.foot.hw + 5), y: by };
+        const base = { x: h.foot.x + h.side * (h.foot.hw + 4), y: by };
         bases.push(base);
         const wob = Math.sin(t * 11 + h.ph * TAU) * (G.grab > 0.5 ? 0.4 : 1);
         const g = clamp01(G.grab);
         // burst: straight up beside the leg, fingers splayed; grab: over onto the ankle, fingers hooked round it
-        const hi = { x: base.x + h.side * 1 + wob, y: base.y - 15 * up };
+        const hi = { x: base.x + h.side * 3 + wob, y: base.y - 11 * up };
         const ank = { x: h.foot.x + h.side * (h.foot.hw + 1), y: at.y - 6 };
         const tip = rint({ x: lerp(hi.x, ank.x, g), y: lerp(hi.y, ank.y, g) - Math.sin(Math.PI * g) * 3 * up });
         wetHand(h.front ? mkF : mkB, base, tip, {
           open: 1 - g,
           bend: h.side * (1 + 3 * g) * up,
-          w: 2.1,
+          w: 2.5,
           cup: -h.side,
           fingers: g > 0.4 ? mkF : undefined,
           drip: g < 0.3 ? (t * 2 + h.ph) % 1 : -1,
@@ -1114,7 +1134,7 @@ export function pinGrab(sc: Phaser.Scene, u: MonsterUnit, seed: number): PinGrab
     }
     mkB.wet(back, { tones: WET_HAND, seepY: at.y + 3, phase: Math.floor(t * 8) });
     mkF.wet(front, { tones: WET_HAND, seepY: at.y + 3, phase: Math.floor(t * 8) });
-    for (const b of bases) seepAt(b.y < at.y ? back : front, b, 2.1, t);
+    for (const b of bases) seepAt(b.y < at.y ? back : front, b, 2.5, t);
     back.end();
     front.end();
     return true;
@@ -1123,7 +1143,7 @@ export function pinGrab(sc: Phaser.Scene, u: MonsterUnit, seed: number): PinGrab
 }
 
 /** The private padlock state of a unit's stat plate (StatBadge keeps it private; read-only peek). */
-function plateLockOf(u: MonsterUnit): string | null {
+export function plateLockOf(u: MonsterUnit): string | null {
   const b = u.badge as unknown as { lock?: string | null };
   return b && typeof b === 'object' && 'lock' in b ? (b.lock ?? null) : null;
 }
@@ -1144,10 +1164,11 @@ export function mudPinAura(sc: Phaser.Scene, u: MonsterUnit, seed: number): { de
   const front = new Raster(sc, 0, 0, W, H, s.depth + 0.5);
   const mkP = new MudMask(0, 0, W, H);
   const mkF = new MudMask(0, 0, W, H);
+  const mkC = new MudMask(0, 0, W, H);
   const hands = [
-    { a: Math.PI * 0.22, off: 0 },
-    { a: Math.PI * 0.5, off: 0.36 },
-    { a: Math.PI * 0.78, off: 0.68 },
+    { a: Math.PI * 0.1, off: 0 },
+    { a: Math.PI * 0.86, off: 0.36 },
+    { a: Math.PI * 0.28, off: 0.68 },
   ].map((h) => ({ ...h, ph: R() }));
   const CYCLE = 2.6;
   let light: LightHandle | null = lightPool(sc, u.home.x, u.home.y, { color: PAL.void3, spill: PAL.void2, radius: rx + 6, floorY: u.home.y, intensity: 0, anim: 'breathe', fadeIn: 0 });
@@ -1189,6 +1210,8 @@ export function mudPinAura(sc: Phaser.Scene, u: MonsterUnit, seed: number): { de
     mkP.y0 = y0;
     mkF.x0 = x0;
     mkF.y0 = y0;
+    mkC.x0 = x0;
+    mkC.y0 = y0;
     back.img.setDepth(s.depth - 0.5);
     front.img.setDepth(s.depth + 0.5);
     let k = 1;
@@ -1210,7 +1233,9 @@ export function mudPinAura(sc: Phaser.Scene, u: MonsterUnit, seed: number): { de
       paintPool(front, mkP, at, orx, ory, { ...look, clipY: at.y - 1 });
       mkF.clear();
       if (k === 1) {
-        collars(mkF, at, feet, 2, t);
+        mkC.clear();
+        collars(mkC, at, feet, 2, t);
+        mkC.wet(front, { seepY: at.y, phase: Math.floor(t * 5) });
         // the hands: surface (0–0.12), paw at the nearest foot (to 0.55), sink (to 0.68), gone
         for (const h of hands) {
           const ph = (t / CYCLE + h.off) % 1;
@@ -1219,16 +1244,16 @@ export function mudPinAura(sc: Phaser.Scene, u: MonsterUnit, seed: number): { de
           const base = { x: Math.round(at.x + Math.cos(h.a) * (orx - 3)), y: Math.round(at.y + Math.sin(h.a) * (ory - 1)) };
           let nf = feet[0];
           for (const f of feet) if (Math.abs(f.x - base.x) < Math.abs(nf.x - base.x)) nf = f;
-          const height = Math.round(9 * up);
-          if (height < 3) continue;
+          const height = Math.round(8 * up);
+          if (height < 2) continue;
           const paw = ph < 0.12 ? 0 : 0.35 + 0.35 * Math.sin((ph - 0.12) * 26 + h.ph * 3);
           const rest = { x: base.x + Math.round(Math.sin(t * 2 + h.ph * 5)), y: base.y - height };
           const ank = { x: nf.x + Math.sign(base.x - nf.x || 1) * (nf.hw + 1), y: at.y - 5 };
           const tip = rint({ x: lerp(rest.x, ank.x, paw), y: lerp(rest.y, ank.y, paw * 0.6) });
-          wetHand(mkF, base, tip, { open: 1 - paw, w: 1.6, cup: Math.sign(base.x - nf.x || 1), collar: up, drip: (t * 1.5 + h.ph) % 1 });
+          wetHand(mkF, base, tip, { open: 1 - paw, w: 2.1, cup: Math.sign(base.x - nf.x || 1), collar: up, drip: (t * 1.5 + h.ph) % 1 });
         }
       }
-      mkF.wet(front, { tones: WET_HAND, seepY: at.y + 3, phase: Math.floor(t * 6) });
+      mkF.wet(front, { tones: WET, seepY: at.y + 3, phase: Math.floor(t * 6) });
     }
     back.end();
     front.end();
@@ -1275,7 +1300,7 @@ export function mudCrawl(sc: Phaser.Scene, from: XY, to: XY, ms: number, depth: 
             const q = i / 30;
             if (q > Math.min(k, tail + 0.02) || q > 1 - dry) continue;
             const p = at(q);
-            tr.ell(p.x, p.y + 1, tw + 1, Math.max(0.6, tw * 0.6));
+            tr.ell(p.x, p.y + 1, tw + 1.6, Math.max(0.8, tw * 0.8));
           }
         tr.wet(g, { tones: [PAL.earth0, PAL.earth0, PAL.earth1, PAL.earth1, PAL.earth2], outline: null, gloss: false });
         // the stream: 5 px wide, thickening into the head
@@ -1286,7 +1311,7 @@ export function mudCrawl(sc: Phaser.Scene, from: XY, to: XY, ms: number, depth: 
             if (q > k || q < tail) continue;
             const p = at(q);
             const nearHead = k - q < 0.12;
-            mk.ell(p.x, p.y, nearHead ? 3.5 : 2.6, nearHead ? 2.6 : 1.8);
+            mk.ell(p.x, p.y, nearHead ? 4 : 3.2, nearHead ? 3 : 2.2);
           }
           if (k > 0.05 && tail < 0.95) {
             // the head's two little hands, reaching forward and pulling (alternating)

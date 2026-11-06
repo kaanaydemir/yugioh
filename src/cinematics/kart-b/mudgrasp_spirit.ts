@@ -2,12 +2,13 @@
 // Every registration below is gated on LOOK_V3: the v1 look keeps today's paths byte for byte (KK-9).
 //
 // Summon — "the climb" (one of the two climb entrances, §5):
-//   0     the tile softens into a turning mud vortex (mgVortex, sustained; a violet pit glows in it, bubbles pop)
+//   0     the tile softens into a glossy turning vortex (4 spiral arms, a violet pit + its light; mgVortex sustained)
 //   f2    two hands BURST up out of the mud (mgBurst: the 600 Hz şlop) — clods fly, a violet flash from below
-//   f3    the palms SLAP down and grip the tile's edges (mgSlap: el şaplağı) — mud splats on the floor, a 2-px shake
+//   f2    (held 170 ms) two fat wet FX hands claw at the air over the sprite wrists; f3 the palms SLAP onto the tile's side
+//         edges and the fingers hook over its lip (gripMarks, mgSlap), smears stay; the plate pops at the eye-ignite beat
 //   f4–6  the body is hauled up between the gripping hands (mgHaul: a long wet drag, a strained grunt); the mask surfaces
-//   f7    land: out of the mud (mgLand), the vortex closes in steps, a ripple ring, the finale (badge pop)
-//   f8    the mask seats with a click and the violet eyes ignite (a light flash on the face)
+//   f7    land: out of the mud (mgLand), the grips let go, the vortex closes in steps, wet ripple rings (no white ring)
+//   f8    the mask seats with a click and the violet eyes ignite (a light flash on the face) — the plate pops here
 //   f9    shake-off: wet clods thrown off the body
 // Strike — "Çamur Atışı":
 //   the hand digs a fistful out of the mound (mgCharge, from the declaration), cocks it behind the hood, swings and
@@ -52,7 +53,7 @@ import { deathStartFrom, takePlannedEntry } from '../_v3/posematch';
 import { planGuardBreak, runGuardBreak, showsGuard } from '../_v3/guardbreak';
 import { contactFlash } from '../_v3/flash';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
-import { MUD, MudMask, WET_DROPS, WET_HAND, cracks, drawBall, floorStain, gooDecal, gripMarks, mudCrawl, mudPinAura, mudSplat, mudVortex, pinGrab, rng, seepAt, violetSeams, wetHand } from './mudgrasp_spirit-fx';
+import { MudMask, WET_DROPS, WET_HAND, cracks, drawBall, floorStain, gooDecal, gripMarks, mudCrawl, mudPinAura, mudSplat, mudVortex, pinGrab, plateLockOf, rng, seepAt, violetSeams, wetHand } from './mudgrasp_spirit-fx';
 
 type Ev<T extends GameEvent['type']> = Extract<GameEvent, { type: T }>;
 type Ctx<T extends GameEvent['type']> = CinematicContext<Ev<T>>;
@@ -423,9 +424,24 @@ if (LOOK_V3)
     for (const uid of [...pinned]) {
       const loc = ctx.locate(uid, 'next');
       const slot = loc && loc.zone === 'monster' ? ctx.stateNext.players[loc.player].monsters[loc.index] : null;
-      if (ev.type === 'gameOver' || !slot || slot.lockPositionTurn === undefined || ctx.stateNext.turn > slot.lockPositionTurn) {
+      if (ev.type === 'gameOver' || !slot) {
         ctx.unit(uid)?.setAura('mudPin', null);
         pinned.delete(uid);
+      } else if (slot.lockPositionTurn === undefined || ctx.stateNext.turn > slot.lockPositionTurn) {
+        // the lock is over: the ring drains itself on the tick the plate's padlock goes (mudPinAura watches it);
+        // a safety net clears it if the padlock never updates
+        pinned.delete(uid);
+        const u = ctx.unit(uid);
+        if (u) {
+          onFrame(ctx.scene, (_dt, el) => {
+            if (!u.hasAura('mudPin')) return false;
+            if (el > 1600 || (el > 400 && !plateLockOf(u))) {
+              u.setAura('mudPin', null);
+              return false;
+            }
+            return true;
+          });
+        }
       }
     }
   });
@@ -475,7 +491,7 @@ async function pinV3(ctx: Ctx<'activate'>): Promise<void> {
   const feet = { x: Math.round(a.home.x), y: Math.round(a.home.y) };
   const grab = pinGrab(sc, a, ev.uid * 17 + a.uid);
   // the pit's violet light: it rises with the seep, flares on the burst, settles into the aura's own light
-  const pool = lightPool(sc, feet.x, feet.y, { color: PAL.void3, spill: PAL.void2, radius: 26, floorY: feet.y, intensity: 0, anim: 'flicker', fadeIn: 0 });
+  const pool = lightPool(sc, feet.x, feet.y, { color: PAL.void3, spill: null, radius: 24, floorY: feet.y, intensity: 0, anim: 'breathe', fadeIn: 0 });
   pool.setIntensity(0.45, 200);
   a.posed = true;
   const y0 = s.y;
@@ -522,7 +538,7 @@ async function pinV3(ctx: Ctx<'activate'>): Promise<void> {
       if (mudSpot) {
         // the dead spirit's tile cracks open violet, and its spilled mud crawls over the floor to the attacker
         void violetSeams(sc, { x: Math.round(mudSpot.x), y: Math.round(mudSpot.y) }, 26, 420, DEPTH.SHADOW + 0.7, ev.uid * 5 + 9);
-        void lightFlash(sc, mudSpot.x, mudSpot.y, PAL.void3, 30, 320, { floorY: mudSpot.y, intensity: 0.9 });
+        void lightFlash(sc, mudSpot.x, mudSpot.y, PAL.void3, 18, 260, { floorY: mudSpot.y, intensity: 0.55 });
         violetMotes(sc, mudSpot, 6, R);
         void mudCrawl(sc, { x: mudSpot.x, y: mudSpot.y + 1 }, { x: feet.x, y: feet.y + 1 }, plunge, DEPTH.SHADOW + 0.6, ev.uid * 3 + 2);
         play('mgDrip', { volume: 0.5, pan: panAt(mudSpot.x) });
@@ -650,7 +666,7 @@ async function liquidDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
   };
   ctx.scene.events.emit('v3:dying', u);
   const pan = panAt(home.x);
-  const cr = cracks(sc, { x: home.x, y: home.y + 1 }, 40, DEPTH.SHADOW + 0.55, ev.uid * 7 + 3);
+  const cr = cracks(sc, { x: home.x, y: home.y + 1 }, 40, DEPTH.SHADOW + 0.55, ev.uid * 7 + 3, DEPTH.TILE_FX + 1);
   cr.spin = -7;
   const glow = lightPool(sc, home.x, home.y, { color: PAL.void3, spill: PAL.void2, radius: 18, floorY: home.y, intensity: 0, anim: 'breathe', fadeIn: 0 });
   let drain: ReturnType<typeof start> | null = null;

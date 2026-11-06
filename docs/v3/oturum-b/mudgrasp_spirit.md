@@ -16,7 +16,84 @@ the 600 Hz suction "şlop", §5.2 ending "sıvı olup karoya geri akar"). Handbo
 | `DEATH_PRESETS` | **done**: `material: 'water', accent: 'shadow'` (stone/ash endings are reserved) | `src/cinematics/_v3/presets.ts` own line |
 | `MONSTER_GLOW` | **done**: `void4 / void3 / white` emissive, `near void2`, `spill void3` (no body tone) | `src/view/light/profiles.ts` own line |
 | Scenarios (`src/duel/scenarios/mudgrasp_spirit.ts`) | **done** (21 keys, P1 + P2) | see *Cinematics stage* below |
-| Cinematics / SFX | **round 1 done** (summon, strike, death, pin effect + persistent aura; sound set wired, mgGrab reworked) | `src/cinematics/kart-b/mudgrasp_spirit.ts` (+ `-fx.ts`), `src/audio/v3/mudgrasp_spirit.ts` |
+| Cinematics / SFX | **FIX r1 done** (wet-mud FX rework, see FIX round 1) — **round 1 done** (summon, strike, death, pin effect + persistent aura; sound set wired, mgGrab reworked) | `src/cinematics/kart-b/mudgrasp_spirit.ts` (+ `-fx.ts`), `src/audio/v3/mudgrasp_spirit.ts` |
+
+## FIX round 1 (critic r1 → fixes), 2026-11-06
+
+Critic report: `shots/v3/kart-b/mudgrasp_spirit/critic-r1/` (core verdict: "the FX layer reads as DRY brown sticks /
+rubble, not WET, glossy, violet-lit mud"). Evidence of this round: `shots/v3/kart-b/mudgrasp_spirit/fix-r1/`.
+
+**What changed**
+- **New wet-mud painter** (`-fx.ts`, `MudMask.wet`): every FX mud shape is now a lit-from-top-left wet tube — lit rim on
+  the top/left edge, dark wet right/underside (earth0), a gloss streak INSET one pixel from the rim (earth3 dashes) with an
+  earth4 hot catch, and a violet seep (void2) where mud meets the floor. Used by every FX element below.
+- **Pin (blocker)**: `wetHand` = fat (5–6 px) short forearm with an elbow lump, a round palm, three 3-px fingers + thumb
+  with rounded tips (no forked twigs), drips forming under the palm, violet seep at each wrist base. The hands grab the
+  attacker's REAL feet: `scanFeet` reads the attacker's current frame (bottom rows above the anchor, `getPixelAlpha`) and
+  groups opaque columns into feet → one hand per foot (≤4), alternating behind / in front; while grabbing, the fingers are
+  drawn in FRONT of the leg (wrapping), the palm behind. Mud collars climb the ankles; the pool's front half is drawn over
+  the feet (rows ≥ ground−1) while the sprite is sunk 2–3 px → feet visibly sink. The ring (`paintPool`) is a dark band
+  (ink outer edge, earth0 body, lit far inner wall earth2, drifting earth3/earth4 gloss dashes) around a violet-black pit
+  with ripples sucked inward and a pulsing violet eye; ring size = feet span + 6 (18–30 px).
+- **Pin pacing**: special f1–f3 holds 110/120/170 → 80/100/130 (rear ≈ 360 ms) and the attacker's tile is busy the whole
+  time: the pool rises from 25 %, the surface bulges (dome), three violet seams leak out of the rim, bubbles boil and pop
+  violet, ripple rings every 130 ms, the feet sink 1 px and tremble; violet pit light rises. Burst 150 ms, wrap 200 ms,
+  clamp/ring 320 ms, hands sink 180 ms while the feet settle 3→0 px.
+- **Sprite special**: f2–f3 asymmetric bent arms (near hand curled to the mask, far arm lower and bent); f5–f8 the
+  plunged near arm bends at the elbow (new Pose field `nlen` = segment stretch so a deep plunge keeps an elbow; `nb: 1`)
+  with a splash at the entry; the arm's vein fades to a dotted ember past the elbow (no striped staff).
+- **Aura**: same ring painter + a breathing violet pool light (rx+6); mud collars on the ankles; three small dark wet
+  hands surface in turn on the VISIBLE front arc (avoiding the plate under the feet) and paw at the nearest foot. Expiry is
+  now in sync with the padlock: the aura watches the plate's lock (`plateLockOf`, a read-only peek at StatBadge's private
+  `lock`) and drains on the tick it goes; the observer no longer clears it at turnStart (it removes the uid and arms a
+  1.6-s safety net). Verified: `mgPinLock-clear-z3.png` (padlock and ring leave together at t≈7840).
+- **Summon**: vortex redrawn — dark glossy dish, four continuous 2-px spiral ribbons (lit crest, earth4 head at the rim,
+  violet where they enter the pit), glossy bubbles that pop violet, a violet pit that grows with its own light pool. f2 is
+  held 170 ms and two fat wet FX hands claw at the air over the sprite wrists (near + rear). f3: the sprite's hands now
+  reach the tile's side edges (nx 33 / rx −29), and `gripMarks` hooks three fingers over the tile's lip on each side with
+  smears that stay until land and dry back in steps. The generic finale (white/earth shockwave) is gone: wet ripple rings,
+  shake and a light flash at land; the plate pops at the eye-ignite beat (LAND+1), not mid-climb.
+- **Strike**: lump ≈9 px glossy with a violet ember core, squash & stretch along its velocity, a two-lump dripping tail,
+  glossy drops shed; arc ≥ 26 px (dist×0.35, ≤48), flight 270–400 ms; the sprite plays through release into the
+  follow-through (f7) and jiggles 1 px during the flight (no frozen release frame). Contact: a violet pop (no white star of
+  ours), then a fat wet splash (big core, short fat petals, fat drops flung past the tips) + violet light; the goo decal
+  is an irregular wet blob with drips that lengthen and slide.
+- **Death**: seams are ink cuts with violet light in them (hot points pulsing), drawn at `DEPTH.TILE_FX+1` i.e. UNDER
+  the card lying on the tile; glossy 5-px tongues with a 6-px head run out along them and are sucked back (heads retreat,
+  bodies thin in steps); the puddle has a counter-turning spiral (summon vortex reversed) with a violet eye; puddle drains
+  and seams close BEFORE the card is born. Sprite death holds f6–f8 110/120/120 → the mask slides/sinks over 4 frames
+  (+ a ripple ring at n−3 and a bubble/violet glk at n−2).
+- **Mud-dies crawl**: the old tile cracks open violet (`violetSeams`, smaller tile light flash so it no longer reads as a
+  tinted square); the crawl is a 6–8 px glossy stream with a pulling head of two little hands, a violet glow light on the
+  head, a dark wet trail that dries back in three steps.
+- **Sprite hit / hitHeavy**: hit f0 stays near idle (HA-21) → f1 squash (sink 3, swell 2, mask −3 px, spray) → f2 jelly
+  stretch → f3 smaller squash → settle; hitHeavy f1–f2 flatten into the puddle (sink 8–9, swell 3, splash) → f3 heaves
+  back up with an overshoot.
+
+**Gates / tests**: monster-gates `--class medium --ref none` → 21 ok, 0 FAIL (`fix-r1/gates.txt`; summon margins and
+HA-21 re-checked after the changes); `tests/art/mudgrasp_spirit*.test.ts` 16/16; tsc: no mudgrasp errors. v1: all changes
+are in LOOK_V3-gated registrations or v3-only art (monsters-v3), no shared file touched → v1 films not re-run this round.
+
+**Evidence** (`shots/v3/kart-b/mudgrasp_spirit/fix-r1/`): `mgPin.png` (1×, whole duel), `mgPin-1x.png`, `mgPin-z.png`,
+`mgPin-grab-z5.png`, `mgPin-ring-z4.png`, `mgPinP2-z.png`, `mgPinKill.png`, `mgPinKill-z.png` (crawl), `mgPinLock.png`,
+`mgPinLock-aura-z4.png`, `mgPinLock-clear-z3.png`, `mgSummon.png`, `mgSummon-z.png`, `mgAttack.png`, `mgAttack-z.png`,
+`mgAttack-splat-z.png`, `mgKill.png`, `mgKill-z.png`, `sheet-p1/`, `sheet-p2/`, `gates.txt`.
+
+**Open after FIX r1**
+- Sprite material (critic major "matte dry earth"): NOT reworked in the sprite this round — the FX layer now carries the
+  wet language; the sprite arms are still matte earth bands at 1×. Next round: inset gloss streaks on arms / mound,
+  chunkier 3-finger claws, more violet crack light in the mound.
+- The far front arm in special f5–f8 is still a straight darker diagonal (the near arm now bends).
+- The plate (ATK/DEF badge) sits right under the attacker's feet and covers the ring's front arc; the aura hands avoid
+  it, the ring reads on its sides only. Shared UI: not changed.
+- The white 4-point star + thin white ring on contact against a guarding target is the SHARED guardReact / blockClang
+  (battle.ts), not ours; our contact is the violet pop + wet splash.
+- The dark soft blob ~30 px above the dying mud (critic) is most likely not from our files (not verified by a test film): it appears with the ember_wolf's fire hit
+  (smoke) / shared light layer; nothing of ours draws there (all our rasters are floor-level or on the sprite).
+- Summon vortex: at 1× its spiral ribbons still read partly as concentric rings (the iso squash); the sprite's own puddle
+  (with its dotted rig swirl) covers its centre.
+- Minors not done: face-down flip uses the generic hologram build; revive uses the shared soul_recall ghost; board
+  footprint not shrunk; no idle SFX / struck-body mud sound (decisions 3/4).
 
 ## Round 3 — rig polish (stage RIG + ALL ANIMS re-run), 2026-11-01
 
