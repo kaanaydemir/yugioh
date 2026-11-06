@@ -543,6 +543,10 @@ function sheenAt(o: Pose, s: number): number {
   return pcx(s) - G.rx * s - 6 + ph * (2 * G.rx * s + 12);
 }
 
+/** The still sheet's shade crescent (IŞ-1 / IŞ-3): past this squared radius, on the side away from the key light,
+ *  the water1 sheet falls to water0 — the far end of the water turns from the light (lit / mid / shade planes). */
+const SHADE_D = 0.6;
+
 /** The puddle surface: see-through (the tile shows through a sparse 2×2 haze), a 1-px specular rim (lit on the
  *  far edge), a drifting sheen line and the ripple rings. Drawn under the reflection. */
 function drawPuddle(p: PixelCanvas, o: Pose, light: Light): void {
@@ -570,7 +574,7 @@ function drawPuddle(p: PixelCanvas, o: Pose, light: Light): void {
       // cracked puddle (death) goes back to the see-through glass lines
       const sheet = !glow && s >= 0.95 && o.crack <= 0;
       if (line && !sheet) p.set(x, y, glow ? (d > 0.45 ? PAL.mist : PAL.steel) : back ? PAL.steel : PAL.night4);
-      else if (sheet) p.set(x, y, d > 0.82 ? PAL.night3 : PAL.water1);
+      else if (sheet) p.set(x, y, d > 0.82 ? PAL.night3 : !lit && d > SHADE_D ? PAL.water0 : PAL.water1);
     }
   // ripples: thin iso rings expanding from the feet (two, half a cycle apart)
   if (o.rip >= 0 && s >= 0.95)
@@ -585,6 +589,30 @@ function drawPuddle(p: PixelCanvas, o: Pose, light: Light): void {
         if (inPuddle(x, y, 1) > 0.75) continue;
         p.set(x, y, ph < 0.3 ? PAL.mist : PAL.steel);
       }
+    }
+}
+
+/**
+ * The light pool at the feet (IŞ-1, golden rule 3): the light-woven archer spills its glow onto the still water it
+ * stands in — a flat water2 band, SPILL px wide, hugging the figure's silhouette on the water. The puddle lies on the
+ * archer's key-light-facing side of the sheet (P1: right of it; the P2 relight sheet: left, shown flipped), so the
+ * band also lights the water's near end against the water0 shade crescent at its far end. Only the settled sheet's
+ * open water1 (never the twin, the rim or the shade crescent); a cracked or glowing puddle has no sheet.
+ */
+const SPILL = 3;
+function spillPass(p: PixelCanvas, fig: PixelCanvas, o: Pose, light: Light): void {
+  if (o.pud < 0.95 || o.crack > 0 || o.pudG >= 1.6) return;
+  const ls = light.side < 0 ? -1 : 1;
+  const ys = Math.max(1, rnd(G.cy - G.ry));
+  const ye = Math.min(H - 2, rnd(G.cy + G.ry));
+  for (let y = ys; y <= ye; y++)
+    for (let x = 1; x < W - 1; x++) {
+      if (fig.isOpaque(x, y) || p.get(x, y) !== PAL.water1 || inPuddle(x, y, 1) > 0.82) continue;
+      for (let k = 1; k <= SPILL; k++)
+        if (fig.isOpaque(x + ls * k, y)) {
+          p.set(x, y, PAL.water2);
+          break;
+        }
     }
 }
 
@@ -627,7 +655,8 @@ const SHIMMER = [4, 5, 10, 13, 17];
  * leads and looks at the viewer on its own). Squashing the full figure (skeleton or pixels) to ~20 px turned it into
  * a swirl; instead the body (feet → chin) is foreshortened by `kb` and the head, the crescent crown and the bow are
  * drawn at FIXED pixel sizes, so the three key shapes — hood, crown horns (pointing down), bow arc — always read.
- * Dark night body on the lit water, light-blue crown and bow lines, a 1-px water rim on the key-light side.
+ * Dark night body on the lit water, light-blue crown and bow lines, a 1-px water rim round it and a 2–3 px night3
+ * lit plane on its key-light side (IŞ-1 / IŞ-3).
  */
 interface TwinMap { hb: number; kb: number }
 let TW: TwinMap = { hb: GY - 40, kb: 0.36 };
@@ -674,7 +703,15 @@ function mirrorTwin(r: Pose, light: Light): PixelCanvas {
     for (let y = b.y0; y <= b.y1; y++)
       for (let x = b.x0; x <= b.x1; x++) {
         if (body.get(x, y) !== null) {
-          if (body.get(x + ls, y) === null && body.get(x, y) !== HOOD) q.set(x, y, PAL.night3);
+          if (body.get(x, y) === HOOD) continue;
+          // IŞ-1 / IŞ-3: the key-light side of the dark body is a lit PLANE, not a 1-px line — 3 px on the robe,
+          // 2 px on the body; a thin limb (≤ 3 px across) keeps the 1-px edge so it does not turn wholly lit
+          let toL = 0;
+          while (toL < 4 && body.get(x + ls * (toL + 1), y) !== null) toL++;
+          let toS = 0;
+          while (toS < 4 && body.get(x - ls * (toS + 1), y) !== null) toS++;
+          const litW = toL + toS + 1 <= 3 ? 1 : body.get(x, y) === ROBE_C ? 3 : 2;
+          if (toL < litW) q.set(x, y, PAL.night3);
           continue;
         }
         if (body.get(x + 1, y) !== null || body.get(x - 1, y) !== null || body.get(x, y + 1) !== null || body.get(x, y - 1) !== null) q.set(x, y, PAL.water2);
@@ -1141,6 +1178,7 @@ export function drawArcher(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right')
     fig.outline(PAL.ink);
     shatterPass(fig, o, sk);
     if (o.diss > 0 && o.shatter < 0.3) dissolvePass(fig, o);
+    spillPass(p, fig, o, light);
     p.blit(fig, 0, 0);
   }
 
