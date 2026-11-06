@@ -61,7 +61,7 @@ import { warmPoses } from '../_v3/warm';
 import { atFrame, fade, hush, panAt, play, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { runSummon, type Stage, type SummonCtx } from '../summon-a/_kit';
-import { GrassPatch, SeedStream, dustTick, hornCurl, hornSweep, plumes, rng, seedBurst, strikeStop, strikeStopInto, tipGlints, wakeFan } from './steppe_spiralhorn-fx';
+import { GrassPatch, SeedStream, dustTick, grassSpray, hornCurl, hornSweep, ownImpact, plumes, rng, seedBurst, strikeStop, strikeStopInto, tipGlints, wakeFan } from './steppe_spiralhorn-fx';
 
 const ID: MonsterId = 'steppe_spiralhorn';
 const R = Math.round;
@@ -326,9 +326,11 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
     show(u, 'attack', AF.contact);
     place(u, lunge, 0);
     const tip = tipAt(u, 'attack', AF.toss0, lunge);
-    const hitAt: XY = target && target.sprite.active ? { x: R(lerp(tip.x, target.core().x, 0.3)), y: R(Math.max(tip.y, target.core().y - 8)) } : s.to;
-    // the card's own contact mark: the arc the horn tips cut from the levelled scoop up to the toss (both horns), and
-    // gold glints where they rip out
+    // the direct toss is aimed at the duelist plate's FLOOR in front of him (never the portrait banner behind)
+    const plate: XY = { x: R(aim.x - sgn * 4), y: R(aim.y - 3) };
+    const hitAt: XY = target && target.sprite.active ? { x: R(lerp(tip.x, target.core().x, 0.3)), y: R(Math.max(tip.y, target.core().y - 8)) } : s.direct ? { x: R(lerp(tip.x, plate.x, 0.5)), y: R(Math.max(tip.y, plate.y - 10)) } : s.to;
+    // the card's own contact mark: the filled crescent the horn tips cut from the levelled scoop up to the toss (both
+    // horns), gold glints where they rip out, and the steppe lifting out of the target's footing
     const farTip = (anim: 'attack', f: number, feet: XY): XY => {
       const sk = skeleton(framePose(anim, f));
       const o = offsetOf(u, { x: sk.hornF.tip[0], y: sk.hornF.tip[1] });
@@ -337,22 +339,30 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
     const tipUp = tipAt(u, 'attack', AF.contact, lunge);
     const farUp = farTip('attack', AF.contact, lunge);
     const fxDepth = Math.max(u.sprite.depth, tDepth) + 0.7;
+    // the smear: the swing of the tips round the head, from the levelled scoop up through the target to the toss
     hornSweep(sc, { from: tipAt(u, 'attack', AF.scoop, stop), to: tipUp }, { from: farTip('attack', AF.scoop, stop), to: farUp }, sgn, fxDepth);
     tipGlints(sc, [tipUp, farUp, { x: R((tipUp.x + farUp.x) / 2 + sgn * 3), y: R((tipUp.y + farUp.y) / 2 + 6) }], fxDepth + 0.1);
-    // his own hide-on-horn scores the contact: the shared body blow never sounds under it (§0.2)
+    const footing: XY = target && target.sprite.active ? { x: R(target.home.x), y: R(target.home.y) } : s.direct ? plate : { x: R(aim.x), y: R(aim.y) };
+    grassSpray(sc, footing, sgn, seedN(), Math.max(fxDepth, unitDepth(footing.y) + 1), 8);
+    // his own hide-on-horn scores the contact: the shared body blow never sounds under it (§0.2), and the shared burst
+    // (the star, the WIND-tinted shock ring, the sparks) is never drawn under his own mark
     const SHARED = ['impactHeavy', 'impactLight', 'shieldBlock'] as const;
-    hush([...SHARED], () => s.impact(hitAt));
+    const band = target && target.sprite.active ? target.sprite.depth - 0.4 : DEPTH.FX;
+    ownImpact(sc, [band], () => hush([...SHARED], () => s.impact(hitAt)));
     fade([...SHARED], 0);
     queueMicrotask(() => fade([...SHARED], 0));
     void sleep(sc, 1).then(() => fade([...SHARED], 0));
     play('sshHornCrack', { volume: 1, pan: panAt(hitAt.x) });
     play('sshSeedBurst', { volume: 0.9, pan: panAt(hitAt.x) });
     void stopTime(sc, 80);
-    void lightFlash(sc, hitAt.x, hitAt.y, PAL.white, 10, 140, { floorY: aim.y, intensity: 0.6 });
-    // the seed burst blooms one frame after the flash (never hidden under it)
-    const burstAt = { x: R(hitAt.x), y: R(hitAt.y - 2) };
+    void lightFlash(sc, hitAt.x, hitAt.y, PAL.white, 10, 140, { floorY: s.direct ? plate.y : aim.y, intensity: 0.6 });
+    // the seed burst blooms one frame after the flash (never hidden under it): a dense crown leaning leeward, so it
+    // opens BESIDE the damage number, five big plumed seeds that read at 1×
+    const burstAt = { x: R(hitAt.x + sgn * 2), y: R(hitAt.y - 6) };
     const burstSeed = seedN();
-    void sleep(sc, 34).then(() => seedBurst(sc, burstAt, R(aim.y + 2), sgn, { n: 16, depth: Math.max(curlDepth, DEPTH.FX - 2), seed: burstSeed, glideMs: 1100 }));
+    void sleep(sc, 34).then(() =>
+      seedBurst(sc, burstAt, R((s.direct ? plate.y : aim.y) + 2), sgn, { n: 22, big: 5, tilt: 0.42, spread: 1.25, power: 1.12, depth: Math.max(curlDepth, DEPTH.FX - 2), seed: burstSeed, glideMs: 1100 }),
+    );
     if (loses) {
       // the stronger side answers on this frame: the battle owns him now (he dies where he tossed)
       let g = 0;
@@ -450,7 +460,9 @@ async function blocked(s: StrikeArgs, stop: XY, home: XY, depth0: number, pan: n
     place(u, stop, 0);
     const tip = tipAt(u, 'attack', AF.scoop, stop);
     const SHARED = ['impactHeavy', 'impactLight', 'shieldBlock'] as const;
-    hush([...SHARED], () => s.impact(tip));
+    // the guard's own hex clang stays (it is the guard's), the shared star and ring under the lock do not
+    const band = s.target && s.target.sprite.active ? s.target.sprite.depth - 0.4 : DEPTH.FX;
+    ownImpact(sc, [band], () => hush([...SHARED], () => s.impact(tip)));
     fade([...SHARED], 0);
     queueMicrotask(() => fade([...SHARED], 0));
     play('sshLockClack', { volume: 1, pan: panAt(tip.x) });
