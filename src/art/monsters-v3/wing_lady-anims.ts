@@ -4,7 +4,7 @@
 // Sameness (tools/sameness.ts --against all; gate-fix round 2026-11-06: 7 / 42 out-of-plan pairs UYARI, no KALIR
 // and no metric at the KALIR line; was 11 with two loops at the line) — what sets her apart:
 //   idle             the KESTREL HEAD: the head holds still in space while the chest breathes, and the blade's
-//                    point reaches FORWARD as she peers (windmane_knight 0.91 → 0.27, abyss_magus 0.28 → 0.08, the
+//                    point reaches FORWARD as she peers (windmane_knight 0.91 → 0.29, abyss_magus 0.28 → 0.08, the
 //                    idle RHYTHM match with abyss_magus / tide_harpooner gone)
 //   attack           the hover holds the blade AIMED forward-down at the prey (never cocked back like every other
 //                    wind-up) → the flat stoop → the wing CLAP (steel_silencer 0.65 → 0.50; abyss_magus, dusk_sorcerer,

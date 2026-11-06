@@ -96,3 +96,8 @@ The orchestrator merges only a head where every card is finished and green; send
 3. Re-base the camera gate on main + lane F (clears the m1Imp maxScroll note), then run all gates on that exact head.
 4. Fix the ksBoard5 gold-on-gold seal emblem overlap if quick.
 5. Final report lists the shared edits (turn.ts, HumanInput.ts, StatBadge.ts, plus any others found by `git diff origin/claude/yugioh-card-game-tgi7td --stat`).
+6. shield_titan follow-ups the orchestrator approved (07:58 UTC; make them in lane F as small additive shared edits, other cards' defaults unchanged, v1 identical, list them in the final report):
+   - a per-art `guardGlint: false` opt-out;
+   - the battleV3 COUNTER_FLASH white-blob fix on the blocked attacker;
+   - a public `StatBadge.flashDigits()` (replaces the private-field cast in shield_titan's `plateStep()`).
+   Re-base the stale camera keys (m1Shield, kdWallWeak) on main + lane F in the final gate run.

@@ -205,10 +205,14 @@ lady tributed / stolen / revived   tribute… → statChange(−300) / controlCh
   - The sash flicks up 1 px at f5 and f13, half a loop out of phase with the braid, so it never reads as one sine.
 - **Head (kestrel).** At f11–f12 the head **tilts 1 px** as if listening, then snaps back on f13.
   Nothing else moves in that frame pair, so the twitch reads.
+  *Gate fix 2026-11-06:* the head is now **stabilised like a hovering kestrel's**: while the chest rises (f4–f10)
+  the head stays fixed in space; only the 1-px listening dip (f13) moves it.
+- **Sword (gate fix 2026-11-06).** While she peers (f5–f8) the hand drops 1 px and the wrist tips the point
+  forward (sa 56 → 48): the tip reaches toward what she looks at, forward, not up.
 - **Sword.** Tip down at her side. The blade glint (`twinkle`, white, the anim's single glint) runs
   down the lit edge on f8–f9.
 - **Jewel.** leaf4 core on f0–f9. On f10–f15 the core dims to leaf3 with the gold4 setting kept (a slow pulse).
-- **Breathing.** Chest up 1 px on f0–f7, down on f8–f15. The head lags 1 frame.
+- **Breathing.** Chest up 1 px on f4–f10 (the head does not follow: see Head).
 - **Light layer.** A small leaf3 spill from the jewel. No ground pool at rest.
 
 ## 4. Storyboards (scene ms; game ≈ ×1.35; limits = REHBER §5 × 1.45 game clock)
@@ -349,7 +353,7 @@ around the target. She returns **backwards on her wings**, still facing the enem
 
 | ms | picture | sprite | sound |
 |---|---|---|---|
-| 0 | `strikeStartFrame` = the declaration hold, attack f1: a crouch, wings lifting, sword drawn back along the forearm. | f1 | `khHover` (the voice charge, held from the declaration) continues |
+| 0 | `strikeStartFrame` = the declaration hold, attack f1: a crouch, wings lifting, the sword brought down to **aim forward-down at the prey** (gate fix 2026-11-06; was drawn back along the forearm). | f1 | `khHover` (the voice charge, held from the declaration) continues |
 | 0–100 | f2: one big downstroke, and she **rises 14 px** above her tile (`Quad.Out`). Her wing shadow stays on the floor. | f2 | — |
 | 100–340 | **Hover.** The cinematic alternates f2 / f3 (wings down / up) every 60 ms, 4 beats. **The head, jewel and sword pixels are identical in f2 and f3.** Only the wings and sash move. 1-px gold1 "beat arcs" flick off the wingtips on each downstroke (3 px long, 1 frame). | f2/f3 ×2 | the hover thrum swells |
 | 340 | f4: the wings **fold back** into a swept "V" behind her and the sword points forward. A tiny drop of 2 px (the stoop begins). | f4 (60) | `khStoop` (release) |
@@ -605,12 +609,13 @@ statChange run that follows gets **Kanat Selamı** from our handler.
   - `monster-gates … --class medium --ref none` exit 0 (KK-3…KK-13: margins ≥ 2, HA-14/15/16/17/18/19/20,
     KK-4 phase < 50 %, KK-5 feet, KK-6 marks, IŞ-1, IŞ-10 noise; 121 frames, 2.93 MB ≤ 3.6 MiB).
   - Board mode at 1×: `?dev=monster&id=wing_lady&look=v3&mode=board`, after the rename.
-- **Sameness.** `sameness --art … --ids wing_lady --against all` below KEY 0.62 / MOTsig 0.55 /
+- **Sameness.** (Status: see "Gate fix (2026-11-06)" at the end: 7 UYARI left, blind pages built, review pending.)
+  `sameness --art … --ids wing_lady --against all` below KEY 0.62 / MOTsig 0.55 /
   MOTloop 0.65 / MOTavg 0.45 / SI 0.35. Watch lumen_sprite, storm_hawk, shade_assassin, reed_heron and kite_fencer (when they land).
 - **v1.** `filmdiff` v1 17/17 and a6v1 26/26 IDENTICAL; `card-hash --look v1` identical. Every
   registration is gated, the strike's v1 branch is `s.base`, and the wrappers return `ctx.base()` untouched in v1.
 - **Camera.** `measure --camera-gate shots/v3/kart-f/camera-base.json`: zoom 1, no close-ups, `focusCalls` equal to the base. There is no `ctx.focus` anywhere.
-- **Palette.** `palcheck` on frame dumps of `khSummon`, `khKill` and `khBoard5`.
+- **Palette.** `palcheck` on frame dumps of `khSummon`, `khKill` and `khBoard5`. (Result: "Gate fix (2026-11-06)" at the end.)
 - **Contact.** `contact-probe` on `khAttack`, `khBlocked` and `khKill`.
 - **Budgets** (game clock from measure; ≤ REHBER §5 × 1.45):
 
@@ -896,3 +901,117 @@ choice for the ~0.6 s beat; it is restored afterwards.
 
 **Shared touches:** none. Files: `src/cinematics/kart-f/wing_lady.ts`, `src/cinematics/kart-f/wing_lady-rules.ts`,
 `src/duel/scenarios/wing_lady.ts`, `tests/cinematics/wing_lady-aura.test.ts`, this doc.
+
+## Gate fix (2026-11-06) — adversarial verifier `verify1` (two gates failed: sameness, palcheck)
+
+Evidence: `shots/v3/kart-f/wing_lady/gfix/` (gitignored): `same/sameness.txt` (+ overlays), `sheet/`, `sheet-p2/`,
+`gates.txt`, `idle-zoomA.png`, `idle-zoomB.png`, `atk-zoom.png`, `khAttack.png`, `khAttack-hover.png`, `pal/`
+(frame dumps, `palcheck*.txt/json`, `khKill-4-vs-150.png`, `khKill-58-offdiff.png`), `blind-pages/`, `blind-keys/`
+(keep away from the reviewer), `blind-runs/`. I looked at every PNG listed except the blind pages' motion strips beyond a spot check.
+
+### 1. Sameness: root cause and fix (art only: `src/art/monsters-v3/wing_lady-anims.ts`)
+
+A per-channel breakdown of the MOT cosines (scratch script over `tools/lib/tracks.ts`) showed where the numbers came from:
+- **idle × windmane_knight 0.910:** her idle `points` track moved only `head.y` and `core.y` (the 1-px chest rise with
+  the head riding it). His idle is the same breathing bob, so the two tracks were nearly identical. The wings do not
+  enter the `points` vocabulary (`prop` takes `grip` before `staff`).
+- **attack (MOTsig 0.59–0.68 vs steel_silencer, dusk_sorcerer, abyss_magus, steppe_spiralhorn, venom_drake):** the hover
+  held the blade **cocked back along the forearm** (sa 195), so the tip path was the generic "back-up wind-up, forward
+  release" of every weapon strike. That was not her idea: §4.7 says she **takes aim** and stoops **sword-first**.
+
+Fixes (design-level, recorded in §3 and §4.7):
+1. **Kestrel head (idle).** The head is stabilised in space through the breath (`hy` cancels `chest` on f4–f10), like a
+   hovering kestrel's. Only the f13 listening dip moves it. The chest, wings, braid and sash breathe as before. A
+   head-tick in x was tried and dropped (HA-17 spike 1.93, HA-21 phase 52.9 %).
+2. **The blade follows her eye (idle).** f5–f8: the hand drops 1 px and the point tips forward (sa 56 → 48).
+3. **Hover aims the blade (attack f1–f3).** The sword is brought down to aim **forward-down at the prey** (sa 40,
+   grip 41/46) instead of cocked back. The head, jewel and blade stay pixel-identical across f2/f3 (the locked
+   head). Frame count, holds, marks and contact are unchanged, so the cinematic timing is untouched.
+   `khAttack-hover.png`: crouch → hover with the point at the hawk → fold → flat stoop → clap. It reads as "taking aim".
+4. **HA-21 phase upkeep.** hit f0 and hitMagic f0 keep the kestrel head lock (`hy: 1` with `chest: −1`). hitMagic f0's
+   wings sit at the idle mid-breath (a −135 / len 27, far −98). The phase maximum is now **45.7 %** (was 49.2 %).
+
+| pair (out of plan) | before (verify1) | after | note |
+|---|---|---|---|
+| windmane_knight | MOTloop **0.910 U!** | 0.287 G | idle head lock |
+| shade_assassin (v1, proxy) | MOTloop **0.865 U!** | 0.840 U | below the KALIR line; proxy = silhouette mass of the wing breath (wing variants that reached 0.79 broke HA-19 / HA-21) |
+| abyss_magus | MOTsig 0.619, idle RHYTHM same | 0.476 G, rhythm differs | GEÇER |
+| dusk_sorcerer | MOTsig 0.675 | 0.183 G | GEÇER |
+| steppe_spiralhorn | MOTsig 0.594 | 0.476 G | GEÇER |
+| venom_drake | MOTsig 0.591 | 0.336 G | GEÇER |
+| tide_harpooner | MOTsig 0.668 (special), idle RHYTHM same | 0.668 U, rhythm differs | special = the salute raising the blade |
+| steel_silencer | MOTsig 0.647, MOTloop 0.740 | MOTsig 0.503 G, MOTloop 0.740 U | guard: both raise a blade to a level parry |
+| hollow_ogre | MOTsig 0.731 (special) | 0.731 U | salute vs club raise |
+| mudgrasp_spirit | MOTsig 0.698 (roar), MOTavg 0.463 | 0.698 U, MOTavg 0.467 U | roar: both throw the head back |
+| straw_decoy_token (placeholder token, proxy) | MOTsig 0.614 | 0.614 U | |
+| seal_leg_l | 0.511 G | MOTsig 0.646 U | new: the aimed hover makes the attack track more horizontal (forward), like the leg's kick |
+
+Result: `sameness --look v3 --ids wing_lady --against all` **exit 1 (UYARI): 7 of 42 pairs**, down from 11. There is
+**no KALIR, and no metric at the KALIR line** (the two `U!` loops are gone). KEY ≤ 0.436 against every card.
+`sameness.txt` is in `gfix/same/`. The distinction header in `wing_lady-anims.ts` is rewritten for the 7 pairs.
+
+The 7 remaining pairs are all **out of plan**. By REHBER KK-15 / A3 §9.5 that means UYARI, and the gate closes with the
+blind eye test. The §9 lines (0.55 / 0.65 / 0.45) are not met for these 7. I did not lower them.
+- **The blind eye test is built but not yet scored.** It must be read by a separate agent that did not make the
+  monster and has not seen the art, the distinction text or the key (A3 §9.5 (2): the orchestrator starts it). This
+  builder session cannot start a subagent.
+- Pages: one test per remaining pair (`wing_lady` × X; seeds 101–107), in `gfix/blind-pages/t1…t7/`. Each holds
+  `ref.png`, `sil.png` (8 coded silhouettes), `motion.png` (3 coded pairs incl. 2 controls) and `form.json`. The
+  `*-x1.png` files are 1:1 copies of the same pages.
+  - t1 shade_assassin, t2 steel_silencer, t3 seal_leg_l, t4 tide_harpooner, t5 hollow_ogre, t6 mudgrasp_spirit,
+    t7 straw_decoy_token.
+- Keys: `gfix/blind-keys/t1…t7/key.json`.
+- Score each test:
+  `npx vite-node tools/sameness.ts --score shots/v3/kart-f/wing_lady/gfix/blind-pages/tN/form.json --key shots/v3/kart-f/wing_lady/gfix/blind-keys/tN/key.json --note shots/v3/kart-f/wing_lady/gfix/blind-score-tN.txt`
+- Pass: 100 % of the silhouette codes are assigned correctly, every different-member pair is answered "farklı", and
+  ≥ 80 % of the controls are answered "aynı". A pair that fails is KALIR and goes back to the art.
+
+### 2. Palcheck: measured, root cause found, not this card's pixels
+
+Films: 34 ms frame dumps of `khSummon` (96), `khKill` (172), `khBoard5` (90) and the approved reference
+`sbSentinelDies` (120). Clip 120,40,400,230, rules a5 (`pal/palcheck.txt`, `.json`).
+
+**With frame 0 as reference (the default): all four FAIL.**
+
+| film | Δoff max | white max | rowWhite max |
+|---|---|---|---|
+| khSummon | +2.78 at #2, t=68 | 0.85 % | 25.3 % |
+| khKill | +3.48 | 1.13 % | 24.5 % |
+| khBoard5 (idle, no action) | +1.75 at #2 | 1.18 % | 28.6 % |
+| sbSentinelDies (approved) | +2.66 | 1.07 % | 22.8 % |
+
+Frame 0 is captured before the scene's opening: the jump at #2 (t=68) happens in every film, the idle-only khBoard5
+included.
+
+**With a settled reference, `--ref 4` (t=136, after the opening, before any action)** (`pal/palcheck-ref4.txt`):
+
+| film | Δoff | verdict |
+|---|---|---|
+| khBoard5 | +0.29 | **PASS** |
+| khSummon | ≤ 0.0 from t=136 to the end (the entrance, the beats, the salute, the bless) | the only frame over the line is #2, t=68, the scene opening before the reference, 430 ms before her entrance |
+| khKill | ≤ +0.99 until t=1904, then +1.05…+1.15 (t=1938–2142), then ≤ +0.95 until 2584, then +1.2…+2.8 | see below |
+| sbSentinelDies (approved) | ≤ +0.6 to t=3000, then +1.1…+2.2 | — |
+
+- **khKill from t≈2600 to the end** (peak +2.76 at #112, t=3808) is shared scene material. The worst-frame
+  off-palette colours and counts are **identical** to the approved `sbSentinelDies` peak (#115, t=3910):
+  #2d2d39 ×187, #38343c ×138/137, #66554f ×118, …. Those pixels are the backdrop monster holograms and the LP panel's
+  damage roll (`khKill-4-vs-150.png`).
+- **khKill t=1938–2142 (+1.05…+1.15) is her death, but not her art.** Every new off-palette pixel inside her box
+  (x 315–385, y 90–172) was an on-palette sprite pixel in the reference frame (`khKill-58-offdiff.png`: 1511 of 1511).
+  They are the floor, lit by the shared light layer (stone1 tints #473e42, #483f43, …), uncovered when her standing
+  body and wings fall flat. Outside her box the change is ≤ +0.17.
+- The same mechanism, any monster that leaves its tile, takes the approved `sbSentinelDies` to 6405 such pixels at
+  #100. Her own death FX (cape, bird, card) adds no off-palette colour of its own.
+- **The cause is the shared light layer under a leaving sprite plus the shared scene opening and holograms. None of
+  it is in this card's files.** CLAUDE.md golden rule 3 makes the light layer off-palette on purpose, and lane F may
+  not edit it.
+- White ≤ 1.18 %, rowWhite ≤ 28.6 %, bands only darkRows, in all three of her films: those a5 gates pass.
+
+### 3. Other gates after the change
+- `monster-gates --class medium --ref none` (P1 + P2 sheets `gfix/sheet`, `gfix/sheet-p2`): **24 rows, 21 ok, 0 FAIL**
+  (`gfix/gates.txt`). HA-17 1.48 / 1.55, HA-19 0.74 / 0.68, HA-21 local ≤ 36.5 %, **HA-21 phase ≤ 45.7 %** (was 49.2 %),
+  IŞ-10 idle 7.0 % / 7.5 %, IŞ-1 ok. 126 frames, 3.05 MB.
+- Tests: `tests/art/wing_lady.test.ts` + `tests/cinematics/wing_lady-aura.test.ts` **16/16**. tsc: no error in this card's files.
+- Timing: no hold, frame count or mark changed, so camera, budgets and contact are as `verify1`. v1: art-only change
+  in a v3-only rig, so v1 films are unaffected. filmdiff was not re-run.
+- Shared touches: none. Files: `src/art/monsters-v3/wing_lady-anims.ts`, this doc.
