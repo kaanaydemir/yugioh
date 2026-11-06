@@ -210,6 +210,33 @@ export function spearShot(scene: Phaser.Scene, a: XY, b: XY, ms: number, depth: 
   });
 }
 
+/** The spear stuck in the target after the pierce (point buried: drawn 5 px short of `at` along its flight),
+ *  quivering 1 px across its line for the first beats, until the returned stop() (the recall pulls it out). */
+export function spearStuck(scene: Phaser.Scene, from: XY, at: XY, depth: number): { stop(): void } {
+  const dx = at.x - from.x;
+  const dy = at.y - from.y;
+  const l = Math.hypot(dx, dy) || 1;
+  const dir: XY = { x: dx / l, y: dy / l };
+  const sp = spearCanvas(dir, dir.x < 0);
+  const bx = rnd(at.x - dir.x * 5);
+  const by = rnd(at.y - dir.y * 5);
+  const r = new Raster(scene, bx - 36, by - 24, 72, 48, depth);
+  r.draw((rr) => rr.pc.blit(sp, 0, 0));
+  let alive = true;
+  void run(scene, 1200, (_t, el) => {
+    if (!alive) return;
+    const q = el < 360 ? (Math.floor(el / 45) % 2 ? 1 : -1) : 0;
+    r.moveTo(bx - 36 + rnd(-dir.y * q), by - 24 + rnd(dir.x * q));
+  });
+  return {
+    stop() {
+      if (!alive) return;
+      alive = false;
+      r.destroy();
+    },
+  };
+}
+
 // ================================================================ the rose closing round the target
 
 /** "Pusula Fırtınası": a compass rose of two-colour field lines closes round `c` (the target's core) over ms. */

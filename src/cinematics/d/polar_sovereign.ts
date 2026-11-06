@@ -44,7 +44,7 @@ import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { bg, run, runSummon, type Stage } from '../summon-a/_kit';
 import { COIL_EXPLODED, NEEDLE_EXPLODED, RX as SRX } from '../../art/monsters-v3/polar_sovereign-rig';
 import { ATTACK_CATCH, ATTACK_LOCK, ATTACK_THROW, DEATH_SPLIT, SUMMON_HOLD, SUMMON_KLAK, SUMMON_LAND, SUMMON_LIFT } from '../../art/monsters-v3/polar_sovereign-anims';
-import { dustRose, dustShock, flingPieces, landPuff, poleBlast, seedFx, spearShot, targetRose, type DustRose } from './_polar_sovereign-fx';
+import { dustRose, dustShock, flingPieces, landPuff, poleBlast, seedFx, spearShot, spearStuck, targetRose, type DustRose } from './_polar_sovereign-fx';
 
 const ID = 'polar_sovereign';
 const PIECES: readonly CardId[] = ['polar_needle', 'polar_anvil', 'polar_coil'];
@@ -73,10 +73,11 @@ const PIECE_PITCH: Readonly<Record<string, number>> = { polar_needle: 1.5, polar
 /** Handed from the tribute pre-show to the summon entrance (same event batch, played in order). */
 let pending: { rose: DustRose | null; pools: LightHandle[]; dimmed: boolean } | null = null;
 /** The split's piece-sparks hanging over the landing zones, keyed by the sovereign's uid (destroyed → effect hook). */
-const sparks = new Map<number, { zones: number[]; h: ReturnType<typeof flingPieces> }>();
+const sparks = new Map<number, { zones: number[]; h: ReturnType<typeof flingPieces>; hum: { stop(ms?: number): void } }>();
 /** where a flung piece hangs before it drops: HANG px over its tile */
 const HANG = 26;
 let lastSeam = -1;
+const NO_HUM: { stop(ms?: number): void } = { stop: () => undefined };
 /** each piece's anchor where it sits in the ASSEMBLED body (the exploded view brought down by SUMMON_LIFT) */
 const SEAT: Readonly<Record<string, XY>> = Object.fromEntries(Object.entries(EXPLODED).map(([k, v]) => [k, { x: v.x, y: v.y + SUMMON_LIFT }]));
 
@@ -329,10 +330,16 @@ registerStrike(
     bg(poleBlast(sc, aim, s.toGround.y, DEPTH.FX + 2));
     void lightFlash(sc, aim.x, aim.y, PAL.white, 44, 260, { floorY: s.toGround.y, intensity: 1, ring: true });
     bg(shake(sc, 200, 5));
+    // the spear stays buried in the rose's heart, quivering, until the recall rips it out
+    const stuck = spearStuck(sc, from, aim, depth);
     // the ace's own extra beat over the heavy class's hit-stop (spec: 140 ms)
     await hitStop(sc, 20);
-    if (loses || !u.sprite.active || u.retired) return;
+    if (loses || !u.sprite.active || u.retired) {
+      bg(wait(sc, 260).then(() => stuck.stop()));
+      return;
+    }
     await wait(sc, 160);
+    stuck.stop();
     if (!u.sprite.active || u.retired) return;
     // ---- the recall: the spear snaps back into the fist, to the shoulder, home
     play('sovereignRecall', { volume: 0.85, pan });
@@ -436,13 +443,20 @@ registerCardHook(
       }),
       460,
     );
-    sparks.get(ev.uid)?.h.destroy();
-    sparks.set(ev.uid, { zones: split.zones.map((z) => z.player * 10 + z.zone), h });
+    const prev = sparks.get(ev.uid);
+    prev?.h.destroy();
+    prev?.hum.stop(80);
+    const entry = { zones: split.zones.map((z) => z.player * 10 + z.zone), h, hum: NO_HUM };
+    sparks.set(ev.uid, entry);
     bg(wait(sc, 6000).then(() => {
-      sparks.get(ev.uid)?.h.destroy();
+      if (sparks.get(ev.uid) !== entry) return;
+      entry.h.destroy();
+      entry.hum.stop(200);
       sparks.delete(ev.uid);
     }));
     await h.done;
+    // caught by the field: the chord held apart while they hang
+    if (sparks.get(ev.uid) === entry) entry.hum = start('sovereignHang', { volume: 0.8, pan });
   },
   { priority: 20, name: 'd:polar_sovereign:death' },
 );
@@ -467,6 +481,7 @@ registerCardHook(
     if (idx.length === 0) return ctx.base();
     const hang = sparks.get(ev.uid);
     sparks.delete(ev.uid);
+    hang?.hum.stop(140);
     const jobs = idx.map(async (i, k) => {
       const e = ctx.events[i] as SummonEv;
       ctx.consumeAt(i);

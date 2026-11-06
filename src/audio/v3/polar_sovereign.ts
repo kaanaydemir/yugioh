@@ -23,7 +23,8 @@
 //           sovereignRepel     magnetic repulsion: the chord splits into its three notes, flung apart
 //           sovereignFall      (fail) the pieces drop and clatter
 //           sovereignBurst     the last breath: the hum dies, the dust settles
-//   split   sovereignPieceLand a piece lands in its zone (pitched per piece by the cinematic's `rate`)
+//   split   sovereignHang      the three pieces held in the field over their zones (sustained → the first drop)
+//           sovereignPieceLand a piece lands in its zone (pitched per piece by the cinematic's `rate`)
 //   revive  sovereignReviveGather / sovereignReviveLock
 // Levels follow the slice (pre-chain linear amplitudes); big beats duck ≥ 0.55, small ≤ 0.3 (SE-7).
 
@@ -292,6 +293,27 @@ export const V3_POLAR_SOVEREIGN_RECIPES = {
       poleHum(v, 0, [[0, 0.14], [0.7, 0.0001, 'e']]);
       glassRain(v, { d: 0.7, n: 16, g: 0.05, notes: DUST, dec: [0.03, 0.1], curve: 1.8, modes: 2 });
       puff(v, 0, 0.16, 0.5, 900, { kind: 'brown' });
+    },
+  },
+  /** Split: the three pieces hang in the field over their zones (sustained; stopped as the first one drops) — the
+   *  chord held apart: its three notes each wavering at their own rate over the family's 110 / 111 Hz beat. */
+  sovereignHang: {
+    cap: 1,
+    gap: 0.3,
+    verb: 0.45,
+    duck: 0.3,
+    play(v) {
+      const D = 3;
+      const env = (g: number): Pt[] => [[0, 0], [0.15, g], [D - 0.6, g * 0.8], [D, 0.0001, 'e']];
+      const notes: [number, number, number, number][] = [[E2 * 0.84, 0.1, 5.2, -0.6], [D3, 0.07, 6.6, 0], [A3 * 1.19, 0.05, 8.1, 0.6]];
+      notes.forEach(([f, g, rate, pan]) => {
+        const p = v.panner(pan);
+        const wob: Pt[] = [];
+        for (let t = 0; t <= D; t += 0.04) wob.push([t, f * (1 + 0.012 * Math.sin(t * rate * Math.PI * 2))]);
+        v.tone('triangle', wob, { g: env(g), to: p });
+      });
+      poleHum(v, 0, env(0.09));
+      glassRain(v, { t: 0.1, d: D - 0.4, n: 14, g: 0.03, notes: DUST, dec: [0.03, 0.08], curve: 1, spread: 0.9, modes: 2 });
     },
   },
   /** Split: a piece lands in its zone in defense (the cinematic pitches it per piece with `rate`). */
