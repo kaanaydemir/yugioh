@@ -62,19 +62,28 @@ describe('steppe_spiralhorn', () => {
       for (let y = bottom - 5; y <= bottom; y++) for (let x = 0; x < p.w; x++) if (p.isOpaque(x, y)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); }
       return `${bottom}:${x0}..${x1}`;
     };
-    const ref = band(drawFrame(art, 'idle', 0, 'left'));
+    // each loop keeps its own hooves planted (the guard braces them wider: forelegs forward, hind legs back); every
+    // frame of the loops and the transitions stands on the same floor row
+    const floor = (p: PixelCanvas) => band(p).split(':')[0];
+    const ref = floor(drawFrame(art, 'idle', 0, 'left'));
+    for (const a of ['idle', 'guard'] as const) {
+      const r0 = band(drawFrame(art, a, 0, 'left'));
+      for (let f = 0; f < spec(a).frames; f++) expect(band(drawFrame(art, a, f, 'left')), `${a} ${f}`).toBe(r0);
+    }
     for (const a of ['idle', 'guard', 'toGuard', 'fromGuard'] as const)
-      for (let f = 0; f < spec(a).frames; f++) expect(band(drawFrame(art, a, f, 'left')), `${a} ${f}`).toBe(ref);
+      for (let f = 0; f < spec(a).frames; f++) expect(floor(drawFrame(art, a, f, 'left')), `${a} ${f}`).toBe(ref);
   });
 
   it('bounds three times, each higher, and ends the strike with an upward horn toss', () => {
     const tipY = (f: number) => art.points!('attack', f).muzzle!.y;
     const core = (f: number) => art.points!('attack', f).core!.y;
-    // the three apexes (f5, f7, f9) rise
-    expect(core(7)).toBeLessThan(core(5));
-    expect(core(9)).toBeLessThan(core(7));
-    // release (pike: horns forward) → contact (toss): the horn tips go UP
-    expect(tipY(10)).toBeLessThan(tipY(9) - 8);
+    // the three apexes (f5, f9, f12) rise
+    expect(core(9)).toBeLessThan(core(5));
+    expect(core(12)).toBeLessThan(core(9));
+    // the scoop (f14: horns levelled forward) → the in-between (release) → contact (toss): the horn tips go UP
+    const rel = art.anims.attack.marks!.release!;
+    expect(tipY(rel)).toBeLessThan(tipY(14) - 6);
+    expect(tipY(rel + 1)).toBeLessThan(tipY(rel) - 4);
     // the release hold is short, the full rear the longest
     const h = spec('attack').holds!;
     expect(h[art.anims.attack.marks!.release!]).toBeLessThanOrEqual(70);
@@ -86,8 +95,11 @@ describe('steppe_spiralhorn', () => {
     const leaf = (c: number) => c === PAL.leaf1 || c === PAL.leaf2 || c === PAL.leaf3 || c === PAL.leaf4;
     const mid = drawFrame(art, 'death', 6, 'left');
     expect(count(mid, leaf)).toBeGreaterThan(count(mid, (c) => c === PAL.earth3) * 3);
+    // the last frame: the mound is gone, only the horns lie on the floor (the card's watcher lifts them as plumes)
     const last = drawFrame(art, 'death', d.frames - 1, 'left');
-    expect(count(last, (c) => c === PAL.white)).toBeGreaterThan(10);
+    expect(count(last, leaf)).toBe(0);
+    expect(count(last, (c) => c === PAL.gold4 || c === PAL.earth4)).toBeGreaterThan(6);
+    expect(last.bounds()!.h).toBeLessThan(18);
     expect(count(last, (c) => c === PAL.stone2 || c === PAL.stone3 || c === PAL.fire2)).toBe(0);
   });
 

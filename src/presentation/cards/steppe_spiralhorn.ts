@@ -8,9 +8,10 @@
 // body: hide + horn has no struck-sound material (GENERATED_HIT_MATERIALS is pinned to stone), and 'hide' maps to the
 //   crystal ring — so the body names a library material WITHOUT a hit recipe ('scale') and the card's own defend hook
 //   scores the struck hide + keratin tick (sshStruck / sshGuardClack) on the contact frame.
-// death: §5.2 — the seed / grass cloud on the wind is drawn by the pose; the kit's last-frame break of the remaining
-//   stub (the plumes) goes as LIGHT motes drifting up (never rubble, ash, feathers or pollen); the accent is plant (a few
-//   grass bits falling off while it dies).
+// death: §5.2 — the seed / grass cloud on the wind is drawn by the pose; on the last frame (only the lying horns) the
+//   card's watcher lifts the horns off as two seed plumes and hides the sprite, so the kit's material break never runs
+//   (no starburst, no ring: the finale is the plumes). The material is 'plant' as the fallback (no ring, no white
+//   burst) should the watcher not be attached; the accent is plant (a few grass bits falling off while it dies).
 // light: §2.5 "Light" — gold4 (the horn tips) 1.0, leaf4 (wind curls, grass tips) 0.5, halo 0.5, pool 0.7; the contact
 //   light is a small white pool.
 
@@ -23,7 +24,7 @@ export default {
   body: { physical: 'scale' },
   attack: { type: 'melee', blow: 'physical', from: 'muzzle', vfx: 'hornToss', tone: PAL.white, blocked: 'rebound', ranged: false },
   summon: { style: 'swoop', matter: 'plant', roarPeak: 3 },
-  death: { material: 'light', accent: 'plant' },
+  death: { material: 'plant', accent: 'plant' },
   flip: { accent: 'dust', ramp: 'leaf' },
   voice: { custom: 'steppe_spiralhorn' },
   light: { glow: { emissive: [[PAL.gold4, 1], [PAL.leaf4, 0.5]], halo: 0.5, pool: 0.7 }, strike: PAL.white },

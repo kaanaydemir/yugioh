@@ -44,7 +44,7 @@ export const enum Part {
 }
 
 /** The only head angles the anims use (degrees, + = nose down): every angle is one rigid head + horn map. */
-export const HEAD_ANGLES = { sky: -45, up: -22, level: 0, down: 24, low: 50, pike: 78, ram: 92 } as const;
+export const HEAD_ANGLES = { sky: -45, up: -22, level: 0, down: 24, toss: 42, low: 50, drive: 70, pike: 78, ram: 92 } as const;
 
 // ---------------------------------------------------------------- pose
 
@@ -109,6 +109,13 @@ export interface Pose {
   gather: boolean;
   /** death: the horns laid down along the floor (absolute angle of the near horn, deg; 0 = carried by the head) */
   hornLay: number;
+  /** death: the far horn's lay angle relative to the near one (deg); the laid horns' bases shifted (px, frame space:
+   *  dx back away from the killer, dy down to the floor line) as the mound under them blows away */
+  hornLayF: number;
+  hornDx: number;
+  hornDy: number;
+  /** death: the wind presses the windward (front) edge of the grass mound down before it erodes (0…1) */
+  press: number;
   /** global phase 0…1 (one-shots wrap it to 0 on their last frame) */
   t: number;
 }
@@ -152,6 +159,10 @@ export const NEUTRAL: Pose = {
   plume: 0,
   gather: false,
   hornLay: 0,
+  hornLayF: -26,
+  hornDx: 0,
+  hornDy: 0,
+  press: 0,
   t: 0,
 };
 export const pose = (o: Partial<Pose>): Pose => ({ ...NEUTRAL, ...o });
@@ -234,7 +245,8 @@ export function skeleton(o: Pose): Skel {
   const hn = legSk(bl(0, 2), o.hn, 9, 11, 9, -1);
   const hf = legSk(bl(3, 2), o.hf, 9, 11, 9, -1);
   const horn = (bx: number, by: number, len: number, local: number, lay: number) => {
-    const base = hl(bx, by);
+    const b0 = hl(bx, by);
+    const base: Pt = o.hornLay !== 0 ? [b0[0] + o.hornDx, b0[1] + o.hornDy] : b0;
     const ang = o.hornLay !== 0 ? o.hornLay + lay : local + ha;
     const r = (ang * Math.PI) / 180;
     return { base, tip: [base[0] + Math.cos(r) * len, base[1] + Math.sin(r) * len] as Pt, ang, len };
@@ -242,7 +254,7 @@ export function skeleton(o: Pose): Skel {
   return {
     H: Hh, S, u, v, L, bl, poll, ha, hl, fn, ff, hn, hf,
     hornN: horn(1, -0.5, HORN_N_LEN, HORN_N_ANG, 0),
-    hornF: horn(4, 0, HORN_F_LEN, HORN_F_ANG, -26),
+    hornF: horn(4, 0, HORN_F_LEN, HORN_F_ANG, o.hornLayF),
     eye: hl(4, 3),
     core: bl(L / 2, 0),
     nose: hl(15, 8),
