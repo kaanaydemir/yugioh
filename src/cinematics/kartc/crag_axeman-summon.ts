@@ -221,22 +221,20 @@ async function boulderEntrance(S: Stage): Promise<void> {
   });
   await u.playRange('summon', 4, landF);
   await sleep(sc, u.frameMs('summon', landF));
-  // ---- the NARA: the roar's own drawn frames (build, the axe raised one-handed with the mouth open held ~460 ms, the
-  // mouth closing with the axe still up, the release) — the shout (~0.8 s) lasts as long as its picture
+  // ---- the NARA: the roar's own drawn frames — the gather (the axe swung down low by the knee, the chest filling), the
+  // BURST (one underhand swing from the floor to overhead, head thrown back, mouth wide), the held shout, the release
   if (u.has('roar') && u.sprite.active) {
-    // the held shout is ALIVE: the roar's two hold frames alternate every ~80 ms (the chest heaving, the head pushing,
-    // the raised axe shaking a px, the beads trembling, the floor seam between the halves breathing with the voice);
-    // on the voice's beats the floor answers — a stepped dust ring and pebbles hopping round his boots
-    // (r3: a real three-frame cycle — jaw wide / half / wide, the axe trembling a px, beads and hem shaking — held
-    // ~300 ms, and the ATK/DEF plate pops in the middle of it, so the hold is never a still picture)
-    const beats: [number, number][] = [[2, 100], [3, 90], [4, 70], [5, 70], [6, 70], [4, 70], [5, 80], [7, 100], [8, 90]];
+    // the held shout is ALIVE (r3): a three-frame cycle on the voice's beats — jaw wide / half / wide, the raised axe
+    // trembling a px, the chest heaving, beads and hem shaking, the floor seam between the halves breathing — held
+    // ~240 ms, the ATK/DEF plate popping in the middle of it; the floor answers each beat (a stepped dust ring, pebbles)
+    const beats: [number, number][] = [[1, 70], [2, 100], [3, 80], [4, 60], [5, 60], [6, 60], [4, 60], [7, 100], [8, 90]];
     let i = 0;
     for (const [f, ms] of beats) {
       if (!u.sprite.active) break;
       u.pose('roar', f);
       if (f === 2) play('caxNara', { volume: 0.95, pan });
-      if (i === 5) void u.badge.pop();
-      if (f === 3 || i === 5 || i === 6) shoutBeat(sc, home, f === 3 ? 2 : i === 5 ? 1 : 0);
+      if (i === 6) void u.badge.pop();
+      if (f === 3 || i === 4 || i === 6) shoutBeat(sc, home, f === 3 ? 2 : i === 4 ? 1 : 0);
       i++;
       await sleep(sc, ms);
     }
