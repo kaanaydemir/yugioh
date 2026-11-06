@@ -48,8 +48,10 @@ const PIPES: readonly { pts: readonly (readonly [number, number])[]; clamps: rea
 
 // ---------------------------------------------------------------------------------------------- floor base
 
-const BASE: Color = PAL.night2;
-const LIP: Color = PAL.night3;
+// pixel compliance + value pass (2026-11-06): the open floor one step darker (night1; the target's floor ≈ #1c1c3c sits
+// between night1 and night2, nearer night1) so the board is clearly the brightest mass and the hall stays calm
+const BASE: Color = PAL.night1;
+const LIP: Color = PAL.night2;
 const SEAM: Color = PAL.night0;
 
 function flagPixel(x: number, y: number): Color {
@@ -68,11 +70,11 @@ function flagPixel(x: number, y: number): Color {
   if (h % 5 === 0) {
     const sx = ((h >>> 8) % 40) - 20;
     const sy = ((h >>> 16) % 16) - 8;
-    if (Math.abs(px - sx) < 2 && Math.round(py) === sy && Math.abs(sx) / 2 + Math.abs(sy) < 11) return PAL.night1;
+    if (Math.abs(px - sx) < 2 && Math.round(py) === sy && Math.abs(sx) / 2 + Math.abs(sy) < 11) return PAL.night0;
   }
   // critique 3/3 #1: a mid-tone variation so the floor never reads as one flat field — about one flag in three is a
   // darker worn flag (one palette step down, flat, no dither)
-  if ((h >>> 4) % 3 === 0) return PAL.night1;
+  if ((h >>> 4) % 3 === 0) return PAL.night0;
   return BASE;
 }
 

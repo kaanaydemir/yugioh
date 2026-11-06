@@ -164,6 +164,9 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
     [17, 190, 262, false, 9, 1, 15500, 4700],
     [18, 408, 258, false, -8, 1, 16500, 12300],
     [20, 540, 148, false, -8, 1, 18500, 7000],
+    // pixel/polish crit round 2 #3: denser low banks along the floor at the lower left / lower right (target)
+    [2, -118, 222, false, 5, 1, 29000, 6000],
+    [0, 512, 236, false, -5, 1, 28000, 13000],
   ];
   BANKS.forEach(([i, x, y, flip, ax, ay, period, phase], k) =>
     addFog(lightFrame.fogBank(i), x, y, flip, NT_DEPTH.platform - 0.18 + k * 0.001, ax, ay, period, phase),

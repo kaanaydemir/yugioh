@@ -89,7 +89,9 @@ const POOL_RY = 28;
 
 /** Brick tones per light level: face, variant face, top highlight, mortar. Far field = desaturated navy-grey. */
 const BRICK = [
-  { face: PAL.stone0, alt: PAL.night1, hi: PAL.stone0, mortar: PAL.ink },
+  // pixel/polish crit round 2 #4: the far-field brick one stone step up (stone0 -> stone1, alt night1 -> stone0); the
+  // target's unlit brick averages ≈ #393347, ours was ≈ #1b1721
+  { face: PAL.stone1, alt: PAL.stone0, hi: PAL.stone1, mortar: PAL.ink },
   // the pool only BRIGHTENS: warm-brown at its rim, amber / orange near the flame (no darker step anywhere)
   { face: PAL.skin0, alt: PAL.stone1, hi: PAL.skin0, mortar: PAL.ink },
   { face: PAL.skin0, alt: PAL.earth1, hi: PAL.skin1, mortar: PAL.earth0 },
@@ -167,7 +169,7 @@ function paintBrickWallInner(): PixelCanvas {
       const hv = hash01(row, k, 77);
       const altBrick = hv < 0.22;
       // a few off-tone bricks in the far field: a sunk dark one, a weathered light one (the wall is not one flat pattern)
-      const farTone = hv > 0.93 ? PAL.night0 : hv > 0.86 ? PAL.stone1 : -1;
+      const farTone = hv > 0.93 ? PAL.night1 : hv > 0.86 ? PAL.stone2 : -1;
       const L = lightAt(x + bw / 2, y0 + 3, 0);
       // the light is stepped PER PIXEL (concentric flat bands round the flame, no dither), the brick pattern stays
       for (let j = 0; j < COURSE; j++)

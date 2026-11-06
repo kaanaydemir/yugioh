@@ -263,28 +263,32 @@ export function paintFogBank(spec: FogBankSpec): PixelCanvas {
       const edge = own(px - 1, py) === -1 || own(px + 1, py) === -1 || own(px, py - 1) === -1 || own(px, py + 1) === -1;
       if (back) {
         // back bank: night3 body over a night2 lower half; outer rim a 1 px checker fade (off-board only)
-        if (edge && ((px + py) & 1)) continue;
+        // pixel pass (crit round 2 #3): no checker fringe — the outer rim is one flat 1-px night2 stair step
+        if (edge) {
+          p.set(px, py, PAL.night2);
+          continue;
+        }
         // a lit 2 px night4 rim on top of each exposed billow so the back layer reads over the night2/night3 floor
         const rim = up1 || own(px, py - 2) !== i;
         // critique 3 #1: desaturated grey-violet — body a night2/stone1 checker (≈ hedef 282949), lit rim stone1
-        const ck = (px + py) & 1;
+        // pixel pass (crit round 2 #3): flat bands, no checker body — body stone1 over a 2-px night2 foot
         const fb = bottom(px) - py;
-        p.set(px, py, fb <= 0 ? PAL.night2 : fb === 1 ? PAL.night2 : rim && ny < -0.1 ? PAL.stone1 : ck ? PAL.night2 : PAL.stone1);
+        p.set(px, py, fb <= 1 ? PAL.night2 : PAL.stone1);
         continue;
       }
       // critique 3 #1/#3: one desaturated grey-violet family — body stone1, a 1 px stone2 lit edge (+ a stone1/stone2
       // checker transition row) on the upper-left of each exposed billow, the underside stepping down to night2
-      const ck = (px + py) & 1;
       let c: number = PAL.stone1;
       const up2 = own(px, py - 2) !== i;
       if (deep && nx < 0.5 && ny < -0.2 && up1) c = PAL.stone2;
-      else if (deep && nx < 0.5 && ny < -0.2 && up2 && q.ry >= 5) c = ck ? PAL.stone2 : PAL.stone1;
+      // pixel pass (crit round 2 #3): the stone1/stone2 checker transition row is gone (flat stone1)
+      else if (deep && nx < 0.5 && ny < -0.2 && up2 && q.ry >= 5) c = PAL.stone1;
       // underside falloff: body → stone1/night2 checker → night2 at the foot
       const fb = bottom(px) - py;
       if (fb <= 0) c = PAL.night2;
-      else if (fb === 1) c = ck ? PAL.night2 : PAL.stone1;
+      else if (fb === 1) c = PAL.night2;
       // critique 3 #2: ragged side falloff — the outermost column of a billow steps to a night2/stone1 checker
-      if (c === PAL.stone1 && (own(px - 1, py) === -1 || own(px + 1, py) === -1)) c = ck ? PAL.night2 : PAL.stone1;
+      if (c === PAL.stone1 && (own(px - 1, py) === -1 || own(px + 1, py) === -1)) c = PAL.night2;
       // tuck seam where a puff slides under its right-hand neighbour
       const r = own(px + 1, py);
       if (r >= 0 && r !== i && ny > -0.2 && ny < 0.6) c = PAL.night2;

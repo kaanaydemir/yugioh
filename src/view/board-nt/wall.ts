@@ -26,9 +26,18 @@ import {
 import type { NtAtlas } from '../../art/arena-nt/wall-kit';
 import { PixelCanvas } from '../../art/pixel';
 import { BRICK_VAULT_H, BRICK_VAULT_W, NT_BRICK_VAULT_KEY, paintBrickVault, BRICKWALL_AT, BRICK_BANNERS, BRICK_BOXES, BRICK_TORCHES, NT_BRICKWALL_KEY, paintBrickWall, paintPoolFlicker, poolRect } from '../../art/arena-nt/brickwall';
+import { hallFloorPixel } from '../../art/arena-nt/hallfloor';
 import { HALL_PILLARS, HALL_PIPES, NT_BANNER_KEY, NT_PILLAR_KEY, NT_PIPES_KEY, ensureBackHallTextures } from './backhall';
 import { type NtCtx, type NtLayer } from './layer';
 import { ensureNtTexture } from './textures';
+
+const NT_BACK_FLOOR_KEY = 'nt:hall:backfloor';
+const BACK_FLOOR = { x: -48, y: 96, w: 736, h: 54 } as const;
+function paintBackFloor(): PixelCanvas {
+  const p = new PixelCanvas(BACK_FLOOR.w, BACK_FLOOR.h);
+  for (let y = 0; y < BACK_FLOOR.h; y++) for (let x = 0; x < BACK_FLOOR.w; x++) p.set(x, y, hallFloorPixel(BACK_FLOOR.x + x, BACK_FLOOR.y + y));
+  return p;
+}
 
 let atlasCache: NtAtlas | null = null;
 function wallAtlas(): NtAtlas {
@@ -80,6 +89,10 @@ export function createWallLayer(ctx: NtCtx): NtLayer {
 
   ctx.add(scene.add.rectangle(-200, -520, 1040, 120, PAL.ink).setOrigin(0).setDepth(WALL_Z.ink));
   ctx.add(scene.add.tileSprite(-64, 96, 768, 320, NT_HALL_FLOOR_KEY).setOrigin(0).setDepth(WALL_Z.floor));
+  // value pass (2026-11-06): the strip of hall floor between the back wall and the apron (y 96 … 150) is the SAME flag floor
+  // as the apron (art/arena-nt/hallfloor.ts), not the lifted navy tile — no brighter blue band behind the holograms, no seam
+  ensureNtTexture(scene, 'backfloor', NT_BACK_FLOOR_KEY, paintBackFloor);
+  ctx.add(scene.add.image(BACK_FLOOR.x, BACK_FLOOR.y, NT_BACK_FLOOR_KEY).setOrigin(0).setDepth(WALL_Z.floor + 0.001));
   // hedef-gorunum-3: one full-width brick back wall (pillars, plaque, warm sconce pools baked per brick)
   ctx.add(scene.add.image(BRICKWALL_AT.x, BRICKWALL_AT.y, NT_BRICKWALL_KEY).setOrigin(0).setDepth(WALL_Z.panel));
   // the sconce pools breathe: each torch's pool steps one notch wider now and then (an opaque palette overlay, no alpha)

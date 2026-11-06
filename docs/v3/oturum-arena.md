@@ -610,3 +610,62 @@ Son: `shots/arena/fogc3-2.png`, `fogc3-2-sbs.png`, `fogc3-2-zl.png`, `fogc3-2-fi
 arena testleri 34/34. v1: değişiklik yalnız v3 board-nt sis atlas karelerinde.
 Kalan farklar: zemin hedeften mavi/açık (zemin maddesi) → sis/zemin ayrımı hâlâ hedeften keskin; hedefte sis biraz daha mor (3a3f67),
 bizim stone1 gövde biraz daha nötr; ön etek bankası büyük ölçüde ipucu çubuğu / el kartları altında.
+
+#### Piksel uyumu + son cila (2026-11-06)
+Önce: `shots/arena/pix-0.png` (+ `pix-0-sbs.png`, palet dışı maske `pix-0-mask.png`, birim yakın `pix-0-units.png`). palcheck PASS ama
+kare %6.62 palet dışı. Maske: anahtar ışık, sis, meşale haleleri, zemin gölgesi zaten palet (eski rgba katmanları kapalı / ölü kod);
+kalan palet dışı = (a) birim temas + düşen gölgeleri (rgba radyal gradyan), (b) hologramlar (alfa 0.72 yaratık, 0.55 kaide, 0.38 halka,
+0.28 koni, 0.32 toz), (c) bizim olmayan: el kartı, yığın sayaç etiketi (#04050d), golem üstü hover parıltısı.
+1. **Birim gölgeleri** (`src/view/light/LightLayer.ts` `StepUnitShadow`, `src/view/light/stepped.ts` `stepImgRev`): gradyan dokular
+   yerine sert kenarlı basamaklı gölge — altındaki her pikseli (sahne taşı, karo zemini, karo çizgisi, birimin ışık koltuğu) kendi
+   PAL rampasında 1 (dış bant + sağ-aşağı düşen gölge) / 2 (temas çekirdeği) ton aşağı çizer; opak, tam piksel, dither yok. Yalnız
+   konum ya da alttaki görüntüler değişince yeniden hesaplanır. `pix-1-units.png`: kırmızı çizgi gölge altında crim1'e iniyor.
+2. **Hologramlar** (`src/view/board-nt/holograms.ts`): yaratık/yırtık/kaide/halka/toz/flaş alfa → 1; tarama satırı boşlukları zaten
+   saydamlık hissini veriyor, hologramlar daha parlak (`pix-2-holoL.png`). Off %6.0 → %0.77 → %0.11.
+3. **Koni** (`src/art/arena-nt/holo.ts` `paintCone`): opak çizilince Bayer dama noktalı saçak (`pix-3-holoR.png`), 1 px ışınlar
+   zeminde koyu çubuk (`pix-4-holoR`, `pix-5-holos`) gibi okundu → kare boş bırakıldı (atlas düzeni aynı). Geri alınan iki deneme.
+4. **Değer dengesi — zemin** (`src/art/arena-nt/hallfloor.ts`): açık zemin bir basamak koyu (BASE night2→night1, dudak night3→night2,
+   aşınmış taş/çizik night1→night0); hedef zemini ≈ #1c1c3c night1'e daha yakın. Tahta artık açıkça en parlak kütle (`pix-7-cmp.png`).
+5. **Arka zemin şeridi** (`src/view/board-nt/wall.ts`): duvar ile apron arası (y 96…150) yükseltilmiş lacivert karo yerine aynı
+   hallfloor taşı (`nt:hall:backfloor`, kaldırma yok) → hologramların arkasındaki parlak mavi bant ve y=150 dikişi gitti (`pix-8-zl.png`).
+Son: `shots/arena/pix-8.png`, `pix-8-sbs.png`, `pix-8-zl.png`, film `pix-8-film.png`. palcheck `pix-8.png` PASS, off %0.11 (kalan yalnız
+UI/kart/hover). typecheck temiz, vitest tests/view 20/20. v1: board-nt + stepped ışık yalnız LOOK_V3 yolunda.
+Kalan farklar: hedefin tahta üstü sıcak gri (≈706b66), bizim stone2 serin ve bir ton koyu (paletde sıcak gri yok); hedef duvarı biraz
+daha açık/sıcak; hologram kaideleri hedefte açık gri-mavi halka, bizde koyu lacivert; yaz flaş/hot/beam kareleri artık opak (çağırma
+anında daha sert görünebilir, filmde doğrulanmadı).
+
+#### Piksel uyumu + cila — eleştiri turu 1/3 (2026-11-06)
+Önce: `shots/arena/pixr1-0.png` (+ yakın `pixr1-0-holoL.png`). Eleştirmen kararı "hedefe uyuyor", yalnız minörler.
+1. **#5 hologram kaidesi** (geçerli, yapıldı): `src/art/arena-nt/holo.ts` `paintPed` — üst halka night3/night4 → açık gri-mavi metal:
+   dış bant stone3, sol-üst ışıklı yay mist, iç eğim stone2 (sonra night1/night0 yüz), silindirin üst 2 satırı night4/night3 →
+   stone2/stone1. Kaide artık sisin önünde okunuyor (`pixr1-1-holoL.png`, `pixr1-1.png`, `pixr1-1-sbs.png`). Yalnız v3 (board-nt).
+2. **#1 L çentiği / #2 köşe pahları** — reddedildi (bu maddenin kapsamı değil): sahne ayak izi ve kürsü `platform.ts`/sahne maddesinin;
+   aynı anda başka ajanın dosyası, piksel/cila geçişinde blok geometrisi değiştirilmedi. Sahne maddesine devredildi.
+3. **#3 tahta üstü sıcak gri** — değişiklik yok: eleştirmen de kabul ediyor, palette sıcak gri yok (stone2 en yakın basamak).
+4. **#4 sis kapsamı** — değişiklik yok: sis maddesinin (fogc3) işi; bu turda yeni bank eklemek o maddenin dengesini bozar.
+5. **#6 tuğla bir ton açık** — değişiklik yok (isteğe bağlı): tuğla tonları meşale ışığına bağlı bant tablosu (`brickwall.ts`),
+   tek ton kaldırma duvarın sıcak/sakin dengesini sahne genelinde değiştirir; duvar maddesine bırakıldı.
+Son: `shots/arena/pixr1-1.png`, `pixr1-1-sbs.png`. palcheck PASS, typecheck temiz.
+
+#### Piksel uyumu + cila — eleştiri turu 2/3 (2026-11-06)
+Önce: `shots/arena/pixr2-0.png` (+ `pixr2-0-sbs.png`, tahta yakın `pixr2-0-zb.png`, tahta yan yana `pixr2-0-board.png`).
+1. **#2 tahta üstü koyu** (kısmen geçerli, yapıldı): ölçüm — karo/levha zaten stone2 (#5d5c6e ≈ hedef #594a53…#6d605e); koyuluğu
+   veren, tahtanın ~%40'ını kaplayan stone1 anahtar-ışık bandıydı (P2 yarısı en koyu). `src/art/arena-nt/platform.ts` `KEY_BAND`
+   +70 → stone1 yalnız ön-sağ köşede kalır, tahta açıkça en parlak kütle (`pixr2-1.png`, `pixr2-1-sbs.png`). stone3'e yükseltmek
+   reddedildi: hedeften çok açık olurdu; palette sıcak gri yok. Düz, dither yok.
+2. **#3 sis dama saçağı + yoğunluk** (geçerli, yapıldı): `src/art/arena-nt/lights.ts` `paintFogBank` — arka bankların night2/stone1
+   dama gövdesi ve dama dış halkası, ön bankaların stone1/stone2 geçiş satırı, ayak ve yan sütun damaları kaldırıldı → düz bantlar
+   (gövde stone1, 1 px night2 dış basamak, 2 px night2 ayak) (`pixr2-2-fogL.png`; arka gövde önce stone1/night2 ikiye bölündü, mavi
+   kütle okununca tek stone1 gövdeye çevrildi: `pixr2-3.png`, `pixr2-3-sbs.png`). `src/view/board-nt/lights.ts` `BANKS`: sol-alt
+   (-118, 222) ve sağ-alt (512, 236) iki geniş, yavaş (28–29 s) arka bank (`pixr2-4.png`, konum düzeltmesi `pixr2-5.png`,
+   önce/sonra `pixr2-5-cmp.png`). Hepsi sahne derinliğinin altında, tahtanın üstüne çıkmaz.
+3. **#4 tuğla bir ton açık** (geçerli, yapıldı): `src/art/arena-nt/brickwall.ts` `BRICK[0]` uzak alan stone0/night1 → stone1/stone0
+   (ölçüm: bizim ≈ #1b1721, hedef ≈ #393347); seyrek ton tuğlaları night0/stone1 → night1/stone2. Meşale havuzu bantları aynı
+   (zaten sıcak, hedefle eşleşiyor) (`pixr2-6.png`, `pixr2-6-sbs.png`, `pixr2-6-wall.png`).
+4. **#1 L çentiği / köşe pahları** — reddedildi (kapsam dışı, 1. turdaki gibi): sahne ayak izi ve kürsü geometrisi sahne maddesinin
+   (`platform.ts` blok/kürsü); piksel/cila geçişi blok geometrisini değiştirmez. Sahne maddesine devredildi.
+5. **#5 kaide dither iç dolgu / #6 mangal havuzu / #7 yan duvarlar** — bilgi, değişiklik yok.
+Son: `shots/arena/pixr2-6.png`, `pixr2-6-sbs.png`, film `pixr2-6-film.png` (8 × 2.5 s: sis yavaş kayıyor, dikiş yok). palcheck PASS,
+typecheck temiz, vitest tests/view 20/20 (tüm takımdaki 5 hata kart/canavar dosyalarında, bizim değil). v1: yalnız arena-nt / board-nt
+(LOOK_V3 yolu).
+Kalan farklar: sahne L çentiği ve pahlar (sahne maddesi); tahta hedeften serin (sıcak gri yok); ön etek sisinin çoğu HUD altında.

@@ -123,6 +123,9 @@ function paintBase(p: PixelCanvas, player: 0 | 1, foot: { x: number; y: number; 
   const m = 1;
   const qc = qOf(fx, fy);
   const oc = oOf(fx, fy);
+  // arena pixel/polish round 3 (#1): when the stage edge lies beyond the whole base (P1 now stands ON the widened stage) there
+  // is no bump to paint: the dais and its light pool sit straight on the stage top.
+  if (player === 0 && oc + foot.hh + m <= -2) return;
   const q0 = Math.floor(qc - foot.hh - m);
   const q1 = Math.ceil(qc + foot.hh + m);
   // P1 grows out (o > 0) and covers the stage rim rows inside (o down to -3); P2 grows back (o < 0) and covers o up to +2
