@@ -701,3 +701,38 @@ Hiçbir düzeltme gerekmedi; tüm kapılar ilk koşuda yeşil. Kod değişikliğ
 | palcheck `shots/arena/gates.png` (a6Hover v3) | PASS (off 0.11 %, white 0.89 %, bands 0) |
 | kamera kapısı (`shots/arena/now.json` vs `shots/kart-a/camera-base.json`) | 15 ok, 0 FAIL; measure errors 0 |
 | sayfa hataları (a6Hover, spBolt, flowTurnP1, tbMirror; v3) | yok |
+
+#### Son doğrulayıcı turu + kapanış (2026-11-06)
+Önce: `shots/arena/fin-0.png` (+ `fin-0-sbs.png`). Doğrulayıcı raporu (SHIP: no) maddeleri:
+1. **YÜKSEK — sahne karolara sıkı değil** (geçerli, yapıldı): yakın-sol kenarı 1.5 sıra dışarı taşıyan 3. tur değişikliği geri
+   alındı: `src/view/board-nt/layout-nt.ts` `PLATE_R1` 6.0 → 5.0625 (0.5625 pay), anahat yine `ntGrid(118, 157)` / yakın düz kenar
+   328..364; `src/art/arena-nt/pads.ts` P1 kürsüsü yine sahne kenarına bağlı dışarı taşan basamaklı çıkıntı (hedefteki gibi);
+   testler (`tests/view/board-nt-layout.test.ts`, `tests/art/arena-nt-platform.test.ts`) eski sıkı geometriye döndü. Sütun payları
+   zaten 0.375; sol-üstteki boş alan orta şerit (satır 2, tasarım gereği düz taş) — `?ntdebug=1` ile doğrulandı (`fin-3-dbg.png`).
+   Kullanılmayan sütunlara göre daraltma denendi (LANES=3 için) ama v3 varsayılanı 5+5 (7 sütun da dolu) olduğundan etkisizdi; geri alındı.
+2. **ORTA — tahta üstü açık/düz** (geçerli, yapıldı): `src/art/arena-nt/floor.ts` boş karo zemini stone2 → stone1 (sahne üstünden bir
+   ton koyu); `src/art/arena-nt/platform.ts` `KEY_BAND` +70 genişletmesi kaldırıldı (üstün daha büyük kısmı stone1). Dither yok.
+3. **ORTA — arka duvar sönük** (geçerli, yapıldı): `src/art/arena-nt/brickwall.ts` `lightAt` bant eşikleri 0.22/0.46/0.76 →
+   0.30/0.55/0.84 (her mesafede bir bant daha sıcak, dış kenar aynı); sütunların ışıksız gölge üçte biri stone1 → stone0.
+4. **DÜŞÜK — P2 kürsüsü küçük/sönük**: değişiklik yok (kamera/kürsü konumu sabit; uzak kenarın arkasında kalıyor). Açık konu.
+5. **DÜŞÜK — sis kenarlarda mavimsi**: değişiklik yok (doğrulayıcı da kabul edilebilir dedi).
+6. **DÜŞÜK — hareket kontrolü**: bilgi; önceki filmler (`pixr3-*`) sis/mangal hareketini gösteriyor.
+Son: `shots/arena/fin-4.png`, `fin-4-sbs.png`; `docs/v3/ref/arena-sonrasi.png` = `fin-4.png`.
+
+### Arena geçişi — final özeti
+Maddeler: düz sahne taşı (gri delik yok), sakin koyu tahta + bir ton koyu karo zemini, ince cyan/kırmızı kenarlar, sıkı pahlı
+sekizgen blok + panel derzli / pencereli yan duvarlar + gölge, sahne kenarına bağlı oyuncu renginde parlayan basamaklı kürsüler,
+tuğla arka duvar + sütunlar + kırmızı flamalar + duvar meşaleleri, metal plakalı/ızgaralı/borulu zemin, taş direkli mangallar,
+alçak katmanlı kayan sis; hologramlar parlak, tribünler kaldırılmış.
+
+| Kapı | Sonuç |
+|---|---|
+| `npm run typecheck` | temiz |
+| vitest `tests/view` + `tests/art/arena-nt-platform` | 24/24 |
+| vitest `tests/art` (tümü) | 437/441; 4 hata bilinen listede (cardface-v3 G1, dusk_ashen, hourglass_imp, shield_titan), arena dışı |
+| palcheck `shots/arena/fin-4.png` (a6Hover v3) | PASS (off 0.11 %, white 0.89 %, bands 0) |
+| filmdiff v1 / a6v1 | bu turda koşulmadı: değişiklikler yalnız v3 yolunda (arena-nt / board-nt); son koşu 17/17 + 26/26 IDENTICAL |
+
+Açık konular: P2 kürsüsü uzak kenarın arkasında ve P1'den küçük görünüyor; P1 kürsüsü dışarı çıkıntı olduğundan blok hafif
+L-çentikli okunuyor (hedefte kürsü sahnenin üstünde — iki doğrulayıcı turu zıt yön istedi, son karar: dışarı çıkıntı); tahta hedeften
+biraz serin (palette sıcak gri yok); kenar sisi mavimsi sınırda; ön sisin çoğu HUD altında.
