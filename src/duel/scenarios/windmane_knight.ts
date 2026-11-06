@@ -238,6 +238,15 @@ const scenarios: Record<string, Scenario> = {
   },
   fsBoard5: board5(0, 0),
   fsBoard5P2: board5(1, 4),
+  fsBoard5Mid: {
+    desc: 'full 5+5 board, the knight tribute-summoned into zone 3 between abyss_magus and wing_lady: the storm tail is clipped behind him',
+    stage: {
+      zones: 5,
+      p0: { hand: ['windmane_knight'], monsters: ['shield_titan', 'stone_sentinel', 'abyss_magus', 'ember_wolf', 'wing_lady'] },
+      p1: { monsters: ['crystal_wyrm', 'steel_silencer', 'grim_warden', { id: 'shade_assassin', position: 'attack' }, 'hourglass_imp'] },
+    },
+    steps: [summon('windmane_knight', 3, ['stone_sentinel', 'ember_wolf'], 0), battle(0), attack(3, 3)],
+  },
   fsStolen: {
     desc: 'Kukla İpi: player 1 takes the (player 2) knight — not summoned this turn: no storm, no aura; then the battle phase',
     stage: { p0: { hand: ['puppet_string'] }, p1: { monsters: [null, 'windmane_knight'] } },

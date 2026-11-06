@@ -90,12 +90,13 @@ function stormOn(s: GameState, uid: Uid): boolean {
 }
 
 /** The aura level `uid` should show in `s`: 2 the storm, 1 the brew (summon turn, a battle still to come), 0 none. */
-function levelIn(s: GameState, uid: Uid): 0 | 1 | 2 {
+function levelIn(s: GameState, uid: Uid, fromHand = false): 0 | 1 | 2 {
   if (stormOn(s, uid)) return 2;
   const at = slotOf(s, uid);
   if (!at || s.cards[uid]?.cardId !== ID) return 0;
   const m = at.slot;
-  if (!m.faceUp || !m.normalSummoned || m.position !== 'attack' || m.enteredTurn !== s.turn || s.activePlayer !== at.p) return 0;
+  // (fromHand: the summon hook's own event — the batch's projected slot does not carry normalSummoned yet)
+  if (!m.faceUp || !(m.normalSummoned || fromHand) || m.position !== 'attack' || m.enteredTurn !== s.turn || s.activePlayer !== at.p) return 0;
   // turn 1 has no battle phase: the wind dies before it rises (no brew)
   if (s.turn <= 1 || s.phase !== 'main') return 0;
   if (m.noAttackTurn === s.turn) return 0;
@@ -777,16 +778,19 @@ async function galeEntrance(S: Stage): Promise<void> {
   S.finale({ ring: 0, ramp: RAMPS.stone, freezeMs: S.big ? 40 : 0, sfx: null, playerRing: false });
   void dustRing(sc, home, { r0: 8, r1: 34, ms: 420 });
   // the brew starts (summon turn, a battle still to come): six grains of grey dust circling his tile
-  const lvl = levelIn(S.ctx.stateNext, u.uid);
+  const lvl = levelIn(S.ctx.stateNext, u.uid, S.ev.from === 'hand');
   if (lvl > 0) setStorm(sc, u, lvl);
   // round 3 #7: no battle this turn (turn 1) or his attack is locked — the wind dies before it rises: once the
   // unfurl has cracked, one soft gust, then the stream SAGS (three stepped droops) and a little dust drops off it
   const sn = S.ctx.stateNext;
   const at = slotOf(sn, u.uid);
-  const never = !!at && at.slot.normalSummoned && at.slot.position === 'attack' && (sn.turn <= 1 || at.slot.noAttackTurn === sn.turn);
+  // (the summon hook only runs for a summon from the hand: a Normal / Tribute summon — the projected slot may not carry
+  // normalSummoned yet)
+  const never = !!at && S.ev.from === 'hand' && at.slot.position === 'attack' && (sn.turn <= 1 || at.slot.noAttackTurn === sn.turn);
   if (never) {
     await capped(sc, unfurl, 420);
-    await windDies(sc, u, rnd);
+    // (it plays on past the summon's end: the summon's length is unchanged)
+    void windDies(sc, u, rnd);
     return;
   }
   await capped(sc, unfurl, 420);
@@ -806,7 +810,7 @@ async function windDies(sc: Phaser.Scene, u: MonsterUnit, rnd: () => number): Pr
     const tip = pointNow(u, 'staff', { x: u.home.x + dw * 28, y: u.home.y - 70 });
     // 0–120 the soft gust lifts three strands off the tip; then three stepped droops, shorter each step
     const step = t < 0.28 ? 0 : t < 0.52 ? 1 : t < 0.76 ? 2 : 3;
-    const len = [12, 9, 6, 3][step];
+    const len = [15, 12, 8, 4][step];
     for (let k = 0; k < 3; k++) ribbon(px, { x: tip.x + dw * (1 + (k % 2)), y: tip.y - 1 + k * 2 + step }, norm({ x: dw, y: -0.1 + step * 0.35 }), len - k, t * 4 + k * 1.3, step ? 0.3 : 0.7, Math.max(0, 2 - step + (k === 0 ? 1 : 0) - 1));
     if (step >= 1 && !dust) {
       dust = true;

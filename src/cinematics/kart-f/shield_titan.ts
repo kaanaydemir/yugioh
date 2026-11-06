@@ -357,7 +357,7 @@ function declareLayer(ctx: Ctx<'attackDeclare'>): Promise<void> {
 // ================================================================ effect: "Sur Kalkanı"
 
 /** The wall's rise: 4 whole-pixel steps (scene ms each). */
-const RISE_STEP_MS = 30;
+const RISE_STEP_MS = 25; // round 3 #3: the rise (100 ms) ends before f5, so the first shove is on its frame
 const WALL_H = 42;
 
 async function wardV3(ctx: Ctx<'activate'>): Promise<void> {
@@ -411,13 +411,17 @@ async function wardV3(ctx: Ctx<'activate'>): Promise<void> {
   play('kdWardWall', { volume: 0.95, pan: panU });
   void lightFlash(sc, line.mid.x, line.mid.y - 18, WARD.lit, 30, 260, { floorY: line.mid.y, air: 0.6, intensity: 0.9 });
   pool.setIntensity(1, 80);
-  for (let k = 1; k <= 4; k++) {
-    wallH = Math.round((WALL_H * k) / 4);
+  // the rise runs on its own (not awaited here): the shoves' frame marks are armed at once, so the first pulse
+  // launches ON f5 even when the rise's last step lands a frame late (round 3 #3: an even ladder)
+  const rose = (async () => {
+    for (let k = 1; k <= 4; k++) {
+      wallH = Math.round((WALL_H * k) / 4);
+      drawWall();
+      await sleep(sc, RISE_STEP_MS);
+    }
+    wallLook = { h: WALL_H, top: WARD.lit, mortar: WARD.lit, joint: WARD.dim, fill: BRICK };
     drawWall();
-    await sleep(sc, RISE_STEP_MS);
-  }
-  wallLook = { h: WALL_H, top: WARD.lit, mortar: WARD.lit, joint: WARD.dim, fill: BRICK };
-  drawWall();
+  })();
   // ---- f5–f9: one crenellation pulse per shove
   const live0 = { x: a.sprite.x, y: a.sprite.y };
   const tx0 = Math.round(u.sprite.x);
@@ -428,6 +432,9 @@ async function wardV3(ctx: Ctx<'activate'>): Promise<void> {
     const c = a.core();
     return rint({ x: c.x - lane.x * 8, y: c.y - lane.y * 4 + 6 });
   };
+  // one travel time for all five (an even gong ladder: the arrivals keep the shoves' spacing)
+  const f0 = front();
+  const flightMs = clamp(Math.round(Math.hypot(f0.x - line.mid.x, f0.y - line.mid.y) / 1.6), 80, 120);
   const SHOVE0 = Math.min(u.frameCount('special') - 2, REL + 2);
   const arrived: Promise<void>[] = [];
   for (let i = 0; i < pulses; i++) {
@@ -443,7 +450,7 @@ async function wardV3(ctx: Ctx<'activate'>): Promise<void> {
         });
       }
       flights.push(
-        pulseFlight(sc, line, front, i).then(() => {
+        pulseFlight(sc, line, front, i, flightMs).then(() => {
           // arrival: the gong step, the shove, the peel, the plate's −100
           // the steps GROW toward the last one (round 2 #1): the −500 lands on the loudest gong
           play('kdSapStep', { volume: 0.74 + i * 0.06, pan: panA, pitch: SAP_PITCH[Math.min(SAP_PITCH.length - 1, i + (5 - pulses))] });
@@ -473,6 +480,7 @@ async function wardV3(ctx: Ctx<'activate'>): Promise<void> {
     // a safety: never waits on a frame that does not come
     void sleep(sc, u.rangeMs('special', 0, fi) + 400).then(() => done());
   }
+  await rose;
   await Promise.all(arrived);
   await Promise.all(flights);
   // the last pulse: the attacker springs home; the "-500" tag over its plate
@@ -515,14 +523,11 @@ function heelDust(sc: Phaser.Scene, u: MonsterUnit): void {
 }
 
 /** One crenellation pulse from the wall down the lane into the attacker's front (≈1.3 px/ms, ≤ 8 px a frame). */
-async function pulseFlight(sc: Phaser.Scene, w: WallLine, front: () => XY, i: number): Promise<void> {
+async function pulseFlight(sc: Phaser.Scene, w: WallLine, front: () => XY, i: number, ms: number): Promise<void> {
   // round 3 #3: each flight owns its raster (the launches are ~95 ms apart, so two can overlap) and travels in
   // ≈ 80–120 ms; the 3-step trail carries the long lanes
   const fx = new Raster(sc, 0, 0, 640, 360, DEPTH.FX + 1);
   const from = { x: w.mid.x, y: w.mid.y };
-  const to0 = front();
-  const dist = Math.hypot(to0.x - from.x, to0.y - from.y);
-  const ms = clamp(Math.round(dist / 1.6), 80, 120);
   const z0 = 18;
   const trail: { at: XY; z: number }[] = [];
   await animate(sc, ms, (k) => {
@@ -543,11 +548,11 @@ async function pulseFlight(sc: Phaser.Scene, w: WallLine, front: () => XY, i: nu
 
 /**
  * The pulse hits (round 3 #1): only the struck FRONT of the attacker lights — the shared band flash (_v3/flash
- * contactFlash: an overlay over ≤ 30 % of the silhouette nearest the rampart, the sprite's own tint untouched), gold
- * core + dim band for 2 real frames (≈ 33 ms). The last pulse is the one accent: a white core, 3 frames, 45 %.
+ * contactFlash: an overlay over ≤ 22 % of the silhouette nearest the rampart, the sprite's own tint untouched), gold
+ * core + dim band for 2 real frames (≈ 33 ms). The last pulse is the one accent: a white core, 3 frames, 36 %.
  */
 function struckFlash(sc: Phaser.Scene, a: MonsterUnit, lane: XY, last: boolean): void {
-  contactFlash(sc, a.sprite, lane, last ? { frames: 3, coverage: 0.45, color: PAL.white, tint: WARD.lit } : { frames: 2, coverage: 0.3, color: WARD.lit, tint: WARD.dim });
+  contactFlash(sc, a.sprite, lane, last ? { frames: 3, coverage: 0.36, color: PAL.white, tint: WARD.lit } : { frames: 2, coverage: 0.22, color: WARD.lit, tint: WARD.dim });
 }
 
 /**
@@ -646,7 +651,6 @@ async function defendV3(ctx: Ctx<'battle'>): Promise<void> {
           unhush();
           fade(GENERIC_CONTACT, 12);
         });
-        recoilWall.set(ev.attackerUid, { titan: u, line: w.line });
         hideGenericGuard(sc, u);
         repel(sc, w, live(ctx.unit(ev.attackerUid)), blocked || tie);
       } else play('kdPlateHit', { volume: 0.6, pan: panAt(u.home.x) });
@@ -716,8 +720,10 @@ function recoilNumberLayer(ctx: Ctx<'damage'>): Promise<void> {
   const a = live(ctx.unit(b.attackerUid));
   const ax = a ? a.worldPoint('feet').x : at.x;
   const side = ax >= titan.home.x ? 1 : -1;
-  const x = side > 0 ? Math.max(at.x, R + 22) : Math.min(at.x, L - 22);
-  const nx = Math.round(clamp(x, 34, 606));
+  // the settled number is ≈ 60–76 px wide (centred on x): its near edge lands ≥ 6 px past the wall / tile
+  const HALF = 40;
+  const x = side > 0 ? Math.max(at.x, R + HALF) : Math.min(at.x, L - HALF);
+  const nx = Math.round(clamp(x, HALF, 640 - HALF));
   const ny = Math.round(Math.min(at.y, top));
   (ctx.hints as Record<string, unknown>).at = { x: nx, y: ny };
   return ctx.base();
@@ -737,6 +743,11 @@ function hideGenericGuard(sc: Phaser.Scene, u: MonsterUnit): void {
       } else if (o.type === 'Graphics') {
         const g = o as Phaser.GameObjects.Graphics;
         if (Math.abs(g.depth - (DEPTH.FX + 0.1)) < 1e-6 || Math.abs(g.depth - (DEPTH.FX + 0.2)) < 1e-6) g.setVisible(false);
+        // round 3 #6: the guard reaction's water-blue impact burst (vfx/combat impact via _v3/react guardReact,
+        // drawn just behind his body: star + rings at depth − 0.3, its sparks at − 0.2 / − 0.1) — the gold
+        // masonry flash-up and ring are the only shield shapes on the blocked contact
+        const rel = g.depth - u.sprite.depth;
+        if ([-0.3, -0.2, -0.1].some((d) => Math.abs(rel - d) < 1e-6)) g.setVisible(false);
       }
     }
     return el < 420;
@@ -751,6 +762,8 @@ function repel(sc: Phaser.Scene, w: Ward, a: MonsterUnit | null, holds: boolean)
   const aFeet = a && a.sprite.active ? a.worldPoint('feet') : null;
   const behind = !!aFeet && (aFeet.x - w.titan.home.x) * dirOf(w.titan) < -4;
   const line = behind ? wallLine(w.titan.home, (w.titan.player === 1 ? 0 : 1) as 0 | 1) : w.line;
+  // the recoil number (popped right after this, same frame) keeps clear of THIS wall line (round 3 #4)
+  if (holds) recoilWall.set(w.attackerUid, { titan: w.titan, line });
   const r = new Raster(sc, 0, 0, 640, 360, w.titan.sprite.depth + (behind ? 0.5 : -0.5));
   const boss = rint(pointOf(w.titan, 'guard', 0, 'muzzle'));
   const aAt = a && a.sprite.active ? a.worldPoint('feet') : null;
