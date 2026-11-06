@@ -13,7 +13,8 @@ export default {
   body: { physical: 'crystal' },
   attack: { type: 'projectile', blow: 'magic', from: 'muzzle', vfx: 'prism', tone: PAL.gold4, ranged: true },
   summon: { style: 'pool', matter: 'light' },
-  death: { material: 'crystal', accent: 'light' },
+  // accent 'crystal' (crit r3): the 'light' accent's gold '+' motes buried the falling glass panes; the panes are the read
+  death: { material: 'crystal', accent: 'crystal' },
   flip: { accent: 'drop', ramp: 'gold' },
   voice: { custom: 'reflection_archer' },
   light: {

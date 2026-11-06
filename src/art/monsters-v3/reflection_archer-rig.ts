@@ -3,9 +3,9 @@
 // A tall, slim archer woven of light (white / mist planes, a 1-px water4 glass edge on the shadow side), a moon-blue
 // tabard, a gold crescent-moon crown standing behind the head, two light ribbons of hair streaming back and a tall
 // gold crescent bow. It stands in a puddle of light; in the puddle lives its INVERTED, dark-blue reflection
-// (YENI_KARTLAR §C4): drawn from the same skeleton mirrored at the ground line and foreshortened (KR), whole in the
-// middle of the puddle, broken into water lines toward its rim and past it (a narrow see-through ghost lane that
-// ends at a dashed far water line), rippled by the puddle's rings. The puddle is a flat iso ellipse inside the
+// (YENI_KARTLAR §C4): driven by its own skeleton, mirrored at the puddle's far water line and foreshortened, a dark
+// night silhouette with a fixed-size hood, down-hanging crescent-crown horns and a light-blue bow arc on the lit
+// water1 sheet of the puddle, rippled by the puddle's rings. The puddle is a flat iso ellipse inside the
 // tile (≤ 40×16): a 1-px specular rim, a sparse water-line haze and a drifting sheen — the tile shows through. The reflection has its own pose (`R`): it lags, leads, looks at the
 // viewer, breaks first in death.
 //
@@ -37,7 +37,9 @@ export const KR = 0.45;
  * ellipse from the feet toward the tile's RIGHT corner on screen (the P1 sheet: in front of the archer; the P2
  * relight sheet is mirrored by flipX, so there it lies behind the archer's back and still lands on screen right,
  * clear of the up-left neighbour's badge). The inverted reflection hangs from the puddle's far water line
- * (`my`), offset by `rdx` beside the archer, foreshortened by `kr`, ending just above the badge.
+ * (`my`, behind the archer's feet), offset by `rdx` beside the archer so its body clears the archer's legs,
+ * foreshortened by `kr` (crit r3: 0.38 — a ~22-px twin with a readable hood, crown and bow), its crown tips
+ * ending just above the badge (GY + 5). The puddle reaches back toward the tile's far corner to hold it.
  */
 export interface PuddleGeo {
   /** ellipse centre and radii (frame px) */
@@ -521,9 +523,9 @@ const onRim = (x: number, y: number, s: number): boolean =>
 
 /** The reflection's tone for a figure tone (dark blue: night / water darks, YENI_KARTLAR §C4). */
 export const REFL_MAP = new Map<number, number>([
-  [PAL.white, PAL.night3], [PAL.mist, PAL.night3], [PAL.steel, PAL.night2], [GLASS, PAL.night3],
-  [PAL.night4, PAL.night2], [PAL.night3, PAL.night1], [PAL.night2, PAL.night0], [PAL.night1, PAL.night0],
-  [PAL.gold4, PAL.water4], [PAL.gold3, PAL.water3], [PAL.gold2, PAL.water3], [PAL.gold1, PAL.water2],
+  [PAL.white, PAL.water2], [PAL.mist, PAL.water2], [PAL.steel, PAL.water1], [GLASS, PAL.water3],
+  [PAL.night4, PAL.night3], [PAL.night3, PAL.night2], [PAL.night2, PAL.night1], [PAL.night1, PAL.night0],
+  [PAL.gold4, PAL.water3], [PAL.gold3, PAL.water2], [PAL.gold2, PAL.water1], [PAL.gold1, PAL.night2],
 ]);
 
 /** The reflection's value ladder (dark → light) for its light ramp. */
@@ -564,9 +566,11 @@ function drawPuddle(p: PixelCanvas, o: Pose, light: Light): void {
       // the haze: denser toward the rim, sparse in the middle (the floor / tile shows through the mirror)
       // the haze lies in water lines (whole rows, never speckle): every other row near the rim, every fourth inside
       const line = glow ? (d > 0.45 ? (y & 1) === 0 : (y & 3) === 0) : d > 0.6 && (y & 3) === 0;
-      if (line && (glow || s < 0.95)) p.set(x, y, glow ? (d > 0.45 ? PAL.mist : PAL.steel) : back ? PAL.steel : PAL.night4);
-      // crit r3: the still water is a lit water1 sheet (the dark twin's ground) — set once the puddle has settled
-      else if (!glow && s >= 0.95) p.set(x, y, d > 0.82 ? PAL.night3 : PAL.water1);
+      // crit r3: the still water is a lit water1 sheet (the dark twin's ground) once the puddle has settled; a
+      // cracked puddle (death) goes back to the see-through glass lines
+      const sheet = !glow && s >= 0.95 && o.crack <= 0;
+      if (line && !sheet) p.set(x, y, glow ? (d > 0.45 ? PAL.mist : PAL.steel) : back ? PAL.steel : PAL.night4);
+      else if (sheet) p.set(x, y, d > 0.82 ? PAL.night3 : PAL.water1);
     }
   // ripples: thin iso rings expanding from the feet (two, half a cycle apart)
   if (o.rip >= 0 && s >= 0.95)
@@ -606,7 +610,6 @@ function sheenPass(p: PixelCanvas, o: Pose): void {
  *  whole in its middle, broken into water lines (every other row, the classic broken reflection) toward the rim.
  *  `rv` (the summon's surfacing) thins it the same way. */
 function reflShows(x: number, y: number, rv: number): boolean {
-  if ((globalThis as { __RA_DBG?: boolean }).__RA_DBG) return true;
   const d = inPuddle(x, y, 1);
   if (d > 1) return false;
   const a = (d < 0.9 ? 1 : 0.5) * rv;
@@ -618,14 +621,6 @@ function reflShows(x: number, y: number, rv: number): boolean {
 
 /** The idle frames whose neighbours are the archer's quiet transitions: the reflection's shimmer beats (HA-17). */
 const SHIMMER = [4, 5, 10, 13, 17];
-
-/** The last opaque x of the run through (x, y) going `d` (−1 left, +1 right). */
-function rowEdge(q: PixelCanvas, x: number, y: number, d: -1 | 1): number {
-  let e = x;
-  while (e + d >= 0 && e + d < W && q.get(e + d, y) !== null) e += d;
-  return e;
-}
-
 
 /**
  * The twin (crit r3): a crisp, hand-built inverted silhouette driven by the reflection's own skeleton (so it lags,
@@ -1207,4 +1202,3 @@ export function drawMirrorFigure(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'r
   if (o.look >= 0.5) p.set(rnd(hx) - 2, ey, PAL.white).set(rnd(hx) + 1, ey, PAL.white);
   else p.set(rnd(hx) + 2, ey, PAL.water4).set(rnd(hx) + 3, ey, PAL.water3);
 }
-export const __mirrorTwinDbg = (o: Pose, l: "left" | "right"): PixelCanvas => { G = puddleGeo(l); return mirrorTwin(o, lightOf(l)); };

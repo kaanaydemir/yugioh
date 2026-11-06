@@ -35,6 +35,7 @@ import type { StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
 import { deathV3 } from '../_v3/death';
 import { summonPose } from '../_v3/summon';
+import type { SfxName } from '../../audio/sfx';
 import { atFrame, atMark, fade, hush, panAt, play, start, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { runSummon, type Stage } from '../summon-a/_kit';
@@ -340,8 +341,11 @@ registerStrike(
     // ---- contact: top and bottom meet
     // the mirror strike scores this contact frame alone (crit r2: the generic body blow blurred archerImpact):
     // the shared impactHeavy / impactLight are skipped; a struck body's own material (hitSoundFor) still rings
-    hush(['impactHeavy', 'impactLight'], () => s.impact(to));
-    queueMicrotask(() => fade(['impactHeavy', 'impactLight'], 12));
+    // blocked / losing (crit r3): the generic shieldBlock clang and the archer's own recoil material (hitCrystalMagic)
+    // are hushed too — the guard's material hit and archerDeflect own the frame (four sounds stacked on it before)
+    const quiet: SfxName[] = s.blocked || loses ? ['impactHeavy', 'impactLight', 'shieldBlock', 'hitCrystalMagic'] : ['impactHeavy', 'impactLight'];
+    hush(quiet, () => s.impact(to));
+    queueMicrotask(() => fade(quiet, 12));
     // the card's own stop (YENI_KARTLAR §C4: 90 ms): merged with the class's stop, the longer one wins
     void stopTime(sc, 90);
     play(s.blocked ? 'archerDeflect' : 'archerImpact', { volume: 0.95, pan: panAt(to.x) });

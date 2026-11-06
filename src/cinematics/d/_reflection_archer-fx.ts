@@ -574,6 +574,8 @@ interface Pane {
  * (figure only, no floor) and its pixels are split into angular pieces — sectors round the chest gem, each cut
  * once more across — so every pane is a hard-edged shard of the archer with its own planes and ink edge.
  */
+const GOLDS = new Set<number>([PAL.gold4, PAL.gold3, PAL.gold2, PAL.gold1]);
+const LIGHTS = new Set<number>([PAL.white, PAL.water4]);
 function cutPanes(u: MonsterUnit, f: number): Pane[] {
   // the break frame as the art shows it (its panes and cracks), without the floor
   const P = { ...framePose('death', f), pud: 0, rv: 0, crack: 0, rbreak: 0, mote: -1, spark: 0, R: null };
@@ -622,7 +624,9 @@ function cutPanes(u: MonsterUnit, f: number): Pane[] {
     const rel = pts.map((q) => ({
       x: flip ? x0 - q.x : q.x - x0,
       y: q.y - y0,
-      c: top(q) ? (q.c === PAL.ink ? PAL.steel : q.c === PAL.mist || q.c === PAL.steel ? PAL.white : q.c) : edge(q) ? PAL.night0 : q.c,
+      // crit r3: bright glass, not dark flecks — the body's tones lift to mist / white glass (gold stays gold), the
+      // lit top edge white, the broken lower edges a 1-px steel line (no ink fill, no night outline)
+      c: top(q) ? (GOLDS.has(q.c) ? PAL.gold4 : PAL.white) : edge(q) ? (GOLDS.has(q.c) ? PAL.gold2 : PAL.steel) : GOLDS.has(q.c) ? q.c : LIGHTS.has(q.c) ? PAL.white : PAL.mist,
     }));
     const tops = rel.filter((q) => q.c === PAL.white);
     const g = tops.length ? tops[Math.floor(tops.length / 2)] : rel[0];
@@ -633,7 +637,7 @@ function cutPanes(u: MonsterUnit, f: number): Pane[] {
       x: Math.round(w.x),
       y: Math.round(w.y),
       vx: (flip ? -out : out) * RR(12, 34),
-      vy: RR(0, 22),
+      vy: RR(30, 55),
       bot: y1 - y0,
       floor: 0,
       gx: g.x,
@@ -686,8 +690,9 @@ export function glassFall(sc: Phaser.Scene, u: MonsterUnit, ground: XY, dir: 1 |
     });
     ras.draw((g) => {
       for (const p of panes) {
-        if (p.landed < 0 && el > 40) {
-          p.vy += 520 * s;
+        // gravity from the first frame (the art's break frames f7–f8 were the pop) (crit r3: they hung in the air ~300 ms)
+        if (p.landed < 0 && el > 0) {
+          p.vy += 640 * s;
           p.vx *= 1 - 2.2 * s;
           p.x += p.vx * s;
           p.y += p.vy * s;
@@ -708,13 +713,16 @@ export function glassFall(sc: Phaser.Scene, u: MonsterUnit, ground: XY, dir: 1 |
         for (const q of p.px) {
           const y = p.landed < 0 ? Y + q.y : p.floor - Math.round((p.bot - q.y) * flat);
           let c = q.c;
-          if (cool) c = c === PAL.ink ? PAL.night2 : c === PAL.white || c === PAL.mist || c === PAL.steel ? (el > 320 ? PAL.water4 : PAL.mist) : c;
+          if (cool) c = c === PAL.white ? (el > 320 ? PAL.water4 : PAL.white) : c === PAL.mist ? (el > 320 ? PAL.mist : PAL.water4) : c;
           g.dpx(X + q.x, y, c, lvl);
         }
         // the glint: one white pixel on the broken edge that flickers ONCE mid-fall (two frames)
         if (p.landed < 0 && el >= p.flick && el < p.flick + 50) {
-          g.px(X + p.gx, Y + p.gy, PAL.white);
-          g.px(X + p.gx + 1, Y + p.gy, PAL.gold4);
+          // (on the white top edge: the glint stands just above it, a white core with water4 arms)
+          g.px(X + p.gx, Y + p.gy - 1, PAL.white);
+          g.px(X + p.gx - 1, Y + p.gy - 1, PAL.water4);
+          g.px(X + p.gx + 1, Y + p.gy - 1, PAL.water4);
+          g.px(X + p.gx, Y + p.gy - 2, PAL.water4);
         }
         // its reflection under the floor line, rising to meet it: sparse water3, no outline
         if (p.landed < 0) {
@@ -769,10 +777,13 @@ export function paneFlash(sc: Phaser.Scene, at: XY, ground: number, dir: 1 | -1,
         if (out < 2) g.px(x0 + dir * 2, y, PAL.white);
       }
       // the twin under the floor line, a step behind
+      // (crit r3: the twin ran down over the ATK/DEF badge and hid the new DEF digit — it now lives only in the
+      // puddle's depth, the rows gy + 1 … gy + 5, clear of the badge's top edge at gy + 6)
       const tg = Math.max(0, Math.min(1, (t - 0.1) / 0.35));
-      const hm = Math.round(H2 * tg * KR);
-      const my = mirrorY(cy, gy);
+      const hm = Math.min(2, Math.round(H2 * tg * KR));
+      const my = Math.min(mirrorY(cy, gy), gy + 3);
       for (let dy = -hm; dy <= hm; dy++) {
+        if (my + dy <= gy || my + dy > gy + 5) continue;
         if (out === 2 && dy % 2) continue;
         for (let k = 0; k < 3; k++) g.px(x0 + dir * (k - 1), my + dy, k === 1 ? PAL.water3 : out ? PAL.water1 : PAL.water2);
       }

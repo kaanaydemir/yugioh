@@ -339,7 +339,8 @@ function deathPoseLag(f: number): Pose {
   if (f <= 0) return { ...hitHeavyMain(0), R: null };
   return { ...deathPose(f), R: null, spark: 0 };
 }
-const D_HOLDS = [50, 60, 70, 80, 140, 80, 70, 70, 70, 90];
+// crit r3: the break frames f7–f8 are a short pop (the panes must not hang in the air), the glass burst falls at once
+const D_HOLDS = [50, 60, 70, 80, 140, 80, 70, 50, 50, 60];
 
 // ------------------------------------------------------------------ revive (11): the glass gathers, the reflection reforms first, the puddle heals
 
