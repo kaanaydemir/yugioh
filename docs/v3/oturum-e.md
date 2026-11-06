@@ -1,0 +1,356 @@
+# Oturum E (lane E, `claude/kart-e`) — durum
+
+Kapsam: 11 yeni büyü (S1–S5, S7–S12), Şafak Kılıçları yeni imza (Kafes storyboard uyarlaması), Kristal Ejder ve
+Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.md`.
+
+## Altyapı (lane E'nin kendi dosyaları)
+- Ses: `src/audio/v3/e/<id>.ts` (kart başına), `src/audio/v3/lane-e.ts` (toplayıcı). `sounds.ts` / `sfx.ts`'e
+  birer eklemeli satır (`LANE_E_RECIPES`, `LaneESfxName`). Ses adları `e_` önekli.
+- Kart resmi: `src/art/cardart-v3/<id>.ts`, `src/art/cardart-v3/lane-e.ts` (glob kayıt);
+  `src/art/cardface-v3/index.ts`'e tek eklemeli satır (`...LANE_E_ART`).
+- Mekanik olaylar: `src/cinematics/b2e/dispatch.ts` — controlChange / massDestroy / diceRoll / toDeck için
+  öncelik 1 işleyici; kart modülleri `registerLaneE(tür, sahiplenir, oynat)` ile kendi olaylarını alır,
+  sahiplenilmeyen olay zincirde aşağı (placeholder ya da başka lane) düşer. `b2/placeholders.ts`'e dokunulmadı
+  (coinToss / banish / tokenVanish ve Kadran'ın massDestroy'u başka lane'lerin).
+
+## Taban (değişiklikten önce, 2026-10-31)
+- `npm test`: 8 başarısız (ashen_drake, cardface-v3 G1, dusk_ashen, grim_warden, hourglass_imp, seal_arm_r,
+  seal_leg_r, shield_titan) — hiçbiri lane E'nin değil.
+- v1 / a6v1 film tabanları bu dalın başında (6178b55 + belgeler) yazıldı.
+- Ortam notu: Playwright 1243 tarayıcısı `chrome-linux64` altında; `tools/shot.mjs` `chrome-linux` arar →
+  `/opt/pw-browsers/chromium-1243/chrome-linux` sembolik bağı (yalnız konteyner, repoda değişiklik yok).
+
+## Kart durumu
+| Kart | Resim | Sinematik | SFX | Eleştiri turları | Kanıt |
+|---|---|---|---|---|---|
+| puppet_string (Kukla İpi) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı piksel, 4 kare | tamam: haç, 5 ip, 3 sarsak sıçrama, End Phase'de ipler kopar ve dönüş; alma 5,22 sn (≤5,3), dönüş ~2,0 sn (≤2,19); CPU senaryosu ePuppetBot | tamam: 14 e_puppet tarifi, her vuruşun sesi var | 5,5 / 6,5 / 7 | shots/e/puppet_string/ |
+| auger_lance (Burgu Mızrağı) | büyük + elle yeniden kurulmuş küçük; §10 dama sınırı içinde (büyük ≤22/26, küçük ≤3/6), x1/x3/x6 bakıldı | tamam: yarık, mızrak, burgu; elden 3566 ms / set 3366 ms (≤3675); set kartı mızrak çıkınca yatırılır; CPU senaryosu eAugerCpu | tamam: 14 e_* tarifi, her vuruşta ses, kırpma yok (tepe ≤ -1,9 dB) | 6 / 7,5 / 7 | shots/e/auger_lance/ |
+| well_pail (Kuyu Kovası) | büyük + elle yapılmış küçük (daha sıkı kırpım); 0 palet dışı, mürekkep çizgisi 1,00, ton 19/20 | tamam: kova, makara cırcırı, iki kart çekme; el ~4,9 sn, bot 4,73 sn; kamera sabit; HP plakası parlama hatası düzeltildi; CPU senaryosu eWellPailCpu | tamam: 15 e_well tarifi, her vuruşta ses, 330 Hz cırcır imzası | 5,5 / 7 / 7,5 | shots/e/well_pail/ |
+| void_eye (Boşluk Gözü) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı, mürekkep 1,00, dama sınırda | tamam: gece örtüsü, göz açılışı, toplu yutuş, kapanış; yalnız göz ~5,43 sn (kabul ~5,4); Tılsım kılıcı kurtarmada sessizce kalkar; CPU senaryosu eVoidCpu | tamam: 16 e_void tarifi, hepsi sahnede çalıyor | 6 / 6 / 7 | shots/e/void_eye/ |
+| winnow_sieve (Harman Eleği) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı, 15 ton | tamam: üç kart çekme, iki atma seçimi, saman süpürülür; eSieve 3,37 + 2,22 = 5,59 sn (sınır 5,3, süre sınırı yok kararıyla kabul); CPU senaryosu eSieveCpu | tamam: 18 e_sieve tarifi, her vuruşta ses; e_sieveStraw Saman Korkuluklar'dan ayrışıyor | 5,5 / 6 / 6,5 | shots/e/winnow_sieve/dod/ |
+| sweeping_gale (Süpürge Rüzgarı) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı, dama sınırın çok altında; büyük doluluk 0,82 (rüzgâr yayı kasıtlı taşıyor) | tamam: tüm rakip büyü/tuzakları süpürür; eGale 4,60 sn, eGaleP2 4,75 sn (≤5,03); söndürmedeki ekran karartması palcheck'i bozuyordu, lightDimFor ile değiştirildi; CPU senaryosu eGaleCpu | tamam: 16 e_gale tarifi, hepsi sahnede çalıyor | 6 / 6,5 / 7,2 | shots/e/sweeping_gale/dod/ |
+| soul_leash (Ruh Tasması) | büyük 88×68 + elle 44×34 küçük; §10 dama sınırı içinde (gece zemini dikişleri 3 px, büyük/küçük 1 yama), dama ve tek piksel sınırları testte | tamam: tasma, bağ, kontrol devri; P1/P2, elden ve set kartından, Draw Phase nabzı, kopunca dönüş, yer yok, savaşta ölüm; alma 5,2 sn (≤5,3); CPU senaryosu eLeashCpu (&mode=vsBot) | tamam: 16 e_leash tarifi, hepsi vuruşunda çalıyor; puppet_string karşılıklarından ≥10 dB ayrışıyor | 6 / 6,5 / 6 | shots/e/soul_leash/ |
+| spite_axe (Hınç Baltası) | büyük 88×68 + elle 44×34 küçük, ikisi de %100 palette, resim aracı bayraksız | tamam: kuşanma +800, dönüşte sahibinin destesine gider, sahibine −500 kırbaç ve −800 ATK (P1/P2); elden 5,35 sn (pay 5,03, süre sınırı yok kararıyla kabul); CPU senaryosu eAxeCpu (&mode=vsBot) | tamam: 14 e_axe tarifi, her biri vuruşunda çalıyor | 5 / 6,5 / 6,5 | shots/e/spite_axe/ |
+| page_turner (Sayfa Çeviren) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı piksel, 4 kare | tamam: kitap, eller bağlanır, sayfa karıştırma, preslenmiş yapraklar iki mezarlığa, yeniden dağıtım, kapanış; ePage 5,70 sn (pay 5,84); kamera sabit; CPU senaryoları ePageBot / ePageCpu | tamam: her vuruşta e_page* tarifi; dağıtımda genel cardDraw susturuluyor | 6 / 6,5 / 7 | shots/e/page_turner/ |
+| lucky_die (Talih Zarı) | büyük 88×68 + elle 44×34 küçük, bayraksız, 0 palet dışı, 13 ton, mürekkep 1,00; küçük/büyük 0,86 | tamam: zar atışı, yüze göre +100×zar ATK/DEF; 1'de sönük e_dieDud, 6'da ikramiye akoru + üç havai fişek; toplam 4,25–5,05 sn (pay 5,03, süre sınırı yok kararıyla kabul); kamera sabit; CPU senaryosu eDieCpu (&mode=vsBot) | tamam: 13 e_die* tarifi, hepsi sahnede çalıyor, ses yüksekliği makul | 6 / 7 / 7 | shots/e/lucky_die/ |
+| crystal_wyrm (Kristal Ejder) | YALNIZ KART RESMİ: büyük 88×68 + elle 44×34 küçük; 0 palet dışı, beyaz yok, mürekkep 1,00; büyük 18 ton / %2,3 tek piksel / 21 kare, küçük 17 ton / %4,9 / 3 kare; yaşayan şeritler iki boyutta | kapsam dışı (kart sinematiği yok); çağrı ~3,5 sn, kamera sabit; v1 filmdiff 17/17 AYNI; CPU senaryosu eWyrmCpu (&mode=vsBot) | kapsam dışı (yeni ses yok) | 6,5 / 6,5 / 7,5 | shots/e/crystal_wyrm/ |
+| straw_decoys (Saman Korkuluklar) | büyük 88×68 + elle 44×34 küçük, 19 ton, 0 palet dışı, küçük/büyük 0,77; doluluk 1,00 (tarla kasıtlı taşıyor) | tamam: korkuluklar, karga, saldırı yeniden hedeflenir (P1/P2, elden/set, hızlı yanıt, tek korkuluk); eStrawOwn 4,85 sn (pay 4,76, süre sınırı yok kararıyla kabul); v1 filmdiff 17/17 AYNI; CPU senaryosu eStrawCpu (&mode=demo) | tamam: 19 e_straw tarifi, hepsi işaretinde çalıyor | 5 / 6 / 7 | shots/e/straw_decoys/dod/ |
+| abyss_magus (Uçurum Büyücüsü) | YALNIZ KART RESMİ: büyük 88×68 + elle 44×34 küçük; 0 palet dışı; büyük 17/20 ton, 6/6 zemin, %2,8 tek piksel, doluluk 0,72, mürekkep 0,95; küçük 17/20 ton, %5,0, mürekkep 0,99; kare başına 16–28 / 5–9 px değişim | kapsam dışı (kart sinematiği yok); çağrı 3,57 sn (ortak kurban çağrısı), zoom 1; v1 filmdiff 17/17 AYNI; CPU senaryosu eMagusCpuP2 (&mode=vsBot, --fresh olmadan) | kapsam dışı (yeni ses yok) | 5 / 5,5 / 6 | shots/e/abyss_magus/dod/ |
+| dawn_swords (Şafak Kılıçları) | büyük 88×68 + elle 44×34 küçük, 14/13 ton, 0 palet dışı, mürekkep %100; eski görünüm resmi dondurulmuş (FNV-1a fc7303d4 testi) | tamam: yaldızlı şafak kafesi, canavarlar kafeste soğur, sayaç tıkırdar, süre dolunca/temizlenince kalkar; eDawn 5,38 sn (pay 5,30, süre sınırı yok kararıyla kabul); zoom 1; v1 filmdiff 17/17 AYNI; CPU senaryosu eDawnCpu (&mode=demo) | tamam: 19 e_dawn tarifi, hepsi sahnede çalıyor (e_dawnTick, e_dawnLast dahil); tepe -2…-21 dBFS | 6,5 / 6,5 / 7 | shots/e/dawn_swords/dod/ |
+| (doldurulacak) | | | | | |
+
+### S3 Boşluk Gözü (`void_eye`)
+- Resim: `src/art/cardart-v3/void_eye.ts` (88×68 + elle 44×34, 4 kare yaşayan resim). Sinematik + toplu yok etme:
+  `src/cinematics/spells/void_eye.ts` (activate kancası + `registerLaneE('massDestroy')`; tüm destroy / tokenVanish /
+  Koruyucu Tılsım olayları tek kolektif yükselişte). SFX: `src/audio/v3/e/void_eye.ts` (15 tarif, `e_void*`).
+- Senaryolar: `src/duel/scenarios/e_void_eye.ts` (eVoid, eVoidP2, eVoidQuick, eVoidSet, eVoidSetP2, eVoidOne,
+  eVoidCharm, eVoidSovereign, eVoidEquip); test `tests/e/void_eye.test.ts`.
+- Kanıt: `shots/e/void_eye/r2/` (quick.png, quick_zoom.png, quick_pull.png, quick_tear.png, quick_land.png, p2_full.png,
+  p2_rise.png, token.png, art/, sfx/, measure.json, measure-quick.json).
+- Eleştiri turu 1 düzeltmeleri: renk çarpımı (setTint) yok — kasılmada 1 beyaz kare, sonra void3/void2 dolgu + void4
+  kenar; gece örtüsü (mürekkep, 4 adım, TILE_FX altı) sahayı ~%30 karartır; göz katmanı birimlerin ARKASINDA
+  (arka sıra önünde durur); yutuş = 4 adımlı çekiş + gözbebeğine yakınsayan çizgiler + kenarda zerre patlaması;
+  kapanış + iki ayrı kırpma (100 ms kapalı bekleme); büyük damla (7×10), asılma, lekeli iki halkalı sıçrama;
+  e_voidSwell yalnız 28 Hz katları (tremolo yok), e_voidGulp cam emiş → cam çimdik (chasmShut LSD 17,4 dB);
+  kartlar göz kırparken mezarlığa (kendi e_voidCard sesi, cardPlace yok); magic_hat sahte şapkası da yükselir.
+- Eleştiri turu 2 düzeltmeleri: göz katmanı artık birimlerin ve destelerin ÖNÜNDE (DEPTH.FX+1; yükselen gövdeler
+  altında, çekişteki silüetler önünde) — kalabalık sahada arka sıra gözü kapatmaz; göz büyüdü (EW 30, EH 46: 71×93 px);
+  oturma yerleri HUD bandının altında (kutu üstü ≥ y 40, kalabalık kol yana sıkışır); dönüş = 2 adet 4 karelik
+  sıkışma-dönüş + 1 px void4 dış hat (dolgu yok); kasılma = beyaz 1 px dış hat + void3 gövde (beyaz ≤ %1,33);
+  çekiş kasılmadan 1 kare sonra hepsi birlikte başlar, gövdeler 0,8 → 0,55 → 0,3 küçülür; kartlar çekişte (≤ 240 ms)
+  eve gider, kırpmalar durgun sahada; kapalı göz = kirpikli kapak dikişi, ikinci kırpmadan sonra 120 ms'de yarığa
+  kapanır; damla 9×13 + 1 karelik beyaz parıltı, kurtarılan canavarın altına düşmez. SFX: tik +6,5 dB ve önünde 30 ms
+  sessizlik; swell 1,6 sn, tepesi kasılmada, gövdesi 112–336 Hz; e_voidGulp aşağı/içe emiş (Lid ile LSD 12,1 dB);
+  yeni e_voidTwitch (iris bakınması) ve e_voidTink (damla şişmesi). Resim: iris aşağı bakar, bulut lopları kapakların
+  üstünde ve yanlarında, iki yanda 5 okunur silüet (kurt, yarasa-kanat ejder, boynuzlu iblis, kuşlar).
+- Kanıt (tur 2): `shots/e/void_eye/r3/` (quick.png, eye_open.png, contract.png, pull40.png, tear.png, seam.png,
+  set.png, p2.png, one.png, art/, sfx/, measure.json).
+- Ölçüm (oyun ms): eVoidQuick/One/Charm 5,53 sn, eVoidSet 5,52 sn (pay 5,57 sn); kamera 0.
+  Sahibin kararı: sabit süre sınırı yok.
+- Eleştiri turu 3 düzeltmeleri: gece örtüsü artık ALFA DEĞİL — tam opak mürekkep damgası, 2×2 Bayer çeyrek
+  adımları (¼ → ½; dönüşte ½ → ¼ → 0), TILE_FX altında; ışık damgada açılan DELİK (gözün duvardaki parıltısı,
+  bakışın sahadaki havuzu, damlanın düştüğü yer) — palcheck Δmax +0,91 puan (önce +70,6) PASS. Göz gökyüzünde
+  daha yüksek (merkez y 58, EH 40: 75×81 px), kapaklar hacimli (parlak dudak, deri, gölgeli kıvrım, dış kat, mürekkep),
+  çevresinde birimlerin ARKASINDA gece bulutu lopları (parlak üst, mor alt); yarık gözün alt ucunda durur. Göz
+  yaşar: kapak dudağı 1 px titrer, gözbebeği 1 px nefes alır, iris kalabalık tarafa eğilip gezinir, yıldızlar 90 ms'de
+  bir parlar, gözbebeğine sarmal zerre akar. Yükseliş hiç park etmez: kavisli yol, %42'den sonra taç gözbebeğine
+  doğru hızlanarak daralır (kasılmada yarı yolda), gövde başına 3 yavaş dönüş + kendi ritminde 1 px salınım.
+  Kasılma: gövdeler 1 kare KENDİ pikselleriyle beyaz dış hatta; çekişte önce kendi pikselleri + leylak kenar, sonra
+  void1, void0 silüet (karanlığa batar). "KORUNDU" mürekkep plakada, kurtarılan karonun önünde sabit y'de. Kapak
+  ease-in 7 adım (ses tepesi ve ıslak "p" son adımlarda); e_voidLid 0,48 sn. e_voidSwell yalnız sinüs, kademeli
+  başlangıç (dağınık faz) + iki kısmi <0,1 Hz kayık, ~5 dB kısık (LUFS-M −17,8; gulp −16,7). Son kuyruk 140 ms
+  kısaldı. Resim: bulutlar bir ton açık, kapaklarda dudak + kıvrım + mürekkep, 2 tonlu silüetler (kurt, kanatlı
+  ejder, gözbebeğine doğru uzayıp yutulan boynuzlu iblis).
+- Kanıt (tur 3): `shots/e/void_eye/r6/` (quick_full.png, eye_zoom.png, quick_rise2.png, quick_pull2.png, p2_full.png,
+  set_full.png, frames/ + palcheck, art/, sfx/, measure.json).
+- DoD doğrulaması (2026-11-06): typecheck temiz; testler geçer (yalnız bilinen taban hataları); measure 9 senaryo
+  hatasız, zoom 1, closeUp 0, kamera 0 (eVoidQuick/One/Charm/Equip 5,43 sn; eVoid/P2 9,6–9,7 sn jetonla; Sovereign
+  10,9 sn parçalarla). Bulunan ve düzeltilen: Koruyucu Tılsım kurtarışından sonra tılsımın kuşanma kılıcı (auras-v3)
+  sahne bitince birimle geri gelip ~2,5 sn sonra senkronda kırılıyordu (genel, geç bir an) — artık kurtarış anında,
+  birim hayaletinin arkasında gizliyken sessizce kalkar (birimde başka kuşanma kalırsa dokunulmaz). Yeni senaryo
+  `eVoidCpu` (&mode=vsBot, --fresh OLMADAN filme alınır): CPU gözü kendi açar, tur biter, P1'e girdi döner; test
+  eklendi. magic_hat sahte şapkası kodda desteklenir ama sahnelenemez (şapkalar yalnız savaş evresinde var, göz normal
+  büyü). Kanıt: `shots/e/void_eye/dod/` (quick.png, p2.png, p2_end_fix.png, charm.png, cpu.png, tail_*.png).
+
+### S5 Harman Eleği (`winnow_sieve`)
+- Resim: `src/art/cardart-v3/winnow_sieve.ts` (88×68 + elle 44×34, 4 kare yaşayan resim: gün ışığında — sıcak gök
+  bandı + kademeli güneş parıltısı — sallanan elek, iki yanında sallama çizgileri, havada 2×1 taneler, üç kart,
+  sağa savrulan 2 px'lik saman şeridi; yığın tonlu, kaydırmalı 2×1 tane çizgileri). Sinematik:
+  `src/cinematics/spells/winnow_sieve.ts` (activate kancası: ~100 px'lik DEV hasır elek oyuncunun tarafının ortasında
+  örülür, buğday dökülür, 4 devir 6 Hz ±6 px sallama + her vuruşta 1 karelik basılma, yığın kenara yığılır ve taneler
+  kenardan uçar; üç kart altın patlamasıyla takla atarak ~26 px zıplar ve tek bir parabolde ele iner, el kartı ancak
+  yuvasının ~40 px üstünde devralır; üçüncü atış doruk: derin çöküş, hit-stop, beyaz kenar parlaması, 70 tane.
+  Elek seçim boyunca alçakta bekler — `registerEvent('discard', öncelik 2)`: kartlar eleğe düşer, tanelere yarı
+  gömülür (ön çemberin arkasında), samana döner, elle çizilmiş 2 px'lik başaklı saplara ayrılır; üç düz kurdele
+  rüzgar ve incelen saman bulutu onları mezarlığa savurur; elek çözülür). Elek, birimlerin ATK/DEF plakalarının
+  üstünde çizilir (FX_TOP). SFX: `src/audio/v3/e/winnow_sieve.ts` (15 tarif, `e_sieve*`; savurma artık dar, yüksek,
+  ≤0,35 sn'lik bir harman yelpazesi nefesi + saman tıkırtıları, mezarlığa doğru panlanır: `e_sieveGustR/L`).
+- Senaryolar: `src/duel/scenarios/e_winnow_sieve.ts` (eSieve, eSieveP2, eSieveSet, eSieveSetP2, eSieveBare,
+  eSieveSeal, eSieveSealP2, eSieveUi, eSievePlay, eSieveCpu); test `tests/e/winnow_sieve.test.ts`.
+- Kanıt: `shots/e/winnow_sieve/r2/` (shake.png, toss3.png, toss3b.png, disc.png, straw.png, gust.png, p2.png,
+  p2disc.png, set.png, art/, measure.json), ses: `shots/e/winnow_sieve/r2sfx/`.
+- Ölçüm (oyun ms): eSieve etkinleştirme 3,92 sn + atma 1,77 sn; kamera 0. eSieveSeal'in 1f/38px kamerası ortak
+  kazanma sahnesidir (eWellPailSeal de aynı: 1f/38px). Ses ayrımı (LSD): savurma ↔ e_strawGust 15,6 dB, ↔ e_galeSweep
+  25,8, ↔ e_galeStir 18,0; sallama ↔ e_wellShake 11,1; atış ↔ e_wellLeap 10,6, büyük atış ↔ e_wellLeap 10,3.
+- Düzeltme turu 3 (eleştirmen 6/10): elek artık birimlerle zemin y'sine göre sıralanır (UNIT + y; önündeki birim
+  onu örter, ATK/DEF plakaları hep üstte), iki oyuncuda da arka sıranın orta büyü/tuzak karosunda durur; ışık havuzu
+  tek tam basamak (yoğunluk 1, 'steady': dama deseni yok); yığın 3 ton bandı + sallanmayı izleyen parıltı, tanedeki
+  kart sırtları açık kenar + oyuncu amblemi; atış kartı önce ~30-40 px DİKEY zıplar, sonra ele kıvrılır, boyutlar
+  uçuşun beşte birinde bir adım (pop yok), %62'de yüzü düz; 1. atış 4. sallama devrinin altında; 3. atış: tüm kenar
+  BEYAZ, kenardan dışa kırılan beyaz→altın halka + zemin halkası, 2× yüksek 96 taneli fıskiye, 3 px geri tepme, altın
+  izli kart; sesi 0,92 perdede, 70 Hz alt vuruş, uzun tane yağmuru (atıştan ~4,5 LU yüksek). Çözülme: tane süzülür,
+  çember arkadan 6 yay hâlinde 1 px'lik eğik şeritler olarak soyulup rüzgarla uçar, ızgara sıraları zemine düşen
+  liflere dönüşür. Yeni ses `e_sieveCatch` (kart ele oturunca kâğıt tıkı); `e_sieveStraw` 0,20 sn; `e_sieveShake`
+  −5,7 dBFS tepe, ağırlık merkezi ~2,4 kHz. Resim: güneş net disk + halka, gök gece tonlarında, saman ayrı ayrı
+  başaklı saplar (şimşek okuması yok), küçük resimde tane tepesi + gölge sırası.
+  Ölçüm: eSieve bitiş 6050 ms (900 ms senaryo beklemesi dahil; önce 6600), seçim istemi ~3,2 sn'de (önce 3,96).
+  Kanıt: `shots/e/winnow_sieve/r3/` (p1.png, p1toss.png, toss1c.png, p2.png, p2z.png, p2disc.png, pool.png,
+  disc.png, unravel2.png, set.png, sealp2.png, art/, measure.json), ses `shots/e/winnow_sieve/r3sfx/`.
+- Bitti-tanımı doğrulaması (2026-11-06): typecheck temiz; `tests/e/winnow_sieve.test.ts` 4/4 (yeni: bot eleği açar,
+  iki kartı kendisi atar, turu biter); tests/art'taki hatalar yalnız bilinen taban + yük kaynaklı zaman aşımları
+  (cloud_hatchling / mudgrasp_spirit tek başına geçer). measure (look v3, 8 senaryo): zoom 1, closeUp 0, hata 0;
+  eSieve etkinleştirme 3,37 sn + atma 2,22 sn (oyun ms; §7 3,0 sn + seçim → izin (0,7+3,0)×1,35+0,3 = 5,3 sn, toplam
+  5,59 sn: ~0,3 sn fazla, sahibin "süre sınırı yok" kararıyla kabul). eSieveSeal/P2'deki 1f/38px kamera ortak kazanma
+  sahnesi (focus 4400 ms'de, gameOver içinde). palcheck: kartın pikselleri palet içinde; Δoff +1,03 (600 ms) ortak
+  büyü açılışı, beyaz %1,4 seçim istemi yazısı (taban gürültüsü). v1 filmdiff: 17/17 IDENTICAL. Yeni senaryo
+  `eSieveCpu` (&mode=vsBot, --fresh olmadan): bilgisayar P2 eleği açar, kartlar onun eline uçar, seçimi kendisi
+  yapar, saman mezarlığa savrulur, sonra Yıldırım Hükmü ile oynamaya devam eder — takılma yok. Bitişten 2 sn sonra
+  sahnede artık nesne yok, girdi geri döner (P1, P2, kapalı P2, Ui, mühür). Ses: `e_sieveStraw` 0,20 sn, %82 tiz;
+  ↔ e_strawWrap LSD 22,8 dB, ↔ e_strawGust 38,9; `e_sieveGust` ↔ e_strawGust 33,5. Kanıt: `shots/e/winnow_sieve/dod/`.
+
+### S9 Saman Korkuluklar (`straw_decoys`)
+- Resim: `src/art/cardart-v3/straw_decoys.ts` (88×68 + elle çizilmiş 44×34, 4 kare yaşayan resim: alacakaranlık
+  bandı (void1) + sürülmüş tarla sıraları, kolları açık üç korkuluk, turkuaz büyü güneşinin önünden geçen karga
+  (yalnız büyük resimde), ellerden rüzgarla akan saman; küçük resimde yan korkuluklar ayrı damga: koyu şapka /
+  açık çuval yüz).
+- Sinematik: `src/cinematics/spells/straw_decoys.ts`. Kritik turu 1 düzeltmeleri: tüm işaretler TEK saatten
+  (W0 = son saplanma; sahnenin ölçekli saati `SceneClock` — `scene.time.now` ölçeksizdir, eski ×1,35 kaymanın
+  ve göz/karga çakışmasının sebebi buydu); patlama HUD bandının altında (y ≥ 40), kazık düşüş yüksekliği sıraya
+  göre; saplanmada 2 karelik ezilme + toprak halkası + son kazıkta 2 px sarsıntı; rüzgar son kazığın titremesiyle
+  örtüşür (ölü boşluk yok), P1 sol→sağ / P2 sağ→sol; kahraman vuruşu: ışık kenarlı 30×18 karga sıranın üstünden
+  süzülür, geçtiği her korkuluğun 2×2 düğme gözleri yanar, son korkuluğun dış koluna konar (kol eğilir), gagası
+  açık iki kez gaklar; el değiştirme: karga ürküp kalkar, saman tabandan yukarı tırmanan pürüzlü bir altın
+  kenarla korkuluğu jetonun kendi piksellerine yeniden sarar (jeton sanatından okunur; jetonda olmayan ceket/şapka
+  rüzgarda kırıntı olarak dökülür). `target` kancası: 2 px altın saman çizgisi saldıranı "kancalar", saldıranın
+  başı döner, eski ok kaybolur, korkuluğa yeni ok + altın kilit (AttackHold yeni işaretlerle yeniden saklanır).
+- SFX: `src/audio/v3/e/straw_decoys.ts` (`e_straw*`): yeni alçak/geniş tarla rüzgarı (e_strawGust, LSD
+  e_sieveGust'a 33,5 dB), toprağa giren kazık "tok" (e_dieTak'a ≥ 12 dB, tur 3 ölçümü), e_strawWrap/WrapR (yönlü),
+  e_strawHand, e_strawPerch, e_strawWake, e_strawHook.
+- Senaryolar: `src/duel/scenarios/e_straw_decoys.ts` (eStrawAttack, eStrawAttackP2, eStrawAttackWait, eStrawAttack3,
+  eStrawOwn, eStrawOwnP2, eStrawSet, eStrawSetP2, eStrawOne, eStrawSummon); test `tests/e/straw_decoys.test.ts`.
+- Kritik turu 2 düzeltmeleri: saman artık görünür turlarla sarılır (eğik tur kenarı, her karede bir satır tırmanan
+  2–3 çapraz sicim bandı, rüzgarla gelip önden dolanan şerit, 1 px taşmayla beliren tutamlar, başıboş uçlar);
+  rüzgar = takla atan bükük 3 px saplar + yavaş tutamlar, bir kısmı kazığa konup önünden dolanır. El değiştirme:
+  ceket bütün parça olarak rüzgarda uçar, şapka takla atıp yere düşer, 8 karelik yeniden sarma + altın kenar ışığı.
+  Karga: süzülüş yolu sahadaki tüm gerçek birimlerin tepesinden ≥ 6 px geçer, zemin gölgesi, alt kenar sekme ışığı,
+  "flare" pozu dolu açık kanat + tüy çentikleri. Ses: tok = kuru ahşap (480/640/860 Hz, 2.6 kHz "tk", orta bant
+  %83, cMean 463/607/809), gak = belirgin 560→400 Hz düşüş + dar formantlar, +5 dB; ikinci gak ayrı tarif
+  (e_strawCrow2) kendi gaga işaretinde; ceket "ŞAK" +8 dB (kafa ile LSD 19,6 dB), göz +3,7 dB. Süreler (r5 ölçümü):
+  eStrawAttack 4,78 s → handoff 285 / morphFrame 30 ile ≈ 4,74 s; eStrawOwn 4,32 s, eStrawSummon 4,45 s.
+- Kanıt: `shots/e/straw_decoys/r4/` (own_hero2.png, crow_perch3.png, ownP2_morph2.png, attack.png, lure.png,
+  measure.json), `art4/`, `sfx3/`.
+- Kritik turu 3 düzeltmeleri: karga yeniden çizildi (`src/cinematics/spells/_straw_decoys_paint.ts`, saf
+  PixelCanvas çizicileri): mürekkep gövde + stone1/stone2 tüy bantları, üst kenarda mist kenar ışığı, 4 kanat pozu
+  (up/mid/down/flare); süzülüş her şapkanın ≥ 4 px üstünden geçer, şapkanın yanında asılı kalıp kolun UÇ
+  piksellerine dikey iner (gözleri hiç örtmez); her gak: önce çömelme, baş 2 px yukarı-ileri, gövde 1 px iner, gaga
+  2 px açılır, gırtlak tüyleri kabarır, gagadan 1 px "ses tıkı" çizgileri yayılır (e_strawCrow / e_strawCrow2
+  işaretlerinde). El değiştirme: ceket/şapka artık UÇMAZ; korkuluk giyinik kalır ve tabandan tırmanan saman kenarı
+  ceketin/şapkanın ton bantlarını altına (gold) dönüştürerek jetona sarar; karga, saman kırıntıları ve ışık
+  havuzları kanca bitmeden yok olur (hepsi beklenir). Saplanma: tek beyaz kare, sonra toprağın karesi — koyu
+  krater (earth0 delik, earth3/earth4 ışıklı kabarık kenar, 3 durum), 5 toprak topağı 6–10 px yay, kazık 2 px
+  ezilir ve 2 kare ±2 px titrer, karo kartı 2 kare SONRA yerleşir. Çuval kafa: arka dikiş bandı, mürekkep büzgü
+  ipi + düğüm ucu, altında saman püskülü, çapraz dikişli ağız. Başka kartın boşta sesi (heronDrop vb.) imza
+  boyunca anında söndürülür (`fade`). Ses: gak = sert gırtlak tıkı + sürülmüş testere, ~105 Hz kaba FM
+  (indeks ≈ 0,4·f) + ~100 Hz hırıltı kıyması, formantlardan geçen geniş bant gürültü + 2–4 kHz grit, high-shelf
+  −12 dB (tarakta çizgi değil gürültülü bant); tok = 160→90 Hz toprak gümlemesi + boğuk ahşap (360/425/500 Hz,
+  4. kazık 290 Hz e_strawTok4) + toprak çıtırtısı; LSD e_dieTak'a 13,0 / 12,5 / 12,1 / 13,8 dB. Resim: karga sol
+  korkuluğun dış koluna konmuş el yerleşimli silüet (büyük 6×4, küçük 4×2), tarla sıraları earth1, arka plan 6 ton.
+- Kanıt: `shots/e/straw_decoys/r6/` (own_crow2.png, own_perch.png, own_morph.png, own_end.png, stab.png,
+  attack_perch.png, ownP2.png, paint/crow.png, paint/decoy.png, art/, sfx/, measure.json).
+- Açık: jeton sprite'ı D lane'inin; yer tutucuda ceket/şapka/çuval yok — D jetona aynı ceket + çuval kafa +
+  şapkayı giydirirse dönüşüm otomatik olarak yalnız farklı pikselleri değiştirir (jeton pikselleri sanattan okunur).
+- Bitti-tanımı doğrulaması (2026-11-06): typecheck temiz; `tests/e/straw_decoys.test.ts` 16/16 (yeni: `eStrawCpu`
+  — bot P2 kapalı kartla büyük doğrudan saldırıyı yanıtlar, saldıran bot korkuluk seçer, tur biter); tests/art +
+  kartın engine/ai/deck testlerinde yalnız bilinen taban hataları + yük kaynaklı zaman aşımları (cloud_hatchling /
+  hollow_ogre tek başına geçer). measure (look v3, 10 senaryo): zoom 1, closeUp 0, hata 0; eStrawAttack/Wait'teki
+  1–2f/24px kamera ortak saldırı ilanı/savaş odağıdır (t=17 ve savaş), kartınki değil. Etkinleştirme (oyun ms):
+  kendi tur 4,85 sn (eStrawOwn; izin (0,7+2,6)×1,35+0,3 = 4,76 sn: ~0,1 sn fazla), hızlı yanıt 5,27 sn (yanıt
+  açılışı dahil) — sahibin "süre sınırı yok" kararıyla kabul. palcheck: Δoff +1,04 (800 ms) ortak büyü açılışı,
+  imza boyunca off düşer; beyaz ≤ %0,62. v1 filmdiff: 17/17 IDENTICAL. Bitişten 2 sn sonra sahnede artık nesne yok,
+  girdi geri döner (P1, P2, Own/Set P2, Summon, One). Yeni senaryo `eStrawCpu` (`&mode=demo`, --fresh OLMADAN):
+  iki bot; P1 Magma Titanı doğrudan saldırır, P2 botu korkulukları diker, saldırı bir korkuluğa döner, düello tur 5'e
+  sürer. Resim: 19 ton, offPal 0, el yapımı küçük (smallVsBig 0,77). Kanıt: `shots/e/straw_decoys/dod/`.
+
+## Kontrol noktası (WIP, 2026-10-31 ~20:00 UTC)
+Orkestratörün isteğiyle ara kayıt (kullanım sınırı yaklaşıyor). İş akışı (`lane-e-cards`, kart başına
+kurucu → 3 bağımsız eleştiri+düzeltme turu → çekişmeli doğrulama → commit) sürüyor; bu commit o anki ağacı
+olduğu gibi (yarım kartlar dahil) kaydeder. Sıradaki: kalan kartların turları, sonra v1 / a6v1 film kapıları,
+kamera kapısı, palcheck ve son özet. Kart başına bitmiş commit'ler "Lane E: <id>" başlığıyla gelecek.
+
+## DURAKLATILDI (2026-11-01, sahip kararı: haftalık kullanım sınırı) — devam talimatı
+Durum: 14 öğenin hepsinin ilk yapımı (kurucu) ve 1. bağımsız eleştirisi bitti (iş akışı önbelleğinde).
+1. tur düzeltmeleri (fix1) çalışırken durduruldu: yarım düzeltmeler ağaçta ve bu commit'te (WIP). Hiçbir kart
+henüz 3 turu, doğrulamayı ve kendi "Lane E: <id>" commit'ini tamamlamadı.
+
+**Devam (aynı oturumda, önbellekten):**
+`Workflow({ scriptPath: "/root/.claude/projects/-home-user-yugioh/5469a051-b52a-5876-bb1d-752cb3b1b10f/workflows/scripts/lane-e-cards-wf_1a820ab7-95d.js", resumeFromRunId: "wf_1a820ab7-95d" })`
+— tools + 14 build + 14 crit1 sonucu önbellekten döner; fix1'den itibaren canlı çalışır (fix1 ajanları ağaçtaki
+yarım düzenlemeleri görüp sürdürür). 30 dakikalık WIP commit döngüsü:
+`/tmp/claude-0/-home-user-yugioh/5469a051-b52a-5876-bb1d-752cb3b1b10f/scratchpad/autockpt.sh` (arka planda başlat).
+
+**Yeni oturumdan devam (önbellek yoksa):** betik dosyası yukarıdaki yolda (yoksa bu belgenin altyapı bölümü +
+`docs/v3/PARALEL_OTURUMLAR.md` ile yeniden yazılır). Her kart için sıradaki adımlar: 1. tur eleştirisini
+yeniden üret (yeni bağımsız eleştirmen) → düzelt → 2. ve 3. eleştiri+düzeltme turları → çekişmeli doğrulama
+(typecheck, ilgili vitest, palcheck, measure + kamera, P1/P2 senaryoları) → kart başına commit + push.
+Sonda: `filmdiff --set v1` (17/17) ve `--set a6v1` (26/26) kapıları (tabanlar `shots/` altında, konteynere özel —
+yeni konteynerde 684e290'dan yeniden yazılmalı), tam `npm test`, son özet.
+
+**Ortam:** yeni konteynerde `npm ci` ve `ln -s /opt/pw-browsers/chromium-1243/chrome-linux64 /opt/pw-browsers/chromium-1243/chrome-linux`.
+
+**Zamanlama kararı (orkestratör):** §7 storyboard süresi REHBER §5 2,9 sn sınırına üstün gelir:
+kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe açık soru olarak kalır.
+
+### puppet_string
+- v1 kart yüzü hâlâ yer tutucu: isteğe bağlı `src/art/cardart/puppet_string.ts` yok.
+- `ePuppetBot` `--fresh` ile çekilemez (qa.scenario yeniden başlatması hep hot-seat); `--fresh` olmadan çek.
+- `palcheck` tüm kare/tahta kırpımlarında FAIL (Δoff ~4–5): arena arka planı ve ışık katmanı gürültüsü, kartın kendi renkleri değil.
+- `tests/art/cloud_hatchling.test.ts` başarısız: A kulvarının süren işi, bu kartla ilgisiz.
+- Cila: yüzü kapalı dönüşte iniş adımı `e_puppetHook` sesini kullanıyor, yüzü açık dönüş `e_puppetStep` kullanıyor.
+
+### auger_lance
+- Ortak açılış (spells/_kit set yolu + TileCard derinliği): set büyü/tuzak ~0,5 sn dik dururken arkadaki canavarı örtüyor, stat rozeti kart yüzünün üstüne çiziliyor. Ortak dosya, düzeltilmedi.
+- cardart-render küçük/büyük değer yerleşimi bayrağı 0,56 < 0,75 (araç bayrağı, §10 sayısı değil; küçük kasıtlı elle kurgu).
+- Saldırıya hızlı cevap: temas düz saldırıdan 5,1 sn sonra (açılma 1,1 sn + hedef seçimi + 3,0 sn imza). Sahibin süre sınırı yok kararıyla kabul.
+- palcheck (a5) el filminde t=900'de bir karede Δoff +1,27 pt: yarığın zemindeki ışık havuzu (izinli ışık katmanı).
+- eAugerCpu tools/measure.mjs ile ölçülemez (hot-seat'e yeniden başlar); &mode=vsBot ile, --fresh olmadan filme alın.
+
+### well_pail
+- Süre: el aşamaları ~4,88–4,92 sn (bot 4,73 sn), kabul 4,755 sn'den ~130–170 ms fazla; sahibin süre sınırı yok kararıyla storyboard kısaltılmadı.
+- palcheck (eWellPail, kırpım 120,40,400,300) t=4200–4350'de 2 karede Δoff +1,05 pt: kova düşüşü flaşı / ışık havuzunun zemine karışması (taş tonları). Flaş şiddeti (1,0) düşürülebilir.
+- Kart resmi yumuşak bayraklar: büyük özne doluluğu 0,86 (dawn_swords 0,87), küçük/büyük yerleşim 0,56 (auger_lance da 0,56); küçük ton 20/20 sınırda.
+- Mühür aşamalarında 38 px kamera kayması beş mühür kazanma sekansından, bu karttan değil.
+- `tests/art/cloud_hatchling.test.ts` başarısız: başka kartın işi, ilgisiz.
+
+### void_eye
+- magic_hat sahteleri void_eye ile birlikte sahnelenemez (şapkalar yalnız savaş aşamasında, göz ana aşamada); kod destekliyor, film yok.
+- Büyük resim özne doluluğu 1,00 (hedef 0,60–0,75): göz ve bulutlar kasıtlı taşıyor; diğer ölçüler geçiyor.
+- palcheck sahne sonrası karelerde FAIL (+7 pt): boş sahada görünen arena zemin ışığı, kartın pikseli değil.
+- Uzun --start atlamalı filmde bir kez gri arena görüldü (çekim hatası); adım adım filmler normal.
+- eVoidCpu measure.mjs / --fresh ile çalışmaz (hep hot-seat); vitest testi ve --fresh'siz film ile doğrulandı.
+
+### winnow_sieve
+- eSieve toplam 5,59 sn oyun süresi (3,37 etkinleşme + 2,22 atma), (0,7 + 3,0) × 1,35 + 0,3 = 5,3 sn sınırının ~0,3 sn üstünde; sahibin süre sınırı yok kararıyla kabul, işaretli.
+- eSieveSeal ve eSieveSealP2: 4400 ms'de 1 karelik 38 px kamera kayması; ortak oyun sonu (mühür zaferi) sahnesinden geliyor (eWellPailSeal'de de var), kartın değil.
+- palcheck tüm karelerde FAIL: 600 ms'de +1,03 sıçrama (ortak büyü açılışı) ve seçimde %1,4'e kadar beyaz (seçim yazısı). Eleğin kendi pikselleri palette.
+- Resim aracı: büyük resim özne doluluğu 0,86 (hedef 0,6–0,75; elek kasıtlı alttan taşıyor); küçük resmin parlak alanı odak noktasına 10,5 px (~8 üstüne bak diyor).
+
+### sweeping_gale
+- Büyük resim özne doluluğu 0,82 (KART_RESIMLERI §10 hedefi 0,60–0,75); rüzgâr yayı kasıtlı olarak kenarlardan taşıyor, sahip onayı gerekli.
+- Ekran geneli karartma katmanı kaldırıldı; söndürme sonrası "karanlık nefes" artık yalnız ışık katmanı karartmasından geliyor, daha yumuşak. Volkan filminde okunuyor; Gelgit Körfezi, Gölge Mağarası ve Festival Meydanı kare kare yeniden çekilmedi.
+- palcheck eGale ve eGaleVolcano'da süpürme sonrası +2,5–2,9 puan değişimle hâlâ FAIL; maske boşalan kart yuvaları, canavar gölgeleri ve arena heykellerini gösteriyor, kartın kendi pikselleri değil.
+- tests/art'ta cloud_hatchling, hollow_ogre, mudgrasp_spirit bilinen taban listesinde değil ama düşüyor; bu kartla ilgisiz, temiz checkout ile karşılaştırılmadı.
+- eGaleCpu --fresh olmadan ve &mode=vsBot ile çekilmeli (eWellPailCpu gibi).
+
+### soul_leash
+- İnişteki bir karede (t=720) palcheck sınırın +4,2 puan üstünde; ortak açılış/landV3 animasyonu (Dawn Swords aynı karede +2,9). Bu kartın dosyaları dışında; tasmanın kendi vuruşları +1 puanın altında.
+- Tasma kopunca harcanan mızrak kartı mezarlığa giderken dönüş sahnesinden önce ~0,7 sn sessiz boşluk var; genel motor/UI akışı.
+- Resim aracı parlak ağırlık merkezini odaktan 18,5 px uzakta buluyor (~15 üstü bakılmalı); uzun bağ çizgisi sol alta çekiyor. Gözle toka açıkça odak, olduğu gibi bırakıldı.
+- Her çalıştırmada Canvas2D getImageData willReadFrequently uyarısı; ortak çizimden geliyor.
+
+### spite_axe
+- Süre: elden kuşanma eylemden girdiye 5,35 sn (pay (0,7 + 2,8) × 1,35 + 0,3 = 5,03 sn; set kartından 5,23 sn). Süre sınırı yok kararıyla işaretlendi, kesilmedi; film sürüklenmiyor.
+- palcheck: eAxeBorrowEquip'te tek karede (t≈9,2 sn, ısırma/kaldırma ışık çakması) +1,02 puan palet dışı, sınırın 0,02 üstü. Renkler ışık katmanıyla boyanmış arena/büyücü morları ve sisleri; kartın kendi sprite pikselleri değil.
+- eAxeBorrowEquip 8 adet Canvas2D 'willReadFrequently' performans uyarısı basıyor; yalnız Kukla İpi senaryolarında çıkıyor (eAxeSetP2 aynı Uçurum Büyücüsü ile temiz). Uyarı, hata değil.
+- Kapı 6 yalnız genel v1 film setiyle çalıştı (17 film IDENTICAL); dawn_swords ayrıca karşılaştırılmadı. spite_axe yollarının hepsi ?look=v3 olmadan kapalı.
+
+### page_turner
+- Kart resmi işaretleri (küçük, düzeltilmedi): büyük konu dolgusu 0,85 (0,6–0,75 aralığının üstü; kitap bilerek kenarlardan taşıyor), küçük/büyük değer düzeni 0,74 (sınır 0,75).
+- Büyünün mezarlığa son yolculuğu hâlâ genel 'cardPlace' sesini çalıyor (ortak v3 büyü inişi), page_turner'a özel ses değil.
+- ePageBot ve ePageCpu yeni senaryolar: filme alındı ama measure.json çalışmasında yok. ePageCpu --fresh olmadan ve &mode=vsBot ile çekilmeli.
+- ePageBot'ta P1'in 'Bir kart seç ya da SAVAŞ'a geç' istemi P2'nin turunda görünüyor; viewAsP1 sahneleme hilesinden (eWellPailBot ile aynı), karttan değil.
+- src/art/cardart/page_turner.ts yok; eski (v1) görünümde yer tutucu resim çıkıyor. Yeni kartlar için izinli.
+
+### lucky_die
+- eDie ve eDieP2 (zar 6) 5,05 sn sürüyor, pay 5,03 sn — havai fişek kuyruğu yüzünden 0,02 sn fazla; süre sınırı yok kararıyla bırakıldı.
+- Her senaryonun ses listesinde sona doğru 'heronDrop' var: reed_heron'un (başka şerit, src/cinematics/kartc/reed_heron-marsh.ts) ortam sesi, zarın sönüşüyle çakışıyor.
+- tests/art/hollow_ogre ve mudgrasp_spirit tam koşuda yük altında düşüyor, tek başına 20/20 geçiyor; bu karttan kaynaklı değil.
+
+### crystal_wyrm
+- KART_RESIMLERI §10: 2x kart büyük resmi 1:1 göstermeli; inceleme paneli (src/view/v3/inspectV3.ts, başka şerit) hâlâ 1x yüzü büyütüyor, 44×34 resim 2×2 bloklarla görünüyor. Büyük resim LANE_E_ART_BIG'de hazır, ama henüz gösteren yok.
+- Büyük resimde konu çerçevenin 0,89'unu dolduruyor (araç 0,6–0,75 dışını işaretliyor); kasıtlı: kanat ve boyun sol/alt kenardan taşıyor, ashen_drake ile aynı tercih.
+- v3 el yelpazesinde her kartta dönüşten kaynaklı 1 px dikey dikiş var (ember_wolf, judgment_bolt'ta da); sistem geneli, bu karttan değil.
+
+### straw_decoys
+- Süre: eStrawOwn 4,85 sn, pay 4,76 sn (~0,1 sn fazla); hızlı yanıt 5,27 sn. Süre sınırı yok kararıyla kabul.
+- palcheck: 800 ms'de tek kare Δoff +1,04 (sınır 1); ortak v3 büyü açılışından, kartın piksellerinden değil.
+- Korkuluk jetonu, idle ve tokenVanish D şeridinde, hâlâ yer tutucu; devir sarması jetonun piksellerini okuduğu için kendiliğinden uyacak.
+- eStrawCpu --fresh olmadan çekilmeli (dondurulmuş zamanda botlar oynamaz).
+
+### abyss_magus
+- 2x inceleme paneli (ve galerinin 2x satırı) 88×68 yerine büyütülmüş 44×34 resmi gösteriyor; LANE_E_ART_BIG dışa aktarılıyor ama bağlantısı A5-B / A6 şeridinin işi (src/view/v3/inspectV3.ts).
+- eMagusCpuP2 yalnız --fresh olmadan çalışıyor: shot.mjs --fresh senaryoyu hot-seat kipinde yeniden kuruyor (DuelScene.ts:390), &mode=vsBot yok sayılıyor. Bu karta özgü değil.
+- Çağrı sırasında ölçülen kamera kayması (P1 en çok 10 px, P2 20 px, zoom 1) ortak kurban çağrısı odağından geliyor.
+- Bilinen temel hatalar (bu kart değil): arena-nt-platform ×2, cardface-v3 G1, dusk_ashen, hourglass_imp, shield_titan; cloud_hatchling yük altında zaman aşımı, tek başına geçiyor.
+
+### dawn_swords
+- Küçük/büyük resim yerleşim eşleşmesi 0,748 (eşik 0,75, araç bayraklıyor); kafesteki canavar 1x küçük resimde zor seçiliyor. Küçük resme elle rötuş ikisini de çözer; yapılmadı.
+- Büyük resim özne doluluğu 0,87 (hedef 0,60–0,75); kafes bilerek tüm genişliği kaplıyor, kabul edilmiş büyü resimleri de 0,86–1,00.
+- eDawn 5,38 sn, pay 5,30 sn (~0,08 sn fazla; iki kapalı canavarın açılması); süre sınırı yok kararıyla kabul.
+- eDawnExpire / eDawnPurge palcheck FAIL: kafes kalkınca arenanın kendi palet dışı tabanı (~%39) geri geliyor; Purge'deki %91 Arındıran Dalga'nın tam ekran etkisi. Bu kartın pikselleri değil.
+- v1 filmdiff setinde dawn_swords filmi yok; eski görünüm eşitliği kapı incelemesi, dondurulmuş resim hash testi ve dsCast'in v1 görsel kontrolüne dayanıyor.
+
+## SON ÖZET (2026-11-06)
+
+**14/14 kalem bitti, commit'lendi, push edildi.** Her kart: yapım → 3 eleştiri/düzeltme turu → çekişmeli doğrulama → commit.
+
+| Kalem | Commit | Eleştiri puanları (t1/t2/t3) |
+|---|---|---|
+| puppet_string (Kukla İpi) | 770b869 | 5,5 / 6,5 / 7 |
+| auger_lance (Burgu Mızrağı, hızlı) | 5c02d16 | 6 / 7,5 / 7 |
+| well_pail (Kuyu Kovası) | b09ce42 | 5,5 / 7 / 7,5 |
+| void_eye (Boşluk Gözü) | 1267a98 | 6 / 6 / 7 |
+| winnow_sieve (Harman Eleği) | 71b0665 | 5,5 / 6 / 6,5 |
+| sweeping_gale (Süpürge Rüzgarı) | 40eac5e | 6 / 6,5 / 7,2 |
+| soul_leash (Ruh Tasması) | 0257e7c | 6 / 6,5 / 6 |
+| spite_axe (Hınç Baltası) | 529859c | 5 / 6,5 / 6,5 |
+| page_turner (Sayfa Çeviren) | 61316ce | 6 / 6,5 / 7 |
+| lucky_die (Şans Zarı) | ae69dbb | 6 / 7 / 7 |
+| straw_decoys (Saman Kuklalar, hızlı) | 9825504 | 5 / 6 / 7 |
+| dawn_swords (Şafak Kılıçları, imza) | 72e0cce | 6,5 / 6,5 / 7 |
+| crystal_wyrm (yalnız kart resmi) | 39dc3c6 | 6,5 / 6,5 / 7,5 |
+| abyss_magus (yalnız kart resmi) | c3749db | 5 / 5,5 / 6 |
+
+Mekanik yer tutucular (controlChange, massDestroy, diceRoll, spellTrap→deste) `src/cinematics/b2e/dispatch.ts` üzerinden ilgili kartların sinematiklerine bağlandı; hızlı büyü açılışı `src/cinematics/spells/_quick_e.ts` ("HIZLI BÜYÜ!", ses `e_quickReveal`).
+
+**Kapılar (son koşu):**
+- typecheck: temiz (0 hata).
+- vitest: 1554 geçti / 8 kaldı. 7'si bilinen (3 arena geometrisi, cardface-v3 G1, dusk_ashen, hourglass_imp, shield_titan); 8. crag_axeman main'de (6d507fa) de kalıyor, bu şeritten değil.
+- filmdiff v1/a6v1, kamera kapısı, palcheck: sahibin isteğiyle son koşuda atlandı (her kartın doğrulayıcısı kendi koşusunda v1 17/17 IDENTICAL, zoom 1, closeUpCalls 0 buldu). Sorun çıkarsa sahip bildirecek.
+
+**Açık konular (kart başına ayrıntı yukarıdaki ### bölümlerinde):**
+- Son tur puanları 6–7,5: eleştirmenler hâlâ "needs-work" diyor; en zayıflar abyss_magus, soul_leash, winnow_sieve, spite_axe — 4. tur adayı.
+- Ortak açılış: kapalı büyü kartı açılırken arkasındaki canavarı ve stat rozetini ~0,5 sn örtüyor (paylaşılan dosya, düzeltilmedi).
+- 2x inceleme paneli büyük 88×68 resmi değil küçük resmin büyütülmüşünü gösteriyor; `LANE_E_ART_BIG` hazır, bağlanması başka şeridin işi.
+- Bazı kartlar eski süre hesabını 0,1–0,3 sn aşıyor (sahip kararı: sabit sınır yok).
+- CPU senaryoları (`e*Cpu`, `e*Bot`) `--fresh` ile çekilemiyor; `&mode=vsBot` ile `--fresh` olmadan çekilmeli.
+- Saman kukla jetonu ve tokenVanish D şeridinde, hâlâ yer tutucu.

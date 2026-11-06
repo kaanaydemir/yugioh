@@ -37,6 +37,7 @@ import type { JesterSfxName } from './v3/jester';
 import type { ArcherSfxName } from './v3/archer';
 import type { RaidersSfxName } from './v3/raiders';
 import type { StrawSfxName } from './v3/straw';
+import type { LaneESfxName } from './v3/lane-e';
 import type { KartBSfxName } from './v3/kart-b';
 import type { AshenSfxName } from './v3/ashen';
 import type { AxemanSfxName } from './v3/crag_axeman';
@@ -90,6 +91,7 @@ export type SfxName =
   | ArcherSfxName
   | RaidersSfxName
   | StrawSfxName
+  | LaneESfxName
   | KartBSfxName
   | AshenSfxName
   | AxemanSfxName

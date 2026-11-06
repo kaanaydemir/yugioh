@@ -22,6 +22,7 @@ import { V3_JESTER_RECIPES } from './v3/jester';
 import { V3_ARCHER_RECIPES } from './v3/archer';
 import { V3_RAIDERS_RECIPES } from './v3/raiders';
 import { V3_STRAW_RECIPES } from './v3/straw';
+import { LANE_E_RECIPES } from './v3/lane-e';
 import { KART_B_RECIPES } from './v3/kart-b';
 import { V3_ASHEN_RECIPES } from './v3/ashen';
 import { V3_AXEMAN_RECIPES } from './v3/crag_axeman';
@@ -1119,6 +1120,7 @@ export const RECIPES: Record<SfxName, Recipe> = {
   ...V3_ARCHER_RECIPES, // Yansıyan Okçu (./v3/archer.ts)
   ...V3_RAIDERS_RECIPES, // Hurda Akıncıları (./v3/raiders.ts)
   ...V3_STRAW_RECIPES, // Saman Korkuluk jetonu (./v3/straw.ts)
+  ...LANE_E_RECIPES, // lane E: new spells + mechanics (./v3/lane-e.ts)
   ...KART_B_RECIPES, // lane B cards (./v3/kart-b.ts)
   ...V3_ASHEN_RECIPES, // Kül Ejderi, lane A (./v3/ashen.ts)
   ...V3_AXEMAN_RECIPES, // Kaya Baltacı (./v3/crag_axeman.ts)

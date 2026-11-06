@@ -1,0 +1,44 @@
+// Lane E (claude/kart-e) card-art registry: the v3 pictures of the 11 new spells (docs/v3/YENI_KARTLAR.md §7)
+// are picked up from ./<id>.ts as soon as a builder writes them (default export: CardArtV3, the file's id must
+// match). src/art/cardface-v3/index.ts spreads LANE_E_ART into its ART table (one additive line).
+// Monsters may be listed too (crystal_wyrm, abyss_magus): their v3 sprite's `portrait` is the source of truth
+// for the hand face and paints the SAME renderArt(art, 0).smallPx, so both paths agree byte for byte
+// (tests/e/crystal_wyrm-card.test.ts); the entry here is what puts the monster's BIG picture in LANE_E_ART_BIG.
+
+import type { CardId } from '../../data/cards';
+import type { PixelCanvas } from '../pixel';
+import type { CardArtV3 } from './_types';
+import { renderArt } from './_kit';
+
+const mods = import.meta.glob<{ default: CardArtV3 }>(
+  ['./well_pail.ts', './puppet_string.ts', './void_eye.ts', './sweeping_gale.ts', './winnow_sieve.ts', './auger_lance.ts', './soul_leash.ts', './straw_decoys.ts', './spite_axe.ts', './page_turner.ts', './lucky_die.ts', './crystal_wyrm.ts', './abyss_magus.ts'],
+  { eager: true },
+);
+
+export const LANE_E_ART: Partial<Record<CardId, (p: PixelCanvas) => void>> = {};
+for (const m of Object.values(mods)) {
+  const art = m.default;
+  if (!art) continue;
+  LANE_E_ART[art.id] = (p) => {
+    p.blit(renderArt(art, 0).smallPx, 0, 0);
+  };
+}
+
+/**
+ * The same pictures' BIG version (88×68, ART_BIG) per living-art frame — for the 2× card (inspect panel,
+ * gallery stage), which per KART_RESIMLERI §1 / §10 must show the big picture 1:1. Nothing in the game
+ * consumes this yet: the 2× face is the 1× face texture scaled ×2 (src/view/v3/inspectV3.ts), so today it
+ * shows the 44×34 picture in 2×2 blocks. Additive registry, ready for that path (owner: lane A5-B / A6).
+ */
+export const LANE_E_ART_BIG: Partial<Record<CardId, { frames: number; holdMs: number; paint: (p: PixelCanvas, f?: number) => void }>> = {};
+for (const m of Object.values(mods)) {
+  const art = m.default;
+  if (!art) continue;
+  LANE_E_ART_BIG[art.id] = {
+    frames: art.frames ?? 1,
+    holdMs: art.holdMs ?? 140,
+    paint: (p, f = 0) => {
+      p.blit(renderArt(art, f).bigPx, 0, 0);
+    },
+  };
+}

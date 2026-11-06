@@ -16,6 +16,7 @@ import type { PixelCanvas } from '../pixel';
 import { renderArt } from '../cardart-v3/_kit';
 import dawnSwords from '../cardart-v3/dawn_swords';
 import magicHat from '../cardart-v3/magic_hat';
+import { LANE_E_ART } from '../cardart-v3/lane-e';
 import cloudHatchling from '../cardart-v3/cloud_hatchling';
 import venomDrake from '../cardart-v3/venom_drake';
 import ashenDrake from '../cardart-v3/ashen_drake';
@@ -32,6 +33,7 @@ const ART: Partial<Record<CardId, CardArtV3Painter>> = {
   magic_hat: (p) => {
     p.blit(renderArt(magicHat, 0).smallPx, 0, 0);
   },
+  ...LANE_E_ART, // lane E: the new spells' v3 pictures (../cardart-v3/lane-e.ts)
   // Bulut Yavrusu: the v3 picture (small version)
   cloud_hatchling: (p) => { p.blit(renderArt(cloudHatchling, 0).smallPx, 0, 0); },
   // Zehir Ejderi: the v3 picture (small version; its v3 sprite is registered)
