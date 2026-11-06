@@ -77,11 +77,12 @@ function paint(size: Size, l: ArtLayers, f: number): void {
   paintBackdrop(l.backdrop, 'SPELL', { focus: [66, 30], horizon: 48, radius: 22, pool: false });
   const bd = l.backdrop;
   const hz = C.horizon;
-  // the floor seams: two 2:1 lines in night1 (the recipe's own sky tone) crossing under the pair
+  // the floor seams: two 2:1 lines in night1 (the recipe's own sky tone) crossing under the pair; each row's run
+  // is 3 px so it overlaps the next row's by one (2-px runs touch only at corners: a 2×2 checker on every step)
   const seam = (x0: number, dir: 1 | -1) => {
     for (let y = hz + 1; y < bd.h; y++) {
       const x = x0 + dir * (y - hz) * 2;
-      for (const dx of [0, 1]) if (x + dx >= 0 && x + dx < bd.w) bd.set(x + dx, y, PAL.night1);
+      for (const dx of [0, dir, 2 * dir]) if (x + dx >= 0 && x + dx < bd.w) bd.set(x + dx, y, PAL.night1);
     }
   };
   seam(big ? 6 : 3, 1);

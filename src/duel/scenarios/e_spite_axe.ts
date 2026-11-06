@@ -138,6 +138,14 @@ const PACK: Record<string, Scenario> = {
     },
     steps: [plain(1, 'sweeping_gale')],
   },
+  // ---- the CPU casts it on its own (engine/bot.ts tryEquip), then plays on and ends its turn: nothing stalls.
+  //      Film WITHOUT --fresh (a fresh restart is always hot-seat):
+  //      node tools/shot.mjs "?dev=duel&s=eAxeCpu&look=v3&mode=vsBot" --film 30 --every 400 --cols 6 --out ...
+  eAxeCpu: {
+    desc: 'Hınç Baltası (P2 = bilgisayar; --fresh olmadan &mode=vsBot ile): bot baltayı kendisi kuşanır, tur sürer',
+    stage: { zones: 5, active: 1, p1: { hand: ['spite_axe'], monsters: mons(N, 'crag_axeman') }, p0: { monsters: mons(N, N, 'stone_sentinel') } },
+    steps: [],
+  },
 };
 
 export default PACK;

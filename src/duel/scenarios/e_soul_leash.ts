@@ -85,6 +85,14 @@ const PACK: Record<string, Scenario> = {
     },
     steps: [leash(0, 2, 1), endTurn(0), (D) => ({ type: 'normalSummon', player: 1, uid: D.uid('ember_wolf', 1), zone: 2, tributes: [] }) as Action, lance(1, 0, 1)],
   },
+  // ---- the CPU casts it on its own (engine/bot.ts tryLeash: the strongest face-up monster, score ≥ 1600),
+  //      then plays on and ends its turn. Film WITHOUT --fresh (a fresh restart is always hot-seat):
+  //      node tools/shot.mjs "?dev=duel&s=eLeashCpu&look=v3&mode=vsBot" --film 30 --every 400 --cols 6 --out ...
+  eLeashCpu: {
+    desc: 'Ruh Tasması (P2 = bilgisayar; --fresh olmadan &mode=vsBot ile): bot Kristal Ejder’i kendisi alır, tur sürer',
+    stage: { zones: 5, active: 1, p1: { hand: ['soul_leash'], monsters: [null, 'crag_axeman'] }, p0: { monsters: [null, 'stone_sentinel', 'crystal_wyrm'] } },
+    steps: [],
+  },
   // ---- the leashed monster dies in battle: the leash goes to the graveyard, the bond fades
   eLeashDies: {
     desc: 'Ruh Tasması: alınan Kor Kurdu Kristal Ejder’e saldırıp yok olur — tasma mezarlığa, bağ söner',

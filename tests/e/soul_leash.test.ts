@@ -79,6 +79,9 @@ describe('soul_leash card art', () => {
         expect(s.offPalette).toBe(0);
         expect(s.colors).toBeLessThanOrEqual(20);
         expect(s.backdropColors).toBeLessThanOrEqual(6);
+        // KART_RESIMLERI §10: isolated pixels ≤ 10 %, 2×2 checkerboards ≤ 0.5 % of the picture (no dither)
+        expect(s.isolated).toBeLessThanOrEqual(0.1);
+        expect(s.checker).toBeLessThanOrEqual(Math.floor(pic.w * pic.h * 0.005));
       }
     }
   });
