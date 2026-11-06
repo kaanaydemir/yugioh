@@ -75,3 +75,11 @@ to re-exclude them.
   the Işık Perisi behind it (gold on gold). The summon's cyan card-slam flash is the shared `runSummon` kit.
 - Camera gate against the lane base `shots/v3/kart-f/camera-base.json`: `m1Imp` (wisp_imp, not lane F) FAILs
   maxScroll 15 → 18 (lean #0 (0,-13) → (0,-16)); not caused by hourglass_imp — needs a rebase by its owner lane.
+
+## Final merge checklist (orchestrator, 2026-11-06 07:17 UTC)
+The orchestrator merges only a head where every card is finished and green; send ONE mergeable report. Before the final gate run:
+1. `git fetch origin claude/yugioh-card-game-tgi7td && git merge origin/claude/yugioh-card-game-tgi7td` (new arena, lanes B/C, contact-probe fix).
+2. vitest: only the known fails may remain (cardface G1, dusk_ashen); hourglass_imp + shield_titan tests must pass.
+3. Re-base the camera gate on main + lane F (clears the m1Imp maxScroll note), then run all gates on that exact head.
+4. Fix the ksBoard5 gold-on-gold seal emblem overlap if quick.
+5. Final report lists the shared edits (turn.ts, HumanInput.ts, StatBadge.ts, plus any others found by `git diff origin/claude/yugioh-card-game-tgi7td --stat`).

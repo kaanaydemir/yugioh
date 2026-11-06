@@ -734,3 +734,46 @@ observer, is gated on `LOOK_V3`. The art did not change, so monster-gates and sa
 fsAttackLoses 3250.
 
 **Still open.** Two shared-code items are left alone. (a) When the knight is blocked and survives (titan), the handler still sees him as ranged, so a backlash line is drawn and his recoil is not claimed. Shifting that clash point would hand his animation to the handler in the middle of the strike, so it was left. (b) `chains_of_light` re-holds the normal `wmkCharge` voice during its own lunge. Also open: dimming the eye-points in the calm (sprite contract), and `fsLocked` (unreachable).
+
+## Gate fix (after verify1, 2026-11-06)
+
+The adversarial verifier (`shots/v3/kart-f/windmane_knight/verify1/`) found 2 visible defects, 1 camera-gate failure
+against the lane base, 1 lane-F test failure caused by shield_titan, and 1 doc mismatch. Evidence for this round is in
+`shots/v3/kart-f/windmane_knight/gfix/`. Files changed: `src/cinematics/kart-f/windmane_knight.ts`,
+`src/art/monsters-v3/windmane_knight-anims.ts`, `tests/art/windmane_knight.test.ts`, and the knight's own line in
+`src/cinematics/_v3/presets.ts`. `kart-f/shield_titan.ts` and the shared battle code (`battle/battle.ts`, `_v3/clash.ts`,
+`battle/declare.ts`) were not touched.
+
+| # | failure | root cause | fix | evidence |
+|---|---|---|---|---|
+| 1 | fsBlocked / fsStormBlocked: a white jagged backlash line along the lance onto the titan at contact; the handler does not claim his recoil (round 3 open item (a)) | `_v3/clash isMelee` measures from the STATIC core (idle chest). The couched lance tip sits about 49 px from it, over the 44 px reach, so the handler took a blocked knight who survives for a RANGED attacker. It drew `backlash()`, played a 'magic' counter (`wmkStruckMagic`, the mane frizz), and did not claim his recoil. | Both strikes now hand the handler the `meleeClash` point (the tip slid back along the shaft to 42 px) for a block as well as a loss. The handler then sees a melee clash: no backlash line, a physical counter (`wmkStruck`), and the recoil is claimed with `claim({ pin: false })` and played as his own `hit`. The strike checks `u.claimed` after `s.impact` and takes a new path, `recoilHome`: the shove off the guard (6 px normal, 8 px storm, whole pixels) runs under the recoil, and on the recoil's `recover` mark he takes two heavy steps home while its last frames play. The lash is dropped on that path because the blow glanced. Skid sparks and the `wmkBlocked` / `wmkStormSplit` sounds stay on the real tip. The handler's clang now sits about 6 px further back along the shaft. Accepted. | `gfix/fsBlocked-contact.png` #4 (contact, no line) to #6–#13 (recoil, shove) to #14+ (home); `gfix/fsStormBlocked-contact.png` #4–#16 |
+| 2 | fsBlocked: about 800 ms frozen in the declaration pose while shield_titan's ward plays (round 1 #5, rejected then) | The hold's tremble is shared code (`battle/declare.ts keepCharging`). It alternates the charge frame with the next attack frame only when that pair differs by at most 2 × idleΔ. Our attack f1 → f2 swings the lance from −58° to −28°, so the tremble switched off. A grounded body also gets no 1-px breath. The result was a still frame. | **Fixed on the knight's side, with no hook in shield_titan.** A new attack f2 is the charge pose's TENSE twin: the same planted body and raised lance, the grip squeezed 1 px, the mane ripple travelling on (ph 0.12 → 0.155, amp 1.5), the pennon fluttering on another phase, the eyes up. The shared tremble now alternates f1 ↔ f2 on its uneven holds while any trap or ward holds the battle, and the light pulses at the mane tip. The attack goes from 13 to 14 frames. Marks: release/impact 5 → 6, contact 6 → 7, recover 8 → 9. The cinematic reads marks; its fallbacks were updated. The couch skips f2 when the strike starts from the held charge pose, so no normal strike gets longer (fsAttack 2250 ms unchanged). | `gfix/fsBlocked-hold.png` (the mane and pennon move in every hold frame, 550–1400 ms), `gfix/fsBlocked-hold-mane.png`, `gfix/attack4/f0-2.png`, `gfix/gsheet/windmane_knight-v3-attack.png` |
+| 3 | camera gate FAIL vs the lane base: m1Knight maxScroll 18 → 21 | The taller v3 knight rig moves the attack focus point from y 131 to y 119, so the lean grows from (0,−16) to (0,−20). This is a geometry change of the art, not a new camera move: zoom 1, 0 close-ups, focus calls as before. | **Accepted and rebased, with a written note.** The lane base's `m1Knight` entry (`shots/v3/kart-f/camera-base.json`, the knight's own scenario) is replaced by the entry from the card base (`shots/v3/kart-f/windmane_knight/camera-base.json`: placeholder presentation, v3 rig, maxScroll 20). The JSON `note` field records why. The original is kept as `shots/v3/kart-f/camera-base.pre-wmk-rebase.json`. No other scenario in the lane base was changed. | `gfix/gate-lane.txt`: m1Knight ok (20 → 21, ±1), 0 FAIL |
+| 4 | `tests/v3/a6-flow.test.ts` B4 (`kart-f:shield_titan:recoilNumber (p20)` before `a6:block (p10)`) | shield_titan's registration (the other lane-F card) | Not this card's file. The shield_titan owner's working tree already registers `recoilNumber` at priority 5. With that tree, `a6-flow` passes 67/67 (75/75 together with the card test). I made no edit. | run log in this round |
+| 5 | `DEATH_PRESETS.windmane_knight` = `light` / `stone` (a stone accent belongs to the reserved stone/ash family) | round-1 cinematics stage choice | `{ material: 'light', accent: 'light' }`, as §7 says: bright plate glints on fallback paths only, since the hollow armour never shatters. This supersedes §0.1 #12 (plant/crystal: its green leaf motes and cyan glints are foreign to the knight) and the §12 line. | `src/cinematics/_v3/presets.ts:53` |
+
+**Gates (this round).**
+- `tsc`: clean.
+- `vitest`:
+  - `tests/art/windmane_knight.test.ts` 8/8. The marks test now expects charge 1, release 6, impact 6, contact 7, recover 9.
+  - `tests/v3/a6-flow.test.ts` 67/67.
+  - The DEATH_PRESETS readers (`accessors-v3`, `accessors-v1`, `table-access`, `materials`, `v3-kit2`) 76/76.
+- `monster-gates` P1+P2 `--class ace --ref none`: **24 rows, 21 ok, 0 FAIL, 2 n/a, 1 info**.
+  - 137 frames, 5.47 MB ≤ 7 MB. HA-17 1.46, HA-18 17.9 %, HA-19 0.59. HA-1: attack contact f7.
+  - Output: `gfix/gates.txt`.
+- v1 safety: `filmdiff --set v1` **17/17 IDENTICAL**, `--set a6v1` **26/26 IDENTICAL** (`gfix/filmdiff.txt`).
+- `sameness --ids windmane_knight --against all`: no KALIR, the same 12 UYARI out of plan as verify1. wing_lady MOTloop 0.910 is out of plan, so it counts as UYARI. Output: `gfix/sameness.txt`.
+- Camera (`gfix/measure.json`, `--look v3`, 45 scenarios, errors 0 everywhere):
+  - vs the card base: **30 ok, 15 NOBASE, 0 FAIL** (`gfix/gate-card.txt`).
+  - vs the rebased lane base: **2 ok, 43 NOBASE, 0 FAIL** (`gfix/gate-lane.txt`).
+
+**Budgets (vs verify1).** Only the block scenarios changed:
+- fsBlocked(P2): battle 1784 → 1884 ms, ≤ 2.97 s. Total 3350 → 3450.
+- fsStormBlocked(P2): battle 2350 → 2434 ms. Total 10416 → 10500.
+- In both, the contact frame is unchanged and the number lands on contact (`numberAfterContactMs` 0).
+- Every other fs scenario has the same total as verify1.
+
+**Still open.**
+- `chains_of_light` re-holds the normal `wmkCharge` voice during its own lunge (round 3 (b), shared).
+- Dimming the eye-points in the calm (sprite contract).
+- `fsLocked` (unreachable).
