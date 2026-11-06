@@ -11,6 +11,7 @@
 //   splitStreaks  the split: three two-colour streaks flung from the body toward the three landing zones
 //   flingPieces   the split: the three PIECES themselves (their folded frames) flung apart on two-colour trails,
 //                 caught by the field over their landing zones and hanging there, bobbing, until each drops
+//   seamSparks    before the repel: the joints spit sparks, arcs jump between the seams, iron dust shaken loose
 //   landPuff      a piece lands in its zone: a small iron-dust ring and two pole sparks
 
 import Phaser from 'phaser';
@@ -483,7 +484,7 @@ function pieceKey(scene: Phaser.Scene, id: MonsterId, anim: AnyMonsterAnim, fram
  *  water) that sheds iron dust; braked by the field it swings in over its landing zone and hangs there — wobbling
  *  1 px on the field's beat, sparking, a two-colour loop under it and a flickering field line to its neighbour —
  *  until release(i) (its real unit takes over) or destroy(). */
-export function flingPieces(scene: Phaser.Scene, ps: readonly FlungPiece[], ms: number): { done: Promise<void>; release(i: number): void; destroy(): void } {
+export function flingPieces(scene: Phaser.Scene, ps: readonly FlungPiece[], ms: number): { done: Promise<void>; release(i: number): XY; destroy(): void } {
   const keys = ps.map((p) => p.frames.map((f) => pieceKey(scene, p.id, p.anim, f, p.flip)));
   const imgs = ps.map((p, i) => {
     const art = monsterArt(p.id);
@@ -499,6 +500,8 @@ export function flingPieces(scene: Phaser.Scene, ps: readonly FlungPiece[], ms: 
   const x0 = Math.min(...xs) - 40;
   const y0 = Math.max(0, Math.min(...ys) - 70);
   const r = new Raster(scene, x0, y0, Math.max(...xs) + 40 - x0, Math.max(...ys) + 20 - y0, DEPTH.FX);
+  // the arcs between the hanging pieces are drawn OVER them (a field crackling across the bodies)
+  const ra = new Raster(scene, x0, y0, Math.max(...xs) + 40 - x0, Math.max(...ys) + 20 - y0, DEPTH.FX + 2);
   const live = ps.map(() => true);
   let alive = true;
   const at = (p: FlungPiece, e: number): XY => {
@@ -511,6 +514,8 @@ export function flingPieces(scene: Phaser.Scene, ps: readonly FlungPiece[], ms: 
   // the trail runs through the piece's middle, not its feet
   const mid = (i: number) => rnd(-(imgs[i].height * 0.42));
   const dust = ps.map(() => [] as { x: number; y: number; vy: number; t0: number; c: number }[]);
+  /** each piece's live offset from its hang point (the bob), read by release() so the drop starts where it is */
+  const off: XY[] = ps.map(() => ({ x: 0, y: 0 }));
   let whiteUntil = 34;
   const done = run(scene, ms, (t, el) => {
     if (!alive) return;
@@ -519,11 +524,13 @@ export function flingPieces(scene: Phaser.Scene, ps: readonly FlungPiece[], ms: 
       imgs.forEach((m) => m.active && m.clearTint());
     }
     // a hard kick then the field's brake: fast out of the body, slowing into the hang
-    const e = 1 - Math.pow(1 - Math.min(1, t), 2.4);
+    const e = 1 - Math.pow(1 - Math.min(1, t), 2);
+    // the ribbon shortens as the field brakes the piece: gone by the hang (no line left hanging in the air)
+    const tail = rnd(18 * (1 - Math.max(0, Math.min(1, (t - 0.55) / 0.4))));
     r.draw((rr) => {
       ps.forEach((p, i) => {
         if (!live[i]) return;
-        for (let k = 1; k <= 18; k++) {
+        for (let k = 1; k <= tail; k++) {
           const ek = e - k * 0.022;
           if (ek <= 0) break;
           const q = at(p, ek);
@@ -552,63 +559,168 @@ export function flingPieces(scene: Phaser.Scene, ps: readonly FlungPiece[], ms: 
     });
   }).then(() => {
     if (!alive) return;
-    // the hang: the field holds each piece over its zone — a 1-px wobble on its beat, sparks, a two-colour loop
-    // under it, a flickering field line to the next piece (they still pull on each other)
+    // the hang: the field holds the three apart over their zones, and it is never still — each piece bobs and
+    // sways on its own period (out of phase with the others), the needle turns slowly through its frames, the
+    // other two breathe on theirs; a two-colour loop under each, sparks crackling off them, and jagged arcs of
+    // the field snapping between neighbours (redrawn every 50 ms, the two ends in the two poles)
+    const PER = [520, 610, 700];
     void run(scene, 6000, (_t, el) => {
       if (!alive) return;
       const ph = Math.floor(el / 80);
+      const k0 = Math.min(1, el / 160);
+      ps.forEach((p, i) => {
+        const per = PER[i % 3];
+        off[i] = {
+          x: rnd(Math.sin((el / (per * 1.7)) * TAU + i * 2.1) * 1.6 * k0),
+          y: rnd((Math.sin((el / per) * TAU + i * 2.4) - 0.3) * 2.6 * k0),
+        };
+      });
+      const cen = (i: number): XY => ({ x: rnd(ps[i].to.x + off[i].x), y: rnd(ps[i].to.y + off[i].y + mid(i)) });
       r.draw((rr) => {
         ps.forEach((p, i) => {
           if (!live[i]) return;
-          const cy = rnd(p.to.y + 3);
+          const cx = rnd(p.to.x + off[i].x);
+          const cy = rnd(p.to.y + 3 + Math.round(off[i].y * 0.5));
           for (let k = 0; k < 16; k++) {
             if ((k + ph) % 4 === 0) continue;
             const a = (k / 16) * TAU + ph * 0.35 + i;
-            rr.px(rnd(p.to.x + Math.cos(a) * 11), rnd(cy + Math.sin(a) * 4), Math.cos(a) < 0 ? PAL.fire3 : PAL.water3);
+            rr.px(rnd(cx + Math.cos(a) * 11), rnd(cy + Math.sin(a) * 4), Math.cos(a) < 0 ? PAL.fire3 : PAL.water3);
           }
+          // iron dust trickling off the piece (falls a few px and goes)
+          for (let k = 0; k < 4; k++) {
+            const t0 = (el / 420 + hash(k, i * 13)) % 1;
+            const dx = rnd((hash(k * 7 + Math.floor(el / 420 + hash(k, i * 13)), i) - 0.5) * 14);
+            rr.px(cx + dx, rnd(p.to.y + off[i].y + mid(i) * 0.4 + t0 * t0 * 26), t0 > 0.6 ? PAL.stone3 : PAL.steel);
+          }
+        });
+      });
+      ra.draw((rr) => {
+        ps.forEach((p, i) => {
+          if (!live[i]) return;
+          const c = cen(i);
           // sparks crackling off the piece's middle
-          for (let k = 0; k < 3; k++) {
+          for (let k = 0; k < 4; k++) {
             if (hash(ph * 3 + k, i) > 0.55) continue;
             const a = hash(ph, i * 5 + k) * TAU;
-            const d = 6 + hash(k, ph + i) * 10;
-            rr.px(rnd(p.to.x + Math.cos(a) * d), rnd(p.to.y + mid(i) + Math.sin(a) * d * 0.8), k % 2 ? p.pole : PAL.white);
+            const d = 7 + hash(k, ph + i) * 10;
+            rr.px(rnd(c.x + Math.cos(a) * d), rnd(c.y + Math.sin(a) * d * 0.8), k % 2 ? p.pole : PAL.white);
           }
-          // the field line to its neighbour (dashed, crawling, fire half / water half)
-          const nb = ps[i + 1];
-          if (nb && live[i + 1]) {
-            const a = { x: p.to.x, y: p.to.y + mid(i) };
-            const b = { x: nb.to.x, y: nb.to.y + mid(i + 1) };
-            const n = Math.max(4, rnd(Math.hypot(b.x - a.x, b.y - a.y) / 2));
-            for (let s = 4; s < n - 4; s++) {
-              if ((s + ph) % 3 === 0) continue;
-              const u = s / n;
-              const sag = Math.sin(Math.PI * u) * (6 + (ph % 2));
-              rr.px(rnd(a.x + (b.x - a.x) * u), rnd(a.y + (b.y - a.y) * u + sag), u < 0.5 ? PAL.fire2 : PAL.water2);
+          // the arc to its neighbour: a jagged bolt, alive 2 beats of 3, kinks re-thrown every 50 ms
+          const j = i + 1;
+          if (j >= ps.length || !live[j]) return;
+          const beat = Math.floor(el / 50);
+          if ((beat + i) % 3 === 2) return;
+          const b = cen(j);
+          const n = 6;
+          let prev = c;
+          for (let s = 1; s <= n; s++) {
+            const u = s / n;
+            const sag = Math.sin(Math.PI * u) * 5;
+            const jit = s === n ? 0 : (hash(beat * 7 + s, i * 3 + 1) - 0.5) * 9;
+            const q = { x: rnd(c.x + (b.x - c.x) * u + jit * 0.4), y: rnd(c.y + (b.y - c.y) * u + sag + jit) };
+            const steps = Math.max(Math.abs(q.x - prev.x), Math.abs(q.y - prev.y), 1);
+            for (let m = 0; m <= steps; m++) {
+              const x = rnd(prev.x + ((q.x - prev.x) * m) / steps);
+              const y = rnd(prev.y + ((q.y - prev.y) * m) / steps);
+              const uu = (s - 1 + m / steps) / n;
+              rr.px(x, y, (beat + s) % 4 === 0 ? PAL.white : uu < 0.5 ? p.pole : ps[j].pole);
+              if (uu > 0.3 && uu < 0.7 && (beat + m) % 3 === 0) rr.px(x, y - 1, PAL.mist);
             }
+            prev = q;
           }
         });
       });
       ps.forEach((p, i) => {
         if (!live[i] || !imgs[i].active) return;
-        const beat = (ph + i * 2) % 6;
-        const wx = beat === 1 ? 1 : beat === 4 ? -1 : 0;
-        const wy = beat < 3 ? 0 : -1;
-        imgs[i].setPosition(rnd(p.to.x) + wx, rnd(p.to.y) + wy);
+        imgs[i].setPosition(rnd(p.to.x) + off[i].x, rnd(p.to.y) + off[i].y);
+        // the needle turns slowly (its whole tumble cycle); the anvil and the coil breathe on their two first
+        const n = keys[i].length;
+        const fi = p.id === 'polar_needle' ? Math.floor(el / 170 + i) % n : Math.floor(el / (300 + i * 40)) % Math.min(2, n);
+        imgs[i].setTexture(keys[i][fi]);
       });
     });
   });
   return {
     done,
     release(i) {
-      if (!live[i]) return;
+      const o = { ...off[i] };
+      if (!live[i]) return o;
       live[i] = false;
       imgs[i].destroy();
       if (live.every((v) => !v)) this.destroy();
+      return o;
     },
     destroy() {
       if (!alive) return;
       alive = false;
       imgs.forEach((m) => m.active && m.destroy());
+      r.destroy();
+      ra.destroy();
+    },
+  };
+}
+
+// ================================================================ the split's build-up
+
+/** Before the repel: the joints spark and the field crackles round the cracked body — sparks spat from the three
+ *  seams (pole colours), short jagged arcs jumping between them, iron dust shaken off and trickling down. Grows
+ *  until stop() (the repel). */
+export function seamSparks(scene: Phaser.Scene, home: XY, dir: 1 | -1, depth: number): { stop(): void } {
+  const r = Raster.around(scene, home.x, home.y - 56, 120, 128, depth);
+  // the exploded body's three joints (plinth | chest, chest | helm, the arms' sockets) over its floor point
+  const seams = [28, 56, 80];
+  const cols = [PAL.water4, PAL.gold4, PAL.fire4];
+  let alive = true;
+  void run(scene, 4000, (_t, el) => {
+    if (!alive) return;
+    const grow = Math.min(1, el / 700);
+    const beat = Math.floor(el / 50);
+    r.draw((rr) => {
+      seams.forEach((h, s) => {
+        const y = home.y - h;
+        // sparks spat sideways off the seam: short streaks thrown out and falling
+        const n = 3 + Math.round(grow * 6);
+        for (let k = 0; k < n; k++) {
+          const born = Math.floor(el / 60) - k;
+          const age = (el - born * 60) / 300;
+          if (age > 1 || age < 0) continue;
+          const side = hash(born, s * 7 + k) < 0.5 ? -1 : 1;
+          const v = 12 + hash(k, born + s) * 22;
+          const x = rnd(home.x + side * (8 + age * v) + dir * (s - 1) * 2);
+          const yy = rnd(y + (hash(born, k) - 0.5) * 6 - (1 - age) * 3 + age * age * 22);
+          // a 3-px streak: white head, the seam's colour behind it
+          rr.px(x, yy, age < 0.35 ? PAL.white : cols[s]);
+          if (age < 0.7) rr.px(x - side, yy - (age < 0.4 ? 1 : 0), cols[s]);
+          if (age < 0.4) rr.px(x - 2 * side, yy - 1, s === 2 ? PAL.fire2 : s === 0 ? PAL.water2 : PAL.gold2);
+        }
+        // the seam itself glints in its colour on the beat
+        if ((beat + s) % 3 !== 0) for (let x = -12; x <= 12; x++) if (hash(x, beat + s) < 0.3 + grow * 0.4) rr.px(home.x + x, y, (beat + x) % 5 === 0 ? PAL.white : cols[s]);
+      });
+      // a short arc jumping between two seams (grows more often as the field builds)
+      if (hash(beat, 3) < 0.35 + grow * 0.55) {
+        const s = Math.floor(hash(beat, 9) * 2);
+        const a = { x: home.x + rnd((hash(beat, 1) - 0.5) * 16), y: home.y - seams[s] };
+        const b = { x: home.x + rnd((hash(beat, 2) - 0.5) * 16), y: home.y - seams[s + 1] };
+        const side = hash(beat, 5) < 0.5 ? -1 : 1;
+        for (let m = 0; m <= 28; m++) {
+          const u = m / 28;
+          const x = rnd(a.x + (b.x - a.x) * u + side * Math.sin(Math.PI * u) * 16 + (hash(beat * 11 + m, 4) - 0.5) * 5);
+          const y = rnd(a.y + (b.y - a.y) * u);
+          rr.px(x, y, m % 4 === 0 ? PAL.white : u < 0.5 ? cols[s] : cols[s + 1]);
+          rr.px(x + side, y, PAL.white);
+        }
+      }
+      // iron dust shaken loose, trickling to the floor
+      for (let k = 0; k < 3 + Math.round(grow * 5); k++) {
+        const t0 = (el / 500 + hash(k, 77)) % 1;
+        const x = rnd(home.x + (hash(k, Math.floor(el / 500 + hash(k, 77))) - 0.5) * 40);
+        rr.px(x, rnd(home.y - 60 + t0 * t0 * 60), t0 > 0.7 ? PAL.stone3 : PAL.steel);
+      }
+    });
+  }).then(() => r.destroy());
+  return {
+    stop() {
+      alive = false;
       r.destroy();
     },
   };

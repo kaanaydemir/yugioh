@@ -14,6 +14,7 @@
 //           sovereignKlak1/2/3 KLAK: heavy clank + 35 Hz gong + crack, each a whole tone lower
 //           sovereignLand      the landing: the gong full, the chord, the iron-dust shock ring
 //           sovereignSpear     the spear struck down: the butt's ring and the crown's chime
+//           sovereignTick      a tribute card settles on the graveyard (soft iron-dust tick)
 //   roar    sovereignRoar      the chord swells, the field blazes, the pieces KLAK back
 //   attack  sovereignCompass   the spear spins as a compass card: ticks accelerating (sustained → lock)
 //           sovereignLock      "TIK": locked on the foe
@@ -22,6 +23,7 @@
 //           sovereignPierce    the spear in the rose's heart: pole blast + gong + iron rain
 //           sovereignRecall    the spear snaps back into the fist
 //   death   sovereignCrack     cracks run along the joints
+//           sovereignStrain    the field building in the cracked body (sustained → the repel)
 //           sovereignRepel     magnetic repulsion: the chord splits into its three notes, flung apart
 //           sovereignFall      (fail) the pieces drop and clatter
 //           sovereignBurst     the last breath: the hum dies, the dust settles
@@ -301,6 +303,35 @@ export const V3_POLAR_SOVEREIGN_RECIPES = {
       poleHum(v, 0, [[0, 0.16], [0.4, 0.0001, 'e']]);
     },
   },
+  /** Death, between the cracks and the repel (sustained; stopped on the repel): the field builds in the cracked
+   *  body — a magnetic whine rising (two poles' partials pulling apart, up an octave), the chord detuning ever
+   *  wider and beating faster, the seams crackling more and more densely, a low strain groaning under it. */
+  sovereignStrain: {
+    cap: 1,
+    gap: 0.3,
+    verb: 0.4,
+    duck: 0.45,
+    play(v) {
+      const D = 1.6;
+      const env = (g: number): Pt[] => [[0, 0], [0.12, g * 0.4], [D - 0.15, g], [D, 0.0001, 'e']];
+      // the whine: two partials diverging upward (fire high, water under it), panned apart
+      v.tone('sine', [[0, 440], [D, 1320, 'e']], { g: env(0.07), to: v.panner([[0, 0], [D, -0.5]]) });
+      v.tone('sine', [[0, 466], [D, 990, 'e']], { g: env(0.06), to: v.panner([[0, 0], [D, 0.5]]) });
+      // the chord detuning apart, its beat quickening
+      [[E2, 0.12], [D3, 0.08], [A3, 0.06]].forEach(([f, g], i) => {
+        const pts: Pt[] = [];
+        for (let t = 0; t <= D; t += 0.03) pts.push([t, f * (1 + (i - 1) * 0.05 * (t / D)) * (1 + 0.01 * (t / D) * Math.sin(t * (6 + 22 * (t / D)) * Math.PI * 2))]);
+        v.tone('triangle', pts, { g: env(g) });
+      });
+      // the strain groan: a low saw through a closing band
+      v.tone('sawtooth', [[0, 41], [D, 55, 'e']], { g: env(0.08), to: v.filt('bandpass', [[0, 220], [D, 520, 'e']], 5) });
+      // the seams crackling, denser and denser
+      v.crackle({ t: 0.05, d: D * 0.5, n: 8, g: 0.12, f: 3800, q: 1.4, curve: 1, dec: 0.004 });
+      v.crackle({ t: D * 0.5, d: D * 0.5, n: 22, g: 0.16, f: 4400, q: 1.4, curve: 0.8, dec: 0.004 });
+      glassRain(v, { t: 0.2, d: D - 0.3, n: 12, g: 0.035, notes: DUST, dec: [0.03, 0.08], curve: 0.7, modes: 2 });
+      poleHum(v, 0, env(0.12));
+    },
+  },
   /** Magnetic repulsion: the chord flies apart into its three notes (diverging pitches and pans), a heavy whoomp. */
   sovereignRepel: {
     cap: 1,
@@ -365,6 +396,21 @@ export const V3_POLAR_SOVEREIGN_RECIPES = {
       });
       poleHum(v, 0, env(0.09));
       glassRain(v, { t: 0.1, d: D - 0.4, n: 14, g: 0.03, notes: DUST, dec: [0.03, 0.08], curve: 1, spread: 0.9, modes: 2 });
+      // the arcs snapping between the hanging pieces
+      v.crackle({ t: 0.02, d: D - 0.5, n: 30, g: 0.1, f: 4200, q: 1.3, curve: 1, dec: 0.004 });
+    },
+  },
+  /** Fusion: a tribute card settles on the graveyard pile — a soft iron-dust tick (it takes the shared card-place
+   *  sound's place: the KLAK windows stay clean). */
+  sovereignTick: {
+    cap: 3,
+    gap: 0.04,
+    verb: 0.3,
+    duck: 0.1,
+    play(v) {
+      link(v, 2640, 0, 0.035, 0.5);
+      glassRain(v, { d: 0.18, n: 4, g: 0.03, notes: DUST, dec: [0.02, 0.06], curve: 1.2, modes: 2 });
+      v.noise('white', { g: perc(0.03, 0.01, 0.0005), to: v.filt('bandpass', 5200, 2) });
     },
   },
   /** Split: a piece lands in its zone in defense (the cinematic pitches it per piece with `rate`). */

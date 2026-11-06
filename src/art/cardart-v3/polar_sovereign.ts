@@ -143,11 +143,42 @@ function small(l: ArtLayers, f: number, bigL?: ArtLayers): void {
     return b;
   })();
   paintBackdrop(l.backdrop, 'EARTH', { focus: FOCUS });
+  // the rose's field lines two tones up at 1× (one tone vanishes into the brown at this size)
+  roseLines(l.backdrop, FOCUS_SMALL[0], FOCUS_SMALL[1], f);
   roseLines(l.backdrop, FOCUS_SMALL[0], FOCUS_SMALL[1], f);
   l.subject.blit(reduceSubject(B.subject), 0, 0);
+  smallHead(l.subject, f);
   l.light.blit(reduceLight(B.light), 0, 0);
   const [fx, fy] = FOCUS_SMALL;
   l.light.set(fx, fy, PAL.white);
+}
+
+/** Hand-made 1× fixes the reduction loses: the crown ring pushed to gold4 with a white glint (it read as a brown
+ *  ring), a lit plane on the helm, and the two pole eyes (N fire, S water) in the visor — placed from the rig's own
+ *  head and crown points at half size, only over pixels the reduced figure already covers. */
+function smallHead(p: PixelCanvas, f: number): void {
+  const sk = skeleton(cardPose(f));
+  const half = (q: readonly number[], dx: number, dy: number): [number, number] => [Math.floor((q[0] + dx) / 2), Math.floor((q[1] + dy) / 2)];
+  const [rx, ry] = half(sk.rose, BIG_DX, BIG_DY);
+  // the crown: every warm-dark gold pixel of the ring round its centre goes up to gold4, its top edge glints
+  for (let y = ry - 4; y <= ry + 3; y++)
+    for (let x = rx - 7; x <= rx + 7; x++) {
+      const c = p.get(x, y);
+      if (c === PAL.gold1 || c === PAL.gold3 || c === PAL.earth2 || c === PAL.earth1) p.set(x, y, y <= ry - 2 && (x + f) % 3 === 0 ? PAL.white : PAL.gold4);
+    }
+  // the helm: a lit plane on its top (steel over stone), the visor row's two pole eyes
+  const [hx, hy] = half(sk.hd, BIG_DX, BIG_DY);
+  const [vx, vy] = half(sk.visor, BIG_DX, BIG_DY);
+  for (let x = hx + 1; x <= vx; x++) {
+    const c = p.get(x, hy);
+    if (c !== null && c !== PAL.ink) p.set(x, hy, x === hx + 2 ? PAL.white : PAL.steel);
+    const d = p.get(x, hy + 1);
+    if (d !== null && d !== PAL.ink && d !== PAL.water4) p.set(x, hy + 1, PAL.stone3);
+  }
+  const eyeY = vy - 1;
+  if (p.get(vx - 1, eyeY) !== null) p.set(vx - 1, eyeY, PAL.fire4);
+  if (p.get(vx + 1, eyeY) !== null) p.set(vx + 1, eyeY, PAL.water4);
+  if (p.get(vx, eyeY) !== null) p.set(vx, eyeY, PAL.ink);
 }
 
 const art: CardArtV3 = {

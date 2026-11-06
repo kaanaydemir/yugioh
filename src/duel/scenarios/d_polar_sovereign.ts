@@ -36,8 +36,13 @@ const scenarios: Record<string, Scenario> = {
     steps: [attack(2, null)],
   },
   psGuard: {
-    desc: 'Savunmadaki Kalkan Devi (DEF 2600) Pusula Fırtınası’nı karşılayamaz',
+    desc: 'Savunmadaki Taş Muhafız (DEF 2100) Pusula Fırtınası’nı karşılayamaz — yok olur',
     stage: { zones: 5, phase: 'battle', p0: { monsters: five(N, N, 'polar_sovereign') }, p1: { monsters: five(N, N, { id: 'stone_sentinel', position: 'defense' }) } },
+    steps: [attack(2, 2)],
+  },
+  psBlocked: {
+    desc: 'Pusula Fırtınası savunmadaki Kalkan Devi’nde (DEF 2600, saldıranın ATK’si −500) seker: mızrak geri döner, Hükümdar 100 hasar alır',
+    stage: { zones: 5, phase: 'battle', p0: { monsters: five(N, N, 'polar_sovereign') }, p1: { monsters: five(N, N, { id: 'shield_titan', position: 'defense' }) } },
     steps: [attack(2, 2)],
   },
   psKill: {

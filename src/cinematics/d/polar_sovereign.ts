@@ -7,8 +7,8 @@
 //   0.0  the tribute hook takes the three pieces: the arena dims, the sovereign's card rises from the hand over the
 //        middle zone, the three pieces flare in their pole colours and an IRON-DUST COMPASS ROSE is drawn on the floor
 //        across the three zones (sovereignDust)
-//   0.8  the pieces RISE off their tiles humming their own pitches (sovereignRise), their tiles burn away, their cards
-//        arc to the graveyard; the rose's grains are pulled in; the pieces fly over to the middle zone into the
+//   0.8  the pieces RISE off their tiles humming their own pitches (sovereignRise), their cards peel off the tiles
+//        under them and arc to the graveyard (a soft iron-dust tick each, never inside the KLAKs); the rose's grains are pulled in; the pieces fly over to the middle zone into the
 //        exploded view the sprite's summon f0 draws
 //   1.9  swap (a magnetic flash): the sovereign's sprite takes over on its summon frames — the anvil TUMBLES over
 //        into the base → KLAK 1, the chest drops into the cup → KLAK 2, the needle splits into the arms + spear →
@@ -21,9 +21,11 @@
 //   (sovereignPierce), the heavy hit-stop + 20 ms of its own; the empty fist holds the tether and the spear snaps back
 //   into it (sovereignRecall), to the shoulder, home.
 // SPLIT (destroyed with the three pieces in the graveyard and three free zones): cracks run along the joints
-//   (death f0…f3, sovereignCrack), the field REPELS (sovereignRepel): the body is flung apart in three two-colour
-//   streaks toward the landing zones; then the effect hook lands each piece in its zone in defense (from the sky of
-//   the streak, toGuard on the floor, an iron-dust puff, its own pitch).
+//   (death f0…f3, sovereignCrack) while the field builds (sovereignStrain + seamSparks: sparks, arcs between the
+//   seams, the body trembling harder), the field REPELS (sovereignRepel): the pieces fly apart on two-colour streaks
+//   and hang over their zones — bobbing out of phase, arcs snapping between them, the chord held (sovereignHang from
+//   the fling on); the destroying card leaves for its graveyard during the fling; then the effect hook drops each
+//   piece from where its bob held it into its zone in defense (toGuard on the floor, an iron-dust puff, its pitch).
 // DEATH (no split): the same cracks and repel; on the white flash frame the three PIECES are born where their parts
 //   were and fall onto the tile, then each dies its OWN death with its own final material and sounds, staggered
 //   (_polar_sovereign-finals: the needle ripped away spinning off-screen, the anvil's halves repelled apart as iron
@@ -39,6 +41,7 @@ import { hitStop, shake, wait } from '../../vfx/core';
 import { fx, registerCardHook, registerStrike } from '../api';
 import type { StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
+import { cardLeaves } from '../_v3/card';
 import { CUTIN_BAND_SPLIT } from '../_v3/cutin';
 import { atFrame, fade, hush, panAt, play, start, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
@@ -46,7 +49,7 @@ import { bg, run, runSummon, type Stage } from '../summon-a/_kit';
 import { COIL_EXPLODED, NEEDLE_EXPLODED, RX as SRX } from '../../art/monsters-v3/polar_sovereign-rig';
 import { ATTACK_CATCH, ATTACK_LOCK, ATTACK_THROW, DEATH_SPLIT, SUMMON_HOLD, SUMMON_KLAK, SUMMON_LAND, SUMMON_LIFT } from '../../art/monsters-v3/polar_sovereign-anims';
 import { piecesFall, type FallingPiece } from './_polar_sovereign-finals';
-import { dustRose, dustShock, flingPieces, landPuff, poleBlast, seedFx, spearShot, spearStuck, targetRose, type DustRose } from './_polar_sovereign-fx';
+import { dustRose, dustShock, flingPieces, landPuff, poleBlast, seamSparks, seedFx, spearShot, spearStuck, targetRose, type DustRose } from './_polar_sovereign-fx';
 
 const ID = 'polar_sovereign';
 const PIECES: readonly CardId[] = ['polar_needle', 'polar_anvil', 'polar_coil'];
@@ -75,9 +78,14 @@ const PIECE_PITCH: Readonly<Record<string, number>> = { polar_needle: 1.5, polar
 /** Handed from the tribute pre-show to the summon entrance (same event batch, played in order). */
 let pending: { rose: DustRose | null; pools: LightHandle[]; dimmed: boolean; tumble?: { stop(ms?: number): void } } | null = null;
 /** The split's piece-sparks hanging over the landing zones, keyed by the sovereign's uid (destroyed → effect hook). */
-const sparks = new Map<number, { zones: number[]; h: ReturnType<typeof flingPieces>; hum: { stop(ms?: number): void } }>();
-/** where a flung piece hangs before it drops: HANG px over its tile */
+const sparks = new Map<number, { zones: number[]; hangs: number[]; spread: number[]; h: ReturnType<typeof flingPieces>; hum: { stop(ms?: number): void } }>();
+/** where a flung piece hangs before it drops: HANG px over its tile (default), HANGS by depth rank (back → front) */
 const HANG = 30;
+const HANGS = [16, 23, 30];
+/** the hang's lateral spread by x rank (left → right), px */
+const SPREAD = [-12, 0, 12];
+/** the split's fling (kick → the field's brake), scene ms */
+const FLING_MS = 720;
 let lastSeam = -1;
 const NO_HUM: { stop(ms?: number): void } = { stop: () => undefined };
 
@@ -182,9 +190,19 @@ registerCardHook(
 
     // ---- 0.8 the pieces rise humming, their tiles burn, their cards go; the rose's dust is pulled in
     const rise = start('sovereignRise', { volume: 0.9, pan: panAt(dest.x) });
+    // each piece's card is spent as the piece leaves it: it peels off the tile under the rising body and arcs to the
+    // graveyard (needle first, the anvil last), settling with a soft iron-dust tick long before the first KLAK —
+    // the shared card-place sound is faded under it, so no UI sound reaches the clank sequence
     rel.forEach(({ g, tile, unit }, i) => {
-      if (tile) bg(tile.dissolve(520).then(() => tile.destroy()));
       if (unit) unit.badge.setVisible(false);
+      const k = PIECES.indexOf(g.cardId);
+      const from = tile ? { ...tile.home } : homes[i];
+      bg(
+        cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from, tile, delay: 40 + k * 90, flash: false, lift: 4, depthAt: (fl) => unitDepth(fl.y) - 0.4 }).then(() => {
+          fade(['cardPlace'], 12);
+          play('sovereignTick', { volume: 0.7, pan: panAt(from.x), pitch: PIECE_PITCH[g.cardId] ?? 1 });
+        }),
+      );
     });
     const sprites = rel.map(({ unit }) => (unit && unit.sprite.active ? unit : null));
     const starts = sprites.map((u, i) => (u ? { x: u.sprite.x, y: u.sprite.y } : homes[i]));
@@ -244,8 +262,6 @@ registerCardHook(
     });
     if (card.active) card.destroy();
     for (let i = 0; i < rel.length; i++) void pools[i].fadeOut(200);
-    // the pieces' cards are spent only now, when their bodies have become the sovereign: out of the flash to the grave
-    rel.forEach(({ g }, i) => bg(fx.cardToGraveyard(ctx, { owner: g.owner, cardId: g.cardId as MonsterId, from: { x: dest.x + (i - 1) * 10, y: dest.y - 4 }, delay: 60 + i * 80 })));
     pending = { rose, pools: [centre], dimmed: true, tumble };
     await ctx.play(di, { tribute: true, noCard: true, cutIn: true });
   },
@@ -444,6 +460,7 @@ registerCardHook(
     const split = splitInfo(ctx, ctx.ev.uid);
     // ---- the sovereign owns its whole death (split or not): no generic material break
     const ev = ctx.ev;
+    const dir: 1 | -1 = u.flipX ? -1 : 1;
     const gi = ctx.findType('toGraveyard', (e) => e.uid === ev.uid, { until: (e) => e.type !== 'toGraveyard' && e.type !== 'destroy' });
     const hasCard = gi >= 0;
     if (gi >= 0) ctx.consumeAt(gi);
@@ -451,9 +468,12 @@ registerCardHook(
     const { tile } = ctx.views.field.release(ev.uid);
     u.badge.setVisible(false);
     u.posed = true;
-    const dir: 1 | -1 = u.flipX ? -1 : 1;
     // cracks run along the joints (death f0…f3)
     play('sovereignCrack', { volume: 0.9, pan });
+    // the field builds in the cracked body from the first crack to the repel: a rising magnetic whine (the chord
+    // detuning apart) and the seams spitting sparks, arcs jumping between them, iron dust shaken loose
+    const strain = start('sovereignStrain', { volume: 0.85, pan });
+    const seamFx = seamSparks(sc, home, dir, u.sprite.depth + 0.4);
     // a lethal blow's reaction may already have cracked it open (the death pose joined from the recoil): go on from
     // there, never replay the cracks
     const fi0 = u.frameInfo();
@@ -463,19 +483,21 @@ registerCardHook(
     // the cracks hold: the body trembles on its joints (1 px, ever faster) while the seams flicker in the pole colours
     const r0 = { x: u.sprite.x, y: u.sprite.y };
     const seams = [PAL.fire4, PAL.water4, PAL.gold4];
-    await run(sc, split ? 280 : 200, (t, el) => {
+    await run(sc, split ? 380 : 300, (t, el) => {
       const step = Math.floor(el / (t < 0.5 ? 50 : 30));
-      const amp = t > 0.6 ? 2 : t > 0.15 ? 1 : 0;
+      const amp = t > 0.7 ? 3 : t > 0.35 ? 2 : 1;
       u.sprite.setPosition(Math.round(r0.x + (step % 2 ? 1 : -1) * amp), Math.round(r0.y - (step % 3 === 0 && t > 0.5 ? 1 : 0)));
       if (step % 3 === 0 && step !== lastSeam) {
         lastSeam = step;
         const k = (step / 3) % 3;
-        void lightFlash(sc, home.x, home.y - (k === 0 ? 14 : k === 1 ? 34 : 54), seams[k], 14, 90, { floorY: home.y, intensity: 0.7 });
+        void lightFlash(sc, home.x, home.y - (k === 0 ? 28 : k === 1 ? 56 : 80), seams[k], 18, 90, { floorY: home.y, intensity: 0.7 });
       }
     });
     u.sprite.setPosition(Math.round(r0.x), Math.round(r0.y));
     // ---- the repel: the field throws the pieces apart. The body's last frame flashes WHITE, and the pieces are born
     // white where their parts were drawn (the flash frame carries the change of shape), then fly
+    strain.stop(40);
+    seamFx.stop();
     play('sovereignRepel', { volume: 1, pan });
     void lightFlash(sc, home.x, home.y - 40, PAL.white, 64, 260, { floorY: home.y, intensity: 1, ring: true });
     bg(shake(sc, 160, 4));
@@ -500,16 +522,25 @@ registerCardHook(
       // ---- the split fails: the three fall onto the tile and die their own deaths (_polar_sovereign-finals)
       const pieces: FallingPiece[] = PIECES.map((id) => {
         const f = FALL[id];
-        return { id: id as MonsterId, from: seat(id), to: { x: home.x + f.x * dir, y: home.y + f.y }, arc: f.arc, delay: f.delay };
+        return { id: id as MonsterId, from: seat(id), to: { x: home.x + f.x * dir, y: home.y + f.y }, arc: f.arc, delay: f.delay, fold: FOLD[id], pole: POLE_COLOR[id] };
       });
-      const fall = piecesFall(sc, { uidBase: 800000 + u.uid * 4, player: owner, zone: ev.zone, dir, pieces, onSettled: cardOut });
+      const fall = piecesFall(sc, { uidBase: 800000 + u.uid * 4, player: owner, zone: ev.zone, dir, pieces });
       bodyGone();
       await fall;
+      // the card leaves only once the heap is gone (it never slides over the dying pieces)
+      cardOut();
       return;
     }
     // ---- the split: each piece is kicked out along its own radial arc (left / up / right by where it is headed),
     // then braked by the field over its landing zone, hanging there until the graveyard activation drops it
     const to = split.zones.map((z) => zoneXY(z.player, 'monster', z.zone));
+    // the hang heights: the back zones hang lowest (a piece over the back row never climbs over the duelist's
+    // portrait), the front ones highest — the three read as a row held in the field, not a stacked cluster
+    const byDepth = split.zones.map((_, i) => i).sort((a, b) => to[a].y - to[b].y || a - b);
+    const hangOf = split.zones.map((_, i) => HANGS[byDepth.indexOf(i)] ?? HANG);
+    // and spread a little wider than the zones (the field pushes them apart): the outer two lean out
+    const byX = split.zones.map((_, i) => i).sort((a, b) => to[a].x - to[b].x || a - b);
+    const spreadOf = split.zones.map((_, i) => SPREAD[byX.indexOf(i)] ?? 0);
     cardOut();
     const order = split.zones.map((_, i) => i).sort((a, b) => to[a].x - to[b].x || a - b);
     const LAUNCH: XY[] = [{ x: -86, y: -64 }, { x: 6, y: -128 }, { x: 86, y: -64 }];
@@ -522,7 +553,7 @@ registerCardHook(
         return {
           id: z.cardId as MonsterId,
           from: seat(z.cardId),
-          to: { x: to[i].x, y: to[i].y - HANG },
+          to: { x: to[i].x + spreadOf[i], y: to[i].y - hangOf[i] },
           launch: launchOf(i),
           anim: 'summon',
           frames: f ? [f1, f1 + 1, f1 + 2, f1 + 1, f1] : [0],
@@ -530,14 +561,31 @@ registerCardHook(
           pole: POLE_COLOR[z.cardId] ?? PAL.gold4,
         };
       }),
-      720,
+      FLING_MS,
     );
     bodyGone();
     const prev = sparks.get(ev.uid);
     prev?.h.destroy();
     prev?.hum.stop(80);
-    const entry = { zones: split.zones.map((z) => z.player * 10 + z.zone), h, hum: NO_HUM };
+    const entry = { zones: split.zones.map((z) => z.player * 10 + z.zone), hangs: hangOf, spread: spreadOf, h, hum: NO_HUM };
     sparks.set(ev.uid, entry);
+    // caught by the field: the chord held apart starts while the repel still rings (no hole in the bed)
+    bg(wait(sc, FLING_MS * 0.2).then(() => {
+      if (sparks.get(ev.uid) === entry && entry.hum === NO_HUM) entry.hum = start('sovereignHang', { volume: 0.8, pan });
+    }));
+    // the cards leaving between this death and the split's activation (the destroying spell's own card) go to
+    // their graveyard WHILE the pieces fly: the hang is a beat, not a wait for a card to cross through it
+    const actAt = ctx.find((e) => e.type === 'activate' && e.uid === ev.uid && e.from === 'graveyard');
+    if (actAt > 0) {
+      const leaving: number[] = [];
+      for (let i = ctx.index + 1; i < actAt; i++) {
+        const e = ctx.events[i];
+        if (!ctx.isConsumed(i) && e.type === 'toGraveyard' && e.uid !== ev.uid) leaving.push(i);
+      }
+      if (leaving.length) bg(wait(sc, FLING_MS * 0.35).then(async () => {
+        for (const i of leaving) if (!ctx.isConsumed(i)) await ctx.play(i);
+      }));
+    }
     bg(wait(sc, 6000).then(() => {
       if (sparks.get(ev.uid) !== entry) return;
       entry.h.destroy();
@@ -545,8 +593,8 @@ registerCardHook(
       sparks.delete(ev.uid);
     }));
     await h.done;
-    // caught by the field: the chord held apart while they hang
-    if (sparks.get(ev.uid) === entry) entry.hum = start('sovereignHang', { volume: 0.8, pan });
+    // the hang is a held beat of its own (bobbing, arcs snapping between them) before the first piece drops
+    await wait(sc, 240);
   },
   { priority: 20, name: 'd:polar_sovereign:death' },
 );
@@ -571,7 +619,8 @@ registerCardHook(
     if (idx.length === 0) return ctx.base();
     const hang = sparks.get(ev.uid);
     sparks.delete(ev.uid);
-    hang?.hum.stop(140);
+    // the held chord lets go as the first piece hits its tile (it falls through the chord, not into silence)
+    if (hang) bg(wait(sc, 200).then(() => hang.hum.stop(160)));
     const jobs = idx.map(async (i, k) => {
       const e = ctx.events[i] as SummonEv;
       ctx.consumeAt(i);
@@ -581,9 +630,10 @@ registerCardHook(
       t.tileFlash(POLE_COLOR[e.cardId] ?? PAL.gold4, 300);
       const unit = field.addUnit(e.uid, { hidden: true, atk: ctx.atk(e.uid, 'next'), def: ctx.def(e.uid, 'next'), position: 'defense' });
       const si = hang ? hang.zones.indexOf(e.player * 10 + e.zone) : -1;
-      if (hang && si >= 0) hang.h.release(si);
+      const bob = hang && si >= 0 ? hang.h.release(si) : { x: 0, y: 0 };
+      const off = { x: bob.x + (hang && si >= 0 ? hang.spread[si] : 0), y: bob.y };
       if (!unit) return;
-      await dropIn(unit, home, e.cardId);
+      await dropIn(unit, home, e.cardId, hang && si >= 0 ? hang.hangs[si] : HANG, off);
     });
     await Promise.all(jobs);
     hang?.h.destroy();
@@ -591,7 +641,7 @@ registerCardHook(
   { priority: 20, name: 'd:polar_sovereign:split' },
 );
 
-async function dropIn(u: MonsterUnit, home: XY, cardId: CardId): Promise<void> {
+async function dropIn(u: MonsterUnit, home: XY, cardId: CardId, hang = HANG, off: XY = { x: 0, y: 0 }): Promise<void> {
   const sc = u.sprite.scene;
   const r = u.rest0;
   const pan = panAt(home.x);
@@ -599,11 +649,13 @@ async function dropIn(u: MonsterUnit, home: XY, cardId: CardId): Promise<void> {
   // it falls out of its hang still folded and unfolds on the way down (its own entrance's last frames)
   const fold = u.has('summon') ? FOLD[cardId] : undefined;
   u.pose(fold ? 'summon' : u.has('toGuard') ? 'toGuard' : 'guard', fold ? fold[1] : 0);
-  u.sprite.setPosition(Math.round(r.x), Math.round(r.y - HANG));
+  // it starts exactly where its bob held it (no pop on the hand-over)
+  const h0 = hang - off.y;
+  u.sprite.setPosition(Math.round(r.x + off.x), Math.round(r.y - h0));
   u.showSprite();
   let shown = -1;
   await run(sc, 220, (t) => {
-    u.sprite.setPosition(Math.round(r.x), Math.round(r.y - HANG * (1 - t * t)));
+    u.sprite.setPosition(Math.round(r.x + off.x * (1 - t)), Math.round(r.y - h0 * (1 - t * t)));
     if (fold) {
       const f = Math.round(fold[1] + (fold[0] - fold[1]) * t);
       if (f !== shown) {

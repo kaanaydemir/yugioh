@@ -40,6 +40,11 @@ export interface FallingPiece {
   arc: number;
   /** its own death starts this long after it lands (they read one by one) */
   delay: number;
+  /** its own summon frames [unfolded, folded]: it is born FOLDED (the shape its part has in the sovereign) and
+   *  unfolds on the way down, so the flash frame never swaps the body for full-size pieces in one step */
+  fold?: readonly [number, number];
+  /** its pole colour: the white birth fades through it */
+  pole?: number;
 }
 
 /** A piece's temporary unit: the piece's own art (its P2 relight for player 2), off the field, badge hidden. */
@@ -56,21 +61,35 @@ function tempUnit(sc: Phaser.Scene, id: MonsterId, uid: number, player: PlayerId
  */
 export async function piecesFall(sc: Phaser.Scene, o: { uidBase: number; player: PlayerId; zone: number; dir: 1 | -1; pieces: readonly FallingPiece[]; onSettled?: () => void }): Promise<void> {
   const units = o.pieces.map((p, i) => tempUnit(sc, p.id, o.uidBase + i, o.player, o.zone));
-  // born white where the parts were (the repel's flash frame), in the recoil frame of their own deaths
+  // born white where the parts were (the repel's flash frame — the same flash the split uses), FOLDED in the shape
+  // their parts have in the sovereign; the white fades through each piece's pole colour
+  const folded = (u: MonsterUnit, p: FallingPiece) => !!p.fold && u.has('summon');
   units.forEach((u, i) => {
     const p = o.pieces[i];
-    u.pose('death', 0);
+    if (folded(u, p)) u.pose('summon', p.fold![1]);
+    else u.pose('death', 0);
     u.sprite.setPosition(rnd(p.from.x), rnd(p.from.y)).setDepth(unitDepth(p.to.y) + 0.5 + i * 0.01);
     u.showSprite();
     u.sprite.setTintFill(PAL.white);
   });
+  await sleep(sc, 50);
+  units.forEach((u, i) => u.sprite.active && u.sprite.setTintFill(o.pieces[i].pole ?? PAL.gold4));
   await sleep(sc, 34);
   units.forEach((u) => u.sprite.active && u.sprite.clearTint());
-  // the knock apart and the fall: a short arc each, onto the sovereign's own tile
+  // the knock apart and the fall: a short arc each, onto the sovereign's own tile — unfolding on the way down
+  // (its own entrance's last frames), into the recoil frame of its own death as it hits the floor
+  const shown = units.map(() => -1);
   await run(sc, 300, (t) => {
     units.forEach((u, i) => {
       if (!u.sprite.active) return;
       const p = o.pieces[i];
+      if (folded(u, p)) {
+        const f = rnd(p.fold![1] + (p.fold![0] - p.fold![1]) * Math.min(1, t * 1.1));
+        if (f !== shown[i]) {
+          shown[i] = f;
+          u.pose('summon', f);
+        }
+      }
       const e = t * t;
       const x = p.from.x + (p.to.x - p.from.x) * Math.min(1, t * 1.15);
       const y = p.from.y + (p.to.y - p.from.y) * e - Math.sin(Math.PI * Math.min(1, t)) * p.arc;
@@ -80,6 +99,7 @@ export async function piecesFall(sc: Phaser.Scene, o: { uidBase: number; player:
   });
   units.forEach((u, i) => {
     u.lift = 0;
+    if (u.sprite.active) u.pose('death', 0);
     u.sprite.setPosition(rnd(o.pieces[i].to.x), rnd(o.pieces[i].to.y));
   });
   // the heap hits the marble: one heavy thud, iron dust out from under it
