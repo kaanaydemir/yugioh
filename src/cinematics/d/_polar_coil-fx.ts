@@ -564,79 +564,183 @@ export function spindleDust(sc: Phaser.Scene, at: XY, floorY: number): void {
 
 // ---------------------------------------------------------------- the remains (death end, §5.2 "tel çözülür, makara boş döner")
 
-/** The remains' pictures: the fallen spindle with its spool (0), without it (1), breaking (2, 3: the last 150 ms). */
-const REMAINS = [
-  { spoolOff: 0, diss: 0 },
-  { spoolOff: 1, diss: 0 },
-  { spoolOff: 1, diss: 0.4 },
-  { spoolOff: 1, diss: 0.8 },
-] as const;
+/** The remains' far shoulder spool still turns after the fall: its spin is cached in 1/24-turn steps. */
+const SPIN_Q = 24;
+/** The settle after the floor impact: the spindle rebounds off the marble and rocks down, the beats spread over the
+ *  whole lie until the break (end of beat as a share of it, tilt). */
+const ROCK: readonly (readonly [number, number])[] = [[0.13, 0.95], [0.26, 1], [0.4, 0.976], [0.52, 1], [0.66, 0.988], [0.78, 1], [0.9, 0.994]];
 
-function remainsKey(sc: Phaser.Scene, i: number, right: boolean): string {
-  const key = `pc:remains:${right ? 'r' : 'l'}:${i}`;
-  if (sc.textures.exists(key)) return key;
+function remainsPose(spoolOff: number, tilt: number, spinQ: number, heap = 1): Pose {
   const base = framePose('death', DEATH_IMPACT);
+  return { ...base, spoolOff, tilt, spinF: spinQ / SPIN_Q, heap, diss: 0 };
+}
+
+function remainsKey(sc: Phaser.Scene, spoolOff: number, tilt: number, spinQ: number, right: boolean): string {
+  const key = `pc:remains:${right ? 'r' : 'l'}:${spoolOff}:${tilt}:${spinQ}`;
+  if (sc.textures.exists(key)) return key;
   const p = new PixelCanvas(W, RIG_H);
-  const o: Pose = { ...base, spoolOff: REMAINS[i].spoolOff, diss: REMAINS[i].diss };
-  drawCoil(p, o, right ? 'right' : 'left');
+  drawCoil(p, remainsPose(spoolOff, tilt, spinQ), right ? 'right' : 'left');
   sc.textures.addCanvas(key, p.toCanvas());
   return key;
+}
+
+/** The break's pieces of the fallen spindle (frame px): 0 the foot (pin + bottom flange), 1 the bare rod, 2 the head
+ *  end (top flange, the far spool, the helm), 3 the loose wire heap. Cut edges are inked so the pieces read apart. */
+const PIECES = 4;
+function pieceKeys(sc: Phaser.Scene, spinQ: number, right: boolean): string[] {
+  const keys = Array.from({ length: PIECES }, (_, i) => `pc:rpiece:${right ? 'r' : 'l'}:${spinQ}:${i}`);
+  if (sc.textures.exists(keys[0])) return keys;
+  const light = right ? 'right' : 'left';
+  const full = new PixelCanvas(W, RIG_H);
+  drawCoil(full, remainsPose(1, 1, spinQ), light);
+  const bare = new PixelCanvas(W, RIG_H);
+  drawCoil(bare, remainsPose(1, 1, spinQ, 0), light);
+  // the inverse of the topple: frame px → spindle-local (x lateral, y up from the pin, negative)
+  const rot = toppleRot(remainsPose(1, 1, spinQ));
+  const O = rot([0, 0]);
+  const ex = rot([1, 0]);
+  const ey = rot([0, 1]);
+  const a = ex[0] - O[0], b = ey[0] - O[0], c = ex[1] - O[1], d = ey[1] - O[1];
+  const det = a * d - b * c || 1;
+  const localY = (x: number, y: number): number => (-c * (x - O[0]) + a * (y - O[1])) / det;
+  const id = new Int8Array(W * RIG_H).fill(-1);
+  for (let y = 0; y < RIG_H; y++)
+    for (let x = 0; x < W; x++) {
+      if (!full.isOpaque(x, y)) continue;
+      if (!bare.isOpaque(x, y)) id[y * W + x] = 3;
+      else {
+        const ly = localY(x + 0.5, y + 0.5);
+        id[y * W + x] = ly > -8 ? 0 : ly > -32 ? 1 : 2;
+      }
+    }
+  const cv = Array.from({ length: PIECES }, () => new PixelCanvas(W, RIG_H));
+  for (let y = 0; y < RIG_H; y++)
+    for (let x = 0; x < W; x++) {
+      const i = id[y * W + x];
+      if (i < 0) continue;
+      const col = full.get(x, y) as number;
+      let cut = false;
+      if (i < 3)
+        for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+          if (nx < 0 || ny < 0 || nx >= W || ny >= RIG_H) continue;
+          const j = id[ny * W + nx];
+          if (j >= 0 && j < 3 && j !== i) cut = true;
+        }
+      cv[i].set(x, y, cut ? PAL.ink : col);
+    }
+  cv.forEach((q, i) => sc.textures.addCanvas(keys[i], q.toCanvas()));
+  return keys;
 }
 
 export interface Remains {
   /** World centre of the near shoulder spool on the fallen spindle. */
   spoolAt: XY;
-  /** The burst: the spool leaves the spindle (the picture without it) — the remains live `ms` more, the last 150 ms break. */
+  /** The burst: the spool leaves the spindle — the remains settle and live `ms` more, the last SPOOL_BREAK ms break. */
   burst(ms: number): void;
   destroy(): void;
 }
 
 /**
  * The death's last frame (the bare spindle lying clean on its own tile) taken over as remains: the sprite is hidden
- * by the caller, so no generic material break follows. On burst() the empty spool comes off it (emptySpool), the
- * spindle lies a beat, and only its last 150 ms break up — in two dissolve steps of its own grit (copper / iron).
+ * by the caller, so no generic material break follows. On burst() the empty spool comes off it (emptySpool) and the
+ * spindle rebounds off the marble and rocks to rest while its far shoulder spool keeps turning, running down; in the
+ * last SPOOL_BREAK ms it comes apart as steel: the foot, the bare rod and the head end slide apart along the spindle's
+ * axis (inked cut faces), copper curls spring out of the seams, steel chips drop, the wire heap goes last.
  */
 export function coilRemains(sc: Phaser.Scene, u: MonsterUnit): Remains {
   const spr = u.sprite;
   const right = spr.texture.key.includes(':p2');
-  const img = sc.add.image(spr.x, spr.y, remainsKey(sc, 0, right)).setOrigin(spr.originX, spr.originY).setFlipX(spr.flipX).setDepth(spr.depth);
-  const lp = toppleRot(framePose('death', DEATH_IMPACT))(SPOOL_N_LOCAL);
+  const base = framePose('death', DEATH_IMPACT);
+  const spin0 = Math.round(base.spinF * SPIN_Q);
+  const img = sc.add.image(spr.x, spr.y, remainsKey(sc, 0, 1, spin0, right)).setOrigin(spr.originX, spr.originY).setFlipX(spr.flipX).setDepth(spr.depth);
+  const rot = toppleRot(base);
+  const lp = rot(SPOOL_N_LOCAL);
   const spoolAt = rx(u.framePoint(Math.floor(lp[0]) + 0.5, Math.floor(lp[1]) + 0.5));
+  const pieces: Phaser.GameObjects.Image[] = [];
   let stop: (() => void) | null = null;
   const destroy = () => {
     stop?.();
     if (img.active) img.destroy();
+    for (const q of pieces) if (q.active) q.destroy();
   };
+  // the spindle's axis on the frame (foot → head), as a whole-pixel step per beat
+  const O = rot([0, 0]);
+  const Hd = rot([0, -50]);
+  const L = Math.hypot(Hd[0] - O[0], Hd[1] - O[1]) || 1;
+  const ax = (Hd[0] - O[0]) / L;
+  const ay = (Hd[1] - O[1]) / L;
+  const sgn = spr.flipX ? -1 : 1;
+  const X0 = img.x;
+  const Y0 = img.y;
+  /** piece offsets per break beat (frame px along the axis, + up): foot, rod, head */
+  const OFF: readonly (readonly [number, number, number, number, number, number])[] = [
+    [-1, 0, 0, 1, 2, 1],
+    [-2, 0, 0, 0, 4, 1],
+    [-3, 0, 1, 0, 5, 0],
+    [-3, 0, 1, 0, 6, 0],
+  ];
+  const ALPHA = [1, 1, 1, 0.45];
+  const HEAP_ALPHA = [1, 0.8, 0.5, 0.25];
   return {
     spoolAt,
     burst(ms) {
       if (!img.active) return;
-      img.setTexture(remainsKey(sc, 1, right));
       const BREAK = SPOOL_BREAK;
-      let shown = 1;
+      const live = Math.max(1, ms - BREAK);
+      let shown = '';
+      let broke = false;
+      let spinQ = spin0;
       stop = onFrame(
         sc,
         (_dt, el) => {
-          if (!img.active) return false;
-          const k = el < ms - BREAK ? 1 : el < ms - BREAK / 2 ? 2 : 3;
-          if (k !== shown) {
-            shown = k;
-            img.setTexture(remainsKey(sc, k, right));
-            if (k === 2) {
-              // the grit of the break: copper flecks and iron grains dropping off the spindle
-              const sp = new Sparks(sc, img.depth + 0.2);
-              const home = u.home;
-              const dir = u.flipX ? -1 : 1;
-              // copper curls spring up off the spindle (the last of the wire), steel grit drops
-              for (let i = 0; i < 16; i++)
-                sp.add({ x: home.x - dir * RR(-14, 30), y: home.y - RR(2, 10), vx: RR(-35, 35), vy: i % 3 === 0 ? RR(-95, -55) : RR(-50, -15), ay: 340, drag: 1, life: RR(220, 380), colors: i % 3 === 2 ? [PAL.stone3, PAL.stone2, PAL.stone1] : [PAL.skin3, PAL.fire3, PAL.fire2], shape: i % 3 === 0 ? 'ring' : 'px', size: 2, floor: home.y + RR(-2, 3), bounce: 0.25, fadeAt: 0.7 });
-              sp.release();
+          if (!img.active && !broke) return false;
+          if (el < live) {
+            // the settle: rebound and rock on the marble; the far spool spins down (an empty reel turning free)
+            const r = ROCK.find(([t]) => el < t * live);
+            const tilt = r ? r[1] : 1;
+            const t = el / live;
+            spinQ = spin0 + Math.round(SPIN_Q * 0.75 * (1 - (1 - t) ** 2));
+            const key = remainsKey(sc, 1, tilt, spinQ, right);
+            if (key !== shown) {
+              shown = key;
+              img.setTexture(key);
             }
+            return true;
           }
+          if (!broke) {
+            broke = true;
+            const keys = pieceKeys(sc, spinQ, right);
+            for (const k of keys) pieces.push(sc.add.image(X0, Y0, k).setOrigin(img.originX, img.originY).setFlipX(img.flipX).setDepth(img.depth));
+            img.destroy();
+            // the seams spring copper curls (the last of the wire), steel chips drop off the cut faces
+            const sp = new Sparks(sc, spr.depth + 0.2);
+            const floor = u.home.y;
+            for (const ly of [-7, -31]) {
+              const q = rot([0, ly]);
+              const at = rx(u.framePoint(Math.floor(q[0]) + 0.5, Math.floor(q[1]) + 0.5));
+              for (let i = 0; i < 7; i++)
+                sp.add({ x: at.x + RR(-2, 2), y: at.y + RR(-3, 3), vx: RR(-40, 40), vy: i % 2 ? RR(-95, -55) : RR(-45, -15), ay: 360, drag: 1, life: RR(240, 380), colors: i % 3 === 2 ? [PAL.stone4, PAL.stone3, PAL.stone2] : [PAL.fire3, PAL.fire2, PAL.fire1], shape: i % 3 === 0 ? 'ring' : 'px', size: 2, floor: floor + RR(-2, 3), bounce: 0.3, fadeAt: 0.7 });
+            }
+            sp.release();
+          }
+          const k = Math.min(3, Math.floor(((el - live) / BREAK) * 4));
+          const o = OFF[k];
+          pieces.forEach((q, i) => {
+            if (!q.active) return;
+            if (i === 3) {
+              q.setAlpha(HEAP_ALPHA[k]);
+              return;
+            }
+            const along = o[i * 2];
+            const up = o[i * 2 + 1];
+            q.setPosition(X0 + sgn * Math.round(ax * along), Y0 + Math.round(ay * along) - up);
+            q.setAlpha(ALPHA[k]);
+          });
           return el < ms;
         },
         () => {
           if (img.active) img.destroy();
+          for (const q of pieces) if (q.active) q.destroy();
         },
       );
     },
@@ -723,7 +827,7 @@ function spoolPixels(k: number, step: number, side: 1 | -1): SpoolPx {
 export const SPOOL_POP = 90;
 export const SPOOL_ROLL = 220;
 export const SPOOL_RUNDOWN = 60;
-export const SPOOL_BREAK = 110;
+export const SPOOL_BREAK = 140;
 export const SPOOL_MS = SPOOL_POP + SPOOL_ROLL + SPOOL_RUNDOWN + SPOOL_BREAK;
 
 /**
@@ -775,15 +879,16 @@ export function emptySpool(sc: Phaser.Scene, home: XY, dir: 1 | -1, depth: numbe
           y = land.y + roll.y * e;
           // on its rim, the face a little turned; a wobble every other beat (an empty reel is light)
           k = Math.floor((el - T1) / 65) % 2 ? 0.7 : 0.82;
-          // the spokes turn faster than the reel travels (spinning free), slowing with the roll
-          step = 3 + Math.floor(e * 16);
+          // the spokes turn faster than the reel travels (spinning free) and keep turning as the roll eases out
+          step = 3 + Math.floor(e * 12 + t * 7);
         } else {
           x = land.x + roll.x;
           y = land.y + roll.y;
           const t = el - T2;
           // the run-down: a coin's settling wobble, then it rests leaning
-          k = t < SPOOL_RUNDOWN ? [0.5, 0.86, 0.45][Math.min(2, Math.floor(t / (SPOOL_RUNDOWN / 3)))] : 0.55;
-          step = 19;
+          k = t < SPOOL_RUNDOWN ? [0.5, 0.86, 0.45][Math.min(2, Math.floor(t / (SPOOL_RUNDOWN / 3)))] : Math.floor(t / 50) % 2 ? 0.5 : 0.6;
+          // the empty reel still spins down on its rim (a slowing spoke cycle) until it breaks
+          step = 22 + Math.floor(5 * (1 - Math.exp(-t / 120)));
         }
         const lv = el < T3 ? 1 : el < T3 + SPOOL_BREAK / 2 ? 0.6 : 0.3;
         if (el >= T3 && !broke) {

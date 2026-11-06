@@ -433,7 +433,7 @@ export const V3_POLAR_NEEDLE_RECIPES = {
     gap: 0.03,
     verb: 0.3,
     play(v) {
-      plateDrop(v, midiHz(85), 0.2, 0.07, { ratio: 1.19, thump: [260, 130, 0.22, 0.04], puff: 0.08, bounce: [0.045, 3300, 0.06] });
+      plateDrop(v, midiHz(85), 0.3, 0.07, { ratio: 1.19, thump: [260, 130, 0.3, 0.04], puff: 0.08, bounce: [0.045, 3300, 0.08] });
     },
   },
   /** Death: the NEAR pauldron — mid (A5), a fuller clack with one bounce. */

@@ -204,8 +204,8 @@ export const V3_POLAR_ANVIL_RECIPES = {
     verb: 0.35,
     duck: 0.55,
     play(v) {
-      thump(v, 0, 110, 42, 0.55, 0.26, { drive: 1.6 });
-      poleHum(v, 0, perc(0.3, 0.35, 0.003));
+      thump(v, 0, 110, 42, 0.65, 0.26, { drive: 1.6 });
+      poleHum(v, 0, perc(0.36, 0.35, 0.003));
       v.tone('sine', [[0, 330], [0.18, 165, 'e']], { g: perc(0.08, 0.2, 0.002) });
       clank(v, 380, 0, 0.08, 0.2, { ratio: 2.1, index: 1.6, click: 0.5 });
       puff(v, 0, 0.18, 0.2, 900, { kind: 'pink' });
@@ -312,6 +312,42 @@ export const V3_POLAR_ANVIL_RECIPES = {
       thump(v, 0, 120, 55, 0.4, 0.16, { drive: 1.3 });
       anvilRing(v, 0.01, 0.045, 0.7);
       poleHum(v, 0, perc(0.12, 0.35, 0.004));
+    },
+  },
+  /** To defense: the mauls plant on the face before the horn — two plate ticks "tık tık" (the second a step lower
+   *  and heavier, it lands), the field ring draws in under the base with a short settling hum. */
+  polarAnvilGuard: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.3,
+    duck: 0.25,
+    play(v) {
+      for (const [t, f, g, th] of [
+        [0, 1580, 0.075, 0.1],
+        [0.11, 1380, 0.09, 0.16],
+      ] as const) {
+        link(v, f, t, g, 0.14);
+        v.noise('white', { t, g: perc(0.08, 0.005, 0.0002), to: v.filt('bandpass', 3400, 1.6) });
+        thump(v, t, 170, 80, th, 0.07);
+      }
+      anvilRing(v, 0.11, 0.016, 0.38, 1180);
+      // the ring drawing in: a short rise onto E2's octave, the family beat settling under it
+      v.tone('sine', [[0, E2 * 1.5], [0.2, E2 * 2, 'e']], { t: 0.1, g: [[0, 0], [0.05, 0.05], [0.32, 0.0001, 'e']] });
+      poleHum(v, 0.1, [[0, 0], [0.06, 0.1], [0.42, 0.0001, 'e']]);
+    },
+  },
+  /** To attack: the mauls lift off the face (one rising tick and a release clank), the ring lets go outward. */
+  polarAnvilUnguard: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.3,
+    duck: 0.25,
+    play(v) {
+      link(v, 1420, 0, 0.06, 0.12);
+      link(v, 1700, 0.09, 0.075, 0.16);
+      clank(v, 640, 0.09, 0.06, 0.18, { ratio: 2.76, index: 1.4, click: 0.6 });
+      v.tone('sine', [[0, E2 * 2], [0.25, E2 * 1.5, 'e']], { t: 0.09, g: [[0, 0], [0.04, 0.05], [0.3, 0.0001, 'e']] });
+      poleHum(v, 0.09, [[0, 0], [0.03, 0.09], [0.36, 0.0001, 'e']]);
     },
   },
 } satisfies Record<string, Recipe>;

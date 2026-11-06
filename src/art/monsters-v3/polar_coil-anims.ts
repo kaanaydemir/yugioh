@@ -218,10 +218,10 @@ export function fromGuardPose(f: number): Pose {
 }
 const FG_HOLDS = [60, 65, 70, 75, 80];
 
-// ------------------------------------------------------------------ summon (15): the empty spindle, wire winds in, limbs open
+// ------------------------------------------------------------------ summon (16): the empty spindle, wire winds in, limbs open
 
-const SU_N = 15;
-const SU_LAND = 9;
+const SU_N = 16;
+const SU_LAND = 10;
 export function summonPose(f: number): Pose {
   if (f >= SU_N - 1) return home();
   const bare = { legs: 0, whips: 0, eye: 0, core: 0, rings: 0, dust: -1, reel: 0 };
@@ -236,15 +236,17 @@ export function summonPose(f: number): Pose {
       reel: f / 6, spinN: f * 0.35, spinF: -f * 0.35, eye: f >= 5 ? 0.6 : 0,
     }, f, SU_N);
   }
-  // the wire's free ends peel off the drum: thin strands lengthen into the legs and the whips (f7), thicken (f8)
-  if (f === 7) return key({ legs: 0.2, whips: 0.3, nwx: 7, nwy: 15, nlag: 2, fwx: -6, fwy: 15, flag: -2, feed: 0.25, fex: -30, fey: -36, floops: 2, eye: 1, core: 2.3, rings: 2, ringB: 3, dust: -1 }, f, SU_N);
-  if (f === 8) return key({ legs: 0.55, whips: 0.62, nwx: 10, nwy: 9, nlag: 4, fwx: -9, fwy: 9, flag: -4, eye: 1.3, core: 2.6, rings: 2, ringB: 3, dust: -1 }, f, SU_N);
+  // the wire's free ends peel off the drum: two bare strands drop from the bottom winding to the floor and lift the
+  // drum on them (f7), they thicken into legs on boots while the whips peel out (f8), thicken (f9)
+  if (f === 7) return key({ legs: 0.4, strands: 1, whips: 0.12, nwx: 4, nwy: 16, nlag: 1, fwx: -4, fwy: 16, flag: -1, feed: 0.35, fex: -34, fey: -44, floops: 2, eye: 0.9, core: 2.1, rings: 2, ringB: 3, climb: 0.9, spinN: 2.6, spinF: -2.6, dust: -1 }, f, SU_N);
+  if (f === 8) return key({ legs: 0.6, whips: 0.3, nwx: 7, nwy: 15, nlag: 2, fwx: -6, fwy: 15, flag: -2, feed: 0.2, fex: -30, fey: -36, floops: 2, eye: 1, core: 2.3, rings: 2, ringB: 3, dust: -1 }, f, SU_N);
+  if (f === 9) return key({ legs: 0.8, whips: 0.62, nwx: 10, nwy: 9, nlag: 4, fwx: -9, fwy: 9, flag: -4, eye: 1.3, core: 2.6, rings: 2, ringB: 3, dust: -1 }, f, SU_N);
   if (f === SU_LAND) return key({ legs: 1, whips: 1, nwx: 15, nwy: 2, nlag: 4, fwx: -13, fwy: 3, flag: -4, eye: 2, core: 3, flash: 0.6, rings: 2, ringB: 3, pulse: 0.3, dust: -1 }, f, SU_N);
-  if (f === 10) return key({ whips: 1, nwx: 13, nwy: 7, nlag: 5, fwx: -11, fwy: 8, flag: -5, eye: 1.8, core: 2.6, ringB: 2, pulse: 0.7, dustK: 1.6 }, f, SU_N);
-  const k10 = key({ nwx: 13, nwy: 7, nlag: 5, fwx: -11, fwy: 8, flag: -5, eye: 1.8, core: 2.6, dustK: 1.6 }, 10, SU_N);
-  return snap(key({ ...mix(k10, IDLE0, [0.4, 0.7, 0.9][f - 11]) }, f, SU_N));
+  if (f === 11) return key({ whips: 1, nwx: 13, nwy: 7, nlag: 5, fwx: -11, fwy: 8, flag: -5, eye: 1.8, core: 2.6, ringB: 2, pulse: 0.7, dustK: 1.6 }, f, SU_N);
+  const k11 = key({ nwx: 13, nwy: 7, nlag: 5, fwx: -11, fwy: 8, flag: -5, eye: 1.8, core: 2.6, dustK: 1.6 }, 11, SU_N);
+  return snap(key({ ...mix(k11, IDLE0, [0.4, 0.7, 0.9][f - 12]) }, f, SU_N));
 }
-const SU_HOLDS = [140, 100, 80, 70, 70, 70, 80, 60, 60, 140, 110, 110, 120, 130, 150];
+const SU_HOLDS = [140, 100, 80, 70, 70, 70, 80, 70, 60, 60, 140, 110, 110, 120, 130, 150];
 
 // ------------------------------------------------------------------ death (11): unwinds, thins, the empty spindle topples
 //

@@ -17,13 +17,13 @@
 //   poleStrobe(sc, u, home, ms)            death: the floor light swaps orange / blue on every frame
 //   repelBurst(sc, at, home, depth)        death 'dissolve': two half rings (orange back / blue front) shoot apart
 //   ironPlates(sc, home, push, depth)      death burst: iron plates and gold weld beads skid out and rest on the floor
-//   anvilRemains(sc, spr, home, heel, horn) death end: the last frame as remains, poles dying, twitches, 150-ms break
+//   anvilRemains(sc, spr, home, heel, horn) death end: the last frame as remains, poles dying, twitches, 220-ms break
 //
 // Pixel language (REHBER EF-6 / EF-7): 1-px lines, palette steps instead of alpha, whole-pixel positions, at
 // most one ring per beat, stepped light on the floor.
 
 import type Phaser from 'phaser';
-import { PAL } from '../../art/palette';
+import { PAL, RAMPS } from '../../art/palette';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, type XY } from '../../view/layout';
 import { lightFlash, lightPool } from '../../view/light';
@@ -129,6 +129,47 @@ export function fieldLines(sc: Phaser.Scene, u: MonsterUnit, ms: number): void {
       floor.destroy();
     },
   );
+}
+
+/**
+ * The declaration's held wind-up frame: the field stirs before the charge — the first (low) field arc only, a few
+ * filings drifting heel → horn, the pole ticks blinking slowly. Runs until `stop()` (the strike's own field lines
+ * take over on the same arc) or `maxMs`.
+ */
+export function fieldStir(sc: Phaser.Scene, u: MonsterUnit, maxMs = 900): () => void {
+  const home = u.home;
+  const air = Raster.around(sc, home.x, home.y - 40, 130, 96, u.sprite.depth + 0.4);
+  let stopped = false;
+  onFrame(
+    sc,
+    (_dt, el) => {
+      if (stopped || el >= maxMs || !u.sprite.active) return false;
+      const heel = poleOf(u, 'heel');
+      const horn = poleOf(u, 'horn');
+      air.draw((g) => {
+        if (!heel || !horn) return;
+        const mid = { x: (heel.x + horn.x) / 2, y: (heel.y + horn.y) / 2 };
+        const half = Math.abs(horn.x - heel.x) / 2 + 6;
+        const sgnX = horn.x >= heel.x ? 1 : -1;
+        // the filings appear one by one (fade-in by count, never by alpha)
+        const n = Math.min(7, 2 + Math.floor(el / 60));
+        for (let i = 0; i < n; i++) {
+          const k = ((i / 7 + el * 0.0008) % 1 + 1) % 1;
+          const ang = Math.PI * k;
+          const x = mid.x - sgnX * Math.cos(ang) * half;
+          const y = mid.y - Math.sin(ang) * 16;
+          g.px(Math.round(x), Math.round(y), k < 0.25 ? PAL.fire2 : k > 0.75 ? PAL.water3 : PAL.steel);
+        }
+        g.px(heel.x, heel.y, Math.floor(el / 110) % 2 ? PAL.fire3 : PAL.fire4);
+        g.px(horn.x, horn.y, Math.floor(el / 110) % 2 ? PAL.water3 : PAL.water4);
+      });
+      return true;
+    },
+    () => air.destroy(),
+  );
+  return () => {
+    stopped = true;
+  };
 }
 
 // ================================================================ release: sparks off the face
@@ -514,6 +555,39 @@ export function fieldSnap(sc: Phaser.Scene, home: XY, depth: number): void {
   sparkFountain(sc, { x: home.x + 1, y: home.y - 26 }, home.y, depth, 10);
 }
 
+/**
+ * Position change: to guard the field ring draws IN round the base (three stepped rings closing, the S half
+ * leading, a white tick where it locks onto the art's own ring) — to attack it lets go OUT (the ring steps wide,
+ * the N half orange for a beat, gone). Floor only, nothing over the body.
+ */
+export function guardRing(sc: Phaser.Scene, home: XY, toGuard: boolean): void {
+  const f = Raster.around(sc, home.x, home.y, 90, 46, FLOOR_DEPTH);
+  void (async () => {
+    const RS = toGuard ? [29, 25, 21, 18, 18] : [18, 22, 26, 30];
+    for (let s = 0; s < RS.length; s++) {
+      if (!f.alive) return;
+      const R = RS[s];
+      const last = s === RS.length - 1;
+      f.draw((g) => {
+        if (toGuard) {
+          const c = last ? PAL.water4 : s === 3 ? PAL.white : s === 0 ? PAL.water2 : PAL.water3;
+          // the S (front) half closes a step ahead of the N half
+          g.ring(home.x, home.y, R, R * 0.5, c, 1, -Math.PI / 2, Math.PI / 2);
+          g.ring(home.x, home.y, R + (last || s === 3 ? 0 : 2), (R + (last || s === 3 ? 0 : 2)) * 0.5, s === 0 ? PAL.water1 : PAL.water2, 1, Math.PI / 2, (3 * Math.PI) / 2);
+          if (s >= 1 && !last) g.ring(home.x, home.y, R + 5, (R + 5) * 0.5, PAL.water1, 0.5, 0, TAU);
+        } else {
+          const c = [PAL.water4, PAL.water3, PAL.water2, PAL.water1][s];
+          g.ring(home.x, home.y, R, R * 0.5, c, 1, -Math.PI / 2, Math.PI / 2);
+          g.ring(home.x, home.y, R, R * 0.5, s === 1 ? PAL.fire3 : c, 1, Math.PI / 2, (3 * Math.PI) / 2);
+        }
+      });
+      await sleep(sc, toGuard ? (s === 3 ? 60 : 40) : 45);
+    }
+    f.destroy();
+  })();
+  void lightFlash(sc, home.x, home.y - 6, PAL.water3, 22, 220, { floorY: home.y, intensity: toGuard ? 0.55 : 0.4 });
+}
+
 /** The weld's spark fountain: gold / white sparks thrown up out of the seam, falling and bouncing on the floor. */
 export function sparkFountain(sc: Phaser.Scene, at: XY, floorY: number, depth: number, n = 26): void {
   const sp = new Sparks(sc, depth);
@@ -648,11 +722,43 @@ function remainsKey(sc: Phaser.Scene, i: number, right: boolean): string {
   return key;
 }
 
+/** Every ramp tone → one band darker (EF-7: the plates cool down their own ramp; below a ramp's floor → night). */
+const COOLER = (() => {
+  const m = new Map<number, number>();
+  for (const r of Object.values(RAMPS)) for (let i = r.length - 1; i >= 0; i--) if (!m.has(r[i])) m.set(r[i], i > 0 ? r[i - 1] : PAL.night1);
+  m.set(PAL.night1, PAL.night0);
+  m.set(PAL.night0, PAL.ink);
+  return m;
+})();
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5] as const;
+
+/**
+ * One step of a plate's break: remains frame `i` cooled `step` bands down its ramps, with a quarter of its
+ * pixels per step dropped in Bayer order (iron flaking off, never a flat silhouette fill).
+ */
+function breakKey(sc: Phaser.Scene, i: number, right: boolean, step: number): string {
+  const key = `pa:remains:${right ? 'r' : 'l'}:${i}:brk${step}`;
+  if (sc.textures.exists(key)) return key;
+  const base = framePose('death', 8);
+  const r = REMAINS[i];
+  const p = new PixelCanvas(RIG_W, RIG_H);
+  const o: Pose = { ...base, swap: r.swap, pole: r.pole, zap: r.zap, shards: 1 + r.kick * 0.1, t: (base.t + i * 0.13) % 1 };
+  drawAnvil(p, o, right ? 'right' : 'left');
+  p.map((c, x, y) => {
+    if (BAYER4[(y & 3) * 4 + (x & 3)] < step * 4) return null;
+    let k = c;
+    for (let n = 0; n < step; n++) k = COOLER.get(k) ?? k;
+    return k;
+  });
+  sc.textures.addCanvas(key, p.toCanvas());
+  return key;
+}
+
 /**
  * The death's last beat (§5.2 C13 "kutup titreşimi, parçalar dışa iter"): the body's final frame — the two
  * half-anvils apart with the arms lying by them — is taken over as remains on the floor; the poles keep
  * swapping orange / blue as they die, the halves twitch apart twice (the field's last kicks) and creep 1 px
- * apart, and the last 150 ms break the two plates up one after the other (slide out, palette steps, gone). Call with the sprite still showing its last frame; the
+ * apart, and the last 220 ms break the two plates up one after the other (slide out, cool down their ramps, flake off in a dither, gone). Call with the sprite still showing its last frame; the
  * caller hides the sprite right after. `heel` / `horn`: world points of the two pole glyphs on that frame.
  */
 export function anvilRemains(sc: Phaser.Scene, spr: Phaser.GameObjects.Sprite, home: XY, heel: XY, horn: XY, ms = 560): void {
@@ -675,12 +781,13 @@ export function anvilRemains(sc: Phaser.Scene, spr: Phaser.GameObjects.Sprite, h
     { im: img, side: sideA, x0: spr.x },
     { im: img2, side: -sideA, x0: spr.x },
   ];
-  /** Steps of one plate's break (25 ms each): slide 1, slide 2, cold iron (stone1), ash (stone0), gone. */
-  const BREAK_TONES = [0, 0, PAL.stone1, PAL.stone0] as const;
+  /** One plate's break: 4 steps of BREAK_STEP ms (slide 1; then cooled 1 / 2 / 3 bands, 25 / 50 / 75 % flaked off), gone. */
+  const BREAK_STEP = 35;
+  const plateStep = [-1, -1];
   const glow = Raster.around(sc, home.x, home.y - 20, 120, 70, spr.depth + 0.2);
   const floor = Raster.around(sc, home.x, home.y, 100, 40, FLOOR_DEPTH);
   const pool = lightPool(sc, home.x, home.y, { color: PAL.water3, radius: 22, intensity: 0.7, fadeIn: 0 });
-  const BREAK = 150;
+  const BREAK = 220;
   let shown = -1;
   let last = -1;
   onFrame(
@@ -699,7 +806,10 @@ export function anvilRemains(sc: Phaser.Scene, spr: Phaser.GameObjects.Sprite, h
       }
       if (fi !== shown) {
         shown = fi;
-        for (const pl of plates) pl.im.setTexture(remainsKey(sc, fi, right)).setOrigin(spr.originX, spr.originY);
+        for (let pi = 0; pi < plates.length; pi++) {
+          const st = plateStep[pi];
+          plates[pi].im.setTexture(st >= 1 ? breakKey(sc, fi, right, st) : remainsKey(sc, fi, right)).setOrigin(spr.originX, spr.originY);
+        }
         cropAll();
         const r = REMAINS[fi];
         const lv = r.pole >= 2 ? 0 : r.pole >= 1 ? 1 : 2;
@@ -728,18 +838,26 @@ export function anvilRemains(sc: Phaser.Scene, spr: Phaser.GameObjects.Sprite, h
           g.ring(home.x, home.y, R, R * 0.5, b, lv === 0 ? 1 : 0.5, Math.PI / 2, (3 * Math.PI) / 2);
         });
       }
-      // the hold: the halves creep 1 px apart (the dying field still repels them)
+      // the hold: the halves creep apart 1 px per 150 ms (the dying field still repels them; at most 2 px)
       const hold = ms - BREAK;
-      const creep = el >= hold * 0.45 ? 1 : 0;
-      // the last 150 ms break the remains up plate by plate (EF-7 palette steps, the far plate 2 steps late):
-      // each slides 1 → 2 px further out, goes cold (stone1), to ash (stone0), and is gone
+      const creep = Math.min(2, Math.floor(Math.max(0, el - 120) / 150));
+      // the last 220 ms break the remains up plate by plate (the far plate 2 steps late): each slides 1 → 2 px
+      // further out while it cools down its own ramp and flakes off in a Bayer dither, then is gone
       for (let pi = 0; pi < plates.length; pi++) {
         const pl = plates[pi];
-        const k = el >= hold ? Math.floor((el - hold) / 25) - pi * 2 : -1;
+        const k = el >= hold ? Math.floor((el - hold) / BREAK_STEP) - pi * 2 : -1;
         const slide = k < 0 ? 0 : Math.min(2, k + 1);
         pl.im.setX(pl.x0 + pl.side * (creep + slide));
-        if (k >= BREAK_TONES.length) pl.im.setVisible(false);
-        else if (k >= 2) pl.im.setTintFill(BREAK_TONES[k]);
+        if (k >= 4) {
+          pl.im.setVisible(false);
+          continue;
+        }
+        const st = Math.max(0, k);
+        if (st !== plateStep[pi] && st >= 1) {
+          plateStep[pi] = st;
+          pl.im.setTexture(breakKey(sc, shown, right, st)).setOrigin(spr.originX, spr.originY);
+          cropAll();
+        }
       }
       if (el >= hold) {
         const k = Math.floor((el - hold) / 50);

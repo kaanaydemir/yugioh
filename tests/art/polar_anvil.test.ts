@@ -21,7 +21,7 @@ describe('polar_anvil', () => {
       expect(s, a).toBeTruthy();
       expect(s.holds?.length, a).toBe(s.frames);
     }
-    expect(spec('attack').marks).toEqual({ charge: 1, release: 5, impact: 5, contact: 6, recover: 8 });
+    expect(spec('attack').marks).toEqual({ charge: 1, release: 6, impact: 6, contact: 7, recover: 9 });
     expect(spec('summon').marks?.land).toBeDefined();
     expect(spec('death').marks?.dissolve).toBeDefined();
     expect(art.p2).toBe('relight');

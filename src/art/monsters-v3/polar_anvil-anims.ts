@@ -88,7 +88,7 @@ export function guardPose(f: number): Pose {
 const GUARD0 = guardPose(0);
 const GUARD_HOLDS = [170, 150, 160, 170, 150, 160, 170, 150];
 
-// ------------------------------------------------------------------ attack (12): "İtme Dalgası"
+// ------------------------------------------------------------------ attack (13): "İtme Dalgası"
 
 const A_N = 13;
 // the wind-up travels every frame (no held pose): the mauls climb and cock back, the body squashes 1 → 2 px,
@@ -113,7 +113,7 @@ export function attackPose(f: number): Pose {
   const k9 = key(ATTACK_KEYS[9], 9, A_N);
   return snap(key({ ...mix(k9, IDLE0, f === 10 ? 0.45 : 0.8), spark: 0, wave: 0, shake: 0, flashN: 0, flashF: 0 }, f, A_N));
 }
-const ATTACK_HOLDS = [80, 110, 120, 130, 120, 130, 60, 70, 90, 100, 120, 130, 150];
+const ATTACK_HOLDS = [80, 110, 120, 130, 120, 160, 60, 70, 90, 100, 110, 120, 120];
 
 // ------------------------------------------------------------------ roar (10): the double strike, poles blaze
 

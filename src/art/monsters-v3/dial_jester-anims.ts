@@ -301,7 +301,7 @@ const RV_HOLDS = [80, 80, 80, 80, 90, 100, 110, 110, 120, 130, 140];
 
 // ------------------------------------------------------------------ special (11): Yazı-Tura — the thumb flick
 
-const SP_N = 11;
+const SP_N = 14;
 const SP_KEYS: Partial<Pose>[] = [
   {},
   { py: 1, nx: 9, ny: -21, cw: 1, look: 1, hour: 330, min: 120, whirl: 1, eye: 1.4 },
@@ -311,15 +311,24 @@ const SP_KEYS: Partial<Pose>[] = [
   { py: 0, neck: 1, nx: 11, ny: -27, cmode: 2, cx: 11, cy: -52, cw: 0.6, hour: 0, min: 0, blaze: 0.8, eye: 2, mouth: 1, tick: 1, spark: 0.2, fx: -4, fy: -24 },
   { py: 0, neck: 2, hy: -1, nx: 11, ny: -26, cmode: 3, hour: 90, min: 270, whirl: 1, blaze: 0.6, eye: 2, mouth: 1, spark: 0.6, fx: -6, fy: -26, h1y: -1, h2y: -1 },
   { py: 1, neck: 1, nx: 11, ny: -22, cmode: 3, hour: 200, min: 120, whirl: 1, blaze: 0.3, eye: 1.6, mouth: 1, fx: -3, fy: -23 },
+  // f8–f10: the watch (the coin in the air, the poses are picked by its flight): at its peak the spring-neck stretches
+  // all the way, thumb and far hand up, laughing; falling, the dial dips and leans after it; landing, a crouch peeking
+  // forward with the hands at the chest, wincing (cmode 3: the coin is not in the sprite)
+  { py: 0, neck: 3, hy: -2, nx: 11, ny: -29, cmode: 3, hour: 0, min: 0, whirl: 1, blaze: 0.7, eye: 2, mouth: 3, spark: 0.4, fx: -6, fy: -29, h1y: -2, h2y: -2 },
+  { py: 1, neck: 1, lean: 1, hx: 1, look: 1, nx: 12, ny: -21, cmode: 3, hour: 120, min: 300, whirl: 1, blaze: 0.4, eye: 1.8, mouth: 1, fx: 1, fy: -22, h1x: 1, h2x: 1 },
+  { py: 2, neck: 0, lean: 2, hx: 2, hy: 1, look: 1, nx: 12, ny: -18, cmode: 3, hour: 330, min: 30, blaze: 0.2, eye: 2, mouth: 2, fx: 6, fy: -19, h1x: 1, h1y: 1, h2x: 2, h2y: 1 },
 ];
 export function specialPose(f: number): Pose {
   if (f >= SP_N - 1) return home();
-  if (f <= 7) return snap(key(SP_KEYS[f], f, SP_N, IDLE0, 3));
+  if (f <= SP_WATCH + 2) return snap(key(SP_KEYS[f], f, SP_N, IDLE0, 3));
   // the coin drops back into the palm
-  if (f === 8) return snap(key({ py: 1, nx: 11, ny: -16, cmode: 0, cw: 0.4, hour: 320, min: 40, eye: 1.4, mouth: 0, glint: 1 }, f, SP_N, IDLE0, 3));
-  return toward(key({ py: 1, nx: 11, ny: -16, cw: 0.8 }, 8, SP_N, IDLE0, 3), 0.8, f, SP_N);
+  if (f === SP_CATCH) return snap(key({ py: 1, nx: 11, ny: -16, cmode: 0, cw: 0.4, hour: 320, min: 40, eye: 1.4, mouth: 0, glint: 1 }, f, SP_N, IDLE0, 3));
+  return toward(key({ py: 1, nx: 11, ny: -16, cw: 0.8 }, SP_CATCH, SP_N, IDLE0, 3), 0.8, f, SP_N);
 }
-const SP_HOLDS = [80, 110, 130, 170, 50, 60, 90, 100, 110, 120, 140];
+/** special: the first watch frame (peak, falling, landing) and the frame where the coin drops back into the palm */
+export const SP_WATCH = 8;
+export const SP_CATCH = 11;
+const SP_HOLDS = [80, 110, 130, 170, 50, 60, 90, 100, 100, 110, 110, 120, 130, 140];
 
 // ------------------------------------------------------------------ victory (6): the jester's bow, coin flipped high and caught
 

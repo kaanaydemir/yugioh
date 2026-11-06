@@ -60,6 +60,8 @@ export interface Pose {
   sink: number;
   /** legs grown 0 (the bare spindle stands on its pin) … 1 */
   legs: number;
+  /** summon in-between: two bare copper strands drop from the drum's bottom winding to the floor (0 none … 1 down) */
+  strands: number;
   /** head (helm + spindle tip) offset over the top flange */
   hx: number;
   hy: number;
@@ -123,7 +125,7 @@ export interface Pose {
 }
 
 export const NEUTRAL: Pose = {
-  dx: 0, dy: 0, sink: 0, legs: 1, hx: 0, hy: 0, ky: 0,
+  dx: 0, dy: 0, sink: 0, legs: 1, strands: 0, hx: 0, hy: 0, ky: 0,
   nwx: 6, nwy: 17, nlag: 3, fwx: -5, fwy: 16, flag: -3, whips: 1,
   spinN: 0, spinF: 0, reel: 1, eye: 1, lid: 0, core: 1.5,
   climb: 0, rings: 2, ringB: 1, wind: 1, fromTop: 0, girth: 1,
@@ -262,8 +264,35 @@ function drawSpool(f: Frame, near: boolean): void {
   f.comp.add(q, near ? Part.spoolN : Part.spoolF, { out: near ? PAL.stone0 : PAL.ink });
 }
 
+/** The summon in-between: a bare copper strand peeled off the bottom winding, hanging hip → floor (a curl lands). */
+function drawStrand(f: Frame, near: boolean): void {
+  const { o } = f;
+  const hip = near ? f.sk.hipN : f.sk.hipF;
+  const ank = near ? f.sk.ankN : f.sk.ankF;
+  const t = near ? COPPER : COPPER_FAR;
+  const q = layer();
+  const y0 = hip[1];
+  const len = Math.max(1, rnd((GY - y0) * clamp(o.strands, 0, 1)));
+  for (let i = 0; i <= len; i++) {
+    const k = i / Math.max(1, GY - y0);
+    // the strand kinks once outward as it falls (a wire, not a rod)
+    const x = rnd(hip[0] + (ank[0] - hip[0]) * k + Math.sin(k * Math.PI) * (near ? 1 : -1));
+    q.set(x, y0 + i, i % 2 ? t.M : t.L);
+  }
+  if (o.strands >= 1) {
+    // the free end curls on the marble toward the toe
+    const ex = rnd(ank[0]);
+    q.set(ex + 1, GY, t.M).set(ex + 2, GY, t.L).set(ex + 2, GY - 1, t.M);
+  }
+  f.comp.add(q, near ? Part.legN : Part.legF, { out: near ? PAL.fire0 : PAL.ink });
+}
+
 function drawLeg(f: Frame, near: boolean): void {
   const { o, light } = f;
+  if (o.strands > 0 && o.legs < 0.45) {
+    drawStrand(f, near);
+    return;
+  }
   if (o.legs <= 0.12) return;
   const hip = near ? f.sk.hipN : f.sk.hipF;
   const ank = near ? f.sk.ankN : f.sk.ankF;

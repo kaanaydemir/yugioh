@@ -58,6 +58,7 @@ import { weightOf } from '../../duel/motion';
 import { strikeLight as strikeLightOf, type Ctx, type EvOf, all, arenaDim, duelist, guardReact, impactLight, lerpXY, live, norm, other, sub, takeAttack } from './_kit';
 import { panAt, play as playSnd, quietCombat, soundsOf } from '../_v3/sound';
 import { v3Recipe } from '../../presentation/registry';
+import type { ImpactOpts } from '../_core/types';
 
 /** v3: the impact number's pop (slam + settle, _v3/number.ts) before the camera may ease out. */
 const NUMBER_POP_MS = 200;
@@ -438,10 +439,12 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
   let impacted = false;
   let resolveImpact!: () => void;
   const impactedP = new Promise<void>((r) => (resolveImpact = r));
-  const onImpact = (at?: XY) => {
+  let clangOff = false; // StrikeArgs.impact(at, { clang: false }): the strike scores its own bounce (no guard hex)
+  const onImpact = (at?: XY, opts?: ImpactOpts) => {
     if (impacted) return;
     impacted = true;
     resolveImpact();
+    clangOff = opts?.clang === false;
     // the contact frame, for the timing tools (tools/measure.mjs: a legacy strike may sound earlier)
     sc.events.emit('v3:contact', ev.attackerUid);
     stageImpact(at);
@@ -490,7 +493,7 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
       } else {
         // an attack-position target outclasses the attacker: it takes the blow standing — a short
         // recoil of its own (power 1, a 1–2 px give) that it shrugs off
-        pending.push(blockClang(sc, Math.round(p.x + back.x * 5), Math.round(p.y + back.y * 5), { from: aNow, color: tRamp[3] }));
+        if (!clangOff) pending.push(blockClang(sc, Math.round(p.x + back.x * 5), Math.round(p.y + back.y * 5), { from: aNow, color: tRamp[3] }));
         if (tu) pending.push(fx.hitReact(ctx, tu, 1, aRamp, p, blow, attacker ? attacker.art : null, { noStop: true }));
       }
     } else if (tu) {

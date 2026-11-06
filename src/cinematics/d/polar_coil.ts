@@ -5,9 +5,10 @@
 // prints on the floor under it; f1–f6 the copper wire flies in from the top-left and winds bottom → top
 // (the art), the track turns faster and warms stone → copper → gold, copper glints fly off the climbing winding
 // point and the two-colour core light (N orange behind, S blue in front) rises on the marble in steps
-// (polarCoilWind: the buzz climbs D3 → D4, the turn ticks accelerate; held to 'land'); f8 'land' — the coil
+// (polarCoilWind: the buzz climbs D3 → D4, the turn ticks accelerate; held to 'land'); f7 two bare strands drop
+// from the bottom winding and lift the drum; f10 'land' — the coil
 // snaps taut, legs and whips open: copper twang + whip crack (polarCoilSnap), sparks off the two lugs, the track
-// flashes gold and closes in, the finale ring, hit-stop 40 ms, shake 2; f10 the shoulder spools spin up and run
+// flashes gold and closes in, the finale ring, hit-stop 40 ms, shake 2; f12 the shoulder spools spin up and run
 // down (polarCoilSpools).
 // Strike "Tel Yörüngesi" (ranged; the coil never leaves its tile): the art's charge — iron dust gathers into
 // three spikes orbiting the coil, the whips circle overhead (polarCoilCharge: a circling, rising whirr, from the
@@ -96,7 +97,7 @@ async function entranceV3(S: Stage): Promise<void> {
     if (core) void lightFlash(sc, core.x, core.y, PAL.gold4, 34, 380, { floorY: S.home.y, intensity: 0.9, air: 0.6 });
     S.finale({ ring: 54, ramp: RAMPS.fire, shake: 2, sfx: null, freezeMs: 40, playerRing: false });
   });
-  atFrame(u, 'summon', 11, () => {
+  atFrame(u, 'summon', 12, () => {
     play('polarCoilSpools', { volume: 0.8, pan });
     spill.level(0.5, 200);
   }, { late: false });
@@ -181,8 +182,8 @@ registerCardHook(
         u.badge.setVisible(true);
         void u.badge.pop();
       });
-      // f2 → f8 at 1.4× (the bare spindle takes its wind fast, then the snap), f9 / f10 settle into idle
-      await u.playRange('summon', 2, 11, { timeScale: 1.4 });
+      // f2 → f10 at 1.4× (the bare spindle takes its wind fast, the strands drop, then the snap), f11 / f12 settle into idle
+      await u.playRange('summon', 2, 12, { timeScale: 1.4 });
       spill.fadeOut(240);
     } finally {
       track.destroy();

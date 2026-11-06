@@ -32,7 +32,8 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, LOOK_V3, forward, panelRect, zoneXY, type XY } from '../../view/layout';
 import { lightDim, lightFlash, lightPool, type LightHandle } from '../../view/light';
 import type { TileCard } from '../../view/TileCard';
-import { pixelText } from '../../ui/text';
+import { measureText, pixelText } from '../../ui/text';
+import { SP_CATCH, SP_WATCH } from '../../art/monsters-v3/dial_jester-anims';
 import { shake } from '../../vfx/core';
 import { Sparks, animate, onFrame, sleep } from '../../vfx/combat';
 import { Raster } from '../../vfx/setpieces';
@@ -249,13 +250,16 @@ registerEvent(
     const race = start('jesterHandsRace', { volume: 0.6 });
     s.mode = 'race';
     ctx.views.speed.slowMo(0.5, 160);
-    // the jester watches its coin: thumb up / leaning in, bobbing on the flight's beat, its brow-hands whirling
+    // the jester watches its coin: its head follows the flight — up with it (f6), the spring-neck stretched at its
+    // peak (W), dipping after it as it falls (W+1), crouched peeking in on the landing and the rocking (W+2 / W+1),
+    // then craning up at the face as it rises (W) — picked by `watch` (the flight's phase), never a fixed loop
     stopWatch(s);
+    let watch: (el: number) => number = () => 6;
     if (u && u.has('special')) {
       const uu = u;
       s.watch = onFrame(sc, (_dt, el) => {
         if (!uu.sprite.active || uu.retired) return false;
-        const f = Math.floor(el / 110) % 2 ? 7 : 6;
+        const f = watch(el);
         if (uu.frameInfo().frame !== f || uu.frameInfo().anim !== 'special') uu.pose('special', f);
         return true;
       });
@@ -274,6 +278,7 @@ registerEvent(
     // a parabola from c0 to L whose apex is about peakUp above c0
     const A = peakUp + Math.max(0, L.y - c0.y) * 0.5;
     await animate(sc, FLY, (t, el) => {
+      watch = () => (t < 0.28 ? 6 : t < 0.58 ? SP_WATCH : t < 0.86 ? SP_WATCH + 1 : SP_WATCH + 2);
       const x = lerp(c0.x, L.x, t);
       const y = lerp(c0.y, L.y, t) - 4 * A * t * (1 - t);
       const floorY = lerp(home.y, L.y, t);
@@ -300,6 +305,13 @@ registerEvent(
     const L2 = { x: L.x + drift * 2, y: L.y + 2 };
     await hop(sc, coinR, { x: L.x + drift, y: L.y + 1 }, L2, 6, 110, glow);
     play('jesterWobble', { volume: 0.95, pan: panAt(L2.x) });
+    // it leans in and back with the coin's rocking (slow → quick, as the rim's spin speeds up)
+    let w0 = -1;
+    watch = (el) => {
+      if (w0 < 0) w0 = el;
+      const e = el - w0;
+      return Math.floor(e / (e < 150 ? 150 : 75)) % 2 ? SP_WATCH + 1 : SP_WATCH + 2;
+    };
     let ph = 0;
     await animate(sc, 300, (t, _el, dt) => {
       ph += dt * (0.03 + t * 0.09);
@@ -318,6 +330,8 @@ registerEvent(
         else blitCoin(g, L2.x, L2.y - 5 - st * 3, st === 1 ? w * 0.5 : w, COIN_AIR - 1);
       });
     });
+    // the face pops up: it cranes up at it
+    watch = () => SP_WATCH;
     const coinTop = { x: L2.x, y: L2.y - 15 };
     const disc = faceDisc(sc, { x: L2.x, y: L2.y - 46 }, coinTop, w);
     s.extras.push(disc);
@@ -326,10 +340,14 @@ registerEvent(
     void lightFlash(sc, coinTop.x, coinTop.y - 30, PAL.white, 26, 240, { floorY: L2.y, intensity: 0.9 });
     glow.setPosition(coinTop.x, coinTop.y - 20, L2.y);
     await sleep(sc, 140);
-    s.words.push(word(sc, { x: L2.x, y: L2.y - 62 }, faceWord(ev.result), PAL.gold4, 'lg'));
+    const FACE_Y = L2.y - 62;
+    s.words.push(word(sc, { x: L2.x, y: FACE_Y }, faceWord(ev.result), PAL.gold4, 'lg'));
     await sleep(sc, 230);
-    // the result
-    const res = word(sc, { x: L2.x, y: L2.y - 76 }, ev.win ? 'BİLDİ!' : 'BİLEMEDİ!', ev.win ? PAL.white : PAL.crim4, 'lg');
+    // the result: stacked over the face word, a full 'lg' line (with the İ's dot and the outline) plus 2 px apart —
+    // they never overlap; kept on screen
+    const verdict = ev.win ? 'BİLDİ!' : 'BİLEMEDİ!';
+    const lineH = Math.max(measureText(faceWord(ev.result), 'lg').h, measureText(verdict, 'lg').h);
+    const res = word(sc, { x: L2.x, y: Math.max(lineH + 2, FACE_Y - lineH - 2) }, verdict, ev.win ? PAL.white : PAL.crim4, 'lg');
     s.words.push(res);
     if (call.active) call.destroy();
     stopWatch(s);
@@ -587,7 +605,7 @@ async function coinHome(sc: Phaser.Scene, s: Show, u: MonsterUnit | null): Promi
   const hand = jesterPoint(u, 'hand') ?? u.core();
   play('jesterBow', { volume: 0.6, pan: panAt(hand.x), pitch: 1.1 });
   await coinFly(sc, s, { x: hand.x, y: hand.y - 4 }, 220, 20);
-  if (u.sprite.active && !u.retired) void u.playRange('special', 8);
+  if (u.sprite.active && !u.retired) void u.playRange('special', SP_CATCH);
 }
 
 // ================================================================ the rewind wipe
@@ -696,7 +714,7 @@ registerEvent(
         const rc = panelRect(own);
         const at = rc.y < 180 ? { x: R(rc.x + rc.w / 2), y: R(rc.y + rc.h + 30) } : undefined;
         if (di >= 0) dmg = ctx.play(di, at ? { delivered: true, at } : { delivered: true });
-      } else play('jesterFold', { volume: 0.5, pan: panAt(lp.x), pitch: 1.3 });
+      } else playFold(sc, { volume: 0.5, pan: panAt(lp.x), pitch: 1.3 });
       panelFlash(sc, own, hits === 1);
       if (hits >= doomed.length) fadeDial();
     };
@@ -739,6 +757,29 @@ function panelFlash(sc: Phaser.Scene, p: PlayerId, first: boolean): void {
   ).then(() => r.destroy());
 }
 
+/**
+ * jesterFold, spaced: folds that land together (two bodies closing at once) are staggered by at least FOLD_GAP ms —
+ * the recipe's own gap would drop the second — and each one in a run steps the pitch up a little ("tak-tak-tak").
+ */
+const FOLD_GAP = 75;
+let foldLast = -1e9;
+let foldRun = 0;
+function playFold(sc: Phaser.Scene, o: { volume: number; pan: number; pitch?: number }): void {
+  const now = sc.time.now;
+  // a new scene's clock starts over: forget the last one's
+  if (foldLast > now + 500) foldLast = -1e9;
+  const at = Math.max(now, foldLast + FOLD_GAP);
+  foldRun = at - foldLast < 220 ? Math.min(3, foldRun + 1) : 0;
+  foldLast = at;
+  const opts = { ...o, pitch: (o.pitch ?? 1) * (1 + foldRun * 0.06) };
+  if (at <= now) play('jesterFold', opts);
+  else void sleep(sc, at - now).then(() => play('jesterFold', opts));
+}
+
+/** The card's fold round a rewound body (foldRect): its whole length and the part where it stands up out of the tile. */
+const FOLD_MS = 300;
+const FOLD_RISE = Math.round(FOLD_MS * 0.42);
+
 /** One doomed monster: its entrance played backwards with gold echoes, poured into its card, the card's flight. */
 async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay: number; lead: boolean; win: boolean; lp: XY; onPanel: () => void; onFlight: () => void; onFolded: () => void; dial: ArenaDial }): Promise<void> {
   const sc = ctx.scene;
@@ -769,11 +810,19 @@ async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay
     if (voice) play(voice, { volume: 0.8, pan });
     const total = steps.reduce((n, st) => n + body.frameCount(st.anim), 0);
     const step = total ? Math.max(18, Math.min(32, Math.round(Math.max(320, steps.length * 260) / total))) : 0;
-    const bodyMs = total ? total * step : 340;
-    // the card closes round it: part-way through a summon played back, or as a pose-less body starts to fold down
-    let foldGo: () => void = () => undefined;
-    const foldStart = total ? sleep(sc, Math.round(bodyMs * 0.4)) : new Promise<void>((res) => (foldGo = res));
-    const fold = foldStart.then(() => foldRect(sc, box, home, 300, body.sprite.depth + 0.6));
+    // the card closes round it on the body's LAST frames: it stands up out of the tile (FOLD_RISE) over the final
+    // poses of the rewind (the egg of a grown hatchling, the first summon frame of anyone else) and the body is
+    // hidden the moment it is upright — never a card beside a body still playing, never a body left on the tile;
+    // a pose-less body calls it as it starts to fold down
+    let foldAt = -1;
+    let foldRes: () => void = () => undefined;
+    const foldStart = new Promise<void>((res) => (foldRes = res));
+    const foldGo = (): void => {
+      if (foldAt >= 0) return;
+      foldAt = sc.time.now;
+      foldRes();
+    };
+    const fold = foldStart.then(() => foldRect(sc, box, home, FOLD_MS, body.sprite.depth + 0.6));
     if (total) {
       let k = 0;
       for (const st of steps) {
@@ -781,9 +830,14 @@ async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay
           if (!body.sprite.active) break;
           body.pose(st.anim, f);
           if (k++ % 3 === 1) afterimage(sc, body.sprite, PAL.gold2, { alpha: 0.3, ms: 100, depth: body.sprite.depth - 0.2 });
+          if ((total - k) * step <= FOLD_RISE) foldGo();
           await sleep(sc, step);
         }
       }
+      foldGo();
+      // the card must be upright round the last frame before the body goes
+      const up = FOLD_RISE - (sc.time.now - foldAt);
+      if (up > 0) await sleep(sc, up);
     } else {
       // no summon pose (an old art): what it does have runs backwards fast — its attack, then its idle — with
       // crisp gold echoes peeling off, then a 2-frame opaque banded gold silhouette and it is gone; no dust
@@ -791,12 +845,12 @@ async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay
       foldGo();
     }
     if (body.sprite.active) body.sprite.setVisible(false);
-    play('jesterFold', { volume: 0.8, pan });
+    playFold(sc, { volume: 0.8, pan });
     await fold;
     body.retire(0);
   } else {
     body?.retire(0);
-    play('jesterFold', { volume: 0.6, pan });
+    playFold(sc, { volume: 0.6, pan });
   }
   field.forget(d.uid);
   // a face-down card shows its face before it goes

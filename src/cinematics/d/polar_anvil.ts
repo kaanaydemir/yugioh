@@ -19,7 +19,7 @@
 // blue with the swap (polarAnvilSwap), on 'dissolve' two half rings shoot apart — orange back, blue forward —
 // with the iron dust (polarAnvilRepel), the arms fall and clang on the floor (polarAnvilPlate ×2: near arm f7,
 // far arm f8); the last frame becomes remains on the floor (anvilRemains: poles swapping as they die, two
-// twitches, a 150-ms break) while iron plates and gold weld beads skid out (polarAnvilBurst). No generic
+// twitches, a 220-ms dithered break) while iron plates and gold weld beads skid out (polarAnvilBurst). No generic
 // shatter. Camera never moves (EF-8).
 
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
@@ -30,17 +30,18 @@ import { DEPTH, LOOK_V3, type XY } from '../../view/layout';
 import { lightFlash } from '../../view/light';
 import { shake } from '../../vfx/core';
 import { sleep } from '../../vfx/combat';
-import { registerCardHook, registerStrike } from '../api';
+import { registerCardHook, registerEvent, registerObserver, registerStrike } from '../api';
 import type { StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
 import { deathV3 } from '../_v3/death';
 import { summonPose } from '../_v3/summon';
-import { atFrame, atMark, panAt, play, start, takeCharge } from '../_v3/sound';
+import { atFrame, atMark, fade, panAt, play, start, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { knock } from '../_v3/react';
 import { runSummon, type Stage } from '../summon-a/_kit';
 import { flipV3With } from '../summon-b/flip';
-import { anvilRemains, deadPoles, faceSparks, fieldLines, fieldSeam, fieldSnap, ironPlates, poleOf, poleStrobe, pushWave, repelBurst, seedFx, sparkFountain, waveContact, waveRebound } from './_polar_anvil-fx';
+import { capped } from '../summon-b/_kit';
+import { anvilRemains, deadPoles, faceSparks, fieldLines, fieldStir, guardRing, fieldSeam, fieldSnap, ironPlates, poleOf, poleStrobe, pushWave, repelBurst, seedFx, sparkFountain, waveContact, waveRebound } from './_polar_anvil-fx';
 
 const ID = 'polar_anvil';
 /** The hologram onset's tones: the blue field. */
@@ -161,6 +162,77 @@ registerCardHook(
   { priority: 20, name: 'd:polar_anvil:flip' },
 );
 
+// ================================================================ position
+
+// To defense: the mauls swing over and plant on the face before the horn (the art's toGuard) — "tık" on f1 as the
+// first maul touches, "tık" on f3 as the second lands (polarAnvilGuard is the pair, timed to f1), and the field ring
+// draws in round the base from f0. No generic hex shield or shieldBlock. To attack: the mauls lift off
+// (polarAnvilUnguard) and the ring lets go outward, the badge pops on the landing.
+registerEvent(
+  'positionChange',
+  async (ctx) => {
+    const ev = ctx.ev;
+    if (!LOOK_V3 || ctx.cardId(ev.uid) !== ID) return ctx.base();
+    const unit = ctx.unit(ev.uid);
+    const tile = ctx.tile(ev.uid);
+    const toDef = ev.position === 'defense';
+    const o = toDef ? 'side' : 'up';
+    const anim = toDef ? 'toGuard' : 'fromGuard';
+    if (!unit || unit.retired || !unit.sprite.visible || !unit.has(anim)) return ctx.base();
+    const u = unit;
+    const s = u.sprite;
+    const sc = ctx.scene;
+    const pan = panAt(u.home.x);
+    const home = { x: Math.round(u.home.x), y: Math.round(u.home.y) };
+    u.posed = true;
+    try {
+      ctx.sfx('cardSlide', { volume: 0.45 });
+      const jobs: Promise<unknown>[] = [];
+      if (tile && tile.orientation !== o) jobs.push(tile.rotateTo(o, 240));
+      u.position = ev.position;
+      u.badge.setPosition(ev.position);
+      const n = u.frameCount(anim);
+      const land = u.markFrame(anim, 'land', n - 1);
+      if (toDef) guardRing(sc, home, true);
+      // the first maul touches the face on f1: the two ticks are one recipe (the second lands with f3)
+      atFrame(u, anim, 1, () => play(toDef ? 'polarAnvilGuard' : 'polarAnvilUnguard', { volume: 0.85, pan }), { late: false, maxMs: 1500 });
+      jobs.push(u.playRange(anim, 0, undefined, { hold: true }).then(() => u.rest()));
+      jobs.push(
+        u.playToFrame(anim, Math.max(0, land - 1)).then(() => {
+          if (!u.sprite.active) return;
+          if (!toDef) {
+            guardRing(sc, home, false);
+            void u.badge.pop();
+          }
+        }),
+      );
+      await capped(sc, Promise.all(jobs), 440);
+    } finally {
+      u.posed = false;
+      if (s.active && !u.retired) {
+        const want = u.position === 'defense' ? 'guard' : 'idle';
+        if (u.frameInfo().anim !== want || !s.anims.isPlaying) u.rest();
+      }
+    }
+  },
+  { priority: 20, name: 'd:polar_anvil:position' },
+);
+
+// ================================================================ declaration
+
+// The declaration holds the first wind-up frame while the lock-on plays: the field already stirs (fieldStir), the
+// strike's field lines take over on the same low arc.
+const stirs = new Map<number, () => void>();
+if (LOOK_V3) {
+  registerObserver((ev: GameEvent, ctx) => {
+    if (ev.type !== 'attackDeclare') return;
+    const u = ctx.unit(ev.attackerUid);
+    if (!u || u.cardId !== ID || !u.sprite.active) return;
+    stirs.get(u.uid)?.();
+    stirs.set(u.uid, fieldStir(ctx.scene, u));
+  });
+}
+
 // ================================================================ strike
 
 registerStrike(
@@ -180,6 +252,8 @@ registerStrike(
     const CON = u.markFrame('attack', 'contact', REL + 1);
     const HOLD = Math.min(n - 2, CON + 2);
     // ---- charge: the mauls rise, iron dust streams heel → horn (the declaration's hum goes on)
+    stirs.get(u.uid)?.();
+    stirs.delete(u.uid);
     const charge = takeCharge(u, 'polarAnvilCharge', { volume: 0.85, pan });
     let released = false;
     const release = () => {
@@ -187,7 +261,7 @@ registerStrike(
       released = true;
       charge.stop(30);
       // a step under the impact (the WaveHit lands 2–3 dB above the release)
-      play('polarAnvilDang', { volume: 0.7, pan });
+      play('polarAnvilDang', { volume: 0.6, pan });
       const face = poleOf(u, 'face');
       if (face) faceSparks(sc, face, sgn, u.home.y);
       void shake(sc, 90, 1);
@@ -227,6 +301,9 @@ registerStrike(
       onArrive: () => {
         waveSnd.stop(40);
         s.impact(to);
+        // the shove is scored by the anvil's own WaveHit + the struck body's material: the shared body blow
+        // started by impact() fades out at once (lane C's pattern)
+        if (!s.blocked) queueMicrotask(() => fade(['impactHeavy', 'impactLight'], 12));
         // the anvil loses: no rebound rolling home while it dies — the struck body and the death's pole swap
         // carry the beat (and four sound layers on one frame would mask each other)
         if (s.blocked && loses) waveContact(sc, to, ground, { dir, depth: backDepth ?? depth, small: true });
@@ -303,7 +380,7 @@ registerCardHook(
     );
     // the last frame (the halves apart, the arms on the floor) becomes the remains as soon as it shows: the
     // sprite hides, so deathV3's hold runs on the remains and no generic shatter follows — the final material is
-    // the anvil's own (iron plates, gold weld beads, the dying poles, a 150-ms break at the very end)
+    // the anvil's own (iron plates, gold weld beads, the dying poles, a 220-ms dithered break at the very end)
     const lastF = u.frameCount('death') - 1;
     let remains = false;
     atFrame(
@@ -315,8 +392,8 @@ registerCardHook(
         const poles = deadPoles(u);
         if (!poles) return;
         remains = true;
-        // the remains live through the hold, the burst and ~330 ms after it (the last 150 ms break them up)
-        anvilRemains(sc, u.sprite, home, poles.heel, poles.horn, u.frameMs('death', lastF) * 2 + 330);
+        // the remains live through the hold, the burst and ~400 ms after it (the last 220 ms break them up)
+        anvilRemains(sc, u.sprite, home, poles.heel, poles.horn, u.frameMs('death', lastF) * 2 + 400);
         u.sprite.setVisible(false);
       },
       { maxMs: 3000 },
