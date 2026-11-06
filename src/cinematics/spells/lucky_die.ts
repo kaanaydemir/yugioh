@@ -115,9 +115,6 @@ export const DIE_T = Object.freeze({
   fadeMs: 240,
 });
 
-/** Just under the stat badges (duel/StatBadge BADGE_DEPTH = FX − 20), over every body. */
-const UNDER_BADGES = DEPTH.FX - 21;
-
 /** Half edge of the die (world units): ≈ 36 px wide on screen. */
 const H = 9;
 /** The die's raster box. */
@@ -175,8 +172,8 @@ function makeDie(sc: Phaser.Scene, s: DieState, seed: number): DieView {
     const ox = c.x - BOX / 2;
     const oy = c.y - BOX / 2;
     ras.moveTo(ox, oy);
-    // high in the air it flies over everything; low (rolling, teetering, at rest) it slides UNDER the stat badges (they
-    // count while it lies there and must stay readable) unless a body stands in front of it
+    // high in the air it flies over everything; low (rolling, teetering, at rest) it is sorted with the bodies by its
+    // floor point, so it always stays UNDER the stat badges (FX − 20: they count while it lies there)
     ras.img.setDepth(s.grounded ? s.restDepth : s.z > H * 2.2 ? DEPTH.FX : unitDepth(s.fy) + 0.5);
     ras.begin();
     if (s.h > 0) {
