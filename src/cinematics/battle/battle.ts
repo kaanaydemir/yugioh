@@ -570,6 +570,14 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
     }
     const strike = strikeFor(au.cardId, genericStrike);
     const args: StrikeArgs = { ctx, scene: sc, attacker: au, target: live(target), to, toGround, direct, blocked, power, impact: onImpact, impacted: impactedP };
+    // a strike without a 'contact' mark reports when its blow lands (thrown / fired / dashing strikes know their own
+    // flight): the resting target's idle is steered onto a frame the struck pose continues (gentle, ±35 % pace)
+    if (!direct && typeof au.spec('attack')?.marks?.contact !== 'number') {
+      args.contactIn = (ms: number) => {
+        const tu = live(target);
+        if (tu && Number.isFinite(ms) && ms > 0) settleBefore(tu, ms, settleGoal(tu, struckPosesFor(tDestroy >= 0)));
+      };
+    }
     try {
       const run = strike(args);
       // A3 Y1b: the strike's first frame is on — its 'contact' mark says when the blow lands; a

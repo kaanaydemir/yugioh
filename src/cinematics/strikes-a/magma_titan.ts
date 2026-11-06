@@ -220,6 +220,8 @@ registerStrike('magma_titan', async (s: StrikeArgs) => {
     placeFeet(u, p, lift);
     spr.setScale(kx, ky);
   };
+  // v3: the fist lands after the rise (150), the stomp (70 + 90), the cocked fist (F) and the charge (StrikeArgs.contactIn)
+  if (!s.direct) s.contactIn?.(150 + 70 + 90 + F + dashMs);
   try {
     // 1. rise + STOMP (attack frame 1: lean back)
     holdFrame(u, 'attack', 1);

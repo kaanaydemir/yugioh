@@ -20,6 +20,7 @@
 //   --scale N         strip zoom (default 3)
 //   --jobs N          scenarios in parallel, one browser context each (default 2)
 //   --hist MS         how far back the rest loop before a contact is read (default 1500)
+//   --tempo T         show-clock tempo the rest-loop holds are checked against (default 1.35 with --look v3, else 1)
 //
 // What is measured (sprite only: the frame the sprite shows, its flip and its whole-pixel position
 // in WORLD space, drawn from its own texture — camera shake, the contact flash overlay, sparks and
@@ -111,6 +112,10 @@ const PNG = args.png ? path.resolve(REPO, args.png) : null;
 const SCALE = Math.max(1, Number(args.scale ?? 3));
 const JOBS = Math.max(1, Number(args.jobs ?? 2));
 const HIST = Math.max(100, Number(args.hist ?? 1500));
+// The v3 look plays every cinematic on a slower show clock (src/duel/speed.ts V3_TEMPO, docs/v3/TEMPO.md): a rest
+// loop's frames stay on screen hold × tempo while the blow comes in, so the settle's ±35 % is checked against that
+// pace (an untouched loop reads ratio ≈ 1), not the bare sheet holds. --tempo overrides it (1 = the bare holds).
+const TEMPO = Number(args.tempo ?? (LOOK === 'v3' ? 1.35 : 1));
 const keys = [];
 for (const w of String(args.scenarios ?? 'accept,kit').split(',').map((s) => s.trim()).filter(Boolean)) keys.push(...(PRESETS[w] ?? [w]));
 const KEYS = [...new Set(keys)];
@@ -733,7 +738,7 @@ let worstAt = '';
 let badSkips = 0;
 let badHolds = 0;
 lines.push('');
-lines.push('rest loop before each resting contact (Y1b): frames shown since the settle started (else the last --hist ms) as frame:ms/nominal; ratio = time on screen ÷ nominal hold');
+lines.push(`rest loop before each resting contact (Y1b): frames shown since the settle started (else the last --hist ms) as frame:ms/nominal; ratio = time on screen ÷ (nominal hold × tempo ${TEMPO})`);
 lines.push(`(each frame bounded on both sides except the last, cut by the contact, and a first one already on at the scenario's first render: ≤ only; a frame may differ by one rendered frame, ${FRAME_MS.toFixed(1)} ms, from its scaled hold);`);
 lines.push('settle = the plans of the blow (ms before contact, the loop frame aimed at, * = a target, the hold multiplier); "|" marks the first frame on screen in the settle window (ratios / skips are checked from there);');
 lines.push('reach = the even loop speed that would put a frame within KK-4 of THIS contact frame on screen before contact, from the first event of the chain');
@@ -749,11 +754,13 @@ for (const key of KEYS) {
     let out = 0;
     for (const s of segs) {
       if (!s.nominal || !s.inSettle) continue;
-      const scaledLo = (1 - STRETCH) * s.nominal - FRAME_MS - 0.5;
-      const scaledHi = (1 + STRETCH) * s.nominal + FRAME_MS + 0.5;
+      const nom = s.nominal * TEMPO;
+      const ratio = Math.round((s.ms / nom) * 100) / 100;
+      const scaledLo = (1 - STRETCH) * nom - FRAME_MS - 0.5;
+      const scaledHi = (1 + STRETCH) * nom + FRAME_MS + 0.5;
       if (s.ms > scaledHi || (!s.last && !s.cut && s.ms < scaledLo)) out++;
-      if (!s.last && !s.cut) lo = Math.min(lo, s.ratio);
-      hi = Math.max(hi, s.ratio);
+      if (!s.last && !s.cut) lo = Math.min(lo, ratio);
+      hi = Math.max(hi, ratio);
     }
     const skips = c.restSkips ?? [];
     const sb = skips.filter((k) => k.inSettle && ((k.merged ?? 9) > 1 || k.own.some((d) => (d ?? 9) > 1))).length;

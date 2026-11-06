@@ -143,6 +143,8 @@ registerStrike('ember_wolf', async (s: StrikeArgs) => {
     placeFeet(u, p, lift);
     spr.setScale(kx, ky);
   };
+  // v3: the bite lands after the crouch (1.5 F), the coil (F), the blaze (F) and the dash (StrikeArgs.contactIn)
+  if (!s.direct) s.contactIn?.(F * 3.5 + dashMs);
   try {
     // 1. crouch + snarl (f1), coil (f2), flames flare + eyes blaze (f3)
     holdFrame(u, 'attack', 1);

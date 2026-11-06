@@ -224,6 +224,12 @@ async function hawkStrike(s: StrikeArgs): Promise<void> {
     // (arena v2, a far target: a lower launch — the glide below climbs on toward it)
     const longFlight = ARENA_V2 && !s.direct && Math.abs(coreC.x - core0.x) > 90;
     const apex = s.direct ? { x: core0.x - d * 6, y: core0.y - 46 } : longFlight ? { x: core0.x - d * 8, y: core0.y - 44 } : { x: core0.x - d * 8, y: Math.min(core0.y - 40, coreC.y - 24) };
+    // v3: when the dive lands (climb 220 + the far target's glide + the 45 / 50 ms tuck + the 290 ms dive): the
+    // battle steers the target's idle toward it (StrikeArgs.contactIn)
+    if (!s.direct) {
+      const glide = longFlight ? clamp(vlen(vsub({ x: coreC.x - d * 34, y: Math.min(apex.y, coreC.y - 40) }, apex)) * 1.9, 200, 380) : 0;
+      s.contactIn?.(220 + glide + 45 + 50 + 290);
+    }
     await animate(sc, 220, (t) => {
       const e = E.outC(t);
       const st = 1 - seg(t, 0, 0.5);

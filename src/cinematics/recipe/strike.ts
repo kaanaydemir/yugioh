@@ -592,6 +592,12 @@ const FRAME_MS = 1000 / 60;
  * rock frozen on the body before the blow); the rock is still drawn there on that frame and goes on the
  * next update (the pieces of the burst take over). Resolves after `arrive()`.
  */
+/** A throw's flight time (ms) over `dist` px: the recipe's own, else a flat snap point-blank, else an arc. */
+function throwFlightMs(r: PresentationRecipe, dist: number): number {
+  const snap = dist < THROW_SNAP_DIST;
+  return r.attack.travel?.ms ?? (snap ? clamp(Math.round(70 + dist * 1.6), 80, 120) : clamp(Math.round(110 + dist * 1.1), 200, 380));
+}
+
 function flyThrow(s: StrikeArgs, r: PresentationRecipe, mat: MaterialDef | null, from: XY, to: XY, g0: XY, g1: XY, rnd: () => number, lead: number, arrive: () => void): Promise<void> {
   const sc = s.scene;
   const { key } = ensureProjectile(sc, r.attack.vfx, mat);
@@ -599,7 +605,9 @@ function flyThrow(s: StrikeArgs, r: PresentationRecipe, mat: MaterialDef | null,
   // a point-blank shot (the two stand close: the body is already at the hand) is hurled flat into it
   // (≈ 80–120 ms, as the A2 magus orb's snap), not a lob that hangs in front of it; a long one arcs
   const snap = dist < THROW_SNAP_DIST;
-  const ms = r.attack.travel?.ms ?? (snap ? clamp(Math.round(70 + dist * 1.6), 80, 120) : clamp(Math.round(110 + dist * 1.1), 200, 380));
+  const ms = throwFlightMs(r, dist);
+  // v3: the exact contact time, now that the projectile flies (refines the throw's early estimate)
+  if (!s.direct) s.contactIn?.(Math.max(0, ms - lead));
   const arc = r.attack.travel?.arc ?? (snap ? Math.round(dist * 0.25) : clamp(Math.round(dist * 0.38), 16, 52));
   const spin = to.x >= from.x ? 1 : -1;
   const rock = sc.add.image(from.x, from.y, key, 0).setDepth(DEPTH.FX - 4);
@@ -703,6 +711,9 @@ async function throwStrike(s: StrikeArgs, r: PresentationRecipe, hooks: RecipeHo
   const target = s.direct ? null : s.target;
   let from = originPoint(u, r.attack.from, REL);
   let to = from;
+  // v3: when the blow lands, as soon as the throw starts (wind-up to the release frame + its hold + the flight; the
+  // launch reports the exact flight): the battle steers the target's idle toward it (StrikeArgs.contactIn)
+  if (!s.direct) s.contactIn?.(Math.max(0, u.rangeMs('attack', f0, REL)) + relHold + throwFlightMs(r, len(sub(s.to, from))));
   // ---- contact, staged IN the update that puts the projectile on the body (flyThrow): the battle
   // handler's hit-stop, number and reactions, the impact voice, the burst and the hook on that frame
   const contact = () => {
