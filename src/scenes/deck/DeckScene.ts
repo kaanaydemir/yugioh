@@ -161,7 +161,7 @@ export class DeckScene extends Phaser.Scene {
   private drafts: Draft[] = [];
   private slot = 0;
   private filter: PoolFilter = { kind: 'all', attr: null };
-  private sort: SortKey = 'level';
+  private sort: SortKey = 'new';
   private list: CardId[] = [];
   private cursor = 0;
   private scrollRow = 0;
@@ -247,7 +247,7 @@ export class DeckScene extends Phaser.Scene {
     this.deckScroll = 0;
     this.zone = 'pool';
     this.filter = { kind: 'all', attr: null };
-    this.sort = 'level';
+    this.sort = 'new';
     this.presetIdx = -1;
     this.exitArmed = 0;
   }

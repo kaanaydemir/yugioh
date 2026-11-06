@@ -31,6 +31,8 @@
 //   mgGrab       pin: the mud hands seize the feet — staggered suction cups clamping (kavrayan vantuz)
 //   mgClamp      pin: the attacker is forced down into its guard (a heavy squelch, a low thud)
 //   mgRing       pin: the ring of mud sets on the tile (a short churning settle with a glub)
+//   mgLob        strike flight: the lump tumbling through the air (a wet lumpy whoosh)
+//   mgSeal       death end: the seams close over the drained mud (soft deep glubs)
 //   mgDrip       small wet pat (drops off the lump, splat stains; quiet, repeatable)
 //   mgMaskSlip   death f1: the clay mask slips on the melting face (a ceramic scrape)
 //   mgDrain      death 'dissolve' (sustained): the body runs back into the tile's cracks — the drain
@@ -156,12 +158,14 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     verb: 0.35,
     duck: 0.4,
     play(v) {
-      slop(v, 0, 0.42, { d: 0.07, pan: -0.25 });
-      slop(v, 0.05, 0.38, { d: 0.06, f: SLOP * 1.06, pan: 0.25 });
-      puff(v, 0.075, 0.22, 0.18, 900, { kind: 'brown' });
-      sweep(v, 0.07, 0.16, [700, 1600, 900], 0.12, { q: 1.2, kind: 'pink' });
-      pats(v, 0.12, 0.35, 10, 0.12);
-      glub(v, 0.15, 0.12, 100);
+      slop(v, 0, 0.62, { d: 0.07, pan: -0.25 });
+      slop(v, 0.06, 0.56, { d: 0.06, f: SLOP * 1.06, pan: 0.25 });
+      // the ground tearing open under the hands: a short low heave
+      thump(v, 0.07, 120, 52, 0.32, 0.16, { drive: 1.4 });
+      puff(v, 0.075, 0.34, 0.2, 900, { kind: 'brown' });
+      sweep(v, 0.07, 0.18, [700, 1600, 900], 0.2, { q: 1.2, kind: 'pink' });
+      pats(v, 0.12, 0.35, 12, 0.17);
+      glub(v, 0.15, 0.2, 100);
     },
   },
   /** Summon f3: two palms slap down and grip the tile edges (el şaplağı, left then right). */
@@ -171,11 +175,16 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     verb: 0.35,
     duck: 0.45,
     play(v) {
-      smack(v, 0, 0.32, { pan: -0.45 });
-      smack(v, 0.045, 0.3, { pan: 0.45, low: 150 });
-      // fingers curling over the edge: a short wet squeeze
-      squelch(v, 0.07, 0.16, 0.14, { f: [600, 900, 500], rate: 46 });
-      pats(v, 0.05, 0.3, 8, 0.1);
+      // two clearly separate palms: left ŞAP … right ŞAP (110 ms apart), each with its own floor knock
+      smack(v, 0, 0.56, { pan: -0.5, low: 175 });
+      thump(v, 0.002, 140, 50, 0.5, 0.12, { drive: 1.6 });
+      puff(v, 0.004, 0.4, 0.09, 1100, { kind: 'brown' });
+      smack(v, 0.11, 0.52, { pan: 0.5, low: 150 });
+      thump(v, 0.112, 125, 46, 0.5, 0.12, { drive: 1.6 });
+      puff(v, 0.114, 0.4, 0.09, 1000, { kind: 'brown' });
+      // fingers curling over the edge: a short wet squeeze after the second (kept low under the smacks)
+      squelch(v, 0.16, 0.12, 0.08, { f: [600, 900, 500], rate: 46 });
+      pats(v, 0.03, 0.3, 9, 0.14);
     },
   },
   /** Summon f5: the body is hauled up between the hands — a long wet drag, a strained low grunt. */
@@ -216,11 +225,13 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     verb: 0.5,
     duck: 0.6,
     play(v) {
-      moan(v, 0, 1.55, 0.3, [58, 66, 82, 74, 52]);
+      moan(v, 0, 1.6, 0.72, [58, 66, 82, 74, 52]);
+      // a second, breathier voice an octave-ish up a hair late (the mud's throat doubling the moan: "uuu-OH")
+      moan(v, 0.06, 1.4, 0.16, [116, 128, 160, 146, 104], { grit: 1.4 });
       // the chest boils while it moans
-      glubs(v, 0.2, 1.1, 10, 0.14, 85, 120, { curve: 0.9 });
+      glubs(v, 0.2, 1.1, 12, 0.2, 85, 120, { curve: 0.9 });
       // a wet low body under the voice
-      v.tone('sine', [[0, 41], [1.4, 36, 'e']], { g: [[0, 0], [0.3, 0.12], [1.1, 0.1], [1.5, 0.0001, 'e']] });
+      v.tone('sine', [[0, 41], [1.4, 36, 'e']], { g: [[0, 0], [0.3, 0.2], [1.1, 0.16], [1.5, 0.0001, 'e']] });
     },
   },
   /** Strike charge (sustained): the hand digs a fistful out of the mound, a low hum rising under it. */
@@ -247,11 +258,13 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     verb: 0.3,
     duck: 0.35,
     play(v) {
-      slop(v, 0, 0.18, { d: 0.05, f: SLOP * 1.12 });
-      sweep(v, 0.02, 0.24, [260, 820, 380], 0.8, { q: 1.4, pan: [-0.3, 0.35], kind: 'pink', peakAt: 0.35 });
-      v.tone('sine', [[0, 140], [0.2, 90, 'e']], { t: 0.02, g: perc(0.12, 0.2, 0.01) });
+      slop(v, 0, 0.36, { d: 0.05, f: SLOP * 1.12 });
+      sweep(v, 0.02, 0.24, [260, 820, 380], 1.3, { q: 1.4, pan: [-0.3, 0.35], kind: 'pink', peakAt: 0.35 });
+      v.tone('sine', [[0, 140], [0.2, 90, 'e']], { t: 0.02, g: perc(0.22, 0.2, 0.01) });
+      // the arm's heave: a short grunt under the throw
+      moan(v, 0, 0.18, 0.09, [70, 78, 72, 64, 58], { grit: 3 });
       // the lump wobbling in flight: a few wet flaps
-      squelch(v, 0.08, 0.2, 0.08, { f: [500, 700, 500], rate: 18 });
+      squelch(v, 0.08, 0.2, 0.14, { f: [500, 700, 500], rate: 18 });
     },
   },
   /** Strike 'contact': "ŞLAP" — a fat wet splat, droplets pattering after it. */
@@ -261,14 +274,18 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     verb: 0.35,
     duck: 0.6,
     play(v) {
-      smack(v, 0, 0.5, { low: 190 });
-      thump(v, 0.002, 130, 46, 0.45, 0.24, { drive: 2 });
-      puff(v, 0.004, 0.42, 0.26, 1300, { kind: 'pink' });
-      // the mud spreading over the body: a short squelch
-      squelch(v, 0.02, 0.2, 0.22, { f: [900, 500, 300], rate: 50 });
-      slop(v, 0.1, 0.12, { d: 0.05, f: SLOP * 0.92 });
-      pats(v, 0.05, 0.55, 16, 0.14, { curve: 1.7 });
-      glub(v, 0.2, 0.12, 120);
+      // ŞLAP: a fat wet smack (two layers a hair apart = a thick mass hitting, not a hand)
+      smack(v, 0, 0.62, { low: 190 });
+      smack(v, 0.012, 0.3, { low: 120 });
+      thump(v, 0.002, 130, 44, 0.95, 0.32, { drive: 2.4 });
+      puff(v, 0.004, 0.5, 0.75, 1100, { kind: 'brown' });
+      puff(v, 0.004, 0.24, 0.5, 1500, { kind: 'pink' });
+      // the mud spreading over the body: a squelch with body
+      squelch(v, 0.02, 0.28, 0.7, { f: [900, 500, 300], rate: 50 });
+      // the card's signature tail, in the clear after the thump: the 600 Hz şlop as the goo lets go
+      slop(v, 0.15, 0.34, { d: 0.06, f: SLOP });
+      pats(v, 0.05, 0.6, 18, 0.2, { curve: 1.7 });
+      glub(v, 0.26, 0.2, 120);
     },
   },
   /** Strike f8: the hands slap into the ground and sink (slurp down, a glub). */
@@ -307,12 +324,13 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     verb: 0.35,
     duck: 0.5,
     play(v) {
+      // FIX r3 (critic: "buried under mgClamp / mgRoar"): the four cups ≈ +3.5 dB, each knock fuller
       [0, 0.075, 0.14, 0.215].forEach((t, i) => {
-        slop(v, t, 0.5 - i * 0.05, { d: 0.045 + i * 0.008, f: SLOP * (1 - i * 0.035), pan: (i % 2 ? 0.35 : -0.35) * (1 - i * 0.15) });
+        slop(v, t, 0.95 - i * 0.08, { d: 0.05 + i * 0.008, f: SLOP * (1 - i * 0.035), pan: (i % 2 ? 0.35 : -0.35) * (1 - i * 0.15) });
         // each cup seats with a short low knock (the grip closing on the foot)
-        thump(v, t + 0.05 + i * 0.008, 150 - i * 10, 70, 0.16, 0.06);
+        thump(v, t + 0.05 + i * 0.008, 150 - i * 10, 70, 0.34, 0.07);
       });
-      squelch(v, 0.02, 0.4, 0.035, { f: [300, 450, 260], rate: 44 });
+      squelch(v, 0.02, 0.55, 0.035, { f: [300, 450, 260], rate: 44 });
       puff(v, 0, 0.2, 0.2, 800, { kind: 'brown' });
       pats(v, 0.05, 0.35, 9, 0.1);
     },
@@ -344,6 +362,34 @@ export const MUDGRASP_SPIRIT_RECIPES = {
       v.tone('sine', [[0, 66], [0.4, 60, 'e']], { g: [[0, 0], [0.1, 0.06], [0.45, 0.0001, 'e']] });
     },
   },
+  /** Strike flight: the lump tumbling through the air — a wet, lumpy whoosh (flaps of goo) under the arc. */
+  mgLob: {
+    cap: 2,
+    gap: 0.06,
+    verb: 0.3,
+    duck: 0.2,
+    play(v) {
+      const D = 0.34;
+      sweep(v, 0, D, [380, 640, 300], 1.4, { q: 1.6, pan: [-0.25, 0.3], kind: 'pink', peakAt: 0.55 });
+      // the lump wobbling: irregular wet flaps (a fast slow flutter on brown noise)
+      squelch(v, 0.02, D - 0.04, 0.5, { f: [420, 620, 380], rate: 13 });
+      pats(v, 0.06, D - 0.1, 3, 0.07, { f: 1500 });
+    },
+  },
+  /** Death end: the seams close over the drained mud — a soft deep glub, a last wet seal. */
+  mgSeal: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.5,
+    duck: 0.2,
+    play(v) {
+      glub(v, 0, 0.22, 78, { len: 0.08 });
+      glub(v, 0.07, 0.14, 92, { len: 0.06 });
+      glub(v, 0.15, 0.08, 104, { len: 0.05 });
+      squelch(v, 0, 0.22, 0.12, { f: [360, 260, 200], rate: 18 });
+      v.tone('sine', [[0, 64], [0.35, 52, 'e']], { g: [[0, 0], [0.04, 0.1], [0.38, 0.0001, 'e']] });
+    },
+  },
   /** A small wet pat (drops off the lump, a stain landing; quiet, repeatable). */
   mgDrip: {
     cap: 6,
@@ -364,10 +410,11 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     duck: 0.3,
     play(v) {
       const fl = v.flutter(60, 0.6, { d: 0.18, base: 0.35, to: v.filt('bandpass', [[0, 2600], [0.16, 1800, 'e']], 4) });
-      v.noise('white', { g: [[0, 0], [0.02, 0.8], [0.16, 0.0001, 'e']], to: fl });
-      clay(v, 0, 0.1, { f: 2100 });
-      squelch(v, 0.02, 0.26, 0.35, { f: [600, 380, 260], rate: 24 });
-      moan(v, 0.03, 0.42, 0.14, [60, 54, 46, 42, 38], { grit: 1.6 });
+      v.noise('white', { g: [[0, 0], [0.02, 1.3], [0.16, 0.0001, 'e']], to: fl });
+      clay(v, 0, 0.2, { f: 2100 });
+      clay(v, 0.11, 0.1, { f: 1850 });
+      squelch(v, 0.02, 0.26, 0.5, { f: [600, 380, 260], rate: 24 });
+      moan(v, 0.03, 0.5, 0.26, [60, 54, 46, 42, 38], { grit: 1.6 });
     },
   },
   /** Death 'dissolve' (sustained ≈0.9 s): the body runs back into the cracks — a drain gulping, rising then falling. */
@@ -383,12 +430,14 @@ export const MUDGRASP_SPIRIT_RECIPES = {
       const fl = v.flutter(26, 0.7, { d: D + 0.04, base: 0.35, to: v.filt('bandpass', [[0, 900], [D * 0.4, 600, 'e'], [D, 260, 'e']], 2, { to: pan }) });
       v.noise('pink', { g: [[0, 0], [0.08, 1.3], [D * 0.6, 1.1], [D, 0.0001, 'e']], to: fl });
       // the drain's gulps: pitch rising then falling (giderden akan su gibi yükselen-inen glub)
-      const n = 13;
-      for (let i = 0; i < n; i++) {
-        const k = i / (n - 1);
-        const t = 0.03 + k * (D - 0.12) + v.r(-0.015, 0.015);
+      // irregular spacing (±30 %) and the odd double-gulp, so it gulps like a real drain, not a metronome
+      const step = (D - 0.12) / 12;
+      for (let t = 0.03; t < D - 0.06; t += step * v.r(0.7, 1.3)) {
+        const k = Math.min(1, t / (D - 0.12));
         const f = 95 + 140 * Math.sin(Math.PI * Math.min(1, k * 1.15));
-        glub(v, t, 0.22 * (1 - 0.45 * k) * v.r(0.7, 1), f, { pan: v.r(-0.35, 0.35), len: v.r(0.05, 0.075) });
+        const g = 0.24 * (1 - 0.45 * k) * v.r(0.7, 1);
+        glub(v, t, g, f, { pan: v.r(-0.35, 0.35), len: v.r(0.05, 0.075) });
+        if (v.rnd() < 0.25) glub(v, t + v.r(0.028, 0.04), g * 0.6, f * 1.12, { pan: v.r(-0.3, 0.3), len: 0.045 });
       }
       // the swirl's low hollow (reversed vortex), sinking
       v.tone('sine', [[0, 70], [D, 42, 'e']], { g: [[0, 0], [0.1, 0.12], [D, 0.0001, 'e']] });
@@ -398,17 +447,19 @@ export const MUDGRASP_SPIRIT_RECIPES = {
   mgGlk: {
     cap: 1,
     gap: 0.2,
-    verb: 0.5,
-    duck: 0.35,
+    verb: 0.3,
+    duck: 0.4,
     play(v) {
       // the mask going under: a last suction, lower than the şlop
-      slop(v, 0, 0.12, { d: 0.09, f: SLOP * 0.62 });
-      // the glk: a thick bubble, pitch up, choked
-      v.tone('sine', [[0, 140], [0.03, 420, 'e']], { t: 0.12, g: [[0, 0], [0.004, 0.32], [0.028, 0.18], [0.034, 0.0001, 'e']] });
-      v.noise('brown', { t: 0.12, g: perc(0.3, 0.03, 0.002), to: v.filt('lowpass', 600, 1) });
+      slop(v, 0, 0.2, { d: 0.09, f: SLOP * 0.62 });
+      // the glk (FIX r3: louder, DRIER — the last punctuation): a thick bubble, pitch up, choked short, with a
+      // dry wet click on its top
+      v.tone('sine', [[0, 140], [0.03, 440, 'e']], { t: 0.12, g: [[0, 0], [0.003, 0.6], [0.024, 0.3], [0.03, 0.0001, 'e']] });
+      v.tone('triangle', [[0, 900], [0.012, 520, 'e']], { t: 0.145, g: perc(0.22, 0.012, 0.001) });
+      v.noise('brown', { t: 0.12, g: perc(0.45, 0.025, 0.002), to: v.filt('lowpass', 700, 1) });
       // the cracks seal: a soft low close and a faint hollow ring
-      thump(v, 0.16, 70, 40, 0.22, 0.25);
-      v.tone('sine', [[0, 220], [0.5, 210, 'e']], { t: 0.18, g: perc(0.03, 0.5, 0.02) });
+      thump(v, 0.17, 70, 40, 0.3, 0.22);
+      v.tone('sine', [[0, 220], [0.5, 210, 'e']], { t: 0.19, g: perc(0.03, 0.45, 0.02) });
     },
   },
   /** Revive: the drain backwards — the mud gathers up out of the cracks (sustained; faded at land). */

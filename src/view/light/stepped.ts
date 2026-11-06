@@ -32,6 +32,9 @@ export const MAX_STEPS = 2;
 /** Per screen pixel: −1 unknown, −2 not lightable, else the matte pad colour (0xRRGGBB). */
 let floor: Int32Array | null = null;
 
+/** Content revision of a StepPatch image (bumped on every redraw): lets readers of the composed floor (unit shadows) cache. */
+export const stepImgRev = new WeakMap<object, number>();
+
 /** The matte pad / pile colour at a screen pixel, or null when light must not touch it. */
 export function padColorAt(x: number, y: number): Color | null {
   if (x < 0 || y < 0 || x >= GAME_W || y >= GAME_H) return null;
@@ -299,6 +302,7 @@ export class StepPatch {
     ctx.putImageData(new ImageData(data as unknown as Uint8ClampedArray<ArrayBuffer>, w, h), 0, 0);
     this.tex.refresh();
     this.img.setSizeToFrame();
+    stepImgRev.set(this.img, (stepImgRev.get(this.img) ?? 0) + 1);
   }
 
   setShown(on: boolean): void {

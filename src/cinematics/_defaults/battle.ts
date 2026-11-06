@@ -154,7 +154,7 @@ registerEvent(
     let impacted = false;
     let resolveImpact!: () => void;
     const impactedP = new Promise<void>((r) => (resolveImpact = r));
-    const onImpact = (at?: XY) => {
+    const onImpact = (at?: XY, opts?: { clang?: boolean }) => {
       if (impacted) return;
       impacted = true;
       resolveImpact();
@@ -165,6 +165,8 @@ registerEvent(
         p = hit.world;
         pending.push(directHit(sc, defender, { at: hit.screen }));
         void ctx.views.duelists?.get(defender).jolt();
+      } else if (blocked && opts?.clang === false) {
+        /* the strike scores its own bounce (no guard hex on a foe that is not guarding) */
       } else if (blocked) {
         pending.push(blockClang(sc, p.x - (ev.player === 0 ? 6 : -6), p.y, { from: attacker?.core() }));
         if (target) void target.play('guard');

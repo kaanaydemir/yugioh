@@ -148,7 +148,7 @@ export interface StrikeArgs {
   /** Suggested impact power from the damage / outcome (1 light … 3 heavy). */
   power: 1 | 2 | 3;
   /** Call once at the moment of contact (later calls are ignored). Optional point override. */
-  impact(at?: XY): void;
+  impact(at?: XY, opts?: ImpactOpts): void;
   /** Resolves when impact() has been called. */
   readonly impacted: Promise<void>;
   /**
@@ -159,4 +159,10 @@ export interface StrikeArgs {
    * chain (registry strikeFor with a fallback); absent on arguments built by hand (previews, tests).
    */
   base?(): Promise<void>;
+}
+
+/** Optional knobs for StrikeArgs.impact (additive). `clang: false` skips the blocked-guard hex + guard pose
+ * on a bounce the strike scores itself (e.g. polar_needle repelled by an attack-position foe). */
+export interface ImpactOpts {
+  clang?: boolean;
 }

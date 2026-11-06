@@ -134,3 +134,19 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   geçeriz"; gemini/okunurluk 2ff3ff0). Kapılar: typecheck temiz; v1 17/17 + a6v1 26/26 IDENTICAL; vitest bilinen
   6 hata + 3 ESKİMİŞ arena geometri testi (arena-nt-platform ×2, board-nt-layout dais) — sahne şekli bilerek
   değişti; arena düzeltme turunda testler yeni şekle göre yazılacak.
+- 2026-11-05 gece: wisp_imp (şerit B, d9df6a4) + kite_fencer & reed_heron (şerit C, 0062f7c; crag_axeman test
+  düzeltmesi dahil) ana dala alındı. Kapılar: typecheck temiz; vitest yalnız bilinen 7 (3 eski arena + G1, dusk_ashen,
+  hourglass_imp, shield_titan); v1 17/17 + a6v1 26/26 IDENTICAL (referanslar 6d507fa'dan yeniden çekildi — makine
+  yenilendi; shot.mjs artık chrome-linux64'ü de buluyor). Test sürümü 16 YENİ adreste: https://claude.ai/artifact/1FtHvKhUno83ZUCg8ASrmc (eski sayfa dosya sınırına dayandı).
+- 2026-11-06: hollow_ogre (şerit B, dac99ea) ana dala alındı. Kapılar: typecheck temiz; vitest bilinen 7; v1 17/17 +
+  a6v1 26/26 IDENTICAL. Test sürümü 17.
+- 2026-11-06: ŞERİT C BİTTİ (crag_axeman + steppe_spiralhorn, dc25277). ARENA GEÇİŞİ (şerit A, 0913520) ana dala alındı:
+  hedef-gorunum-3'e göre kalın sahne, gömük karolar (boş yuva yok), kürsüler, tuğla duvar/sancak/meşale, mangallar,
+  katmanlı sis; eski 3 arena testi yeni şekle göre yazıldı. Bilinen test hataları artık 4 (G1, dusk_ashen, hourglass_imp,
+  shield_titan). Açık: P2 kürsüsü küçük/sönük, saha üstü hedeften soğuk, öndeki sis HUD altında. Test sürümü 18.
+- 2026-11-06: ŞERİT B BİTTİ (mudgrasp_spirit, 28e8c7d; grim_warden, wisp_imp, hollow_ogre önceden). Kapılar temiz
+  (vitest bilinen 4; v1 17/17 + a6v1 26/26). Açık notlar docs/v3/oturum-b.md'de. Test sürümü 19.
+- 2026-11-06: ŞERİT D BİTTİ (b3170bd): dial_jester, reflection_archer, scrap_raiders, straw_decoy_token, polar_needle/
+  anvil/coil + polar_sovereign (birleşme/ayrılma). Kapılar temiz (vitest bilinen 4; v1 17/17 + a6v1 26/26). Test sürümü 21.
+  KARAR: "kurban bekleme döngüsü ortasında vuruluyor" (temas probu, tüm şeritlerde) → kit düzeyinde tek düzeltme (b),
+  boşta bir şeride verilecek. cardface G1 → ortak frame.ts / test eşiği.

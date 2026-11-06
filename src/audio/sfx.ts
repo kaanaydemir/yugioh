@@ -29,6 +29,14 @@ import type { V3VoiceSfxName } from './v3/voices';
 import type { HeronSfxName } from './v3/reed_heron';
 import type { V3SpellSfxName } from './v3/spells';
 import type { DawnSfxName } from './v3/dawn';
+import type { PolarAnvilSfxName } from './v3/polar_anvil';
+import type { PolarNeedleSfxName } from './v3/polar_needle';
+import type { PolarCoilSfxName } from './v3/polar_coil';
+import type { PolarSovereignSfxName } from './v3/polar_sovereign';
+import type { JesterSfxName } from './v3/jester';
+import type { ArcherSfxName } from './v3/archer';
+import type { RaidersSfxName } from './v3/raiders';
+import type { StrawSfxName } from './v3/straw';
 import type { KartBSfxName } from './v3/kart-b';
 import type { AshenSfxName } from './v3/ashen';
 import type { AxemanSfxName } from './v3/crag_axeman';
@@ -73,6 +81,14 @@ export type SfxName =
   | V3SpellSfxName
   | KiteSfxName
   | DawnSfxName
+  | PolarAnvilSfxName
+  | PolarNeedleSfxName
+  | PolarCoilSfxName
+  | PolarSovereignSfxName
+  | JesterSfxName
+  | ArcherSfxName
+  | RaidersSfxName
+  | StrawSfxName
   | KartBSfxName
   | AshenSfxName
   | AxemanSfxName

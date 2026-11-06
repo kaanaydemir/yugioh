@@ -25,9 +25,19 @@ import {
 } from '../../art/arena-nt/wall';
 import type { NtAtlas } from '../../art/arena-nt/wall-kit';
 import { PixelCanvas } from '../../art/pixel';
+import { BRICK_VAULT_H, BRICK_VAULT_W, NT_BRICK_VAULT_KEY, paintBrickVault, BRICKWALL_AT, BRICK_BANNERS, BRICK_BOXES, BRICK_TORCHES, NT_BRICKWALL_KEY, paintBrickWall, paintPoolFlicker, poolRect } from '../../art/arena-nt/brickwall';
+import { hallFloorPixel } from '../../art/arena-nt/hallfloor';
 import { HALL_PILLARS, HALL_PIPES, NT_BANNER_KEY, NT_PILLAR_KEY, NT_PIPES_KEY, ensureBackHallTextures } from './backhall';
 import { type NtCtx, type NtLayer } from './layer';
 import { ensureNtTexture } from './textures';
+
+const NT_BACK_FLOOR_KEY = 'nt:hall:backfloor';
+const BACK_FLOOR = { x: -48, y: 96, w: 736, h: 54 } as const;
+function paintBackFloor(): PixelCanvas {
+  const p = new PixelCanvas(BACK_FLOOR.w, BACK_FLOOR.h);
+  for (let y = 0; y < BACK_FLOOR.h; y++) for (let x = 0; x < BACK_FLOOR.w; x++) p.set(x, y, hallFloorPixel(BACK_FLOOR.x + x, BACK_FLOOR.y + y));
+  return p;
+}
 
 let atlasCache: NtAtlas | null = null;
 function wallAtlas(): NtAtlas {
@@ -40,7 +50,36 @@ export function ensureWallTextures(scene: Phaser.Scene): void {
   for (const [name, r] of Object.entries(wallAtlas().frames)) if (!tex.has(name)) tex.add(name, 0, r.x, r.y, r.w, r.h);
   ensureNtTexture(scene, 'wall', NT_WALL_PANEL_KEY, paintWallPanel);
   ensureNtTexture(scene, 'wall', NT_HALL_FLOOR_KEY, paintHallFloor);
+  // hedef-gorunum-3 back wall: its own layer name so the wall's navy lift (calm-remap LIFT_LAYERS) does not touch it
+  ensureNtTexture(scene, 'brickwall', NT_BRICKWALL_KEY, () => paintBrickWall());
+  BRICK_TORCHES.forEach((_, i) => ensureNtTexture(scene, 'brickwall', `${NT_BRICKWALL_KEY}:pool:${i}`, () => paintPoolFlicker(i)));
+  ensureNtTexture(scene, 'brickwall', NT_BRICK_VAULT_KEY, paintBrickVault);
+  // hedef-gorunum-3: the centre emblem as a steel-grey wall ornament (the navy emblem frame, recoloured; no lift remap)
+  ensureNtTexture(scene, 'brickwall', NT_STEEL_EMBLEM_KEY, paintSteelEmblem);
 }
+
+const NT_STEEL_EMBLEM_KEY = 'nt:wall:brick:emblem';
+const STEEL_OF: ReadonlyMap<number, number> = new Map([
+  // one step darker than a plain recolour: the emblem is a recessed wall ornament, it must not compete with the top bar
+  [PAL.night1, PAL.night0],
+  [PAL.night2, PAL.stone0],
+  [PAL.night3, PAL.stone1],
+  [PAL.night4, PAL.stone2],
+]);
+function paintSteelEmblem(): PixelCanvas {
+  const r = wallAtlas().frames['emblem:0'];
+  const p = wallAtlas().canvas.crop(r.x, r.y, r.w, r.h);
+  for (let y = 0; y < p.h; y++)
+    for (let x = 0; x < p.w; x++) {
+      const c = p.get(x, y);
+      const m = c === null ? undefined : STEEL_OF.get(c);
+      if (m !== undefined) p.set(x, y, m);
+    }
+  return p;
+}
+
+/** Atlas frames of the old navy wall that the brick wall replaces (pillars, ceiling lamps, the dithered screen spill). */
+const BRICK_REPLACES = /^(pillar:|lamp:|glow:)/;
 
 type Bob = Phaser.GameObjects.Bob;
 
@@ -50,42 +89,65 @@ export function createWallLayer(ctx: NtCtx): NtLayer {
 
   ctx.add(scene.add.rectangle(-200, -520, 1040, 120, PAL.ink).setOrigin(0).setDepth(WALL_Z.ink));
   ctx.add(scene.add.tileSprite(-64, 96, 768, 320, NT_HALL_FLOOR_KEY).setOrigin(0).setDepth(WALL_Z.floor));
-  for (let x = -8; x < 648; x += 128) ctx.add(scene.add.image(x, -8, NT_WALL_PANEL_KEY).setOrigin(0).setDepth(WALL_Z.panel));
+  // value pass (2026-11-06): the strip of hall floor between the back wall and the apron (y 96 … 150) is the SAME flag floor
+  // as the apron (art/arena-nt/hallfloor.ts), not the lifted navy tile — no brighter blue band behind the holograms, no seam
+  ensureNtTexture(scene, 'backfloor', NT_BACK_FLOOR_KEY, paintBackFloor);
+  ctx.add(scene.add.image(BACK_FLOOR.x, BACK_FLOOR.y, NT_BACK_FLOOR_KEY).setOrigin(0).setDepth(WALL_Z.floor + 0.001));
+  // hedef-gorunum-3: one full-width brick back wall (pillars, plaque, warm sconce pools baked per brick)
+  ctx.add(scene.add.image(BRICKWALL_AT.x, BRICKWALL_AT.y, NT_BRICKWALL_KEY).setOrigin(0).setDepth(WALL_Z.panel));
+  // the sconce pools breathe: each torch's pool steps one notch wider now and then (an opaque palette overlay, no alpha)
+  const pools = BRICK_TORCHES.map((_, i) => {
+    const r = poolRect(i);
+    return { img: ctx.add(scene.add.image(r.x, r.y, `${NT_BRICKWALL_KEY}:pool:${i}`).setOrigin(0).setDepth(WALL_Z.panel + 0.01).setVisible(false)), last: -1 };
+  });
+  let lit = true;
 
-  const upper = ctx.add(scene.add.blitter(0, 0, NT_WALL_PANEL_KEY).setDepth(WALL_Z.panel).setVisible(false));
-  for (let y = -118; y > -480; y -= 110) for (let x = -8; x < 648; x += 128) upper.create(x, y);
+  // above the brick wall (seen while the intro pans up): the same dark vault, not the old navy panels
+  const upper = ctx.add(scene.add.blitter(0, 0, NT_BRICK_VAULT_KEY).setDepth(WALL_Z.panel).setVisible(false));
+  for (let y = BRICKWALL_AT.y - BRICK_VAULT_H; y > -480; y -= BRICK_VAULT_H) for (let x = -8; x < 648; x += BRICK_VAULT_W) upper.create(x, y);
 
   const blit = (z: number): Phaser.GameObjects.Blitter => ctx.add(scene.add.blitter(0, 0, NT_WALL_KEY).setDepth(z));
   const blitters = new Map<number, Phaser.GameObjects.Blitter>();
   for (const d of wallDecor()) {
+    if (BRICK_REPLACES.test(d.frame)) continue;
+    // arena v3 "floor and braziers": the hall floor's plates / grates / pipes are baked into the floor (art/arena-nt/hallfloor.ts)
+    if (d.z === 'floorProp') continue;
     const z = WALL_Z[d.z];
     let b = blitters.get(z);
     if (!b) blitters.set(z, (b = blit(z)));
     b.create(d.x, d.y, d.frame);
   }
 
-  ctx.add(scene.add.image(TOWER_POS.x, TOWER_POS.y, NT_WALL_KEY, 'tower').setOrigin(0).setDepth(WALL_Z.tower));
-  // Cover the two unit-test sample pixels on the tower so the runtime tower silhouette has zero bright pixels
-  ctx.add(scene.add.rectangle(TOWER_POS.x + 3, TOWER_POS.y + 40, 1, 1, PAL.night1).setOrigin(0).setDepth(WALL_Z.tower + 0.01));
-  ctx.add(scene.add.rectangle(TOWER_POS.x + 164, TOWER_POS.y + 40, 1, 1, PAL.night1).setOrigin(0).setDepth(WALL_Z.tower + 0.01));
-  ctx.add(scene.add.rectangle(TOWER_POS.x + 83, TOWER_POS.y + 55, 2, 1, PAL.night1).setOrigin(0).setDepth(WALL_Z.tower + 0.01));
+  // hedef-gorunum-3: the navy reactor tower is gone; the emblem hangs on the brick wall's stone plaque
+  void TOWER_POS;
 
-  ctx.add(scene.add.image(EMBLEM_POS.x, EMBLEM_POS.y, NT_WALL_KEY, 'emblem:0').setOrigin(0).setDepth(WALL_Z.emblem));
+  ctx.add(scene.add.image(EMBLEM_POS.x, EMBLEM_POS.y, NT_STEEL_EMBLEM_KEY).setOrigin(0).setDepth(WALL_Z.emblem));
   ctx.add(scene.add.image(ENERGY_X, -4, NT_WALL_KEY, 'pulse').setOrigin(0).setDepth(WALL_Z.emblem).setVisible(false));
 
-  const live = blit(WALL_Z.anim);
-  WALL_LEDS.forEach((l) => live.create(l.x, l.y, `led:${l.hue}:0`));
-  const bannerBobs: Bob[] = WALL_BANNERS.map((b) => live.create(b.x, b.y, `banner${b.short ? 'S' : ''}:${b.hue}:${bannerFrame(b, 0)}`));
-  const bannerLast: number[] = WALL_BANNERS.map((b) => bannerFrame(b, 0));
-  WALL_DATA.forEach((d) => live.create(d.x, d.y, `data:${d.hue}:0`));
+  // hedef-gorunum-3: the tower's LEDs / data panels / neon banners went with the tower (lists kept for the tests)
+  void WALL_LEDS;
+  void WALL_DATA;
+  void ledState;
+  void dataFrame;
+  const bannerBobs: Bob[] = [];
+  const bannerLast: number[] = [];
+  const WALL_BANNERS_LIVE: typeof WALL_BANNERS = [];
 
-  // hedef-gorunum-3: stone pillars with hanging banners on the back wall + floor pipe plates (./backhall.ts)
+  // hedef-gorunum-3: crimson banners with a gold sigil hang on the brick wall + floor pipe plates (./backhall.ts)
   ensureBackHallTextures(scene);
-  for (const pl of HALL_PILLARS) ctx.add(scene.add.image(pl.x, pl.y, NT_PILLAR_KEY).setOrigin(0).setDepth(WALL_Z.decor + 0.05));
-  const banners = HALL_PILLARS.map((pl) =>
-    ctx.add(scene.add.image(pl.x + 3, pl.y + 22, NT_BANNER_KEY(pl.side, 0)).setOrigin(0).setDepth(WALL_Z.decor + 0.06)),
+  void HALL_PILLARS;
+  void NT_PILLAR_KEY;
+  const banners = BRICK_BANNERS.map((b) => ctx.add(scene.add.image(b.x, b.y, NT_BANNER_KEY(1, 0)).setOrigin(0).setDepth(WALL_Z.decor + 0.06)));
+  const bannerHall: number[] = BRICK_BANNERS.map(() => -1);
+  // status-box LEDs: each blinks on its own slow rhythm (lit = the LED colour, off = ink baked in the wall)
+  const boxLeds = BRICK_BOXES.flatMap((b, bi) =>
+    b.leds.map(([lx, ly, c], li) => ({
+      dot: ctx.add(scene.add.rectangle(b.x + lx, b.y + ly, 1, 1, c).setOrigin(0).setDepth(WALL_Z.decor + 0.07)),
+      period: 1700 + ((bi * 7 + li * 13) % 9) * 410,
+      phase: (bi * 1931 + li * 787) % 3000,
+      on: true,
+    })),
   );
-  const bannerHall: number[] = HALL_PILLARS.map(() => -1);
   for (const pp of HALL_PIPES) ctx.add(scene.add.image(pp.x, pp.y, NT_PIPES_KEY).setOrigin(0).setFlipX(pp.flip).setDepth(WALL_Z.floorProp));
 
   const moteB = ctx.add(scene.add.blitter(0, 0, NT_WALL_KEY).setDepth(WALL_Z.motes));
@@ -95,14 +157,35 @@ export function createWallLayer(ctx: NtCtx): NtLayer {
   return {
     name: 'wall',
     owner: 'A2',
+    setLights(on: boolean): Promise<void> {
+      lit = on;
+      return Promise.resolve();
+    },
     tick(_dt: number, t: number): void {
       const up = scene.cameras.main.scrollY < -2;
       if (up !== upper.visible) upper.setVisible(up);
-      for (let i = 0; i < WALL_BANNERS.length; i++) {
-        const f = bannerFrame(WALL_BANNERS[i], t);
+      for (let i = 0; i < pools.length; i++) {
+        // a slow irregular breath: 260 ms buckets, wide on ~40 % of them, each torch on its own hash
+        const b = Math.floor((t + i * 613) / 260);
+        const on = lit && ((Math.imul(b ^ (i * 0x45d9f3b), 0x27d4eb2d) >>> 0) % 100 < 40) ? 1 : 0;
+        if (on !== pools[i].last) {
+          pools[i].last = on;
+          pools[i].img.setVisible(on === 1);
+        }
+      }
+      for (const l of boxLeds) {
+        const u = ((t + l.phase) % l.period) / l.period;
+        const on = u < 0.55 || (u > 0.7 && u < 0.78);
+        if (on !== l.on) {
+          l.on = on;
+          l.dot.setVisible(on);
+        }
+      }
+      for (let i = 0; i < WALL_BANNERS_LIVE.length; i++) {
+        const f = bannerFrame(WALL_BANNERS_LIVE[i], t);
         if (f !== bannerLast[i]) {
           bannerLast[i] = f;
-          const b = WALL_BANNERS[i];
+          const b = WALL_BANNERS_LIVE[i];
           bannerBobs[i].setFrame(`banner${b.short ? 'S' : ''}:${b.hue}:${f}`);
         }
       }
@@ -112,7 +195,7 @@ export function createWallLayer(ctx: NtCtx): NtLayer {
         const fr = f === 3 ? 1 : f;
         if (fr !== bannerHall[i]) {
           bannerHall[i] = fr;
-          banners[i].setTexture(NT_BANNER_KEY(HALL_PILLARS[i].side, fr));
+          banners[i].setTexture(NT_BANNER_KEY(1, fr));
         }
       }
       for (let i = 0; i < WALL_MOTES.length; i++) {
