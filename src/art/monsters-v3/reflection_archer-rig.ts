@@ -587,11 +587,11 @@ function sheenPass(p: PixelCanvas, o: Pose): void {
   const s = clamp(o.pud, 0, 1);
   const c = sheenAt(o, s);
   for (let y = rnd(pcy(s) - G.ry * s); y <= rnd(pcy(s) + G.ry * s); y++)
-    for (let w = 0; w < 2; w++) {
+    for (let w = 0; w < 3; w++) {
       const x = rnd(c - 2 * (y - pcy(s))) + w;
       const d = inPuddle(x, y, s);
       if (d > 0.72) continue;
-      p.set(x, y, w === 0 && d < 0.35 ? PAL.white : PAL.mist);
+      p.set(x, y, w === 1 && d < 0.35 ? PAL.white : w === 2 ? PAL.steel : PAL.mist);
     }
 }
 
@@ -657,7 +657,7 @@ function drawReflection(p: PixelCanvas, o: Pose, light: Light): void {
     if (Math.abs(y - ry) < 1) return fl(ph * 8) % 2 ? 1 : -1;
     // the water's own shimmer: a band of three rows, stepping down the twin frame by frame, sits a px aside
     const band = ((fl(o.t * 40) * 2 + 15) % 17 + 17) % 17;
-    return Math.abs(y - (rnd(G.my) + band)) <= 2 ? -1 : 0;
+    return Math.abs(y - (rnd(G.my) + band)) <= 3 ? -1 : 0;
   };
   // the reflection's face is the focal point (its eyes look at the viewer): its hood stays whole once surfaced
   const [fhx, fhy] = reflView().T(skeleton(r).head);
