@@ -432,3 +432,32 @@ Dosyalar: `art/arena-nt/brickwall.ts`, `view/board-nt/wall.ts`, `view/board-nt/b
 7. **#7** sahne/zemin/mangal — bu maddenin dışı (sahne ve zemin maddelerine bırakıldı).
 Son: `bw4-6.png`, `bw4-6-sbs.png`. typecheck temiz, palcheck PASS, vitest arena-nt + board-nt 34/34. v1: dokunulan her şey yalnız ARENA_NT v3 duvarında.
 Kalan farklar: hedefin duvarı daha büyük, daha açık mor-gri taş bloklar; havuzlar hâlâ hedeften daha geniş/turuncu; amblem hedeften ~%20 büyük.
+
+#### Zemin ve mangallar (2026-11-06)
+Önce: `shots/arena/fl-0.png` (+ `fl-0-sbs.png`, yakın `fl-0-zl.png` / `fl-0-zr.png`, sissiz `fl-0-nofog.png`).
+Tespit edilen farklar: (1) zemin navy lift ile night3/night4'e kalkmış parlak mavi, hedef koyu lacivert-arduvaz (night1/night2);
+(2) zeminde hedefteki perçinli levhalar / ızgaralar / boru yok — yerine apron'a boyanmış eski raylar, bloklar, babalar ve
+wall katmanının eski hatch/vent/cable blitter'ı (`FLOOR_PROPS`) ile `nt:hall:pipes` plakası; (3) mangallar ince demir direk
+üstünde küçük kâse (82,212 / 566,222), hedefte ~27×44 taş kaide (kaide + gövde + başlık + altın ağızlı kâse) 141,~250 ve
+514,~222'de; (4) mangal ışığı noktalı dither halesi, hedefte zemine yayılan sıcak turuncu havuz.
+Yapılanlar (her adım ekran görüntüsüyle bakıldı):
+1. Yeni `src/art/arena-nt/hallfloor.ts`: zemin deseni son renklerle (taban night2, derz night0, sol-üst kenarda 1 px night3
+   dudak, seyrek çizik), 4 perçinli yükseltilmiş levha + 4 ızgara (1 px kalkık, ink alt kenar), yerde yatan borular (8 px kesit,
+   dirsek, kızıl kelepçe, zemine giren flanş), mangal havuzları (3 basamak skin0/skin1/earth2, bant sınırında 4×4 dither — yalnız
+   zeminde). `apron.ts` yalnız `panel()`'in taban rengini buradan alıyor; raylar/bloklar/babalar artık boyanmıyor (tanımlayıcıları
+   testler ve gizli katman için duruyor); havuzlar sahnenin düşen gölgesini (stone0) de ısıtıyor (`warmPixel`). Gölge kodu değişmedi.
+2. Apron `apron-v3` katman adıyla kaydediliyor (navy lift dışı, tuğla duvar gibi) → `fl-1`.
+3. Eski zemin süsleri kaldırıldı: `wall.ts` `floorProp` blitter karelerini atlıyor, `backhall.ts` `HALL_PIPES = []` (`fl-3`).
+4. Ton ayarı: taban night1 → night2, derz ink → night0 (hedefte derzler yumuşak), borular/levhalar bir ton koyu (`fl-4`, `fl-5`).
+5. Mangal sprite'ı `paintBrazier` (28×52, 6 alev karesi: boy 12–15 nefes, uç salınımı, her iki karede yükselen kıvılcım):
+   kaide stone1/stone0, gövde stone2/stone1 + her yüzde gömme panel içinde oyulmuş kanatlı-V, başlığın alt kenarında
+   ateşten altın bant, altın ağızlı kâse + kor. `view/board-nt/lights.ts` direkli meşaleleri bu sprite ile çiziyor
+   (dither halesi kapalı; ışık zemine pişmiş). Konumlar `BRAZIERS`: sol 141,284 (alev ≈141,252), sağ 540,260 — hedefin 514'ü
+   bizim sahnenin sağ duvar köşesine biniyordu, 26 px sağa alındı (`fl-6` → `fl-7`).
+6. Havuz çekirdeği kaidenin dışına taşacak kadar büyütüldü, borular havuzdan sonra boyanıyor (ısıtılınca tahta gibi okunuyordu),
+   sol boru tek dirseğe sadeleşti, ızgara sağ havuzdan uzaklaştı (`fl-8`).
+Son: `shots/arena/fl-8.png`, `fl-8-sbs.png`, `fl-8-zl.png`, `fl-8-zr.png`, alev filmi `fl-8-film.png`.
+typecheck temiz, palcheck PASS (`fl-8.png`), vitest arena-nt platform/wall/screens 14/14. v1: dokunulan her şey yalnız ARENA_NT (v3) yolunda.
+Kalan farklar: hedefin havuzu yumuşak hale, bizimki basamaklı (palet + dither kuralı); sol üst zemin (levha/ızgara) sis bankının
+altında kaldığı için az okunuyor (sis maddesi); hedefteki duvara yükselen dikey borular yok; mangal alevinin çevresindeki ince
+sıcak hale yok (dither halesi noktalı okunduğu için kapatıldı); sağ mangal hedeften 26 px sağda (sahne geometrisi farkı).
