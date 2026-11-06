@@ -111,7 +111,8 @@ function guardMain(f: number): Pose {
     rip: k / (GUARD_N * 2),
     mote: k / GUARD_N,
     bowG: [2, 2, 2.5, 2.5, 2, 2, 2, 2][k],
-    t: k / GUARD_N,
+    // one sheen sweep per guard loop (the calmer stance; crit r3: the larger twin raised the guard's Δ past HA-19)
+    t: k / (GUARD_N * 2),
     R: null,
   };
 }

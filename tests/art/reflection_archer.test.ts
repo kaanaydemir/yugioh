@@ -15,19 +15,20 @@ import type { AnyMonsterAnim } from '../../src/art/types';
 const ALL: readonly AnyMonsterAnim[] = ['idle', 'guard', 'attack', 'roar', 'hit', 'toGuard', 'fromGuard', 'hitHeavy', 'hitMagic', 'summon', 'death', 'revive'];
 type S = { frames: number; holds?: number[]; marks?: Record<string, number> };
 const spec = (a: AnyMonsterAnim): S => (art.anims as Record<string, S>)[a] ?? (art.extraAnims as Record<string, S>)[a];
-const REFL = new Set<number>([PAL.water1, PAL.water2, PAL.water3, PAL.night0, PAL.night1]);
+/** The twin's dark silhouette tones (crit r3: a night figure on the puddle's water1 sheet). */
+const REFL = new Set<number>([PAL.night0, PAL.night1, PAL.night2]);
 /** Reflection-tone pixels in the puddle beside the feet (P1 sheet: right of the feet, at the floor rows). */
 const reflPx = (a: AnyMonsterAnim, f: number) => {
   const p = drawFrame(art, a, f, 'left');
   let n = 0;
-  for (let y = art.anchorY - 10; y < p.h; y++) for (let x = art.anchorX + 7; x < p.w; x++) if (REFL.has(p.get(x, y) as number)) n++;
+  for (let y = art.anchorY - 20; y < p.h; y++) for (let x = art.anchorX + 7; x < p.w; x++) if (REFL.has(p.get(x, y) as number)) n++;
   return n;
 };
 /** White pixels in the reflection's head rows (its eyes: the inverted twin's head is its lowest part). */
 const reflEyes = (f: number) => {
   const p = drawFrame(art, 'idle', f, 'left');
   let n = 0;
-  for (let y = art.anchorY + 1; y < p.h; y++) for (let x = art.anchorX + 6; x <= art.anchorX + 20; x++) if (p.get(x, y) === PAL.white) n++;
+  for (let y = art.anchorY - 6; y < p.h; y++) for (let x = art.anchorX + 8; x <= art.anchorX + 24; x++) if (p.get(x, y) === PAL.white) n++;
   return n;
 };
 
@@ -58,7 +59,7 @@ describe('reflection_archer', () => {
     // the figure (above the floor rows and the puddle's rising motes) is the same silhouette; the puddle lies on the sheet's other side in the P2
     // relight sheet (shown flipped, it lands on the tile's screen-right half too)
     let diff = 0;
-    for (let y = 0; y < art.anchorY - 27; y++) for (let x = 0; x < a.w; x++) if (a.isOpaque(x, y) !== r.isOpaque(x, y)) diff++;
+    for (let y = 0; y < art.anchorY - 32; y++) for (let x = 0; x < a.w; x++) if (a.isOpaque(x, y) !== r.isOpaque(x, y)) diff++;
     expect(diff).toBe(0);
     const side = (q: typeof a) => {
       let sx = 0;
@@ -87,7 +88,7 @@ describe('reflection_archer', () => {
   });
 
   it('the reflection lives under the ground line, looks at the viewer once per loop and breaks first in death', () => {
-    expect(reflPx('idle', 0)).toBeGreaterThan(90);
+    expect(reflPx('idle', 0)).toBeGreaterThan(60);
     // f12 (the turned head) shows two eyes in the reflection's head rows; f0 shows its profile eye
     expect(reflEyes(12)).toBeGreaterThan(reflEyes(0));
     // death f4: the reflection is gone while the archer still stands (flat)

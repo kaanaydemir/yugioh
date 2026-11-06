@@ -38,7 +38,7 @@ export const KR = 0.45;
  * relight sheet is mirrored by flipX, so there it lies behind the archer's back and still lands on screen right,
  * clear of the up-left neighbour's badge). The inverted reflection hangs from the puddle's far water line
  * (`my`, behind the archer's feet), offset by `rdx` beside the archer so its body clears the archer's legs,
- * foreshortened by `kr` (crit r3: 0.38 — a ~22-px twin with a readable hood, crown and bow), its crown tips
+ * foreshortened by `kr` (crit r3: 0.36 — a ~20-px twin with a readable hood, crown and bow), its crown tips
  * ending just above the badge (GY + 5). The puddle reaches back toward the tile's far corner to hold it.
  */
 export interface PuddleGeo {
@@ -52,8 +52,8 @@ export interface PuddleGeo {
   my: number;
   kr: number;
 }
-const GEO_L: PuddleGeo = { cx: RX + 12, cy: GY - 8, rx: 20, ry: 12, rdx: 14, my: GY - 20, kr: 0.38 };
-const GEO_R: PuddleGeo = { cx: RX - 13, cy: GY - 8, rx: 20, ry: 12, rdx: -16, my: GY - 20, kr: 0.38 };
+const GEO_L: PuddleGeo = { cx: RX + 11, cy: GY - 6, rx: 19, ry: 11, rdx: 13, my: GY - 18, kr: 0.36 };
+const GEO_R: PuddleGeo = { cx: RX - 10, cy: GY - 6, rx: 18, ry: 11, rdx: -15, my: GY - 18, kr: 0.36 };
 /** The puddle geometry of a sheet ('left' = the P1 sheet, 'right' = the P2 relight sheet, shown flipped). */
 export const puddleGeo = (lightFrom: 'left' | 'right'): PuddleGeo => (lightFrom === 'right' ? GEO_R : GEO_L);
 /** The geometry of the sheet being drawn (set by drawArcher; drawing is synchronous). */
