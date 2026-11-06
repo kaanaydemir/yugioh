@@ -105,7 +105,7 @@ export const PAGE_T = Object.freeze({
   closeMs: 150,
   runesMs: 320,
   /** both hands empty: the blank spread holds only this long, then searches its pages */
-  bareHold: 120,
+  bareHold: 0,
   /** both hands empty: the lazy search — three slow page turns this far apart, each this long */
   bareGap: 170,
   bareFlipMs: 230,
@@ -618,7 +618,7 @@ function leafFlight(sc: Phaser.Scene, o: { from: XY; to: XY; face: PixelCanvas; 
     const fling = o.out * Math.sin(Math.min(1, t * 1.6) * PI) * (1 - t);
     const x = o.from.x + (o.to.x - o.from.x) * k + sway + fling;
     const y = o.from.y + (o.to.y - o.from.y) * (t * t * 0.6 + k * 0.4) - Math.sin(t * PI) * o.arc;
-    const si = Math.min(sizes.length - 1, Math.floor(t * sizes.length));
+    const si = Math.min(sizes.length - 1, Math.floor(Math.pow(t, 0.7) * sizes.length));
     const page = pages[si];
     // the sway leans the sheet: a stepped shear (1 px every 6 rows) toward the swing
     const lean = Math.cos(t * PI * 2.5 + ph) * dir;
@@ -859,12 +859,12 @@ function sheetBurst(sc: Phaser.Scene, src: { x: number; y: number; vx: number; v
 
 /** Two frames of a horizontal paper-white shock arc blown out of a closing edge (dir −1 left, 1 right). */
 function shockArc(sc: Phaser.Scene, at: XY, dir: -1 | 1, size: number, stepMs: number): Promise<void> {
-  const ras = new Raster(sc, at.x - 40, at.y - 40, 81, 81, DEPTH.FX + 5);
+  const ras = new Raster(sc, at.x - 50, at.y - 50, 101, 101, DEPTH.FX + 5);
   return run(sc, stepMs * 2, (t) => {
     const step = t < 0.5 ? 0 : 1;
     const rx = R(size * (0.45 + 0.3 * step));
     const ry = R(size * (0.95 + 0.25 * step));
-    const thick = step === 0 ? 2 : 1;
+    const thick = step === 0 ? 3 : 2;
     const tone = step === 0 ? PAL.white : PAPER;
     ras.begin();
     for (let a = -64; a <= 64; a += 2) {
@@ -1048,7 +1048,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   ([player, other] as PlayerId[]).forEach((q, side) => discards[q].forEach((_, k) => order.push([q, T.gather + (side ? T.gatherLag : 0) + k * T.gatherGap])));
   order.sort((a, b) => a[1] - b[1]);
   const idx: Record<PlayerId, number> = { 0: 0, 1: 0 };
-  let gEnd: number = T.gather;
+  let gEnd: number = nPages ? T.gather : el;
   for (const [q, t0] of order) {
     const d = discards[q][idx[q]++];
     gEnd = Math.max(gEnd, t0 + T.flyMs);
@@ -1115,8 +1115,9 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
           sfx('e_pageFlap', { volume: 0.55, pitch: 0.82 + k * 0.04, pan: pan + (k % 2 ? 0.15 : -0.15) });
           if (k === 1) {
             sfx('e_pageDust', { volume: 0.8 });
-            const g = book.world(SX, TOP + PH / 2);
-            for (let i = 0; i < 9; i++) air.add({ x: g.x + R((rnd() - 0.5) * 8), y: g.y + R((rnd() - 0.5) * 30), vx: (rnd() - 0.5) * 30, vy: -(10 + rnd() * 22), ay: -6, drag: 1.5, life: 420 + rnd() * 260, colors: [PAPER, PAPER_M, PAPER_D, PAL.earth2], shape: 'px', fadeAt: 0.6 });
+            // dust lifts out of the bare gutter and drifts up over the top edge (earth tones: it reads over the paper)
+            const g = book.world(SX, TOP + 4);
+            for (let i = 0; i < 26; i++) air.add({ x: g.x + R((rnd() - 0.5) * 10), y: g.y + R(rnd() * PH * 0.6), vx: (rnd() - 0.5) * 50, vy: -(40 + rnd() * 50), ay: -4, drag: 0.7, life: 520 + rnd() * 320, colors: [PAPER_D, PAL.earth3, PAL.earth2, PAL.earth2], shape: rnd() < 0.3 ? 'streak' : 'px', fadeAt: 0.6 });
           }
         }
         fl.push(PI * Math.ceil((u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u)) * 8) / 8);
@@ -1173,8 +1174,8 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     }
     bg(sheetBurst(sc, sheets, bare ? 380 : 520));
     if (!bare) {
-      bg(shockArc(sc, fore, -1, 26, 45));
-      bg(shockArc(sc, spineW, 1, 16, 45));
+      bg(shockArc(sc, fore, -1, 34, 45));
+      bg(shockArc(sc, spineW, 1, 22, 45));
     }
     paperBurst(air, fore, 8, rnd, 6, 70);
     paperBurst(air, spineW, 6, rnd, 6, 70);
@@ -1258,11 +1259,15 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
           const { q, d } = leaves[j];
           const grave = ctx.views.field.pile(q, 'graveyard');
           const gTop = grave.topXY();
-          // each leaf leaves from its OWNER's fore-edge (P1 left, P2 right), outward, on one of three lanes
-          const ownSide = q === 0 ? -1 : 1;
+          // each leaf leaves from the fore-edge on its graveyard's side (never across the cream spread), flung
+          // outward, then glides down one of three lanes (different arc heights: arrivals never stack on one line)
+          const ownSide = gTop.x < book.floor.x ? -1 : 1;
           const edge = book.world(SX + ownSide * (PW + 2), TOP + 8 + (j % 3) * 12);
           const lane = Math.floor(j / 2) % 3;
-          const m = leafFlight(sc, { from: edge, to: { x: gTop.x + (lane - 1) * 3, y: gTop.y - 4 }, face: cardFaceCanvas(d.cardId), ms: T.leafMs + lane * 50, seed: d.uid + j, arc: [10, 24, 38][lane], out: ownSide * (10 + lane * 6) });
+          // a near pile gets a quick leaf (no hovering queue over it), a far one the full glide
+          const dist = Math.hypot(gTop.x - edge.x, gTop.y - edge.y);
+          const lms = R(Math.max(300, Math.min(T.leafMs, 200 + dist * 2.2)) + lane * 40);
+          const m = leafFlight(sc, { from: edge, to: { x: gTop.x + (lane - 1) * 3, y: gTop.y - 4 }, face: cardFaceCanvas(d.cardId), ms: lms, seed: d.uid + j, arc: [8, 22, 36][lane], out: ownSide * (14 + lane * 10) });
           landings.push(
             m.done.then(() => {
               grave.set(landingCount(grave.count, ctx.after.players[q].graveyard.length), d.cardId);

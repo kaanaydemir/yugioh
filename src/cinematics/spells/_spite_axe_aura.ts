@@ -46,6 +46,9 @@ export function holdAt(u: MonsterUnit): XY {
 export const LAST = new Map<Uid, AxePose>();
 export const AURAS = new Map<Uid, AxeAura>();
 export const FALLEN = new Map<Uid, Fallen>();
+/** Wielders whose aura a board sync ended while they still stand (the axe's card already gone from the state): the
+ * return scene still finds them (their eyes, their badge) — by the axe card's uid. */
+export const DETACHED = new Map<Uid, MonsterUnit>();
 
 // ================================================================ ember eyes
 
@@ -307,6 +310,7 @@ export class AxeAura {
     this.light = lightPool(scene, at.x, at.y + 8, { color: PAL.fire2, radius: 18, floorY: unit.home.y, air: 0.35, airRadius: 10, intensity: 0.35, anim: 'breathe', fadeIn: 200 });
     AURAS.get(cardUid)?.kill();
     AURAS.set(cardUid, this);
+    DETACHED.delete(cardUid);
     this.stop = onFrame(scene, (dt) => this.tick(dt));
     this.tick(0);
   }
@@ -385,6 +389,7 @@ export class AxeAura {
   destroy(): void {
     if (this.killed) return;
     const drop = !this.taken && this.unit.retired;
+    if (!this.taken && !this.unit.retired) DETACHED.set(this.cardUid, this.unit);
     const pose = LAST.get(this.cardUid);
     const floor = Math.round(this.unit.home.y);
     const side = this.unit.player === 0 ? -1 : 1;

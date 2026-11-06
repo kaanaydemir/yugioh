@@ -11,7 +11,7 @@ import type { CardId } from '../../src/data/cards';
 import type { PlayerId } from '../../src/engine/types';
 import art from '../../src/art/cardart-v3/page_turner';
 import { artStats, renderArt } from '../../src/art/cardart-v3/_kit';
-import { RIFFLE_TIMES } from '../../src/audio/v3/e/page_turner';
+import { RECIPES, RIFFLE_TIMES } from '../../src/audio/v3/e/page_turner';
 
 function runStage(key: string): { state: GameState; batches: GameEvent[][] } {
   const sc = PACK[key];
@@ -76,5 +76,11 @@ describe('page_turner card art and riffle', () => {
   it('the riffle schedule rises then falls (one flap per turning page)', () => {
     expect(RIFFLE_TIMES.length).toBe(14);
     for (let i = 1; i < RIFFLE_TIMES.length; i++) expect(RIFFLE_TIMES[i]).toBeGreaterThan(RIFFLE_TIMES[i - 1]);
+  });
+  it('scores every beat from the scene (single flap / crease recipes, no baked train)', () => {
+    for (const n of ['e_pageFlap', 'e_pageFlapStiff', 'e_pageGust', 'e_pageLand', 'e_pageBoard', 'e_pageStrain', 'e_pageCrease', 'e_pagePress', 'e_pageTuck', 'e_pageFizzle', 'e_pageDust'])
+      expect(RECIPES).toHaveProperty(n);
+    expect(RECIPES).not.toHaveProperty('e_pageRiffle');
+    expect(RECIPES.e_pageFlap.cap).toBeGreaterThanOrEqual(8);
   });
 });

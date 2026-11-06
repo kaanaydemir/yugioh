@@ -151,9 +151,8 @@ function paintCards(p: P, k: number, f: number): void {
     paintCard(p, 72, 11 - bob, 9, 13, -0.3, false);
     paintCard(p, 27, 15 + bob, 7, 10, -0.45, false);
   } else {
-    paintCard(p, 31.5, 10.5, 6, 8, 0.38, true);
-    paintCard(p, 37.5, 4.5, 5, 7, -0.3, false);
-    paintCard(p, 13, 6, 4, 5, -0.45, false);
+    // small: the turning page and ONE flying card carry the silhouette
+    paintCard(p, 33.5, 7.5 + (bob ? 1 : 0), 7, 9, -0.3, false);
   }
 }
 
@@ -206,7 +205,10 @@ function paintLight(l: P, k: number, f: number): void {
 // ---------------------------------------------------------------- the painters
 
 function paint(l: ArtLayers, f: number, k: 1 | 2): void {
-  paintBackdrop(l.backdrop, 'SPELL', { focus: [FOCUS[0], FOCUS[1] + 2], radius: 21 });
+  // the spell's light sits BEHIND the whole spread as a wide, low ring (only its lit rim arches over the book: it reads
+  // as the tome's glow, never as a shape of its own); the small picture drops it entirely (the page + one card read)
+  if (k === 2) paintBackdrop(l.backdrop, 'SPELL', { focus: [SX, TOP + 8], radius: 34, as: 'eclipse' });
+  else paintBackdrop(l.backdrop, 'SPELL', { shape: false });
   const s = l.subject;
   paintBook(s, k);
   paintTurningPage(s, k, f);

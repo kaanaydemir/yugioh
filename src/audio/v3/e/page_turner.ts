@@ -82,8 +82,9 @@ function quill(v: Voice, t: number, d: number, g: number, f0: number, f1: number
 }
 
 /**
- * The riffle's page schedule (ms from its start; shared with the scene so every turning page has its flap): 14 pages,
- * 46 ms apart at the ends, 20 ms in the blur of the middle.
+ * The riffle's page schedule (SCENE ms from its start): 14 pages, 46 ms apart at the ends, 20 ms in the blur of the
+ * middle. The scene turns its pages on it and fires one e_pageFlap / e_pageFlapStiff as each page leaves the block,
+ * so the flaps follow the scene clock (the v3 tempo and 2× / 3×) instead of a baked schedule.
  */
 export const RIFFLE_TIMES: readonly number[] = (() => {
   const out: number[] = [];
@@ -200,15 +201,6 @@ export const RECIPES = {
     play(v) {
       // every third page is a heavier leaf: a double edge tick, a stiffer, shorter glide
       pageFlap(v, 0, 0.52, true);
-    },
-  },
-  e_pageRiffleRef: {
-    cap: 1,
-    play(v) {
-      RIFFLE_TIMES.forEach((ms, i) => pageFlap(v, ms / 1000, i % 3 === 2 ? 0.52 : 0.46, i % 3 === 2));
-      const bp = v.filt('bandpass', [[0, 1300], [0.35, 1700, 'e'], [1.1, 1200, 'e']], 3.2);
-      const fl = v.flutter(26, 0.7, { d: 0.7, base: 0.3, to: bp });
-      v.noise('pink', { g: [[0, 0], [0.12, 0.055], [0.5, 0.05], [0.7, 0.0001, 'e']], to: fl });
     },
   },
   e_pageGust: {

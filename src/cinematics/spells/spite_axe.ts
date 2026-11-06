@@ -73,6 +73,8 @@ import { shake, wait } from '../../vfx/core';
 import { E, Raster, freeze, lerp, onFrame, qbez, run, spriteBox } from '../../vfx/setpieces';
 import { frameRGBA } from '../../art/atlas';
 import type { TileCard } from '../../view/TileCard';
+import { burnAway } from '../../view/CardSprite';
+import { isoCanvas } from '../../art/cards';
 import { FlungLinks, PixBag, chainLinks } from './_spite_axe_chain';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import { fxCount, fxRng, motifImage, numberUnderBar, rimClimb, rimFlash, setMotif, silhouetteOf } from '../_v3/spellfx';
@@ -83,7 +85,7 @@ import { fx, registerCardHook, registerEvent, registerObserver, type CinematicCo
 import { registerLaneE, type LaneECtx } from '../b2e/dispatch';
 import { bg, evAt, idxOf, lightFlash, lightPool, relax, setTileOf, spellOpening, type ActCtx, type AnyCtx } from './_kit';
 import { type AxeOpts, axeAngle, axeKey, axeOffset } from './_spite_axe_motif';
-import { AURAS, AxeAura, FALLEN, LAST, type AxePose, drawEyes, eyesOf, holdAt, holdPose } from './_spite_axe_aura';
+import { AURAS, AxeAura, DETACHED, FALLEN, LAST, type AxePose, drawEyes, eyesOf, holdAt, holdPose } from './_spite_axe_aura';
 
 const ID: CardId = 'spite_axe';
 const R = Math.round;
@@ -1034,6 +1036,8 @@ registerObserver((_ev, ctx) => {
  * The axe's bonus taken back from a wielder still standing (its card left the field): the aura ends here (never
  * Ejder Kılıcı's sword break, which keys on the 'equip' aura), then the plain stat roll plays.
  */
+/** −800s taken over by the return scene (played before the toDeck): rolled at the launch. */
+const DEFERRED = new Map<Uid, { atk: number; def: number }>();
 /** Wielders whose axe is leaving right now: their −800 waits for the axe's launch. */
 const LAUNCH = new Map<Uid, Promise<void>>();
 
@@ -1043,6 +1047,13 @@ registerEvent(
     const e = ctx.ev as StatEv;
     if (LOOK_V3 && e.atk < e.prevAtk && LAUNCH.has(e.uid)) await LAUNCH.get(e.uid);
     if (LOOK_V3 && e.atk < e.prevAtk) {
+      // played BEFORE its axe's return (a mass wipe's pass plays the stat first): the return scene rolls it at the
+      // launch, the aura stays on until then
+      const aura = [...AURAS.values()].find((a) => a.unit.uid === e.uid);
+      if (aura && ctx.events.some((x) => x.type === 'toDeck' && x.uid === aura.cardUid)) {
+        DEFERRED.set(e.uid, { atk: e.atk, def: e.def });
+        return;
+      }
       const u = ctx.unit(e.uid);
       const a = u?.aura('equip');
       if (u && a instanceof AxeAura) {
@@ -1080,7 +1091,12 @@ async function crumbleTile(sc: Phaser.Scene, tile: TileCard, uid: Uid, cardId: C
   for (let i = 0; i < fxCount(16); i++)
     sp.add({ x: home.x + (rnd() - 0.5) * 30, y: home.y + (rnd() - 0.5) * 12, vx: (rnd() - 0.5) * 16, vy: -18 - rnd() * 30, life: 380 + rnd() * 320, colors: EMBER_DOWN, shape: 'px', fadeAt: 1 });
   sp.release();
-  await tile.dissolve(240);
+  // it burns away in EMBER (the kit's burn front with the fire ember, not the card's teal accent dissolve)
+  const img = (tile as unknown as { img?: Phaser.GameObjects.Image }).img;
+  if (img && img.active && tile.cardId) {
+    await burnAway(sc, img, isoCanvas(tile.cardId, tile.orientation, tile.player), 300, PAL.fire3, { keep: 0.8, seed: uid * 7 + 3 });
+    if (tile.active) tile.setVisible(false);
+  } else await tile.dissolve(240);
   crack.destroy();
   if (tile.active) tile.destroy();
 }
@@ -1111,7 +1127,6 @@ registerLaneE(
 
 async function returnScene(ctx: DeckCtx): Promise<void> {
   const ev = ctx.ev;
-  console.log('[axe dbg] return', ctx.scene.time.now, AURAS.has(ev.uid), FALLEN.has(ev.uid));
   const sc = ctx.scene;
   const field = ctx.views.field;
   const owner: PlayerId = ev.owner;
@@ -1134,26 +1149,34 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
     pose = aura.take();
     if (wielder.aura('equip') instanceof AxeAura) wielder.setAura('equip', null);
   } else if (fallen) pose = fallen.take();
-  else {
+  else if (DETACHED.get(ev.uid) && !DETACHED.get(ev.uid)!.retired && DETACHED.get(ev.uid)!.sprite.active && LAST.get(ev.uid)) {
+    // a board sync already ended the aura: the axe is still on its back (its last pose), the eyes still lit
+    wielder = DETACHED.get(ev.uid)!;
+    eyes = eyesOf(wielder.sprite);
+    pose = LAST.get(ev.uid)!;
+  } else {
     const lp = LAST.get(ev.uid);
     const lz = LAST_ZONE.get(ev.uid);
     const z = leftAt ?? lz?.at ?? field.pile(owner, 'deck').topXY();
     pose = lp ?? { x: R(z.x), y: R(z.y - 24), ...holdPose(owner), size: 'sm' };
   }
   LAST_ZONE.delete(ev.uid);
+  DETACHED.delete(ev.uid);
   // the −800 rolls when the axe LEAVES its bearer (the launch), never before
   const ci = wielder ? ctx.findType('statChange', (e) => e.uid === wielder!.uid && e.atk < e.prevAtk) : -1;
   if (ci >= 0) ctx.consumeAt(ci);
   // the −800 waits for the launch however it is played (a mass wipe's pass may play it beside this scene)
   let launched: () => void = () => undefined;
   let holding = false;
+  let finalStats: { atk: number; def: number } | null = null;
   if (wielder) {
     const w = wielder;
     LAUNCH.set(w.uid, new Promise<void>((res) => (launched = res)));
     bg(wait(sc, 4000).then(() => launched()));
     // the badge keeps the bonus until the launch, even if a board sync between batches already took it down
-    const hold = currentAtk(ctx.stateNext, w.uid) + 800;
-    console.log('[axe dbg] hold', hold, 'shown', JSON.stringify(w.shownStats), 'ci', ci);
+    const se = ctx.events.find((x): x is StatEv => x.type === 'statChange' && x.uid === w.uid && x.atk < x.prevAtk);
+    const hold = se ? se.prevAtk : Math.max(w.shownStats.atk, currentAtk(ctx.stateNext, w.uid) + 800);
+    finalStats = se ? { atk: se.atk, def: se.def } : { atk: hold - 800, def: w.shownStats.def };
     holding = true;
     onFrame(sc, () => {
       if (!holding || w.retired || !w.sprite.active) return false;
@@ -1192,8 +1215,12 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
   holding = false;
   launched();
   if (wielder) LAUNCH.delete(wielder.uid);
-  if (ci >= 0) bg(ctx.play(ci));
-  else if (wielder && !wielder.retired) void wielder.setStats(currentAtk(ctx.stateNext, wielder.uid), wielder.shownStats.def, true);
+  const late = wielder ? DEFERRED.get(wielder.uid) : undefined;
+  if (wielder) DEFERRED.delete(wielder.uid);
+  // the −800 rolls here (the consumed statChange is presented by this roll)
+  const fin = late ?? finalStats;
+  if (wielder && !wielder.retired && fin) void wielder.setStats(fin.atk, fin.def, true);
+  else if (ci >= 0) bg(ctx.play(ci));
   axe.set({ size: 'lg', heat: 4 });
   axe.img.setDepth(DEPTH.FX + 2);
   await frames(sc, 1);
