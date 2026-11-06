@@ -123,7 +123,5 @@ export const HALL_PILLARS: readonly { x: number; y: number; side: 0 | 1 }[] = [
 ];
 
 /** Floor pipe plates on the hall floor (left / right of the stage, under the low fog). */
-export const HALL_PIPES: readonly { x: number; y: number; flip: boolean }[] = [
-  { x: 4, y: 240, flip: false },
-  { x: 516, y: 248, flip: true },
-];
+// arena v3 "floor and braziers" (2026-11-06): the pipes are part of the baked hall floor now (art/arena-nt/hallfloor.ts)
+export const HALL_PIPES: readonly { x: number; y: number; flip: boolean }[] = [];

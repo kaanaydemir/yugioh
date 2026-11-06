@@ -228,7 +228,9 @@ export function registerFloorTextures(scene: Phaser.Scene): FloorArt {
 
 export function registerApronTextures(scene: Phaser.Scene): ApronArt {
   const art = buildApronArt();
-  ensureNtTexture(scene, 'apron', NT_APRON_KEY, () => art.canvas);
+  // arena v3 "floor and braziers": the apron is painted in final colours (./art/arena-nt/hallfloor.ts) — its own layer
+  // name keeps it out of the navy lift (calm-remap LIFT_LAYERS), like the brick wall
+  ensureNtTexture(scene, 'apron-v3', NT_APRON_KEY, () => art.canvas);
   ensureNtTexture(scene, 'apron-fx', NT_APRON_FX_KEY, () => art.fx.canvas);
   const tex = scene.textures.get(NT_APRON_FX_KEY);
   for (const [name, r] of art.fx.frames) if (!tex.has(name)) tex.add(name, 0, r.x, r.y, r.w, r.h);

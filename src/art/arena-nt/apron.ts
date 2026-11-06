@@ -6,6 +6,12 @@ import { type Color, PixelCanvas } from '../pixel';
 import { PAL } from '../palette';
 import { NT_PAL } from './palette';
 import { type Atlas, Surface, packAtlas } from './platform-pack';
+import { hallFloorPixel, warmPixel } from './hallfloor';
+
+// arena v3 pass "floor and braziers" (2026-11-06): the hall floor pattern (flags, plates, grates, pipes, brazier pools)
+// comes from ./hallfloor.ts in final colours; the old rails / blocks / bollards are no longer painted into the floor
+// (their strip + lamp descriptors are still built for the floor layer, which keeps them hidden).
+const V3_HALL_FLOOR = true;
 
 export const NT_APRON_KEY = 'nt:apron';
 export const NT_APRON_FX_KEY = 'nt:apron:fx';
@@ -80,6 +86,8 @@ export function buildApronArt(): ApronArt {
   const lamps: ApronLamp[] = [];
   paintRails(S, strips, masks, lamps);
   paintProps(S, lamps);
+  // the brazier pools also light the stage's cast shadow (painted after the floor)
+  if (V3_HALL_FLOOR) S.canvas.map((c, x, y) => warmPixel(c, x + APRON_BOX.x, y + APRON_BOX.y));
   const fx = packAtlas(masks, 256);
   cached = { canvas: S.canvas, fx, strips, lamps, ms: Math.round((performance.now() - t0) * 10) / 10 };
   return cached;
@@ -143,6 +151,7 @@ function panel(x: number, y: number, q: number): Color {
   } else if (dv < 2 && plateEdge && py < 0) {
     c = N1;
   }
+  if (V3_HALL_FLOOR) c = hallFloorPixel(x, y);
   if (q <= SHADOW) {
     // stepped falloff (no blur): solid shade near the stage, then a checker, then a sparse 1-in-4 dither. The shade is
     // stone0 — off the night ladder, so the apron's lift remap (view/board-nt/calm-remap.ts) keeps it dark (ink / night
@@ -194,7 +203,7 @@ function paintRails(S: Surface, strips: ApronStrip[], masks: [string, PixelCanva
         const y = yc + dy;
         if (y < APRON_BOX.y || y >= APRON_BOX.y + APRON_BOX.h || !clearOfSlab(x, y)) continue;
         const c: Color = clamp ? N0 : dy === 0 ? N1 : INK;
-        S.put(x, y, c);
+        if (!V3_HALL_FLOOR) S.put(x, y, c);
         if (inPiece && dy === 0) {
           const arr = piece.get(n) ?? [];
           arr.push({ x, y });
@@ -246,6 +255,12 @@ function bollard(S: Surface, x: number, y: number, side: 0 | 1, lamps: ApronLamp
 }
 
 function paintProps(S: Surface, lamps: ApronLamp[]): void {
+  if (V3_HALL_FLOOR) {
+    // the floor's own props live in ./hallfloor.ts; the bollard lamp descriptors stay (hidden by the floor layer)
+    const none = new Surface(0, 0, 1, 1);
+    for (const [x, y, k] of [[125, 268, 0], [181, 296, 1], [442, 304, 2], [506, 271, 3]] as const) bollard(none, x, y, k < 2 ? 0 : 1, lamps, k);
+    return;
+  }
   block(S, 66, 304, 22, 11, 18);
   block(S, 604, 292, 22, 11, 18);
   block(S, 100, 346, 14, 7, 10);

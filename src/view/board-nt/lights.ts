@@ -13,6 +13,7 @@ import {
   torchFrame,
 } from '../../art/arena-nt/lights';
 import { BRICK_TORCHES, NT_WALL_TORCH_KEY, WALL_TORCH, paintWallTorch } from '../../art/arena-nt/brickwall';
+import { BRAZIER, BRAZIERS, paintBrazier } from '../../art/arena-nt/hallfloor';
 import { PAL } from '../../art/palette';
 import { attributeLightColor, lightFlash } from '../light';
 import type { Attribute } from '../../data/cards';
@@ -105,9 +106,18 @@ const TORCH_SPOTS: readonly { kind: 'sconce' | 'post'; x: number; y: number; dep
     period: [420, 460, 440, 410][i % 4],
     phase: [0, 140, 290, 80][i % 4],
   })),
-  { kind: 'post', x: 82, y: 212, depth: NT_DEPTH.platform + 1.5, period: 390, phase: 210 },
-  { kind: 'post', x: 566, y: 222, depth: NT_DEPTH.platform + 1.5, period: 450, phase: 340 },
+  // arena v3 "floor and braziers": stone-post braziers at hedef-gorunum-3's spots (x, y = flame centre); their warm
+  // stepped floor pools are baked into the hall floor (art/arena-nt/hallfloor.ts)
+  ...BRAZIERS.map((b) => ({
+    kind: 'post' as const,
+    x: b.x,
+    y: b.y - BRAZIER.h + 1 + BRAZIER.flameY,
+    depth: NT_DEPTH.platform + 1.5,
+    period: b.period,
+    phase: b.phase,
+  })),
 ];
+const NT_BRAZIER_KEY = (f: number): string => `nt:hall:brazier:${f}`;
 
 export function createLightsLayer(ctx: NtCtx): NtLayer {
   const scene = ctx.scene;
@@ -142,16 +152,19 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
         .setOrigin(0)
         .setDepth(spot.depth - 0.05)
         // a wall sconce's light is the stepped brick pool baked into the back wall (brickwall.ts): no dithered halo
-        .setAlpha(spot.kind === 'sconce' ? 0 : 1),
+        // posts: the pool is baked into the floor; no dithered halo (it read as a dotted fringe)
+        .setAlpha(0),
     );
     const wall = spot.kind === 'sconce';
     // wall sconces: the dedicated wall torch of brickwall.ts (own textures); posts: the brazier frames of the lights atlas
-    const frameOf = (f: number): string => (wall ? NT_WALL_TORCH_KEY(f) : torchFrame.post(f));
+    const frameOf = (f: number): string => (wall ? NT_WALL_TORCH_KEY(f) : NT_BRAZIER_KEY(f));
     if (wall) for (let f = 0; f < WALL_TORCH.frames; f++) ensureNtTexture(scene, 'brickwall', NT_WALL_TORCH_KEY(f), () => paintWallTorch(f));
+    else for (let f = 0; f < BRAZIER.frames; f++) ensureNtTexture(scene, 'brazier', NT_BRAZIER_KEY(f), () => paintBrazier(f));
+    void TORCH_MOUNT;
     const img = ctx.add(
       (wall
         ? scene.add.image(spot.x - WALL_TORCH.cx, spot.y - WALL_TORCH.flameY, frameOf(0))
-        : scene.add.image(spot.x - TORCH_MOUNT.cx, spot.y - TORCH_MOUNT.flameY, NT_LIGHTS_KEY, frameOf(0))
+        : scene.add.image(spot.x - BRAZIER.cx, spot.y - BRAZIER.flameY, frameOf(0))
       )
         .setOrigin(0)
         .setDepth(spot.depth),
@@ -208,13 +221,13 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
         }
         if (lights) {
           for (const tr of torches) {
-            const step = Math.floor((t + tr.phase) / (tr.period / 3)) % 3;
+            const n = tr.wall ? 3 : BRAZIER.frames;
+            const step = Math.floor((t + tr.phase) / (tr.period / n)) % n;
             if (step !== tr.lastFrame) {
               tr.lastFrame = step;
-              if (tr.wall) tr.img.setTexture(tr.frameOf(step));
-              else tr.img.setFrame(tr.frameOf(step));
+              tr.img.setTexture(tr.frameOf(step));
               // the glow flickers by swapping its dither level (no alpha: palette-crisp)
-              tr.glow.setFrame(torchFrame.glow(step));
+              tr.glow.setFrame(torchFrame.glow(step % 3));
             }
           }
         }

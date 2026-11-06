@@ -97,6 +97,8 @@ export function createWallLayer(ctx: NtCtx): NtLayer {
   const blitters = new Map<number, Phaser.GameObjects.Blitter>();
   for (const d of wallDecor()) {
     if (BRICK_REPLACES.test(d.frame)) continue;
+    // arena v3 "floor and braziers": the hall floor's plates / grates / pipes are baked into the floor (art/arena-nt/hallfloor.ts)
+    if (d.z === 'floorProp') continue;
     const z = WALL_Z[d.z];
     let b = blitters.get(z);
     if (!b) blitters.set(z, (b = blit(z)));
