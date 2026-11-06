@@ -510,6 +510,7 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
       const recoilClaim = !dies && melee && au.claim({ pin: false });
       const cdir = norm(sub(au.core(), p)); // the counter travels from the clash into the attacker
       const hitAt = contactPoint(au, cdir);
+      console.log('[cfprobe]', au.cardId, melee, blocked, Math.round(Math.hypot(hitAt.x - p.x, hitAt.y - p.y)), Math.round(Math.hypot(au.core().x - p.x, au.core().y - p.y)));
       // ranged: the shock runs back along the attack's own line and lands now (a thrown rock: its own
       // pieces rebound onto the thrower instead — a physical blow, in the stone's tones)
       if (!melee && !thrown) void backlash(sc, p, hitAt, tRamp);
