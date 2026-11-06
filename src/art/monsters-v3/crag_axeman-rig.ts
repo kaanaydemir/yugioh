@@ -332,6 +332,20 @@ function discT(f: Frame, q: PixelCanvas, c: Pt, r: number, col: number): void {
 /** Local offsets (facing right) → frame points around an origin, mirrored by the layout. */
 const loc = (o: Pt, mx: number, pts: readonly (readonly [number, number])[], sx = 1): Pt[] => pts.map(([x, y]) => [o[0] + x * mx * sx, o[1] + y] as Pt);
 
+/**
+ * The NARA's thrown-back head (mouth 2 = the shout): the head's local points (facing right, px from the head centre)
+ * turned up about the neck by 14°, so the crown goes back, the brow and the nose come up and the chin and the open
+ * mouth jut forward. `inv` maps a turned point back (the hair mask reads the local point of a frame pixel).
+ */
+const THROW = 14 * DEG;
+function rotH(o: Pose, lx: number, ly: number, inv = false): [number, number] {
+  if (o.mouth < 2) return [lx, ly];
+  const a = inv ? -THROW : THROW;
+  const x = lx + 1;
+  const y = ly - 4;
+  return [-1 + x * cos(a) + y * sin(a), 4 - x * sin(a) + y * cos(a)];
+}
+
 function limb(f: Frame, a: Pt, b: Pt, w0: number, w1: number, t: Tones, part: Part, out?: number, litW = 2, shW = 2): void {
   const q = layer();
   const path: Pt[] = [a, b];
@@ -649,23 +663,26 @@ function paintBeard(f: Frame): void {
   const [hx, hy] = sk.Hd;
   const B = BEARDS[L.head];
   const open = o.mouth > 0 && L.head !== 'back34';
-  // the moustache-and-chin mass over the jaw's front (stone2 lit stone3, the chin under it a step darker)
+  const shout = o.mouth >= 2 && open;
+  // the moustache-and-chin mass over the jaw's front (stone2 lit stone3, the chin under it a step darker); shouting, the
+  // jaw drops: the whole mass hangs below the open mouth, on the jaw (and the whole head is thrown back: rotH)
   const q = layer();
-  polyT(f, q, loc([hx, hy], mx, B.mass), BEARD.M);
+  polyT(f, q, loc([hx, hy], mx, B.mass.map(([x, y]) => rotH(o, x, shout ? y + 3 : y))), BEARD.M);
   bands(q, BEARD, f.light, 1, 1, { top: 1, bottom: 1 });
   // a soft stone1 contour (an ink one would close the face under the eye into one dark band)
   f.comp.add(q, Part.beard, { out: BEARD.S });
   // the braids (the jaw drops a px when he shouts: they hang a px lower), swinging by `bead` (the middle, longest one
   // the latest)
-  const drop = open ? 1 : 0;
+  const drop = shout ? 3 : open ? 1 : 0;
   B.braids.forEach(([dx, y0, len], i) => {
     const bq = layer();
     // shouting, the beard parts round the open mouth: the braids swing out a px either side
     const part = open ? (i === 0 ? -1 : i === B.braids.length - 1 ? 1 : 0) : 0;
-    const x0 = hx + (dx + part) * mx;
+    const [bx0, by0] = rotH(o, dx + part, y0 + drop);
+    const x0 = hx + bx0 * mx;
     const lag = i === B.braids.length - 1 ? 1.2 : 0.85;
     const sw = o.bead * (len / 7) * lag;
-    const top = hy + y0 + drop;
+    const top = hy + by0;
     const path = spline([[x0, top], [x0 + sw * 0.35, top + len * 0.5], [x0 + sw, top + len]], 4);
     polyT(f, bq, ribbon(path, (k) => lerp(2.1, 1.7, k)), BEARD.M);
     planes(bq, (x, y, src) => {
@@ -688,7 +705,31 @@ function paintBeard(f: Frame): void {
     const [x, y] = xf(f.T, [hx + lx * mx, hy + ly]);
     f.p.set(rnd(x), rnd(y), c);
   };
-  if (open) {
+  if (shout) {
+    // the SHOUT: a wide-open mouth jutting up and forward on the thrown-back head — a skin4 upper lip, a stone4 row of
+    // upper teeth, a 3×3 ink throat, the lower lip (skin2) on the dropped jaw, the beard parted round it (one block
+    // placed from the turned mouth corner, never rotated pixel by pixel: no holes)
+    const m0 = B.mouth[0][0] - 1;
+    const [ox, oy] = rotH(o, m0, 2);
+    const O = xf(f.T, [hx + ox * mx, hy + oy]);
+    const X0 = rnd(O[0]);
+    const Y0 = rnd(O[1]);
+    const w = 3;
+    // framed in skin (lips and mouth corners), not in the grey beard: it reads as a mouth at 1×, never a beard hole
+    for (let i = 0; i < w; i++) {
+      const X = X0 + i * mx;
+      f.p.set(X, Y0, PAL.skin4);
+      f.p.set(X, Y0 + 1, i === 0 ? PAL.ink : PAL.stone4);
+      f.p.set(X, Y0 + 2, PAL.ink);
+      f.p.set(X, Y0 + 3, i === 1 ? PAL.earth0 : PAL.ink);
+      f.p.set(X, Y0 + 4, PAL.skin2);
+    }
+    for (const k of [1, 2, 3]) {
+      f.p.set(X0 - mx, Y0 + k, PAL.skin2);
+      f.p.set(X0 + w * mx, Y0 + k, PAL.ink);
+    }
+    f.p.set(X0 - mx, Y0, PAL.skin3);
+  } else if (open) {
     // the open mouth (nara): a 2×3 ink hole under a skin3 upper lip, the beard parted round it
     const m = B.mouth.map(([lx]) => lx);
     const xs = [m[0] - 1, ...m];
@@ -718,7 +759,7 @@ function paintHead(f: Frame): void {
     : mode === 'side'
       ? [[-4 + tl, -8], [2 + tl, -8], [5, -6], [6, -3], [8, -1], [7, 0.5], [6, 2], [5, 5], [-3, 5], [-6, 1], [-6, -5]]
       : [[-4 + tl, -8], [2 + tl, -8], [5, -6], [6, -3], [7.5, -1], [6.5, 0.5], [6, 2], [5, 5], [-3, 5], [-6, 1], [-6, -5]];
-  polyT(f, q, loc([hx, hy], front ? 1 : mx, shape), SKIN.M);
+  polyT(f, q, loc([hx, hy], front ? 1 : mx, shape.map(([x, y]) => rotH(o, x, y))), SKIN.M);
   bands(q, SKIN, f.light, 2, 2, { top: 1, bottom: 2 });
   // hair: shaved crown with a dark band at the back, a top-knot (back views: all hair)
   const hairT: Tones = { L: PAL.earth1, M: PAL.earth0, S: PAL.earth0, D: PAL.ink };
@@ -733,8 +774,7 @@ function paintHead(f: Frame): void {
   const src = q.clone();
   planes(q, (x, y) => {
     const [bx, by] = xfInv(f.T, x, y);
-    const lx = (bx - hx) * (front ? 1 : mx);
-    const ly = by - hy;
+    const [lx, ly] = rotH(o, (bx - hx) * (front ? 1 : mx), by - hy, true);
     if (isHair(lx, ly)) return src.get(x, y) === SKIN.L ? hairT.L : hairT.M;
     return null;
   });
@@ -742,13 +782,20 @@ function paintHead(f: Frame): void {
   // top-knot: a tuft tied with a stone ring at the back of the crown
   const kq = layer();
   const kx = hx + (front || mode === 'back' ? 0 : mode === 'back34' ? -1 * mx : -2 * mx) + tl;
-  polyT(f, kq, [[kx - 1.5, hy - 7], [kx + 1.5, hy - 7], [kx + 1, hy - 10], [kx - 1 - 2 * mx, hy - 12], [kx - 2, hy - 10]], PAL.earth0);
+  const hm = front ? 1 : mx;
+  const rA = (pts: Pt[]): Pt[] =>
+    pts.map(([x, y]) => {
+      const [lx, ly] = rotH(o, (x - hx) * hm, y - hy);
+      return [hx + lx * hm, hy + ly] as Pt;
+    });
+  polyT(f, kq, rA([[kx - 1.5, hy - 7], [kx + 1.5, hy - 7], [kx + 1, hy - 10], [kx - 1 - 2 * mx, hy - 12], [kx - 2, hy - 10]]), PAL.earth0);
   f.comp.add(kq, Part.head, { out: PAL.ink });
   const rq = layer();
-  polyT(f, rq, [[kx - 1, hy - 10], [kx + 1, hy - 10], [kx + 1, hy - 9], [kx - 1, hy - 9]], PAL.stone3);
+  polyT(f, rq, rA([[kx - 1, hy - 10], [kx + 1, hy - 10], [kx + 1, hy - 9], [kx - 1, hy - 9]]), PAL.stone3);
   f.comp.add(rq, Part.head, { out: PAL.ink });
   // face features (frame pixels; eyes and paint are collected for the light pass)
-  const at = (lx: number, ly: number): Pt => {
+  const at = (lx0: number, ly0: number): Pt => {
+    const [lx, ly] = rotH(o, lx0, ly0);
     const p = xf(f.T, [hx + lx * (front ? 1 : mx), hy + ly]);
     return [rnd(p[0]), rnd(p[1])];
   };
@@ -773,7 +820,11 @@ function paintHead(f: Frame): void {
       }
     }
     const stripes = front ? [-3, 3] : mode === 'side' ? [1, 3] : [0, 2];
-    for (const sx of stripes) for (let ly = -7; ly <= -4; ly++) f.paint.push(at(sx, ly));
+    // (placed from the stripe's top, kept upright 1×4 on the thrown-back head: never broken into a stair)
+    for (const sx of stripes) {
+      const [x0, y0] = at(sx, -7);
+      for (let k = 0; k < 4; k++) f.paint.push([x0, y0 + k]);
+    }
   }
   if (mode === 'back' || mode === 'back34') {
     // the nape: the skull's lower rows a step darker under the hair line, a 1-px crease where it meets the neck
@@ -1088,9 +1139,11 @@ export function drawAxeman(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right')
     // the fallen halves lie behind him (drawn first: his boots stand in front of them); the whole boulder hides him, and
     // while its halves fall open they are still the shell AROUND him (drawn over him: he is revealed as they fall away)
     // the falling halves (4) too: they fall away to the sides, behind him — he stands revealed between them
-    if (o.bould >= 4) boulderFx(f, true);
+    // (r3: while the halves FALL (4) they stay IN FRONT of him — he rises from a crouch behind them, their bases hiding
+    // his lower body for two frames, so the rock visibly held him; once they lie on the floor (5) they are behind his boots)
+    if (o.bould >= 5) boulderFx(f, true);
     if (!o.hide) drawBody(f, true);
-    if (o.bould > 0 && o.bould < 4) boulderFx(f, true);
+    if (o.bould > 0 && o.bould < 5) boulderFx(f, true);
     p.outline(PAL.ink);
     if (!o.hide) {
       lightPass(f);

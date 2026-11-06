@@ -3,15 +3,18 @@
 // seam runs up its face and it splits clean; he steps out of it and shouts the nara.
 //
 //   0–220      the card slam (the summon kit)
-//   +0–400     summon f0–3: a ~28 px BOULDER (the art's 4 drawn roll frames, never setAngle) rolls in sideways from off
-//              the tile's back edge along the iso axis; it bounces twice (the second a 1 px shake), stops and rocks 1 px
-//              twice (caxRoll, caxBounce ×2)
+//   +0–400     summon f0–3: a ~46 px BOULDER (big enough to have held him; the art's 4 drawn roll frames, never
+//              setAngle) rolls in sideways from the tile's back edge ON the floor along the iso axis (lit, its shadow
+//              under it from the first frame); it bounces twice (the second a 1 px shake), stops on its resting roll
+//              frame and rocks 1 px twice (caxRoll, caxBounce ×2)
 //   +400–600   f4: a still beat — the rock is silent
 //   +600       f5: the blade punches out through the boulder's front (caxPunch: stone chips, one white spark)
-//   +680–850   f6–f7: one vertical light seam runs up the boulder's face; it splits clean and the halves fall apart
-//              (caxSplit, caxHalves); a short Yarık opens on the floor where it split
-//   +850       f8 'land': he steps out (caxStepOut: 2 px shake, dust at the boots)
-//   +960       f9: the NARA, axe raised one-handed (caxNara), the ATK/DEF badge pops
+//   +680–850   f6–f8: one vertical light seam runs up the boulder's face; it splits clean and the halves fall apart IN
+//              FRONT of him while he rises from a crouch behind them (caxSplit, caxHalves); a short Yarık on the floor
+//   +850       f10 'land': he steps out (caxStepOut: 2 px shake, dust at the boots)
+//   +960       the NARA (the roar's frames): head thrown back, mouth wide, the axe thrust up overhead (caxNara); the held
+//              shout a living three-frame cycle (jaw, axe tremble, chest, beads, hem, the floor seam breathing), a
+//              stepped dust ring + hopping pebbles on the voice's beats; the ATK/DEF badge pops mid-shout
 //   → idle     f10–11: the axe back onto the shoulder; the floor seam fades in three steps
 // No hologram build (the boulder is matter), no magic circle, no floor ring: C6's log drops vertically and opens like
 // doors; the sentinel's rocks orbit; this one rolls in and is CUT. No camera move.
@@ -55,8 +58,6 @@ function rigCanvas(key: string, pose: Pose, light: 'left' | 'right'): PixelCanva
   }
   return pc;
 }
-/** The rolling boulder two palette steps down (night-tinted as it comes in from the dark, then one step lit). */
-const dimBoulder = (roll: number, dim: number, light: 'left' | 'right') => rigCanvas(`dim${dim}:${roll}`, { ...framePose('summon', roll), dim }, light);
 /** The two fallen halves lying on the floor, sinking in palette steps (0…3). */
 const lyingHalves = (sink: number, light: 'left' | 'right') => rigCanvas(`halves:${sink}`, { ...framePose('summon', 9), hide: true, bould: 5, bk: sink, fseam: 0, chips: 0, dust: 0 }, light);
 
@@ -109,42 +110,31 @@ async function boulderEntrance(S: Stage): Promise<void> {
   // a tribute's riser (if any) gives way: the boulder is the arrival
   fade(['summonCharge'], 140);
   const landF = u.markFrame('summon', 'land', 10);
-  // from 1.5 tiles out beyond the tile's back edge (P1 the back-left, P2 mirrored), along the iso axis: a long roll in
-  const from: XY = { x: home.x - S.dir * 58, y: home.y - 29 };
-  const ROLL_MS = 340;
+  // from the tile's back edge (P1 the back-left, P2 mirrored), ON the floor along the iso axis: a heavy roll in (r3: it
+  // is matter from its first frame — lit, its ground shadow under it — never a dark shape drifting in the air)
+  const from: XY = { x: home.x - S.dir * 36, y: home.y - 18 };
+  const ROLL_MS = 360;
   const STILL_MS = 130;
-  u.pose('summon', 0);
+  const total = Math.hypot(home.x - from.x, home.y - from.y);
+  // the 4 drawn roll frames by the distance rolled, phased so the roll STOPS on frame 0 — the resting silhouette the
+  // blade then punches out of (no shape pop when it stops)
+  const rollAt = (d: number) => (((Math.floor(d / 6) - Math.floor(total / 6)) % 4) + 4) % 4;
+  u.pose('summon', rollAt(0));
   placeAt(u, from);
-  // it comes in out of the dark in two palette steps (no pop-in): two dim rig canvases over the hidden sprite, then lit
-  const ov = overlay(u, dimBoulder(0, 2, light), { depth: u.sprite.depth });
-  // the sprite goes transparent, not invisible: its ground shadow stays under the rolling rock from the first frame
-  u.sprite.setVisible(true).setAlpha(0);
+  u.showSprite();
+  u.sprite.setVisible(true).setAlpha(1);
   play('caxRoll', { volume: 0.9, pan: panAt(from.x) });
   // ---- the roll: the 4 drawn frames cycled by the distance rolled (never setAngle), two bounces (2 px, then 1 px) with
   // a dust kick on each touch, then the stop and two 1-px rocks in the silent still beat
   let bounce = 0;
   const bounceAt = [0.5, 0.8];
-  let ovLive = true;
-  const total = Math.hypot(home.x - from.x, home.y - from.y);
   await new Promise<void>((resolve) => {
     onFrame(sc, (_dt, el) => {
       if (!u.sprite.active) return false;
       const t = Math.min(1, el / ROLL_MS);
       const e = E.outQ(t);
       const p = { x: from.x + (home.x - from.x) * e, y: from.y + (home.y - from.y) * e };
-      const roll = Math.floor((total * e) / 6) % 4;
-      const dim = t < 0.18 ? 2 : t < 0.36 ? 1 : 0;
-      if (ovLive) {
-        if (dim === 0) {
-          ov.destroy();
-          ovLive = false;
-          u.showSprite();
-          u.sprite.setVisible(true).setAlpha(1);
-        } else {
-          ov.redraw(dimBoulder(roll, dim, light));
-        }
-      }
-      if (!ovLive) u.pose('summon', roll);
+      u.pose('summon', rollAt(total * e));
       // the hops: 2 px before the first touch, 1 px before the second (held a frame at the top so they read)
       let lift = 0;
       if (t < bounceAt[0]) lift = Math.min(2, Math.sin((t / bounceAt[0]) * Math.PI) * 2.6);
@@ -169,10 +159,6 @@ async function boulderEntrance(S: Stage): Promise<void> {
       placeAt(u, p, Math.round(lift));
       return true;
     }, () => {
-      if (ovLive) {
-        ov.destroy();
-        ovLive = false;
-      }
       u.sprite.setVisible(true).setAlpha(1);
       placeAt(u, home);
       resolve();
@@ -241,15 +227,16 @@ async function boulderEntrance(S: Stage): Promise<void> {
     // the held shout is ALIVE: the roar's two hold frames alternate every ~80 ms (the chest heaving, the head pushing,
     // the raised axe shaking a px, the beads trembling, the floor seam between the halves breathing with the voice);
     // on the voice's beats the floor answers — a stepped dust ring and pebbles hopping round his boots
-    const beats: [number, number][] = [[2, 100], [3, 90], [4, 80], [5, 80], [4, 80], [5, 80], [4, 80], [5, 80], [6, 120], [7, 90], [8, 90]];
+    // (r3: a real three-frame cycle — jaw wide / half / wide, the axe trembling a px, beads and hem shaking — held
+    // ~300 ms, and the ATK/DEF plate pops in the middle of it, so the hold is never a still picture)
+    const beats: [number, number][] = [[2, 100], [3, 90], [4, 70], [5, 70], [6, 70], [4, 70], [5, 80], [7, 100], [8, 90]];
     let i = 0;
     for (const [f, ms] of beats) {
       if (!u.sprite.active) break;
       u.pose('roar', f);
       if (f === 2) play('caxNara', { volume: 0.95, pan });
-      // the plate pops once the shout is over: during it, the floor seam breathing in front of his boots is seen
-      if (f === 8) void u.badge.pop();
-      if (f === 3 || (f === 4 && (i === 4 || i === 6))) shoutBeat(sc, home, f === 3 ? 2 : i === 4 ? 1 : 0);
+      if (i === 5) void u.badge.pop();
+      if (f === 3 || i === 5 || i === 6) shoutBeat(sc, home, f === 3 ? 2 : i === 5 ? 1 : 0);
       i++;
       await sleep(sc, ms);
     }

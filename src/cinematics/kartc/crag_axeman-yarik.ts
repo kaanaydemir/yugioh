@@ -9,7 +9,7 @@
 // Palette steps only (no alpha, no ADD), whole pixels; everything on the scene clock (films stay deterministic).
 
 import type Phaser from 'phaser';
-import { PAL } from '../../art/palette';
+import { PAL, RAMPS } from '../../art/palette';
 import { monsterFrame } from '../../art/textures';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, type XY } from '../../view/layout';
@@ -98,6 +98,8 @@ export class Seam {
   readonly arrived: Promise<void>;
   readonly reached: Promise<void>;
   private readonly px: Px;
+  /** the blocked fork, over the units' ground shadows (the guard's shadow must not swallow the "Y") */
+  private readonly fpx: Px | null;
   private readonly pts: XY[];
   private readonly offs: number[];
   private readonly dir: XY;
@@ -111,6 +113,7 @@ export class Seam {
 
   constructor(private readonly scene: Phaser.Scene, private readonly o: SeamOpts) {
     this.px = new Px(scene.add.graphics().setDepth(SEAM_DEPTH));
+    this.fpx = o.fork ? new Px(scene.add.graphics().setDepth(DEPTH.SHADOW + 0.5)) : null;
     this.pts = linePts(o.from, o.to);
     this.offs = jogs(this.pts.length, Math.round(o.from.x * 7 + o.from.y * 3));
     const L = Math.max(1, Math.hypot(o.to.x - o.from.x, o.to.y - o.from.y));
@@ -229,6 +232,7 @@ export class Seam {
 
   private draw(tone: number, el: number, arrivedAt: number, fadeAt: number): void {
     const px = this.px.clear();
+    const fp = this.fpx ? this.fpx.clear() : px;
     const [core, lipHi, lipLo] = TONES[tone];
     const N = this.pts.length;
     const n = Math.min(this.head, N);
@@ -283,26 +287,29 @@ export class Seam {
       const a = this.pts[Math.min(N - 1, n)];
       px.dot(a.x, y(Math.min(N - 1, n)), PAL.white);
     } else if (this.o.fork && arrivedAt >= 0) {
-      // blocked: a "Y" at the guard's front edge — a white flash at the split (two frames), then two 4-px prongs splayed
-      // across the line that die in two palette steps, faster than the seam
+      // blocked: a "Y" at the guard's front edge — a white flash at the split (the split frame and the next), then two
+      // 5-px prongs splayed ±35° off the line, white-hot with earth4 lips for ~160 ms (the strike holds the guard's
+      // recoil back ~80 ms so the fork is SEEN first), dying in two palette steps, faster than the seam
       const e = this.pts[N - 1];
       const ey = y(N - 1);
       const since = el - arrivedAt;
-      const st = since < 160 ? 0 : since < 280 ? 1 : since < 380 ? 2 : 3;
-      if (since < 70) for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1], [2, 0], [-2, 0], [0, -2], [1, -1], [-1, -1]] as const) px.dot(e.x + dx, ey + dy, PAL.white);
+      const st = since < 170 ? 0 : since < 290 ? 1 : since < 390 ? 2 : 3;
+      if (since < 40) for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1], [2, 0], [-2, 0], [0, -2], [1, -1], [-1, -1], [1, 1], [-1, 1], [3, 0], [-3, 0]] as const) fp.dot(e.x + dx, ey + dy, PAL.white);
       if (st < 3) {
         const [pc, pl] = TONES[Math.min(3, st + (st > 0 ? 1 : 0))];
         const nx = -this.dir.y;
         const ny = this.dir.x;
+        const ca = Math.cos((35 * Math.PI) / 180);
+        const sa = Math.sin((35 * Math.PI) / 180);
         for (const sd of [1, -1])
           for (let k = 1; k <= 5; k++) {
-            const x = Math.round(e.x + this.dir.x * k * 0.8 + nx * sd * k * 0.9);
-            const yy = Math.round(ey + this.dir.y * k * 0.8 + ny * sd * k * 0.9);
-            px.dot(x, yy + 1, gap);
-            px.dot(x, yy - 1, gap);
-            px.dot(x, yy, k <= 3 ? pc : pl);
+            const x = Math.round(e.x + this.dir.x * k * ca + nx * sd * k * sa);
+            const yy = Math.round(ey + this.dir.y * k * ca + ny * sd * k * sa);
+            fp.dot(x, yy + 1, gap);
+            fp.dot(x, yy - 1, k <= 4 ? pl : gap);
+            fp.dot(x, yy, k <= 4 ? pc : pl);
           }
-        if (st === 0) px.dot(e.x, ey, PAL.gold4);
+        if (st === 0) fp.dot(e.x, ey, PAL.gold4);
       }
     }
     // the spark: one gold4 pixel running from the attacker toward the target along the breathing seam
@@ -332,6 +339,7 @@ export class Seam {
     for (const lp of this.pools) void lp.fadeOut(120);
     this.pools = [];
     if (this.px.g.active) this.px.g.destroy();
+    if (this.fpx?.g.active) this.fpx.g.destroy();
   }
 }
 
@@ -355,13 +363,28 @@ export function jogs(n: number, salt: number): number[] {
   return out;
 }
 
+/** One palette step lighter along the colour's own ramp (the light the seam pours on the body beside it). */
+const LIGHT_RAMPS: readonly (readonly number[])[] = Object.values(RAMPS) as unknown as (readonly number[])[];
+export function lighter(c: number): number {
+  for (const r of LIGHT_RAMPS) {
+    const i = r.indexOf(c);
+    if (i >= 0) return i + 1 < r.length ? r[i + 1] : c;
+  }
+  return c;
+}
+
 /**
  * The seam CLIMBS a body: a vertical 1-px light line drawn only on the body's own opaque pixels at column `x` (world),
  * white core with earth4 lips one px either side, from the feet up to `k` (0…1) of its height. Re-reads the frame the
- * unit shows every frame (it recoils under it). `frames` scene ms per climb step; resolves when it reached the crown;
- * the line then holds `holdMs` and steps out (white → earth4 → gone).
+ * unit shows every frame (it recoils under it). `stepMs` scene ms per climb step; `top` resolves when it reached the
+ * crown; the line then holds `holdMs` and steps out (white → earth4 → gone).
+ *
+ * `bloom` (the strike's contact, r3): the frame it reaches the crown the seam BURSTS — the band 5 px wide (white core,
+ * white lips, earth4 outer lips) and the body's own pixels 3–4 px either side one palette step lighter; it steps down
+ * over three frames (5 → 3 px, the lit band narrowing), all symmetric on the column and only on the body (the light
+ * pours out of the cut). While it holds, the lit band beside it breathes (every other 60 ms), so it is never a still rod.
  */
-export function climbBody(scene: Phaser.Scene, u: MonsterUnit, o: { stepMs: number; holdMs: number; steps?: number }): { top: Promise<void>; done: Promise<void> } {
+export function climbBody(scene: Phaser.Scene, u: MonsterUnit, o: { stepMs: number; holdMs: number; steps?: number; bloom?: boolean }): { top: Promise<void>; done: Promise<void> } {
   const g = new Px(scene.add.graphics().setDepth(u.sprite.depth + 1));
   const steps = o.steps ?? 2;
   const ax = u.art.anchorX;
@@ -386,12 +409,22 @@ export function climbBody(scene: Phaser.Scene, u: MonsterUnit, o: { stepMs: numb
       }
       let core: number = PAL.white;
       let lip: number = PAL.earth4;
+      /** bloom: the white lip half-width, the earth4 outer lip, the lit band's reach (px from the column) */
+      let wl = 0;
+      let outer = false;
+      let band = 0;
       if (topAt >= 0) {
         const since = el - topAt;
         if (since > o.holdMs + 70) return false;
         if (since > o.holdMs) {
           core = PAL.earth4;
           lip = PAL.earth3;
+        } else if (o.bloom) {
+          const fr = Math.floor(since / 17);
+          if (fr === 0) [wl, outer, band] = [1, true, 4];
+          else if (fr === 1) [wl, outer, band] = [1, true, 3];
+          else if (fr === 2) [wl, outer, band] = [0, true, 3];
+          else [wl, outer, band] = [0, false, Math.floor(since / 60) % 2 === 0 ? 2 : 0];
         }
       }
       const fi = u.frameInfo();
@@ -406,15 +439,26 @@ export function climbBody(scene: Phaser.Scene, u: MonsterUnit, o: { stepMs: numb
       const kk = k >= 1 ? 1 : 0.55;
       const wide = k >= 1;
       const yTop = Math.round(b.y + b.h - b.h * kk);
+      const w0 = u.framePoint(0, 0);
+      const w1 = u.framePoint(1, 0);
+      const sx = Math.sign(w1.x - w0.x) || 1;
       for (let fy = b.y + b.h - 1; fy >= yTop; fy--) {
         if (!pc.isOpaque(ax, fy)) continue;
         const p = u.framePoint(ax + 0.5, fy + 0.5);
         const x = Math.floor(p.x);
         const y = Math.floor(p.y);
+        // the lit band: the body's own pixels beside the cut, one palette step lighter (frame px ± d → screen x ± d)
+        for (let d = 2 + (outer ? 1 : 0); d <= band; d++)
+          for (const sd of [-1, 1]) {
+            const c = pc.get(ax + sd * d, fy);
+            if (c !== null) g.dot(x + sd * d * sx, y, lighter(c));
+          }
         // frame A: a 1-px white line; frame B on: light pouring out — the white core with earth4 lips on every row
         if (wide) {
-          if (pc.isOpaque(ax - 1, fy)) g.dot(x - 1, y, lip);
-          if (pc.isOpaque(ax + 1, fy)) g.dot(x + 1, y, lip);
+          for (const sd of [-1, 1]) {
+            if (pc.isOpaque(ax + sd, fy)) g.dot(x + sd * sx, y, wl >= 1 ? PAL.white : lip);
+            if (outer && pc.isOpaque(ax + sd * 2, fy)) g.dot(x + sd * 2 * sx, y, PAL.earth4);
+          }
         }
         g.dot(x, y, core);
       }
