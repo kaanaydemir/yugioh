@@ -34,6 +34,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
 | page_turner (Sayfa Çeviren) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı piksel, 4 kare | tamam: kitap, eller bağlanır, sayfa karıştırma, preslenmiş yapraklar iki mezarlığa, yeniden dağıtım, kapanış; ePage 5,70 sn (pay 5,84); kamera sabit; CPU senaryoları ePageBot / ePageCpu | tamam: her vuruşta e_page* tarifi; dağıtımda genel cardDraw susturuluyor | 6 / 6,5 / 7 | shots/e/page_turner/ |
 | lucky_die (Talih Zarı) | büyük 88×68 + elle 44×34 küçük, bayraksız, 0 palet dışı, 13 ton, mürekkep 1,00; küçük/büyük 0,86 | tamam: zar atışı, yüze göre +100×zar ATK/DEF; 1'de sönük e_dieDud, 6'da ikramiye akoru + üç havai fişek; toplam 4,25–5,05 sn (pay 5,03, süre sınırı yok kararıyla kabul); kamera sabit; CPU senaryosu eDieCpu (&mode=vsBot) | tamam: 13 e_die* tarifi, hepsi sahnede çalıyor, ses yüksekliği makul | 6 / 7 / 7 | shots/e/lucky_die/ |
 | crystal_wyrm (Kristal Ejder) | YALNIZ KART RESMİ: büyük 88×68 + elle 44×34 küçük; 0 palet dışı, beyaz yok, mürekkep 1,00; büyük 18 ton / %2,3 tek piksel / 21 kare, küçük 17 ton / %4,9 / 3 kare; yaşayan şeritler iki boyutta | kapsam dışı (kart sinematiği yok); çağrı ~3,5 sn, kamera sabit; v1 filmdiff 17/17 AYNI; CPU senaryosu eWyrmCpu (&mode=vsBot) | kapsam dışı (yeni ses yok) | 6,5 / 6,5 / 7,5 | shots/e/crystal_wyrm/ |
+| straw_decoys (Saman Korkuluklar) | büyük 88×68 + elle 44×34 küçük, 19 ton, 0 palet dışı, küçük/büyük 0,77; doluluk 1,00 (tarla kasıtlı taşıyor) | tamam: korkuluklar, karga, saldırı yeniden hedeflenir (P1/P2, elden/set, hızlı yanıt, tek korkuluk); eStrawOwn 4,85 sn (pay 4,76, süre sınırı yok kararıyla kabul); v1 filmdiff 17/17 AYNI; CPU senaryosu eStrawCpu (&mode=demo) | tamam: 19 e_straw tarifi, hepsi işaretinde çalıyor | 5 / 6 / 7 | shots/e/straw_decoys/dod/ |
 | (doldurulacak) | | | | | |
 
 ### S3 Boşluk Gözü (`void_eye`)
@@ -296,3 +297,9 @@ kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe aç�
 - KART_RESIMLERI §10: 2x kart büyük resmi 1:1 göstermeli; inceleme paneli (src/view/v3/inspectV3.ts, başka şerit) hâlâ 1x yüzü büyütüyor, 44×34 resim 2×2 bloklarla görünüyor. Büyük resim LANE_E_ART_BIG'de hazır, ama henüz gösteren yok.
 - Büyük resimde konu çerçevenin 0,89'unu dolduruyor (araç 0,6–0,75 dışını işaretliyor); kasıtlı: kanat ve boyun sol/alt kenardan taşıyor, ashen_drake ile aynı tercih.
 - v3 el yelpazesinde her kartta dönüşten kaynaklı 1 px dikey dikiş var (ember_wolf, judgment_bolt'ta da); sistem geneli, bu karttan değil.
+
+### straw_decoys
+- Süre: eStrawOwn 4,85 sn, pay 4,76 sn (~0,1 sn fazla); hızlı yanıt 5,27 sn. Süre sınırı yok kararıyla kabul.
+- palcheck: 800 ms'de tek kare Δoff +1,04 (sınır 1); ortak v3 büyü açılışından, kartın piksellerinden değil.
+- Korkuluk jetonu, idle ve tokenVanish D şeridinde, hâlâ yer tutucu; devir sarması jetonun piksellerini okuduğu için kendiliğinden uyacak.
+- eStrawCpu --fresh olmadan çekilmeli (dondurulmuş zamanda botlar oynamaz).
