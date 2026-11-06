@@ -12,7 +12,7 @@ import { PAL } from '../../src/art/palette';
 import type { PixelCanvas } from '../../src/art/pixel';
 import { LANE_COLS, zoneXY } from '../../src/view/layout';
 import { DOOR_ANGLES, cageGeo, cp, lockAt, paintBack, paintBadge, paintChain, paintDoor, paintFront, paintLock, paintSun, sunAt } from '../../src/cinematics/spells/_dawn_e_paint';
-import { CAGE_T } from '../../src/cinematics/spells/_dawn_e';
+import { CAGE_T, castLength } from '../../src/cinematics/spells/_dawn_e';
 import { RECIPES } from '../../src/audio/v3/e/dawn_swords';
 import { Voice } from '../../src/audio/synth';
 import type { Recipe } from '../../src/audio/sounds';
@@ -69,7 +69,7 @@ describe('dawn cage drawings', () => {
   const g = cageGeo(1);
   it('are palette only', () => {
     const all = [paintBack(g), paintFront(g), ...DOOR_ANGLES.map((d) => paintDoor(g, d)), paintDoor(g, 0, true), paintChain(120), paintSun(0, 0), paintSun(1, 0), paintSun(1, 1)];
-    for (let n = 0; n <= 3; n++) all.push(paintLock(n), paintLock(n, { open: true }), paintLock(n, { turning: 0 }), paintBadge(n), paintBadge(n, { turning: 1 }));
+    for (let n = 0; n <= 3; n++) all.push(paintLock(n), paintLock(n, { open: true }), paintLock(n, { turning: 0 }), paintLock(n, { turning: 2, step: 0 }), paintLock(n, { turning: 1, step: 2 }), paintFront(g, { lit: false }), paintFront(g, { snapped: true }), paintBadge(n), paintBadge(n, { turning: 1 }));
     for (const p of all) expect(offPalette(p)).toBe(0);
   });
   it('the padlock shows the counter: every count is a different picture; the shackle opens', () => {
@@ -82,18 +82,21 @@ describe('dawn cage drawings', () => {
   it('the door has a different drawing for every angle; the sun twinkles', () => {
     const doors = DOOR_ANGLES.map((d) => paintDoor(g, d));
     for (let i = 1; i < doors.length; i++) expect(same(doors[i - 1], doors[i])).toBe(false);
-    expect(same(paintSun(1, 0), paintSun(1, 1))).toBe(false);
+    expect(same(paintSun(3, 0), paintSun(3, 1))).toBe(false);
+    expect(same(paintSun(1, 0), paintSun(3, 0))).toBe(false);
   });
 });
 
 describe('dawn cage timing', () => {
-  it('the signature after the land frame stays ≈ 1.3 s of scene time', () => {
+  it('the signature follows the §7 S6 storyboard length (≈ 3 s of scene time, every beat its own)', () => {
     const T = CAGE_T;
-    const slam = T.drop + 17 + T.doorAt + T.swing;
-    const end = slam + T.endAt;
-    expect(end).toBeLessThanOrEqual(1400);
-    expect(T.tongue0 + 2 * T.tongueGap).toBeLessThan(T.endAt);
-    expect(T.badgeAt).toBeLessThanOrEqual(T.endAt);
+    const n = castLength();
+    expect(n).toBeGreaterThanOrEqual(2800);
+    // (0.7 s opening + 3.0 s storyboard) × 1.35 + 0.3 s slack, in game time
+    expect((n + 700) * 1.35).toBeLessThanOrEqual((700 + 3000) * 1.35 + 300);
+    // the cold/lean hold reads (≥ 300 ms), the tongues are spaced
+    expect(Math.max(...T.lean)).toBeGreaterThanOrEqual(300);
+    expect(T.tongueGap).toBeGreaterThanOrEqual(120);
     expect(T.springAt).toBeLessThan(T.haulAt);
   });
 });

@@ -61,8 +61,9 @@ export function cageGeo(target: PlayerId): CageGeo {
   const c1 = lanes[lanes.length - 1] + 0.5;
   const rA = r - 0.375;
   const rB = r + 0.375;
-  const H = R(48 * K);
-  const VR = R(12 * K);
+  // trimmed (round 2): the neighbouring row's sprites stay clear of the rear rail and the vault
+  const H = R(44 * K);
+  const VR = R(10 * K);
   const n = R((c1 - c0) * 4);
   const bars: number[] = [];
   for (let k = 0; k <= n; k++) bars.push(c0 + k / 4);
@@ -70,7 +71,7 @@ export function cageGeo(target: PlayerId): CageGeo {
   for (let j = 0; j <= 3; j++) sideRows.push(rA + j / 4);
   const cm = lanes[LANE_MID];
   const kc = R((cm - c0) * 4);
-  const top = Math.min(cp(c0, rA, H + 6).y, cp(c0, r, H + VR + 12).y, cp(c1, rA, H + 6).y);
+  const top = Math.min(cp(c0, rA, H + 8).y, cp(c0, r, H + VR + 12).y, cp(c1, rA, H + 8).y);
   const ox = cp(c0, rB, 0).x - 8;
   const oy = top - 6;
   const w = cp(c1, rA, 0).x + 8 - ox;
@@ -81,7 +82,23 @@ export function cageGeo(target: PlayerId): CageGeo {
 /** Where the dawn sun sits (its centre) at rest. */
 export function sunAt(g: CageGeo): XY {
   const p = cp(g.cm, g.rm, g.H + g.VR);
-  return { x: p.x, y: p.y - 7 };
+  return { x: p.x, y: p.y - 8 };
+}
+
+/** The front bars that are DAWN SWORDS (every second one, not the door's posts) and the plain rods between them. */
+export function swordKs(g: CageGeo): number[] {
+  const out: number[] = [];
+  for (let k = 2; k < g.bars.length - 1; k += 2) if (k !== g.kc && k !== g.kh && k !== g.kl) out.push(k);
+  return out;
+}
+export function rodKs(g: CageGeo): number[] {
+  const out: number[] = [];
+  for (let k = 1; k < g.bars.length - 1; k++) if (k % 2 === 1 && k !== g.kh && k !== g.kl && k !== g.kc) out.push(k);
+  return out;
+}
+/** The blade's span on a front sword bar (heights above the floor): tip … guard. */
+export function bladeSpan(g: CageGeo): { tip: number; guard: number } {
+  return { tip: 1, guard: g.H - 8 };
 }
 
 /** The padlock's hanging point (the top of its shackle) on the closed door, at rest. */
@@ -154,8 +171,57 @@ function stamp(p: Pc, g: CageGeo, rows: readonly string[], x: number, y: number,
 }
 
 const BALL = ['.kkk.', 'kabbk', 'kbbdk', '.kkk.'];
-const GUARD = ['kkkkkkkk', 'kwaabbck', 'kkdccdkk', '..kddk..'];
-const POMMEL = ['.kk.', 'kwbk', 'kbdk', '.kk.'];
+const GUARD = ['kkkkkkkkk', 'kwaaaabbk', 'kkkdcdkkk'];
+const POMMEL = ['.kkk.', 'kwabk', 'kabck', '.kkk.'];
+const DULL: Record<string, number> = { ...KEY, w: PAL.gold3, a: PAL.gold2, b: PAL.gold1, c: PAL.gold1, d: PAL.gold0 };
+
+/**
+ * A DAWN SWORD planted tip-down at floor point f: a 3-px blade (the left edge white — it catches the dawn — a gold4
+ * core with a gold3 fuller, a gold3 back edge) tapering to a 1-px tip at `tip`, a 9-px crossguard at `guard`, a
+ * wrapped grip up to `top` and a round pommel above it. `snapped`: only the lower part of the blade is left (the
+ * break), its top a jagged white.
+ */
+export function sword(p: Pc, g: CageGeo, f: XY, o: { tip: number; guard: number; top: number; lit?: boolean; snapped?: boolean }): void {
+  const lit = o.lit !== false;
+  const edge = lit ? PAL.white : PAL.gold3;
+  const core = lit ? PAL.gold4 : PAL.gold2;
+  const back = lit ? PAL.gold3 : PAL.gold1;
+  const fuller = lit ? PAL.gold3 : PAL.gold1;
+  const end = o.snapped ? o.tip + R((o.guard - o.tip) * 0.42) : o.guard - 1;
+  for (let h = o.tip; h <= end; h++) {
+    const d = h - o.tip;
+    const xs = d < 2 ? [0] : d < 4 ? [-1, 0] : [-1, 0, 1];
+    put(p, g, f.x + xs[0] - 1, f.y - h, PAL.ink);
+    put(p, g, f.x + xs[xs.length - 1] + 1, f.y - h, PAL.ink);
+    for (const x of xs) {
+      let c = x === -1 ? edge : x === 0 ? core : back;
+      if (d < 2) c = edge;
+      if (x === 0 && h > o.guard - 12 && h < o.guard - 2) c = fuller;
+      if (o.snapped && h >= end - 1) c = (h + x) % 2 === 0 ? PAL.white : PAL.gold4;
+      put(p, g, f.x + x, f.y - h, c);
+    }
+  }
+  put(p, g, f.x, f.y - o.tip + 1, PAL.ink);
+  if (o.snapped) {
+    for (const x of [-1, 0, 1]) if ((end + x) % 2 === 0) put(p, g, f.x + x, f.y - end - 1, PAL.ink);
+    return;
+  }
+  const key = lit ? KEY : DULL;
+  // the grip (wrapped) between the guard and the pommel
+  for (let h = o.guard + 2; h < o.top; h++) {
+    put(p, g, f.x - 1, f.y - h, PAL.ink);
+    put(p, g, f.x, f.y - h, h % 2 ? PAL.gold1 : PAL.gold2);
+    put(p, g, f.x + 1, f.y - h, PAL.ink);
+  }
+  stamp(p, g, GUARD, f.x - 4, f.y - (o.guard + 2), key);
+  stamp(p, g, POMMEL, f.x - 2, f.y - (o.top + 3), key);
+}
+
+/** A front sword bar's sword (its foot on the foot rail). */
+function frontSword(p: Pc, g: CageGeo, f: XY, o: { lit?: boolean; snapped?: boolean }): void {
+  const s = bladeSpan(g);
+  sword(p, g, f, { tip: s.tip, guard: s.guard, top: g.H + 2, ...o });
+}
 
 /** A rail along a run of points (a polyline). */
 function railPath(p: Pc, g: CageGeo, pts: readonly XY[], lit: number, shade: number): void {
@@ -217,7 +283,8 @@ export function paintBack(g: CageGeo): PixelCanvas {
  * IN FRONT of the caged monsters: the sword side (minus the door's two bars), the right short side, their rails,
  * the three front corner posts, the door's hinge and latch posts, the front halves of the hoops and the ridge.
  */
-export function paintFront(g: CageGeo): PixelCanvas {
+export function paintFront(g: CageGeo, o: { lit?: boolean; snapped?: boolean } = {}): PixelCanvas {
+  o = { lit: true, ...o };
   const p = new PixelCanvas(g.w, g.h);
   const n = g.bars.length - 1;
   // the vault: front halves of the hoops, the ridge
@@ -225,32 +292,15 @@ export function paintFront(g: CageGeo): PixelCanvas {
   railPath(p, g, [cp(g.c0, g.rm, g.H + g.VR), cp(g.c1, g.rm, g.H + g.VR)], PAL.gold4, PAL.gold2);
   // right side rods
   for (let j = 1; j < g.sideRows.length - 1; j++) rod(p, g, cp(g.c1, g.sideRows[j], 0), 3, g.H - 2, PAL.gold3, PAL.gold1);
-  // the sword bars (not the door's middle bar, nor the latch / hinge posts)
-  const swordAt: XY[] = [];
-  for (let k = 1; k < n; k++) {
-    if (k === g.kc || k === g.kh || k === g.kl) continue;
-    swordAt.push(cp(g.bars[k], g.rB, 0));
-  }
-  for (const f of swordAt) {
-    for (let h = 2; h < g.H - 9; h++) {
-      put(p, g, f.x, f.y - h, h > g.H - 13 ? PAL.gold4 : PAL.white);
-      put(p, g, f.x + 1, f.y - h, PAL.gold3);
-    }
-    for (let h = g.H - 6; h <= g.H - 2; h++) {
-      put(p, g, f.x, f.y - h, h % 2 ? PAL.gold1 : PAL.gold2);
-      put(p, g, f.x + 1, f.y - h, PAL.gold0);
-    }
-  }
-  // rails (over the blades' ends)
+  // the plain rods between the swords
+  for (const k of rodKs(g)) rod(p, g, cp(g.bars[k], g.rB, 0), 3, g.H - 2, o.lit ? PAL.gold3 : PAL.gold2, PAL.gold1);
+  // rails (the blades pass behind the foot rail, the grips through the top rail)
   for (const h of [0, g.H - 1]) {
     rail(p, g, cp(g.c0, g.rB, h), cp(g.c1, g.rB, h), h === 0 ? PAL.gold3 : PAL.gold4, h === 0 ? PAL.gold1 : PAL.gold2);
     rail(p, g, cp(g.c1, g.rA, h), cp(g.c1, g.rB, h), PAL.gold3, PAL.gold1);
   }
-  // guards and pommels over the rails (the crown of finials)
-  for (const f of swordAt) {
-    stamp(p, g, GUARD, f.x - 3, f.y - (g.H - 9) - 1);
-    stamp(p, g, POMMEL, f.x - 1, f.y - (g.H + 2) - 3);
-  }
+  // the DAWN SWORDS, tip down: a 3-px blade (white edge), a crossguard under the top rail, a grip through it, a pommel
+  for (const k of swordKs(g)) frontSword(p, g, cp(g.bars[k], g.rB, 0), { lit: o.lit, snapped: o.snapped });
   // the door's posts
   for (const k of [g.kh, g.kl]) post(p, g, cp(g.bars[k], g.rB, 0), g.H + 1);
   // corner posts
@@ -267,23 +317,13 @@ export const DOOR_ANGLES = [0, 14, 28, 42, 56, 70] as const;
  * The door at `deg` degrees open (it swings out toward the camera round its hinge post): two rails, a dawn sword in
  * the middle, the latch stile with its plate. `white`: the slam's white frame.
  */
-export function paintDoor(g: CageGeo, deg: number, white = false): PixelCanvas {
+export function paintDoor(g: CageGeo, deg: number, white = false, o: { lit?: boolean } = {}): PixelCanvas {
   const p = new PixelCanvas(g.w, g.h);
   const th = (deg * Math.PI) / 180;
   const hc = g.bars[g.kh];
   const at = (s: number, h: number): XY => cp(hc + s * g.dw * Math.cos(th), g.rB + s * g.dw * Math.sin(th), h);
   const lo = 4;
   const hi = g.H - 7;
-  // the middle sword (between the door rails)
-  const f = at(0.5, 0);
-  for (let h = lo + 2; h < hi - 6; h++) {
-    put(p, g, f.x, f.y - h, h > hi - 10 ? PAL.gold4 : PAL.white);
-    put(p, g, f.x + 1, f.y - h, PAL.gold3);
-  }
-  for (let h = hi - 3; h < hi; h++) {
-    put(p, g, f.x, f.y - h, h % 2 ? PAL.gold1 : PAL.gold2);
-    put(p, g, f.x + 1, f.y - h, PAL.gold0);
-  }
   // the latch stile
   const s1 = at(0.92, 0);
   for (let h = 2; h <= g.H - 4; h++) {
@@ -294,7 +334,8 @@ export function paintDoor(g: CageGeo, deg: number, white = false): PixelCanvas {
   }
   rail(p, g, at(0.06, lo), at(0.96, lo), PAL.gold3, PAL.gold1);
   rail(p, g, at(0.06, hi), at(0.96, hi), PAL.gold4, PAL.gold2);
-  stamp(p, g, GUARD, f.x - 3, f.y - (hi - 6) - 1);
+  // the middle sword (between the door rails), in front of them
+  sword(p, g, at(0.5, 0), { tip: lo + 1, guard: hi - 6, top: hi + 2, lit: o.lit });
   // a small sun boss on the door's middle (the latch plate)
   const lp = at(0.92, R(g.H * 0.72));
   stamp(p, g, ['kkkk', 'kabk', 'kbdk', 'kkkk'], lp.x - 1, lp.y - 2);
@@ -305,55 +346,76 @@ export function paintDoor(g: CageGeo, deg: number, white = false): PixelCanvas {
 // ================================================================ the padlock (the counter)
 
 export const LOCK_W = 15;
-export const LOCK_H = 20;
+export const LOCK_H = 25;
 /** The padlock's anchor: the top of the shackle, centre. */
 export const LOCK_AX = 7;
 export const LOCK_AY = 1;
+/** The tongues' plates (under the body): left x of tongue i, their top row and height. */
+export const TONGUE_X = [2, 6, 10] as const;
+export const TONGUE_Y = 19;
+export const TONGUE_H = 4;
+/** The drawings of a turning tongue (it turns on its long axis: face → narrowing → edge → its dark back). */
+export const TURN_STEPS = 4;
 
 /**
- * The padlock: a gilded body with three TONGUES (the counter) and its shackle. `lit` tongues are lit (white tip,
- * gold4 bar, upright); `turning` (an index) draws that tongue half turned; the others are turned flat and dark.
+ * The padlock: a gilded body with a sun-keyhole and, hanging under it, three TONGUE PLATES (the counter): a lit
+ * tongue is a 3 × 4 plate (white edge, gold4, gold3), an unlit one is turned: its short dark back (gold0 / gold1).
+ * `turning` (an index) with `step` 0 … 3 draws that tongue mid-turn: 2 px, 1 px edge-on (white), 2 px dark, 3 px dark.
  * `open`: the shackle sprung up out of the body. `white`: a white frame (an event's first frame).
  */
-export function paintLock(lit: number, o: { turning?: number; open?: boolean; white?: boolean } = {}): PixelCanvas {
+export function paintLock(lit: number, o: { turning?: number; step?: number; open?: boolean; white?: boolean } = {}): PixelCanvas {
   const p = new PixelCanvas(LOCK_W, LOCK_H);
   const up = o.open ? 3 : 0;
   // the shackle: an arch 9 wide, 2 px thick (lit outer, shade inner)
   const sx = 3;
   const sy = 1 - up;
-  const arch = ['..aaaaa..', '.abccccb.', 'ab.....ba', 'ab.....ba', 'ab.....ba', 'ab.....ba', 'ab.....ba'];
+  const arch = ['..aaaaa..', '.abccccb.', 'ab.....ba', 'ab.....ba', 'ab.....ba', 'ab.....ba', 'ab.....ba', 'ab.....ba'];
   p.stamp(arch, { a: PAL.gold4, b: PAL.gold2, c: PAL.gold3 }, sx, Math.max(0, sy + 1));
   if (o.open) {
     // the free leg out of the body: shorten the right leg's bottom
-    for (let y = 5; y < 8; y++) {
+    for (let y = 5; y < 9; y++) {
       p.erase(sx + 7, y + sy);
       p.erase(sx + 8, y + sy);
     }
   }
-  // the body (13 × 11)
+  // the body (13 × 10)
   const bx = 1;
-  const by = 8;
-  p.rect(bx, by, 13, 11, PAL.gold3);
+  const by = 9;
+  p.rect(bx, by, 13, 10, PAL.gold3);
   p.hline(bx, bx + 12, by, PAL.gold4);
-  p.vline(bx, by, by + 10, PAL.gold4);
-  p.hline(bx, bx + 12, by + 10, PAL.gold1);
-  p.vline(bx + 12, by + 1, by + 10, PAL.gold2);
-  p.set(bx + 1, by + 1, PAL.white);
-  // the tongue slots: three dark wells 3 wide × 7 tall
+  p.vline(bx, by, by + 9, PAL.gold4);
+  p.hline(bx, bx + 12, by + 9, PAL.gold1);
+  p.vline(bx + 12, by + 1, by + 9, PAL.gold2);
+  p.set(bx + 1, by + 1, PAL.white).set(bx + 2, by + 1, PAL.white).set(bx + 1, by + 2, PAL.white);
+  // the sun-keyhole: a small sun (gold4 rays round a dark well) with the key slot under it
+  p.stamp(['a...a', '.kkk.', '.kkk.', '..k..', '.kkk.'], { a: PAL.gold4, k: PAL.gold0 }, bx + 4, by + 2);
+  // the tongue plates
   for (let i = 0; i < 3; i++) {
-    const x = bx + 2 + i * 4;
-    p.rect(x, by + 2, 3, 7, PAL.gold0);
-    const isLit = i < lit;
+    const x = TONGUE_X[i];
+    const y = TONGUE_Y;
     if (o.turning === i) {
-      // half turned: a diagonal
-      p.set(x + 2, by + 3, PAL.gold3).set(x + 1, by + 4, PAL.gold3).set(x + 1, by + 5, PAL.gold2).set(x, by + 6, PAL.gold2);
-      p.set(x + 2, by + 2, PAL.white);
-    } else if (isLit) {
-      p.vline(x + 1, by + 3, by + 7, PAL.gold4);
-      p.set(x + 1, by + 2, PAL.white);
-      p.set(x + 2, by + 7, PAL.gold2);
+      const st = Math.max(0, Math.min(TURN_STEPS - 1, o.step ?? 1));
+      if (st === 0) {
+        // narrowing: 2 px, still bright
+        p.vline(x, y, y + 3, PAL.white).vline(x + 1, y, y + 3, PAL.gold3);
+      } else if (st === 1) {
+        // edge-on: a 1-px white blade, longer by a pixel (it swings past the vertical)
+        p.vline(x + 1, y, y + 4, PAL.white);
+      } else if (st === 2) {
+        // its back comes round: 2 px dark
+        p.vline(x + 1, y, y + 2, PAL.gold1).vline(x + 2, y, y + 2, PAL.gold0);
+      } else {
+        p.hline(x, x + 2, y, PAL.gold1).hline(x, x + 2, y + 1, PAL.gold0);
+      }
+    } else if (i < lit) {
+      p.vline(x, y, y + TONGUE_H - 1, PAL.white);
+      p.vline(x + 1, y, y + TONGUE_H - 1, PAL.gold4);
+      p.vline(x + 2, y, y + TONGUE_H - 2, PAL.gold3);
+      p.set(x + 1, y + TONGUE_H - 1, PAL.gold3);
+      p.erase(x + 2, y + TONGUE_H - 1);
     } else {
-      p.hline(x, x + 2, by + 5, PAL.gold1);
+      // turned: the plate's short dark back
+      p.hline(x, x + 2, y, PAL.gold1).hline(x, x + 2, y + 1, PAL.gold0);
     }
   }
   p.outline(PAL.ink, { corners: false });
@@ -385,33 +447,58 @@ export function paintBadge(lit: number, o: { white?: boolean; turning?: number }
 
 // ================================================================ the dawn sun and the chain
 
-export const SUN_W = 23;
-export const SUN_H = 23;
-/** The sun's centre in its drawing. */
-export const SUN_C = 11;
+export const SUN_W = 37;
+export const SUN_H = 30;
+/** The sun's centre in its drawing (the rays fan UP: a rising sun). */
+export const SUN_C = 18;
+export const SUN_CY = 18;
+/** The ray fan's growth drawings (the ignite): 1 … SUN_RISE. */
+export const SUN_RISE = 3;
 
 /**
- * The dawn sun at the cage's crown: a disc (r 4) with eight rays. `lit` 0 = cold (gold1 disc, stubs of rays), 1 = lit;
- * `phase` 0 / 1 swaps the long rays between the cross and the diagonals (the idle twinkle); `white` = the ignite frame.
+ * The DAWN SUN at the cage's crown: a disc (r 6) and a fan of nine rays rising over its upper half (a sun coming
+ * up), three short stubs under it. `lit` 0 = cold (a dull disc, ray stubs); 1 … SUN_RISE = the rays growing (the
+ * ignite), SUN_RISE = full. `phase` 0 / 1 swaps the long and the short rays (the idle twinkle); `white` = a flare.
  */
 export function paintSun(lit: number, phase: number, white = false): PixelCanvas {
   const p = new PixelCanvas(SUN_W, SUN_H);
-  const c = SUN_C;
-  const cross = phase % 2 === 0 ? 9 : 7;
-  const diag = phase % 2 === 0 ? 5 : 7;
-  const ray = (dx: number, dy: number, len: number) => {
-    for (let i = 5; i <= len; i++) p.set(c + dx * i, c + dy * i, i === len ? PAL.white : i > len - 2 ? PAL.gold4 : PAL.gold3);
-  };
-  if (lit > 0) {
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) ray(dx, dy, cross);
-    for (const [dx, dy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]] as const) ray(dx, dy, diag);
-  } else {
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) p.set(c + dx * 5, c + dy * 5, PAL.gold1);
+  const cx = SUN_C;
+  const cy = SUN_CY;
+  const on = lit > 0;
+  const grow = Math.min(SUN_RISE, Math.max(0, lit)) / SUN_RISE;
+  for (let i = 0; i <= 8; i++) {
+    const a = Math.PI + (Math.PI * i) / 8;
+    const long = (i + phase) % 2 === 0;
+    const len = on ? R((long ? 17 : 12) * grow) : 8;
+    const x1 = R(cx + Math.cos(a) * len);
+    const y1 = R(cy + Math.sin(a) * len);
+    const x0 = R(cx + Math.cos(a) * 8);
+    const y0 = R(cy + Math.sin(a) * 8);
+    if (len <= 8) {
+      if (!on) p.set(x0, y0, PAL.gold1);
+      continue;
+    }
+    p.line(x0, y0, x1, y1, on ? PAL.gold3 : PAL.gold1);
+    if (on) {
+      const mx = R(cx + Math.cos(a) * (len - 3));
+      const my = R(cy + Math.sin(a) * (len - 3));
+      p.line(mx, my, x1, y1, PAL.gold4);
+      p.set(x1, y1, PAL.white);
+    }
   }
-  p.disc(c, c, 4, lit > 0 ? PAL.gold3 : PAL.gold1);
-  p.disc(c - 1, c - 1, 2, lit > 0 ? PAL.gold4 : PAL.gold2);
-  if (lit > 0) p.set(c - 2, c - 2, PAL.white).set(c - 1, c - 2, PAL.white);
-  p.set(c + 3, c + 2, lit > 0 ? PAL.gold2 : PAL.gold0).set(c + 2, c + 3, lit > 0 ? PAL.gold2 : PAL.gold0);
+  // the stubs below
+  for (const dx of [-1, 0, 1]) {
+    const a = Math.PI / 2 + dx * 0.55;
+    p.set(R(cx + Math.cos(a) * 8), R(cy + Math.sin(a) * 8), on ? PAL.gold3 : PAL.gold1);
+  }
+  p.disc(cx, cy, 6, on ? PAL.gold3 : PAL.gold1);
+  p.disc(cx - 1, cy - 1, 4, on ? PAL.gold4 : PAL.gold2);
+  if (on) {
+    p.disc(cx - 2, cy - 2, 1, PAL.white);
+    p.set(cx - 3, cy - 1, PAL.white);
+  }
+  // the shade on the lower right
+  for (const [dx, dy] of [[4, 3], [3, 4], [5, 2], [2, 5]] as const) p.set(cx + dx, cy + dy, on ? PAL.gold2 : PAL.gold0);
   p.outline(PAL.ink, { corners: false });
   if (white) p.map((col) => (col === PAL.ink ? col : PAL.white));
   return p;

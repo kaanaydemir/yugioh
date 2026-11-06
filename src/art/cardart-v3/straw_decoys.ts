@@ -43,7 +43,49 @@ const LEFT: Crow = { cx: 15, base: 56, s: 0.62 };
 const RIGHT: Crow = { cx: 74, base: 58, s: 0.62 };
 
 /** One scarecrow (subject), big geometry × s, density k. Returns its eye points (canvas px). */
+/** The side scarecrows at 44×34, drawn natively (a dark hat over a pale sack, one eye): 11 × 14 px, stake col 5. */
+const SIDE_SMALL = [
+  '....111....',
+  '...11111...',
+  '....443....',
+  '....433....',
+  '.....1.....',
+  'gllLLLLLddg',
+  '....lLd....',
+  '....lLd....',
+  '...gGGGk...',
+  '...gGGGk...',
+  '..gGGGGGk..',
+  '..g.G.G.k..',
+  '.....2.....',
+  '.....2.....',
+];
+const SIDE_KEY: Record<string, number> = {
+  '1': PAL.earth1,
+  '2': PAL.earth2,
+  '3': PAL.earth3,
+  '4': PAL.earth4,
+  l: PAL.leaf2,
+  L: PAL.leaf1,
+  d: PAL.leaf0,
+  g: PAL.gold3,
+  G: PAL.gold2,
+  k: PAL.gold1,
+};
+
+function sideSmall(p: P, c: Crow, f: number): { eyes: [number, number][] } {
+  const x0 = q(c.cx, 1) - 5;
+  const y0 = q(c.base, 1) - 10; // a little lower than the big's 2:1: the front one's straw hands stay clear of their hats
+  p.stamp(SIDE_SMALL, SIDE_KEY, x0, y0);
+  // the straw hands sway (one strand each)
+  const sway = [0, 1, 0, -1][f % 4];
+  p.set(x0 - 1, y0 + 5 + (sway > 0 ? 1 : 0), PAL.gold3);
+  p.set(x0 + 11, y0 + 5 + (sway < 0 ? 1 : 0), PAL.gold2);
+  return { eyes: [[x0 + 6, y0 + 3]] };
+}
+
 function scarecrow(p: P, c: Crow, k: number, f: number): { eyes: [number, number][] } {
+  if (k === 1 && c.s < 1) return sideSmall(p, c, f);
   const S = (v: number) => Math.max(1, Math.round(((v * c.s) * k) / 2));
   const X = (v: number) => q(c.cx, k) + Math.round(((v * c.s) * k) / 2);
   const Y = (v: number) => q(c.base, k) - Math.round(((v * c.s) * k) / 2);
@@ -154,7 +196,7 @@ function scarecrow(p: P, c: Crow, k: number, f: number): { eyes: [number, number
   for (let x = bw0; x <= bw1; x++) {
     const drop = x > X(8) ? 1 : 0;
     p.set(x, brimY + drop, PAL.earth2);
-    if (k === 2) p.set(x, brimY + drop + 1, PAL.earth1);
+    if (k === 2) p.set(x, brimY + drop + 1, PAL.ink); // the brim's shadow line: hat and sack never merge
   }
   const crH = S(7);
   for (let y = brimY - crH; y < brimY; y++) {
@@ -163,71 +205,119 @@ function scarecrow(p: P, c: Crow, k: number, f: number): { eyes: [number, number
     for (let x = hcx - hw; x <= hcx + hw; x++) p.set(x, y, x < hcx - hw * 0.3 ? PAL.earth2 : PAL.earth1);
   }
   // a crumpled dent on the crown (one row darker), and a straw sticking out of the hat's band
-  if (k === 2) p.hline(hcx - S(3), hcx + S(2), brimY - S(4), PAL.earth0);
+  if (k === 2) p.hline(hcx - S(3), hcx + S(2), brimY - S(4), PAL.earth2);
   // the eyes (light layer): right of centre, facing right
   const ey = hcy - S(1);
   return { eyes: small ? [[hcx + 1, ey]] : [[hcx + S(1), ey], [hcx + S(5), ey]] };
 }
 
-/** The crow far off (subject: ink body, night3 wing edge), wings by frame. */
-function paintCrow(p: P, k: number, f: number): void {
-  const cx = q(76, k);
-  const cy = q(14, k);
+/** The crow far off (big only; dropped from the 44×34 art): ink, its upper edges caught by the teal evening light,
+ * a gold4 eye; wings by frame. Facing left, toward the field. */
+function paintCrow(p: P, f: number): void {
+  // crossing the low teal spell-sun right of the front hat: an ink silhouette against the light
+  const cx = 64;
+  const cy = 18;
   const up = f % 2 === 0;
-  if (k === 2) {
-    // body + head + beak (facing left, toward the field)
-    p.rect(cx - 2, cy, 5, 2, PAL.ink);
-    p.set(cx - 3, cy, PAL.ink);
-    p.set(cx - 4, cy + 1, PAL.night3); // beak glint
-    p.set(cx + 3, cy + 1, PAL.ink); // tail
-    p.set(cx + 4, cy + 2, PAL.ink);
-    // wings: a shallow V up, or swept down
+  // body, head, tail
+  p.rect(cx - 3, cy, 7, 2, PAL.ink);
+  p.rect(cx - 5, cy - 1, 2, 2, PAL.ink);
+  p.set(cx + 4, cy + 1, PAL.ink);
+  p.set(cx + 5, cy + 2, PAL.ink);
+  p.set(cx + 4, cy + 2, PAL.ink);
+  // the beak
+  p.set(cx - 6, cy, PAL.earth2);
+  p.set(cx - 7, cy, PAL.earth2);
+  // wings: a V up, or swept down; 2 px thick at the root
+  const wing = (x0: number, dir: number) => {
     if (up) {
-      p.line(cx - 1, cy, cx - 4, cy - 3, PAL.night3);
-      p.line(cx + 1, cy, cx + 5, cy - 3, PAL.night3);
+      p.line(x0, cy, x0 + dir * 4, cy - 4, PAL.ink);
+      p.line(x0 + dir, cy, x0 + dir * 5, cy - 4, PAL.ink);
     } else {
-      p.line(cx - 1, cy + 1, cx - 4, cy + 3, PAL.night3);
-      p.line(cx + 1, cy + 1, cx + 5, cy + 3, PAL.night3);
+      p.line(x0, cy + 1, x0 + dir * 4, cy + 4, PAL.ink);
+      p.line(x0 + dir, cy + 1, x0 + dir * 5, cy + 3, PAL.ink);
     }
-  } else {
-    p.rect(cx - 1, cy, 3, 1, PAL.ink);
-    if (up) {
-      p.set(cx - 2, cy - 1, PAL.night3);
-      p.set(cx + 2, cy - 1, PAL.night3);
-    } else {
-      p.set(cx - 2, cy + 1, PAL.night3);
-      p.set(cx + 2, cy + 1, PAL.night3);
-    }
-  }
+  };
+  wing(cx - 1, -1);
+  wing(cx + 1, 1);
 }
 
-/** Loose straws carried by the wind (subject; they drift right one step per frame). */
+/** The crow's light: the teal evening rim on its upper edges and the gold eye (light layer, never outlined). */
+function lightCrow(L: P, s: P, f: number): void {
+  // (the sun behind it does the reading; only the eye catches the light)
+  void s;
+  void f;
+  L.set(64 - 4, 17, PAL.gold4);
+}
+
+/** Straws streaming off the hands in the wind (subject; they drift right one step per frame), plus a few loose ones. */
 function paintStraws(p: P, k: number, f: number): void {
-  const pts: [number, number, number][] = [
-    [26, 30, PAL.gold3],
-    [62, 38, PAL.gold2],
-    [34, 44, PAL.gold2],
-    [60, 14, PAL.gold3],
-  ];
   const drift = [0, 1, 2, 1][f % 4];
-  for (const [x0, y0, tone] of pts) {
+  // streamers: [x, y, length] big px, trailing right from the front scarecrow's right hand and the right one's
+  const streams: [number, number, number][] = k === 2
+    ? [
+        [70, 17, 6],
+        [72, 21, 5],
+        [84, 30, 4],
+        [26, 24, 4],
+      ]
+    : [
+        [70, 17, 6],
+        [26, 24, 4],
+      ];
+  for (const [x0, y0, len] of streams) {
     const x = q(x0, k) + (k === 2 ? drift : drift >> 1);
-    const y = q(y0, k) + (f % 2 && k === 2 ? 1 : 0);
-    p.set(x, y, tone);
-    p.set(x + 1, y, tone);
-    if (k === 2) p.set(x + 2, y + 1, PAL.gold1);
+    const y = q(y0, k);
+    const n = Math.max(2, q(len, k));
+    for (let i = 0; i < n; i++) p.set(x + i, y + (i >= n - 1 && f % 2 ? 1 : 0) + Math.floor(i / 3), i < n / 2 ? PAL.gold3 : PAL.gold1);
+  }
+  if (k === 2)
+    for (const [x0, y0, tone] of [
+      [56, 6, PAL.gold3],
+      [34, 44, PAL.gold2],
+    ] as const) {
+      p.set(x0 + drift, y0, tone);
+      p.set(x0 + 1 + drift, y0, tone);
+    }
+}
+
+/** The dusk field (backdrop): a dusk band low in the sky over the horizon and furrows running to it. */
+function paintField(b: P, k: number): void {
+  const hz = q(30, k);
+  const sky = new Set<number>([PAL.night0, PAL.night1]);
+  // the dusk band: the last rows of sky above the horizon (not over the light shape)
+  for (let y = hz - q(14, k); y < hz; y++)
+    for (let x = 0; x < b.w; x++) {
+      const c = b.get(x, y);
+      if (c !== null && sky.has(c)) b.set(x, y, PAL.void1);
+    }
+  // furrows: horizontal rows of the ploughed field, wider apart toward the viewer (perspective), broken into
+  // clods (night1 on the night0 floor; straight rows — a diagonal 1-px line would read as dither)
+  for (const [dy, dash, gap] of [
+    [3, 6, 3],
+    [7, 8, 3],
+    [13, 10, 4],
+    [22, 12, 4],
+    [33, 14, 5],
+  ] as const) {
+    const y = hz + q(dy, k);
+    if (y >= b.h) continue;
+    const d = Math.max(2, q(dash, k));
+    const g = Math.max(1, q(gap, k));
+    for (let x = (dy * 5) % (d + g); x < b.w; x += d + g)
+      for (let i = 0; i < d; i++) if (b.get(x + i, y) === PAL.night0) b.set(x + i, y, PAL.night1);
   }
 }
 
 function paint(l: ArtLayers, f: number, k: number): void {
   paintBackdrop(l.backdrop, 'SPELL', { as: 'sun', focus: [FOCUS[0] - 2, FOCUS[1] + 6], radius: 24 });
+  paintField(l.backdrop, k);
   const s = l.subject;
   const eyes: { at: [number, number]; main: boolean }[] = [];
   for (const c of [LEFT, RIGHT, FRONT]) {
     const r = scarecrow(s, c, k, f);
     for (const e of r.eyes) eyes.push({ at: e, main: c === FRONT });
   }
-  paintCrow(s, k, f);
+  if (k === 2) paintCrow(s, f);
   paintStraws(s, k, f);
   ink(s);
   // the rim only where the matter faces right (head, hat, coat side): never under the sleeves (a lit line there
@@ -236,9 +326,11 @@ function paint(l: ArtLayers, f: number, k: number): void {
     const c = s.get(x, y);
     return c === null || c === PAL.ink;
   };
-  rim(s, PAL.teal3, { skip: [PAL.gold3, PAL.gold2, PAL.gold1, PAL.night3, PAL.leaf3], only: (x, y) => open(x + 1, y) });
+  const side = (x: number, y: number) => k === 1 && y >= 14 && (x < 14 || x > 30);
+  rim(s, PAL.teal3, { skip: [PAL.gold3, PAL.gold2, PAL.gold1, PAL.leaf3], only: (x, y) => open(x + 1, y) && !side(x, y) && !(k === 2 && y < 24 && y > 11 && x > 55 && x < 72) });
   // light: the button eyes (2×2 big / 1 px small), the front ones brightest, glinting by frame
   const L = l.light;
+  if (k === 2) lightCrow(L, s, f);
   for (const e of eyes) {
     const [x, y] = e.at;
     if (k === 2 && e.main) {

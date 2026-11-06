@@ -228,7 +228,7 @@ export const RECIPES = {
         v.tone('sine', f * 0.5, { t, d: d + 0.02, g: [[0, f * 0.35], [d, f * 0.15]], to: o.osc.frequency });
       };
       caw(0, 0.26, 480, 0.2);
-      caw(0.42, 0.17, 455, 0.15);
+      caw(0.36, 0.17, 455, 0.15);
     },
   },
   e_strawHand: {

@@ -90,6 +90,16 @@ const PACK: Record<string, Scenario> = {
     stage: { zones: 5, active: 1, p1: { hand: ['purging_wave'] }, p0: { spellTraps: sts(N, N, lock(3)), monsters: mons(N, 'stone_sentinel') }, },
     steps: [purge(1, 2)],
   },
+  eDawnAttackIn: {
+    desc: 'kafes dururken P1 kafesteki canavara saldırır (saldırı kafesin önünden geçer)',
+    stage: { zones: 5, phase: 'battle', p0: { spellTraps: sts(N, lock(2)), monsters: mons(N, 'crystal_wyrm') }, p1: { monsters: mons(N, 'ember_wolf', N, 'stone_sentinel') } },
+    steps: [{ type: 'attack', player: 0, attackerZone: 1, targetZone: 1 }],
+  },
+  eDawnSummonIn: {
+    desc: 'kafes dururken rakip kafesli sıraya canavar çağırır (yeni canavar da üşür)',
+    stage: { zones: 5, active: 1, p0: { spellTraps: sts(N, lock(2)), monsters: mons('stone_sentinel') }, p1: { hand: ['ember_wolf'], monsters: mons(N, N, 'crystal_wyrm') } },
+    steps: [(D) => ({ type: 'normalSummon', player: 1, uid: D.uid('ember_wolf', 1), zone: 1 }) as Action],
+  },
 };
 
 export default PACK;

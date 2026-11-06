@@ -1,7 +1,7 @@
 // Talih Zarı (lucky_die) — the "+N00" of the roll, pinned to ITS monster (critic round 1: the shared impact number rose
 // 18 px and stacked upward, so on a crowded caster row it ended on the OPPONENT's monsters and outlived the scene).
 //
-//   boostNumber(scene, x, y, 600, { delay })   // pops at (x, y), rises ≤ 3 px, gone after LIFE ms; resolves at the end
+//   boostNumber(scene, x, y, 600, { rise: 3 })   // pops at (x, y), floats ≤ 3 px, gone after NUMBER_LIFE ms
 //
 // Same digit sheets as every number (fx:num:*, built by buildNumberTextures): one white flash frame, then the GOLD
 // "buff" sheet (the die's colour). Whole pixels: two frames one size up (2×), then 1×; a 4-px hop that settles back,
@@ -14,7 +14,7 @@ import { buildNumberTextures } from '../../vfx/numbers';
 import { onFrame } from '../../vfx/setpieces';
 
 /** Whole life of a number (scene ms). */
-export const NUMBER_LIFE = 900;
+export const NUMBER_LIFE = 800;
 const BIG_MS = 34;
 const FLASH_MS = 50;
 

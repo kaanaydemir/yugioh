@@ -64,21 +64,29 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
   25,8, ↔ e_galeStir 18,0; sallama ↔ e_wellShake 11,1; atış ↔ e_wellLeap 10,6, büyük atış ↔ e_wellLeap 10,3.
 
 ### S9 Saman Korkuluklar (`straw_decoys`)
-- Resim: `src/art/cardart-v3/straw_decoys.ts` (88×68 + 1× yoğunlukta yeniden çizilmiş 44×34, 4 kare yaşayan resim:
-  akşam tarlasında kolları açık üç korkuluk, alçak turkuaz büyü güneşi, uzakta karga, rüzgarda saman).
-- Sinematik: `src/cinematics/spells/straw_decoys.ts` (activate kancası: el / kendi kapalı kartı → ortak v3 açılış;
-  hızlı yanıt → `_quick_e.ts` HIZLI BÜYÜ! açılışı, kart hemen yatar; kazıklar gökten saplanır ("tok" ×3 perde),
-  rüzgar samanı sarar, ceket + çuval kafa + şapka, kollar açılır, düğme gözler bir kez yanar, karga gaklar;
-  `summon {from:'token'}` olayları tüketilir, el değiştirme `FieldView.addUnit` ile jetonun kendi birimine;
-  `target` kancası: saldıran seçince korkuluk çağırır, sarı saman çizgisi). SFX: `src/audio/v3/e/straw_decoys.ts`
-  (13 tarif, `e_straw*`).
+- Resim: `src/art/cardart-v3/straw_decoys.ts` (88×68 + elle çizilmiş 44×34, 4 kare yaşayan resim: alacakaranlık
+  bandı (void1) + sürülmüş tarla sıraları, kolları açık üç korkuluk, turkuaz büyü güneşinin önünden geçen karga
+  (yalnız büyük resimde), ellerden rüzgarla akan saman; küçük resimde yan korkuluklar ayrı damga: koyu şapka /
+  açık çuval yüz).
+- Sinematik: `src/cinematics/spells/straw_decoys.ts`. Kritik turu 1 düzeltmeleri: tüm işaretler TEK saatten
+  (W0 = son saplanma; sahnenin ölçekli saati `SceneClock` — `scene.time.now` ölçeksizdir, eski ×1,35 kaymanın
+  ve göz/karga çakışmasının sebebi buydu); patlama HUD bandının altında (y ≥ 40), kazık düşüş yüksekliği sıraya
+  göre; saplanmada 2 karelik ezilme + toprak halkası + son kazıkta 2 px sarsıntı; rüzgar son kazığın titremesiyle
+  örtüşür (ölü boşluk yok), P1 sol→sağ / P2 sağ→sol; kahraman vuruşu: ışık kenarlı 30×18 karga sıranın üstünden
+  süzülür, geçtiği her korkuluğun 2×2 düğme gözleri yanar, son korkuluğun dış koluna konar (kol eğilir), gagası
+  açık iki kez gaklar; el değiştirme: karga ürküp kalkar, saman tabandan yukarı tırmanan pürüzlü bir altın
+  kenarla korkuluğu jetonun kendi piksellerine yeniden sarar (jeton sanatından okunur; jetonda olmayan ceket/şapka
+  rüzgarda kırıntı olarak dökülür). `target` kancası: 2 px altın saman çizgisi saldıranı "kancalar", saldıranın
+  başı döner, eski ok kaybolur, korkuluğa yeni ok + altın kilit (AttackHold yeni işaretlerle yeniden saklanır).
+- SFX: `src/audio/v3/e/straw_decoys.ts` (`e_straw*`): yeni alçak/geniş tarla rüzgarı (e_strawGust, LSD
+  e_sieveGust'a 33,5 dB), toprağa giren kazık "tok" (e_dieTak'a 14–16 dB), e_strawWrap/WrapR (yönlü),
+  e_strawHand, e_strawPerch, e_strawWake, e_strawHook.
 - Senaryolar: `src/duel/scenarios/e_straw_decoys.ts` (eStrawAttack, eStrawAttackP2, eStrawAttackWait, eStrawAttack3,
   eStrawOwn, eStrawOwnP2, eStrawSet, eStrawSetP2, eStrawOne, eStrawSummon); test `tests/e/straw_decoys.test.ts`.
-- Kanıt: `shots/e/straw_decoys/` (r2-own-detail.png, r3-attack.png, r2-attackP2.png, r3-ownP2.png, r3-lure.png,
-  r3-own-crow.png, art/, sfx/, measure.json).
-- Ölçüm (oyun ms): eStrawOwn 3,83 sn, eStrawSet 3,58 sn, eStrawOne 3,33 sn; kamera 0 (eStrawAttack'taki 1–2 kare
-  saldırı ilanının ortak kamera hareketi, eAugerAttack'ta da var). §7 imzası 2,6 sn → REHBER §5 büyü sınırını
-  (2,9 sn) aşar — açık konu. Jeton sprite'ı D lane'inin; el değiştirme beyaz/altın siluet karesiyle örtülür.
+- Kanıt: `shots/e/straw_decoys/r4/` (own_hero2.png, crow_perch3.png, ownP2_morph2.png, attack.png, lure.png,
+  measure.json), `art4/`, `sfx3/`.
+- Açık: jeton sprite'ı D lane'inin; şimdiki yer tutucuda ceket/şapka yok, dönüşüm bunu kırıntıyla dürüstçe
+  gösterir; D'nin §7 jetonu şapkalı olacak.
 
 ## Kontrol noktası (WIP, 2026-10-31 ~20:00 UTC)
 Orkestratörün isteğiyle ara kayıt (kullanım sınırı yaklaşıyor). İş akışı (`lane-e-cards`, kart başına

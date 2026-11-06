@@ -26,7 +26,7 @@ import { cardLeaves } from '../_v3/card';
 import { fx, registerCardHook, registerEvent, registerObserver, type CinematicContext } from '../api';
 import { DAWN, DawnFence, allFences, dawnCasting, fenceOf, resolutionParts, revealSweep, sweepReaches } from './_dawn_v3';
 // lane E (v3 look): the new signature — the gilded dawn cage (./_dawn_e.ts); the old look keeps the fence below
-import { cageActivate, cageCounter, cageDestroyed, cageObserve } from './_dawn_e';
+import { cageActivate, cageCounter, cageDestroyed, cageObserve, installStageWatch } from './_dawn_e';
 
 type AnyCtx = CinematicContext<GameEvent>;
 type ActCtx = CinematicContext<Extract<GameEvent, { type: 'activate' }>>;
@@ -156,6 +156,9 @@ registerCardHook(ID, 'destroyed', async (ctx) => {
   fenceOf(sc, ev.uid)?.destroy();
   void idxOf;
 });
+
+// v3: a staged board's cage is built with the board (frame 0), not on the first event
+if (V3_A5_A) installStageWatch();
 
 /** A staged / restored board shows its fence; a fence whose card is gone is removed. */
 registerObserver((_ev, ctx: AnyCtx) => {
