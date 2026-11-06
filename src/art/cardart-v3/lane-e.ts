@@ -1,6 +1,9 @@
 // Lane E (claude/kart-e) card-art registry: the v3 pictures of the 11 new spells (docs/v3/YENI_KARTLAR.md §7)
 // are picked up from ./<id>.ts as soon as a builder writes them (default export: CardArtV3, the file's id must
 // match). src/art/cardface-v3/index.ts spreads LANE_E_ART into its ART table (one additive line).
+// Monsters may be listed too (crystal_wyrm, abyss_magus): their v3 sprite's `portrait` is the source of truth
+// for the hand face and paints the SAME renderArt(art, 0).smallPx, so both paths agree byte for byte
+// (tests/e/crystal_wyrm-card.test.ts); the entry here is what puts the monster's BIG picture in LANE_E_ART_BIG.
 
 import type { CardId } from '../../data/cards';
 import type { PixelCanvas } from '../pixel';

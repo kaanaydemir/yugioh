@@ -51,19 +51,32 @@ describe('crystal_wyrm card picture', () => {
     }
   });
 
-  it('the eye wins: the bright centroid sits near it, the head has air in front, nothing touches the top', () => {
+  it('the head leads: bright mass near the head, air in front of the snout, no tangent with the window top', () => {
     const r = renderArt(card, 0);
-    for (const [l, pic, focus, max, lead, air] of [
-      [r.big, r.bigPx, card.focus, 15, 7, 3],
-      [r.small, r.smallPx, card.focusSmall!, 8, 3, 2],
+    // (the bright centroid is the WHITE body's centre — the white dragon is the bright mass by design; the eye
+    // and the orb win by contrast, cyan in a dark socket / mouth — so the bound is looser than a dark monster's)
+    for (const [l, pic, focus, max, lead] of [
+      [r.big, r.bigPx, card.focus, 17, 7],
+      [r.small, r.smallPx, card.focusSmall!, 9, 5],
     ] as const) {
       const c = brightCentroid(pic);
       expect(Math.hypot(c.x - focus[0], c.y - focus[1]), l.size).toBeLessThan(max);
       expect(leadRoom(l.subject, l.size, focus[1]), l.size).toBeGreaterThanOrEqual(lead);
-      // the first subject row (the wing's knuckle, the horn tips) keeps air under the window's top
-      let top = l.subject.h;
-      for (let y = 0; y < l.subject.h && top === l.subject.h; y++) for (let x = 0; x < l.subject.w; x++) if (l.subject.isOpaque(x, y)) top = y;
-      expect(top, l.size).toBeGreaterThanOrEqual(air);
+    }
+    const top = (p: PixelCanvas) => {
+      for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) if (p.isOpaque(x, y)) return y;
+      return p.h;
+    };
+    // small: the first subject row (the wrist knuckle) keeps 2 px of air under the window's top
+    expect(top(r.small.subject)).toBeGreaterThanOrEqual(2);
+    // big: the wrist claw bleeds DECISIVELY off the top (≥ 3 px wide where it crosses the 2-px bezel), never a
+    // knob sitting on it; nothing else reaches the top rows
+    expect(top(r.big.subject)).toBe(0);
+    for (const y of [0, 2]) {
+      const xs: number[] = [];
+      for (let x = 0; x < r.big.subject.w; x++) if (r.big.subject.isOpaque(x, y) && r.big.subject.get(x, y) !== PAL.ink) xs.push(x);
+      expect(xs.length, `row ${y}`).toBeGreaterThanOrEqual(3);
+      expect(Math.max(...xs), `row ${y}`).toBeLessThan(20);
     }
   });
 
@@ -100,9 +113,35 @@ describe('crystal_wyrm card picture', () => {
       expect(count(l.subject, GOLD) / area, l.size).toBeGreaterThan(0.04);
       // the LIGHT recipe: the backdrop's light shape is gold
       expect(count(l.backdrop, [PAL.gold1, PAL.gold2]) / area, l.size).toBeGreaterThan(0.2);
-      // the open jaw's breath core: cyan light in the mouth on the light layer
-      expect(count(l.light, [PAL.cyan3, PAL.cyan4]), l.size).toBeGreaterThanOrEqual(l.size === 'big' ? 6 : 1);
     }
+    // the white dragon (the sprite's / cut-in's value): white is a major tone of the picture, beside the mist
+    expect(count(r.bigPx, [PAL.white]) / (88 * 68)).toBeGreaterThan(0.06);
+    expect(count(r.smallPx, [PAL.white]) / (44 * 34)).toBeGreaterThan(0.05);
+    // THE BEAT: the breath orb in the open mouth — a white glint on a cyan4 core (big: a 3×3 core in a cyan3
+    // ring and a cyan2 rim; small: a hand-placed 2×2 core), framed by the mouth's dark
+    for (const [l, core] of [
+      [r.big, 8],
+      [r.small, 3],
+    ] as const) {
+      const s = l.subject;
+      let orbs = 0;
+      for (let y = 0; y < s.h; y++)
+        for (let x = 0; x < s.w; x++) {
+          if (s.get(x, y) !== PAL.white || s.get(x + 1, y) !== PAL.cyan4 || s.get(x, y + 1) !== PAL.cyan4) continue;
+          let n = 0;
+          let dark = 0;
+          for (let dy = -4; dy <= 4; dy++)
+            for (let dx = -4; dx <= 4; dx++) {
+              const c = s.get(x + dx, y + dy);
+              if (c === PAL.cyan4) n++;
+              if (c === PAL.night0 || c === PAL.night1) dark++;
+            }
+          if (n >= core && dark >= 6) orbs++;
+        }
+      expect(orbs, l.size).toBe(1);
+    }
+    // the orb flares on the light layer (its rim → cyan3 in the swell frames)
+    for (const l of [renderArt(card, 3).big, renderArt(card, 3).small]) expect(count(l.light, [PAL.cyan3]), l.size).toBeGreaterThanOrEqual(l.size === 'big' ? 10 : 4);
     // the eye: cyan iris pixels right at the focus (big) and its white glint on frame 0 (both sizes)
     const [fx, fy] = card.focus;
     let iris = 0;
@@ -127,8 +166,8 @@ describe('crystal_wyrm card picture', () => {
       ] as const) {
         let d = 0;
         for (let i = 0; i < p.data.length; i += 4) if (p.data[i] !== q.data[i] || p.data[i + 1] !== q.data[i + 1] || p.data[i + 2] !== q.data[i + 2]) d++;
-        // a glint, the breath pulse, at most one glass facet flipping lit: never a repaint
-        expect(d).toBeLessThanOrEqual(p.w === 88 ? 80 : 30);
+        // a glint, the orb's flare, at most one glass facet flipping lit: never a repaint (≤ 1.7 % / 2 %)
+        expect(d).toBeLessThanOrEqual(p.w === 88 ? 100 : 30);
         changed += d;
       }
       // the subject layer is the same in every frame (light-layer swaps only)

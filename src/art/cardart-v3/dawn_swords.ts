@@ -226,7 +226,7 @@ function paint(size: Size, l: ArtLayers, f: number): void {
   const G = geo(size);
   // 1. backdrop: the dawn sun rising behind the dome
   const recipe: BackdropRecipe = f % 4 >= 2 ? { ...DAWN, tones: [PAL.gold1, PAL.gold2, PAL.gold4] } : DAWN;
-  paintBackdrop(l.backdrop, recipe, { focus: [44, 20], horizon: 46, radius: 34 });
+  paintBackdrop(l.backdrop, recipe, { focus: [44, 22], horizon: 46, radius: 30 });
   // 2. subject: the cold beast, the cage over it, the padlock over the door
   l.subject.blit(beast(size), 0, 0);
   l.subject.blit(cage(size), 0, 0);

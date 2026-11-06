@@ -309,7 +309,7 @@ function paintWing(z: Z): PixelCanvas {
   // the elbow and the wrist knuckles, and the claw spike rising over the wrist (white / mist, gold-free)
   p.disc(E[0], E[1], 2.0 * z.k + 0.4, PAL.mist);
   // (the hand picture: a stub of a claw — the full one would touch the window's top edge at 1×)
-  const S = z.small ? lerp(W, M(z, W_SPIKE), 0.25) : M(z, W_SPIKE);
+  const S = z.small ? lerp(W, M(z, W_SPIKE), 0.18) : M(z, W_SPIKE);
   const nf = z.small ? 0.1 : 0.2;
   const n: V = [(S[1] - W[1]) * nf, -(S[0] - W[0]) * nf];
   p.poly([[W[0] - n[0] - 1, W[1] - n[1]], S, [W[0] + n[0] + 1, W[1] + n[1]]], PAL.mist);
@@ -325,7 +325,8 @@ function glintPath(z: Z): V[] {
   const W = wristAt(z);
   const t = M(z, W_TIPS[0]);
   const out: V[] = [];
-  for (const f of [0.08, 0.24, 0.4, 0.56, 0.72]) out.push(fl(lerp(W, t, f)));
+  // (the hand picture's leading edge leaves the window sooner: its glint walks the visible part only)
+  for (const f of z.small ? [0.04, 0.12, 0.2, 0.28, 0.36] : [0.08, 0.24, 0.4, 0.56, 0.72]) out.push(fl(lerp(W, t, f)));
   return out;
 }
 
@@ -630,8 +631,11 @@ function backdrop(l: ArtLayers, z: Z): void {
     return false;
   };
   // 16 bars on clean pixel slopes (0°, 2:1, 45°, 1:2 …): the axis / diagonal ones long, the 2:1 ones short —
-  // a sunburst, not a ring of thorns; the subject and the window's edge mask most of them out
+  // a sunburst, not a ring of thorns; the subject and the window's edges mask most of them out — the open sky
+  // over the snout keeps three (1:2, 45°, 2:1), fanning up and right from the ring
   for (const [a, b] of RAY_DIRS) {
+    // (only the upper half: under the jaw the sky is a thin gap where a masked bar hangs like a stray stick)
+    if (b > 0) continue;
     const major = Math.max(Math.abs(a), Math.abs(b));
     const xMajor = Math.abs(a) >= Math.abs(b);
     const sx = Math.sign(a);
@@ -725,7 +729,8 @@ function living(l: ArtLayers, z: Z, f: number): void {
   // the glass glint walking the leading edge
   if (k >= 1) {
     const [x, y] = glintPath(z)[k - 1];
-    L.set(x, y, PAL.white);
+    // (on a white bone pixel the glint shows as a cyan4 spark: it must change the picture in every frame)
+    L.set(x, y, sub.get(x, y) === PAL.white ? PAL.cyan4 : PAL.white);
     if (k >= 2 && k <= 4 && !z.small) for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) on(x + dx, y + dy, PAL.cyan4);
   }
   // the facet shimmer

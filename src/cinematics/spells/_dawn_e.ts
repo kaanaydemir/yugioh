@@ -8,43 +8,45 @@
 // Sounds: src/audio/v3/e/dawn_swords.ts (e_dawn*).
 //
 // BEAT LIST (scene ms at 1×; game time ×1.35 with the v3 tempo). t = 0 is the frame the card lies flat on its zone.
-// ACTIVATE (hook 'activate', after the common v3 spell opening ≈ 0.55 s and landV3) — ≈ 3.2 s, every beat its own:
-//   0      OMEN: the cage's shadow falls on the opponent's row (stepped, 3 levels); the chain pays out — e_dawnChain
+// Round 3 (critic fixes): a real birdcage DOME over the middle lane, steel sword bars vs gilded rods, a one-column
+// DOOR set piece, a big padlock with three tongue BOLTS on its face, a quicker flow (≈ 5.0 s game time with flips).
+// ACTIVATE (hook 'activate', after the common v3 spell opening ≈ 0.55 s and landV3):
+//   0      OMEN: the cage's shadow falls on the opponent's row (stepped, 3 levels); the pulley ratchet — e_dawnChain
 //   0–270  THE DESCENT: the gilded cage drops from 170 px above (inQuad) on its chain, its swords DULL, the door
-//          hanging open and swinging 56 ↔ 70° as it falls
-//   270    LAND: a pale-gold frame on the whole cage, hit-stop 50 ms, 2-px shake, dust from under the rails, gold sparks
-//          at the corner posts, a floor ring + flash — e_dawnLand (the gilded bars ring on a bell partial)
-//   290–430 the bounce: −3, 0, −1, 0 px (34 ms steps)
-//   450    THE DAWN: the sun on the crown ignites (white frame) and its ray fan RISES in three drawings — e_dawnSun;
-//   570    … the DAWN WAVE runs down every sword at once (a 4-row white-gold band, 480 ms per blade, the blades
-//          staggered left → right over 180 ms): the blades turn bright behind it, the guards flare as it starts, a
-//          light beam sweeps from the sun along the row, a gold floor light walks with the touchdowns; as the wave
-//          touches the floor in a lane, that lane's FACE-DOWN monster flips face-up (the engine's own flip, cause
-//          'reveal'; a white-gold ring on its tile)
-//   ~1230  every reveal flip has finished (the door waits for them) → +100 hold
-//   ~1330  THE DOOR swings shut (70 → 0°, 6 drawings, 150 ms, accelerating; a hinge swoosh-creak — e_dawnSwing) …
-//   ~1480  … SLAM: the door's white frame, hit-stop 50 ms, 1-px shake, the bars rattle, latch sparks — e_dawnSlam
-//   +180   CAGED: every monster goes COLD — an edge light drains down it (water2 → water4), cold pools fade in, breath
-//          mist — e_dawnCold; they LEAN on the front bars (3 px, held 300 ms; the bar touched flashes white) and ease
-//          back. The cold STAYS: a frost band on their lower body + breath puffs for as long as the cage stands.
-//   +600   THE PADLOCK drops 12 px onto the latch, shackle open (100 ms), and SNAPS shut — e_dawnShackle (the hero)
-//   +160   the three TONGUE PLATES light one by one (140 ms apart, a white plate frame + a twinkle) — e_dawnTongue ×3
-//   +200   the small padlock badge pops onto the lying spell card — e_dawnBadge; +180 the input returns
+//          hanging WIDE OPEN toward the camera (100°), swinging 90 ↔ 100° as it falls
+//   270    LAND: a pale-gold frame on the whole cage, hit-stop 50 ms, 2-px shake, dust, gold sparks at the posts, a
+//          floor ring + flash — e_dawnLand (the low gong of the gilded bars); the bounce rocks the open door
+//   450    THE DAWN: the sun finial on the dome ignites, its ray fan RISES in three drawings — e_dawnSun;
+//   570    … the DAWN WAVE runs down every steel blade (480 ms per blade, staggered left → right over 180 ms), a
+//          light beam from the sun, a gold floor light; as it touches a lane, that lane's FACE-DOWN monster flips
+//          face-up (the engine's own flip, cause 'reveal')
+//   ~1300  +80 hold → THE DOOR swings shut (100 → 0°, 150 ms, accelerating — e_dawnSwing) … SLAM: the door's white
+//          frame, hit-stop 50 ms, a white ring and sparks off the latch — e_dawnSlam (a bright brass latch KLAK);
+//          the OVERSHOOT frame (−8°) and back, the bars rattle. The reveal flips run on under the door.
+//   +100   CAGED (after the flips): every monster goes COLD (an edge light drains down it, cold pools, breath mist —
+//          e_dawnCold) and LEANS on the bars one after another (60 ms apart, 5 px, a one-frame squash on contact,
+//          the touched bar flashes, a frost puff) and eases back. An EMPTY row skips this beat.
+//   +300   THE PADLOCK drops 14 px onto the latch (while they ease back), shackle open, SNAPS shut with a pop —
+//          e_dawnShackle; +160 the three TONGUE BOLTS turn their gilded faces out (140 ms apart) — e_dawnTongue ×3
+//   +170   the small padlock badge pops onto the lying spell card (its left corner) — e_dawnBadge; +150 the end
 // IDLE (as long as the card is on the field): the sun's rays twinkle (long ↔ short), a glint runs down one sword now
 //   and then, a light climbs the chain, cold breath rises inside, a gold mote drifts down; the caged units' frost.
-// COUNTER (each end of the opponent's turn; 'counter' event) ≈ 0.65 s: the whole padlock flashes white; the right-most
-//   lit TONGUE TURNS on its axis (4 drawings, 45 ms: narrowing → edge-on white + a spark → its dark back) — the bell
+// COUNTER (each end of the opponent's turn; 'counter' event) ≈ 0.65 s: the whole padlock flashes white and POPS (a
+//   gold halo); the right-most lit BOLT TURNS (4 drawings, 45 ms: narrowing → edge-on, its slot framed white, a spark
+//   burst and a small ring → its IRON back) — the bell
 //   tolls (e_dawnTick: three ratchet ticks + the church bell G4): the lock swings ±2 px three times, a gold ring
 //   spreads, a light pulse climbs from the lock up the latch post and the vault to the sun, the sun flares and a gold
 //   ripple runs out along every sword from the middle; the badge's pip turns too.
-// LAST (counter 1 → 0): the last tongue turns — e_dawnLast (the bell low, D4) → +300 the padlock SPRINGS OPEN and
-//   drops to the floor, two bounces — e_dawnUnlock → the door creaks open (e_dawnDoor), the sun goes cold, the frost
-//   and the cold pools leave → +620 the cage is HAULED UP out of the top (inCubic, 420 ms) — e_dawnHaul.
+// LAST (counter 1 → 0): the last bolt turns — e_dawnLast (the bell low, D4) → +300 the padlock SPRINGS OPEN and
+//   drops to the floor, two bounces — e_dawnUnlock → the door creaks WIDE open (90°, e_dawnDoor), the sun's ray fan
+//   collapses in three drawings, the frost and the cold pools leave → +370 the cage is HAULED UP out of the top
+//   (inCubic, 420 ms) — e_dawnHaul (a rising chain-and-ratchet line).
 // EARLY DESTRUCTION ('destroyed' while the counter is still > 0: Arınma Dalgası …) ≈ 0.95 s: its own BREAK — two
 //   pale-gold frames; the chain SNAPS and whips up (a visible link segment flicking); every sword SNAPS: its upper
-//   half (crossguard and all) flies off spinning; the frame sags, splits at the door and COLLAPSES: every bar, rail,
-//   hoop and post falls as its own piece, tumbles and bounces on the floor, lies there a few frames and dissolves in
-//   steps; the padlock and the sun fall and bounce — e_dawnBreak (a falling bell arpeggio of the bars + clatter).
+//   half flies off spinning, drawn as a SWORD (steel blade, guard, pommel); the frame sags, splits at the door and
+//   COLLAPSES into FEW, THICK (3-px) pieces that tumble, bounce and lie FLAT along the rail (the vault / dome / back
+//   pieces in the back layer, behind the caged monsters), then cool gold → stone (steel → night) as light motes
+//   rise off them; the padlock and the sun fall and bounce — e_dawnBreak (a falling bell arpeggio of the bars + clatter).
 // STAGED / RESTORED boards: the cage is built with the board, before the first event (no pop-in); a late restore
 //   fades in. A cage whose card is gone is removed.
 //
@@ -214,10 +216,12 @@ function backTex(sc: Phaser.Scene, g: CageGeo, white = false): string {
   })).key;
 }
 
-function doorTex(sc: Phaser.Scene, g: CageGeo, deg: number, lit: boolean, white = false): string {
-  return motifTexture(sc, `${geoKey(g)}:door:${deg}:${lit ? 1 : 0}:${white ? 1 : 0}`, motif(() => {
-    const p = paintDoor(g, deg, white, { lit });
-    if (!lit && !white) p.map((c) => (c === PAL.gold4 ? PAL.gold3 : c));
+/** `white`: true = the slam's white frame; 'gold' = the land / break frame (the pale-gold flashTone, EF-4). */
+function doorTex(sc: Phaser.Scene, g: CageGeo, deg: number, lit: boolean, white: boolean | 'gold' = false): string {
+  return motifTexture(sc, `${geoKey(g)}:door:${deg}:${lit ? 1 : 0}:${white === 'gold' ? 2 : white ? 1 : 0}`, motif(() => {
+    const p = paintDoor(g, deg, white === true, { lit });
+    if (white === 'gold') p.map(flashTone);
+    else if (!lit && !white) p.map((c) => (c === PAL.gold4 ? PAL.gold3 : c));
     return p;
   })).key;
 }
@@ -439,7 +443,7 @@ export class DawnCage {
     this.lock.setVisible(on && this.lockShown);
   }
 
-  private setDoor(deg: number, white = false): void {
+  private setDoor(deg: number, white: boolean | 'gold' = false): void {
     // the nearest drawing
     let best: number = DOOR_ANGLES[0];
     for (const a of DOOR_ANGLES) if (Math.abs(a - deg) < Math.abs(best - deg)) best = a;
@@ -463,7 +467,7 @@ export class DawnCage {
       b.setTexture(backTex(this.scene, this.g, on)).setCrop(cx, 0, cw, this.g.h);
     }
     this.front.setTexture(frontTex(this.scene, this.g, this.bladesLit, on));
-    this.setDoor(this.doorDeg, on);
+    this.setDoor(this.doorDeg, on ? 'gold' : false);
   }
 
   /** Screen point of the sword bar k's blade at height h (at rest + the cage's current offset). */
