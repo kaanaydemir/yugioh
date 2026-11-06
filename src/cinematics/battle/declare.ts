@@ -33,7 +33,7 @@ import { banner, type BannerOpts } from '../../vfx/banners';
 import { lightBeam, lightFlash } from '../../view/light';
 import { fx, registerEvent, registerObserver } from '../api';
 import { REACTION_POSES, warmUnitPoses } from '../_v3/warm';
-import { alignStart, frameDelta, idleDelta, settleBefore, strikeContactIn } from '../_v3/posematch';
+import { alignStart, frameDelta, idleDelta, settleBefore, settleGoal, strikeContactIn, struckPosesFor } from '../_v3/posematch';
 import { V3HOOKS } from '../v3small/_hooks';
 import {
   ADD,
@@ -381,7 +381,17 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
   // (the battle re-plans on the strike's own first frame, _v3/posematch.ts)
   if (attacker && target) {
     const lead = strikeContactIn(attacker, declarePoseFrame(attacker) + 1);
-    if (lead !== null) settleBefore(target, DECLARE_SETTLE_MS + lead);
+    if (lead !== null) {
+      // the goal: the frames the pose this blow plays continues — a 'destroy' of the target later in this batch (before
+      // the next declaration) means death, else a recoil
+      let lethal = false;
+      for (let i = ctx.index + 1; i < ctx.events.length; i++) {
+        const e = ctx.events[i];
+        if (e.type === 'attackDeclare') break;
+        if (e.type === 'destroy' && e.uid === ev.targetUid) lethal = true;
+      }
+      settleBefore(target, DECLARE_SETTLE_MS + lead, settleGoal(target, struckPosesFor(lethal)));
+    }
   }
   const tTile = ev.targetUid !== null ? ctx.tile(ev.targetUid) : null;
   const defender = other(ev.player);
