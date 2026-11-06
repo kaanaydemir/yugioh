@@ -68,6 +68,7 @@ import type { TileCard } from '../../view/TileCard';
 import type { CardSprite } from '../../view/CardSprite';
 import { Raster, onFrame, run } from '../../vfx/setpieces';
 import { wait } from '../../vfx/core';
+import { lightDimFor } from '../../view/light';
 import { fxRng } from '../_v3/spellfx';
 import { panAt, play as playV3 } from '../_v3/sound';
 import { cardLeaves, landingCount } from '../_v3/card';
@@ -89,9 +90,9 @@ const LEAF_FX = [PAL.white, PAL.leaf4, PAL.leaf3, PAL.leaf2, PAL.leaf1] as const
 // ================================================================ timings (scene ms from the massDestroy)
 
 const T = {
-  whirlMs: 210,
-  rattle: 90,
-  stroke: 210,
+  whirlMs: 280,
+  rattle: 100,
+  stroke: 300,
   /** the head's run over the whole path (incl. the run-out past the exit) */
   strokeMs: 700,
   /** a card's whole flight (lift → gone in the void) */
@@ -107,7 +108,7 @@ const T = {
   carryMs: 300,
   dropMs: 110,
   /** the field card tears off this long after its flame is snuffed */
-  fieldAfter: 190,
+  fieldAfter: 100,
   /** a fallen card's carrier leaves this long after the previous one (overlapped, not queued) */
   carryGap: 50,
   /** after the last delivery */
@@ -155,8 +156,8 @@ const SLAB = { c0: -0.8, c1: COLS - 0.2, r0: -0.8, r1: ROWS - 0.2 };
  * duelist billboards), along the back row, round the field zone and out over the side rim (plus a short run-out
  * that stays low: never up into the HUD billboards). */
 const PATH_LOCAL: readonly G[] = [
-  [-0.9, 0.1],
-  [0.0, 0.0],
+  [0.0, 0.02],
+  [0.6, 0.0],
   [1.0, -0.04],
   [3.0, 0.0],
   [4.8, 0.05],
@@ -329,12 +330,12 @@ function drawFlame(r: Raster, f: Flame, el: number): void {
     const wp = 1 + [0, -0.14, 0.1, -0.06][fr] * f.calm;
     const hp = 1 + [0, 0.07, -0.07, 0.03][fr] * f.calm;
     const buffet = (Math.floor(el / 45) % 2 ? 1 : -1) * f.flap;
-    const H = Math.max(3, R(24 * f.h * hp));
+    const H = Math.max(3, R(32 * f.h * hp));
     for (let k = 0; k <= H; k++) {
       const u = k / H;
       // teardrop: widest a third up, a pointed tip
       const shape = Math.sin(Math.PI * Math.min(1, 0.18 + u * 0.95)) * Math.pow(1 - u, 0.35);
-      const hw = Math.max(0, Math.floor(4.5 * f.w * wp * shape));
+      const hw = Math.max(0, Math.floor(6.5 * f.w * wp * shape));
       const xo = R(f.lean * u * u + sway * Math.max(0, u - 0.4) * 3.4 + buffet * u * u);
       const y = at.y - 3 - k;
       for (let dx = -hw - 1; dx <= hw + 1; dx++) {
@@ -349,8 +350,9 @@ function drawFlame(r: Raster, f: Flame, el: number): void {
       }
     }
     // the base glow on the card (a stepped ellipse of light)
-    for (let dx = -6; dx <= 6; dx++) r.px(at.x + dx, at.y - 2, Math.abs(dx) < 3 ? ramp[3] : ramp[2]);
-    for (let dx = -4; dx <= 4; dx++) r.px(at.x + dx, at.y - 1, ramp[2]);
+    const gw = R(9 * Math.max(0.5, f.h));
+    for (let dx = -gw; dx <= gw; dx++) r.px(at.x + dx, at.y - 2, Math.abs(dx) < 4 ? ramp[3] : ramp[2]);
+    for (let dx = -gw + 3; dx <= gw - 3; dx++) r.px(at.x + dx, at.y - 1, ramp[2]);
   }
   if (f.out) {
     const s = f.since;
@@ -561,6 +563,8 @@ interface Swept {
   /** how far (grid) to the edge along `out`, and whether that edge is a back edge (the slab hides the fall) */
   edge: number;
   back: boolean;
+  /** it rides the wind along its row to the side rim (the victim's back row when that row is the far one) */
+  ride: boolean;
   spin: number;
   yaw: number;
   fc: FlyCard | null;
@@ -611,10 +615,14 @@ function collect(ctx: MassCtx, path: Path, victim: PlayerId): Collected {
       const loc = toLocal(victim, home);
       const s = Math.max(0, path.nearest(home) - 6);
       const along = path.tan(s);
-      const out: G = dirWorld(victim, kind === 'field' ? [1, 0] : [0, -1]);
-      const edge = kind === 'field' ? SLAB.c1 - loc[0] : loc[1] - SLAB.r0;
-      // the back edges (the platform's top hides a falling card): the victim's rows < 0 / cols < 0 side
-      const back = victim === 1 ? kind !== 'field' : kind === 'field';
+      // every card leaves over a VISIBLE rim (a front wall face), never behind the slab: when the victim is
+      // player 2 (the far side) the wind carries it along its row to the right-hand rim (cols > 6); when the
+      // victim is player 1 it is thrown out over its own front-left rim (rows > 4)
+      const ride = victim === 1;
+      const out: G = victim === 1 ? [1, 0] : [0, 1];
+      const edge = victim === 1 ? SLAB.c1 - home[0] : SLAB.r1 - home[1];
+      void loc;
+      const back = false;
       const tile = field.tileOf(e.uid);
       cards.push({
         uid: e.uid,
@@ -633,6 +641,7 @@ function collect(ctx: MassCtx, path: Path, victim: PlayerId): Collected {
         out,
         edge,
         back,
+        ride,
         spin: 0,
         yaw: 0,
         fc: null,
@@ -660,25 +669,37 @@ function collect(ctx: MassCtx, path: Path, victim: PlayerId): Collected {
   return { cards, fieldIdx, fieldId };
 }
 
-/** The flight's edge crossing (τ ms after the lift) along the smooth outward curve. */
+/** How far (grid) along `out` a card has travelled τ ms after its lift. */
+function outAt(c: Swept, tau: number): number {
+  const oTot = c.edge + 0.6;
+  if (c.ride) {
+    // it rides the wind: slow off the slot, gathering speed (the further it has to go, the longer it rides)
+    const k = c01((tau - 30) / (230 + 80 * c.edge));
+    return oTot * (0.3 * k + 0.7 * k * k);
+  }
+  return oTot * ease.smooth(c01((tau - 30) / 520));
+}
+
+/** The flight's edge crossing (τ ms after the lift). */
 function edgeTau(c: Swept): number {
-  const oTot = c.edge + 0.5;
-  for (let k = 30; k <= 560; k += 10) if (oTot * ease.smooth(c01((k - 30) / 520)) >= c.edge) return k;
+  for (let k = 30; k <= 1400; k += 10) if (outAt(c, k) >= c.edge) return k;
   return 9999;
 }
 
 /** A card's flight at τ ms after its lift: ground point (grid), height (px), whether it is past the edge. */
 function flight(c: Swept, tau: number, tauEdge: number): { g: G; z: number; past: boolean } {
-  const A = 0.95 * ease.out(tau / 600);
-  const oTot = c.edge + 0.5;
-  const O = oTot * ease.smooth(c01((tau - 30) / 520));
-  const g: G = [c.home[0] + c.along[0] * A + c.out[0] * O, c.home[1] + c.along[1] * A + c.out[1] * O];
-  const peak = c.kind === 'field' ? 20 : 26;
-  const zAt = (t: number) => (t < 180 ? peak * ease.out(t / 180) : peak + R(Math.sin((t - 180) / 120) * 4));
+  const A = c.ride ? 0 : 0.95 * ease.out(tau / 600);
+  const O = outAt(c, tau);
+  // a rider drifts a touch toward its own back edge (it stays clear of the monsters in front of it) and its arc
+  // stays LOW (it never climbs over the duelist behind the row)
+  const drift = c.ride && c.kind !== 'field' ? -0.18 * ease.out(tau / 320) : 0;
+  const g: G = [c.home[0] + c.along[0] * A + c.out[0] * O, c.home[1] + c.along[1] * A + c.out[1] * O + drift];
+  const peak = c.kind === 'field' ? 18 : c.ride ? 14 : 26;
+  const zAt = (t: number) => (t < 160 ? peak * ease.out(t / 160) : peak + R(Math.sin((t - 160) / 110) * (c.ride ? 2 : 4)));
   const past = tau >= tauEdge;
   let z = zAt(tau);
   if (past) {
-    // the drop starts AT the edge: no glide over the rim, straight down into the void
+    // the drop starts AT the edge: no glide over the rim, straight down past the wall into the void
     const d = (tau - tauEdge) / 1000;
     z = zAt(tauEdge) - 40 * d - 0.5 * 2600 * d * d;
   }
@@ -775,13 +796,11 @@ function lobCurl(sc: Phaser.Scene, from: XY, to: XY, ms: number = T.lobMs): Prom
   const ctrl = { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - 26 };
   const light = lightPool(sc, from.x, from.y, { color: PAL.leaf4, radius: 16, floorY: from.y + 30, intensity: 0.6, tint: 0, fadeIn: 0 });
   const trail: { x: number; y: number; age: number }[] = [];
-  const bits = new Bits();
+  const steps: { x: number; y: number; at: number }[] = [];
   let last = 0;
-  let shed = false;
   return run(sc, ms, (t, el) => {
     const dt = el - last;
     last = el;
-    bits.step(dt);
     const k = ease.inOut(t);
     const p = qbez(from, ctrl, to, k);
     const x = R(p.x);
@@ -790,29 +809,32 @@ function lobCurl(sc: Phaser.Scene, from: XY, to: XY, ms: number = T.lobMs): Prom
     for (const tr of trail) tr.age += dt;
     trail.push({ x, y, age: 0 });
     while (trail.length && trail[0].age > 120) trail.shift();
-    if (!shed && t > 0.45) {
-      shed = true;
-      bits.add({ kind: 'leaf', x, y, vx: (to.x - from.x) * 0.2, vy: -30, g: 120, life: 420, ph: 0.3, c: PAL.leaf3 });
-    }
+    // a leaf left behind every ~45 ms: a four-step trail of leaves, fading
+    if (!steps.length || el - steps[steps.length - 1].at >= 45) steps.push({ x, y, at: el });
+    while (steps.length > 5) steps.shift();
     ras.draw((r) => {
       for (const tr of trail) r.px(tr.x, tr.y + 1, tr.age < 40 ? PAL.leaf3 : tr.age < 80 ? PAL.leaf2 : PAL.leaf1);
-      // the curl: three arm pixels round a white core, spinning (stepped to eighths)
-      // two spiral arms (a little whirlwind in the making), 1-px thick, stepped to eighths of a turn
-      const a = Math.floor(el / 28) * (Math.PI / 4);
+      const trailCols = [PAL.leaf1, PAL.leaf2, PAL.leaf3, PAL.leaf4];
+      steps.slice(0, -1).forEach((st, i, arr) => {
+        const age = arr.length - 1 - i;
+        leaf3(r, st.x, st.y + 2 + age, Math.floor(el / 60) + i, trailCols[Math.max(0, 3 - age)]);
+      });
+      // the curl: two spiral arms round a white core (a whirlwind in the making, ~15 px across), 1-px thick,
+      // spinning in eighths of a turn
+      const a = Math.floor(el / 26) * (Math.PI / 4);
       for (const arm of [0, Math.PI]) {
         let prev: XY | null = null;
-        for (let j = 0; j < 7; j++) {
-          const an = a + arm + j * 0.62;
-          const rr = 1.8 + j * 0.62;
+        for (let j = 0; j < 10; j++) {
+          const an = a + arm + j * 0.6;
+          const rr = 2 + j * 0.62;
           const pt = { x: R(x + Math.cos(an) * rr), y: R(y + Math.sin(an) * rr * 0.8) };
-          const col = j < 2 ? PAL.leaf4 : j < 5 ? PAL.leaf3 : PAL.leaf2;
+          const col = j < 2 ? PAL.white : j < 5 ? PAL.leaf4 : j < 8 ? PAL.leaf3 : PAL.leaf2;
           if (prev) r.line(prev.x, prev.y, pt.x, pt.y, col);
           prev = pt;
         }
       }
-      r.rect(x - 1, y - 1, 2, 2, PAL.white);
-      r.px(x + 1, y, PAL.leaf4);
-      bits.draw(r);
+      r.rect(x - 1, y - 1, 3, 3, PAL.white);
+      r.px(x + 2, y, PAL.leaf4);
     });
   }).then(() => {
     ras.destroy();
@@ -918,6 +940,13 @@ async function holdForAnswer(ctx: ActCtx, op: Opening, set: boolean): Promise<vo
   relax(ctx);
 }
 
+/** Tint every image of a container (a hovering card) with `color` (multiply: a dimmer tone). */
+function tintDeep(o: Phaser.GameObjects.GameObject, color: number): void {
+  const t = o as unknown as { setTint?: (c: number) => void; list?: Phaser.GameObjects.GameObject[] };
+  if (Array.isArray(t.list)) t.list.forEach((c) => tintDeep(c, color));
+  else if (typeof t.setTint === 'function') t.setTint(color);
+}
+
 /** The spent waiting card goes to its graveyard (a hovering card drops to the floor first). */
 async function waitingCardLeaves(ctx: AnyCtx, w: GaleWait, gi: number): Promise<void> {
   const g = gi >= 0 ? (ctx.events[gi] as Extract<GameEvent, { type: 'toGraveyard' }>) : null;
@@ -956,18 +985,51 @@ registerCardHook(ID, 'toGraveyard', async (ctx) => {
   const card = h.card;
   const at = card ? { x: R(card.x), y: R(card.y) } : castSpot(h.owner);
   playV3('e_galeDie', { volume: 0.85, pan: panAt(at.x) });
-  const ras = Raster.around(sc, at.x, at.y + 20, 120, 120, DEPTH.FX_TOP + 11);
-  const bits = new Bits();
-  h.leaves().forEach((p, i) => bits.add({ kind: 'leaf', x: p.x, y: p.y, vx: (i % 2 ? 1 : -1) * 14, vy: -10, g: 260, life: 380 + i * 30, ph: i * 0.4, c: i % 2 ? PAL.leaf2 : PAL.leaf3 }));
-  if (card && card.active) void card.pulse(PAL.crim3, 220);
-  let last = 0;
-  await run(sc, 300, (t, el) => {
-    bits.step(el - last);
-    last = el;
-    // the card shivers for three frames as the air leaves it
-    if (card && card.active) card.setX(at.x + (el < 90 ? (Math.floor(el / 30) % 2 ? 1 : -1) : 0));
-    ras.draw((r) => bits.draw(r));
-    void t;
+  const floorY = castFloor(at);
+  const ras = Raster.around(sc, at.x, at.y + 20, 140, 130, DEPTH.FX_TOP + 11);
+  // the circling leaves STOP where they are, droop (two 1-px sags), then drop to the floor in a sideways flutter
+  // and lie there, browning in steps
+  const leaves = h.leaves().map((p, i) => ({ x0: p.x, y0: p.y, side: i % 2 ? 1 : -1, delay: 90 + i * 35, lie: floorY - 1 + (i % 3) }));
+  const card0 = card && card.active ? { y: R(card.y) } : null;
+  let tinted = 0;
+  await run(sc, 560, (_t, el) => {
+    if (card && card.active && card0) {
+      // the card shivers for three frames as the air leaves it, then SAGS 3 px in steps and dims in two tone steps
+      card.setX(at.x + (el < 90 ? (Math.floor(el / 30) % 2 ? 1 : -1) : 0));
+      card.setY(card0.y + (el < 120 ? 0 : el < 200 ? 1 : el < 280 ? 2 : 3));
+      const step = el < 200 ? 0 : el < 340 ? 1 : 2;
+      if (step !== tinted) {
+        tinted = step;
+        tintDeep(card, step === 1 ? PAL.stone4 : PAL.stone3);
+      }
+    }
+    ras.draw((r) => {
+      for (const [i, l] of leaves.entries()) {
+        const e = el - l.delay;
+        let x = l.x0;
+        let y = l.y0;
+        let fr = i;
+        let col: number = PAL.leaf4;
+        if (el < 60) {
+          // stopped mid-orbit
+        } else if (e < 0) {
+          y += el < 100 ? 1 : 2; // drooping
+          col = PAL.leaf3;
+        } else {
+          const d = e / 1000;
+          const fall = Math.min(l.lie - l.y0, 2 + 0.5 * 900 * d * d + 20 * d);
+          y = l.y0 + fall;
+          const landed = y >= l.lie;
+          x = l.x0 + (landed ? 0 : R(Math.sin(e / 55) * 3 * l.side));
+          if (landed) {
+            y = l.lie;
+            fr = 1;
+          } else fr = Math.floor(e / 70) + i;
+          col = e < 160 ? PAL.leaf3 : e < 320 ? PAL.leaf2 : PAL.leaf1;
+        }
+        leaf3(r, R(x), R(y), fr, col);
+      }
+    });
   });
   ras.destroy();
   await waitingCardLeaves(ctx as unknown as AnyCtx, h, ctx.index);
@@ -1026,6 +1088,7 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
   const opened = ctx.hints.galeOpened === true;
   const wind = scr(path.at(path.total)).x > scr(path.at(0)).x ? 1 : -1;
   const start = scr(path.at(0), 14);
+  const whirlFloor = { x: R(scr(path.at(0)).x), y: R(scr(path.at(0)).y) };
 
   // ---- a later batch (the spell_seal window was declined): the gale's curl leaves the WAITING card
   if (!opened) {
@@ -1065,7 +1128,7 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
   const fieldCard = cards.find((c) => c.kind === 'field') ?? null;
   const fieldAt = fieldCard ? zoneXY(victim, 'field', 0) : null;
   const flame: Flame | null = fieldCard && fieldAt ? { at: { x: R(fieldAt.x), y: R(fieldAt.y) }, ramp: envRamp(fieldId), h: 0, lean: 0, w: 1, calm: 1, flap: 0, out: false, since: 0, wind } : null;
-  const flameRas = flame ? Raster.around(sc, flame.at.x, flame.at.y - 36, 100, 110, DEPTH.FX + 7) : null;
+  const flameRas = flame ? Raster.around(sc, flame.at.x, flame.at.y - 40, 120, 130, DEPTH.FX + 7) : null;
   const ft = fieldCard ? fieldTimes(path, fieldCard.s) : { tField: 0, tClear: 0, tOut: 0 };
   // the field card is the last to go: it holds (rattling) until its flame is out — the snuff reads first (puff,
   // ember, the smoke rising) — then the last gust takes it
@@ -1075,8 +1138,8 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
   let fieldJob: Promise<void> | null = null;
 
   // ---- lights (they brighten the floor: no multiply tint)
-  let whirlLight: LightHandle | null = lightPool(sc, start.x, start.y, { color: PAL.leaf3, radius: 26, floorY: R(scr(path.at(0)).y), air: 0.8, airRadius: 18, intensity: 0, anim: 'breathe', fadeIn: 0, tint: 0 });
-  whirlLight.setIntensity(1, 180);
+  let whirlLight: LightHandle | null = lightPool(sc, start.x, start.y, { color: PAL.leaf3, radius: 36, floorY: whirlFloor.y, air: 0.9, airRadius: 22, intensity: 0, anim: 'breathe', fadeIn: 0, tint: 0.2 });
+  whirlLight.setIntensity(1.3, 220);
   let headLight: LightHandle | null = null;
 
   // ---- one-shot marks
@@ -1089,10 +1152,34 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
   };
   const carriers: Carrier[] = [];
   let lastCarry = -Infinity;
+  let fallN = 0;
   const tauEdges = new Map<Swept, number>();
   const minEnd = T.stroke + T.strokeMs + 200;
 
   playV3('e_galeWhirl', { volume: 0.9, pan: panAt(start.x) });
+
+  // ---- the victim's monsters sway as the front passes them (a 1-px lean downwind for a few frames)
+  const sways = field
+    .units()
+    .filter((u) => u.player === victim && u.sprite.active && u.sprite.visible && !u.retired)
+    .map((u) => {
+      const x0 = u.sprite.x;
+      let sPass = path.total;
+      for (let sv = 0; sv <= path.total; sv += 2)
+        if (scr(path.at(sv)).x * wind >= x0 * wind) {
+          sPass = sv;
+          break;
+        }
+      return { u, x0, t: timeAt(path, sPass) + 20, done: false };
+    });
+  let gustT0 = -1;
+  const fieldScr = fieldCard ? scr(fieldCard.home) : null;
+  const outScr = fieldCard ? (() => {
+    const a = scr(fieldCard.home);
+    const b = scr([fieldCard.home[0] + fieldCard.out[0], fieldCard.home[1] + fieldCard.out[1]]);
+    const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    return { x: (b.x - a.x) / l, y: (b.y - a.y) / l };
+  })() : null;
 
   await loop(sc, (el, dt) => {
     bits.step(dt);
@@ -1120,17 +1207,23 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
     });
     if (flame) {
       once('env', el, 40, () => {
-        envPool = lightPool(sc, flame.at.x, flame.at.y - 12, { color: flame.ramp[3], radius: 22, floorY: flame.at.y, air: 0.9, airRadius: 14, intensity: 0, anim: 'flicker', fadeIn: 0, tint: 0 });
-        envPool.setIntensity(1.1, 160);
-        envSpill = lightPool(sc, flame.at.x - wind * 40, flame.at.y - 20, { color: flame.ramp[2], radius: 90, floorY: flame.at.y - 20, intensity: 0, tint: 0, fadeIn: 0 });
-        envSpill.setIntensity(0.7, 220);
+        envPool = lightPool(sc, flame.at.x, flame.at.y - 16, { color: flame.ramp[3], radius: 32, floorY: flame.at.y, air: 1, airRadius: 20, intensity: 0, anim: 'flicker', fadeIn: 0, tint: 0.2 });
+        envPool.setIntensity(1.35, 160);
+        // the environment's light over the victim's whole half (it tints their tiles in the flame's colour)
+        const half = scr(toWorld(victim, [3, 0.8]));
+        envSpill = lightPool(sc, R(half.x), R(half.y) - 10, { color: flame.ramp[3], radius: 150, floorY: R(half.y), intensity: 0, tint: 0.35, fadeIn: 0, anim: 'flicker' });
+        envSpill.setIntensity(1.25, 220);
       });
+      // while it gutters, the environment's light over the half dims in three steps with it
+      for (let k = 0; k < 3; k++) once(`dim${k}`, el, ft.tClear + (k * T.gutter) / 3, () => (envSpill as LightHandle | null)?.setIntensity([0.85, 0.55, 0.32][k], 30));
       once('snuff', el, ft.tOut, () => {
         flame.out = true;
         playV3('e_galeSnuff', { volume: 1, pan: panAt(flame.at.x) });
-        // the candle goes out: its light is cut, not faded
-        (envPool as LightHandle | null)?.setIntensity(0, 40);
-        (envSpill as LightHandle | null)?.setIntensity(0, 60);
+        // the candle goes out: its light is CUT, not faded — and the arena's light drops with it for a breath
+        // (the field theme changes under that dark, then the room comes back)
+        (envPool as LightHandle | null)?.setIntensity(0, 20);
+        (envSpill as LightHandle | null)?.setIntensity(0, 20);
+        bg(lightDimFor(sc, 0.55, 170, 20, 380));
         bg(wait(sc, 100).then(() => {
           (envPool as LightHandle | null)?.destroy();
           (envSpill as LightHandle | null)?.destroy();
@@ -1156,9 +1249,25 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
       });
     }
 
+    // ================================ the monsters' sway
+    for (const sw of sways) {
+      if (sw.done) continue;
+      const sp = sw.u.sprite;
+      if (!sp.active || sw.u.retired) {
+        sw.done = true;
+        continue;
+      }
+      if (el >= sw.t + 110) {
+        sp.x = sw.x0;
+        sw.done = true;
+      } else if (el >= sw.t) sp.x = sw.x0 + wind * (el < sw.t + 70 ? 1 : 0);
+    }
+
     // ================================ the head light
     if (headLight) (headLight as LightHandle).setPosition(R(headScr.x), R(headScr.y), R(scr(headG).y));
 
+    // the last gust arrives just before the field card tears off (k ≈ 0.27 is the tear-off)
+    if (fieldCard && gustT0 < 0 && el >= fieldCard.t0 - 90) gustT0 = el;
     // ================================ the flame
     if (flame) {
       if (!flame.out) {
@@ -1173,8 +1282,8 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
           // stretched thin along the wind and buffeted while the bristles pass
           const k = seg(el, ft.tField, Math.max(60, ft.tClear - ft.tField));
           flame.lean = wind * (8 + R(q(k, 4) * 4));
-          flame.w = 0.72 - 0.12 * k;
-          flame.h = 0.88 - 0.1 * k;
+          flame.w = 0.86 - 0.1 * k;
+          flame.h = 0.94 - 0.08 * k;
           flame.flap = 1.5;
           flame.calm = 0;
         }
@@ -1258,14 +1367,17 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
       }
       if (f.past && !c.fell) {
         c.fell = true;
-        playV3('e_galeFall', { volume: 0.75, pan: panAt(at.x), pitch: 1 + ((i * 5) % 4) * 0.04 });
+        // each card's whistle starts a step lower (a descending pentatonic run: the cascade is a little tune), the
+        // later ones a touch quieter so the overlaps stay distinct
+        const n = fallN++;
+        playV3('e_galeFall', { volume: 0.78 * Math.pow(0.9, Math.min(4, n)), pan: panAt(at.x), pitch: Math.pow(2, -FALL_STEPS[Math.min(FALL_STEPS.length - 1, n)] / 12) });
       }
       // the floor shadow while it is over the platform (dithered, shrinking with the height)
       if (!outside && f.z > 0) floorShadows.push({ x: R(ground.x), y: R(ground.y), k: Math.max(0.3, 1 - f.z / 50) });
       // trailing air ticks behind a tumbling card
       if (tau > 60 && !below && Math.floor(el / 40) % 2 === 0) topBits.add({ kind: 'mote', x: at.x - wind * 8, y: at.y + (i % 3) - 1, vx: -wind * 10, life: 140, c: PAL.leaf4 });
-      const hidden = c.back ? f.z < -46 : at.y > 372 || f.z < -125;
-      if (hidden || tau >= (c.back ? T.fly : T.fly + 160)) {
+      const hidden = c.back ? f.z < -46 : at.y > 372 || f.z < -92;
+      if (hidden || tau >= (tauEdges.get(c) ?? 0) + 560) {
         c.gone = true;
         fc.hide();
         // its leaves set off for the pile at once (overlapped with the others, a little apart)
@@ -1328,10 +1440,11 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
     });
     floorShadows.length = 0;
     air.draw((r) => {
-      if (el < T.stroke + 140) drawWhirl(r, start, el);
+      if (el < T.stroke + 150) drawWhirl(r, whirlFloor, el, wind);
       if (el >= T.stroke - 20 && el < T.stroke + T.strokeMs * 1.15) drawBroom(r, path, sHead, el);
     });
     top.draw((r) => {
+      if (gustT0 >= 0 && fieldScr && outScr && el - gustT0 < 330) drawLastGust(r, fieldScr, outScr, (el - gustT0) / 330, el);
       topBits.draw(r);
       for (const cr of carriers) if (!cr.landed) drawCarrier(r, cr, el);
     });
@@ -1353,17 +1466,19 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
     // the whirl draws leaves in
     if (el < T.stroke && rng() < dt / 40) {
       const a = rng() * Math.PI * 2;
-      topBits.add({ kind: 'leaf', x: start.x + Math.cos(a) * 30, y: start.y + Math.sin(a) * 14, to: start, life: 260, ph: rng(), c: PAL.leaf3 });
+      topBits.add({ kind: 'leaf', x: start.x + Math.cos(a) * 34, y: start.y + Math.sin(a) * 16, to: start, life: 280, ph: rng(), c: rng() < 0.5 ? PAL.leaf4 : PAL.leaf3 });
     }
 
     // ================================ done?
     const flying = cards.some((c) => c.flies && !c.gone);
     const carrying = carriers.some((cr) => !cr.landed);
-    const smoking = !!flame && (!flame.out || flame.since < T.smokeMs);
+    // (the smoke thread finishes on its own after the scene: see below)
+    const smoking = !!flame && (!flame.out || flame.since < 260);
     return el < minEnd || flying || carrying || smoking;
   });
 
   // ================================ the rest: a tail of falling leaves, the field's own event
+  for (const sw of sways) if (!sw.done && sw.u.sprite.active) sw.u.sprite.x = sw.x0;
   for (const c of cards) {
     c.fc?.destroy();
     if (!c.flies && c.tile && c.tile.active) c.tile.y = c.tileY;
@@ -1381,7 +1496,19 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
   air.destroy();
   top.destroy();
   floor.destroy();
-  flameRas?.destroy();
+  if (flame && flameRas) {
+    // the snuffed wick's smoke thread keeps curling up on its own while the next beats play
+    const f0 = flame;
+    const fr = flameRas;
+    let lastS = 0;
+    bg(
+      run(sc, Math.max(0, T.smokeMs - f0.since), (_t, el) => {
+        f0.since += el - lastS;
+        lastS = el;
+        fr.draw((r) => drawFlame(r, f0, el));
+      }).then(() => fr.destroy()),
+    );
+  }
   void (headLight as LightHandle | null)?.fadeOut(120);
   void (whirlLight as LightHandle | null)?.fadeOut(120);
   (envPool as LightHandle | null)?.destroy();
@@ -1389,6 +1516,42 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
   // the field spell's own event (a volcano's monsters cooling) runs on past the gale
   if (fieldJob) await fieldJob;
 }
+
+/**
+ * The last gust that takes the field card: three bristle curls (white heads hooking up, leaf4 → leaf2 tails) race
+ * through the field zone along `dir` at three heights, a step apart. k: 0..1 over the gust (k ≈ 0.27 = the tear-off).
+ */
+function drawLastGust(r: Raster, at: XY, dir: XY, k: number, el: number): void {
+  const nx = -dir.y;
+  const ny = dir.x;
+  for (let j = 0; j < 3; j++) {
+    const kk = c01(k * 1.3 - j * 0.14);
+    if (kk <= 0 || kk >= 1) continue;
+    const lift = 5 + j * 8;
+    const travel = -44 + 110 * kk;
+    const hx = at.x + dir.x * travel;
+    const hy = at.y - lift + dir.y * travel;
+    const len = R((26 - j * 5) * (kk > 0.7 ? 1 - (kk - 0.7) / 0.3 : 1));
+    for (let d = 0; d <= len; d++) {
+      const wv = Math.sin(d / 4 + el / 35 + j) * Math.min(1.5, d * 0.12);
+      const x = R(hx - dir.x * d + nx * wv);
+      const y = R(hy - dir.y * d + ny * wv);
+      if (d > 14 && Math.floor((d + j * 3) / 4) % 2 === 1) continue;
+      r.px(x, y, d < 2 ? PAL.white : d < 7 ? PAL.leaf4 : d < 14 ? PAL.leaf3 : PAL.leaf2);
+    }
+    // the head hooks up into a little curl
+    const sx = dir.x >= 0 ? 1 : -1;
+    r.px(R(hx + sx), R(hy - 1), PAL.white);
+    r.px(R(hx + sx), R(hy - 2), PAL.leaf4);
+    r.px(R(hx), R(hy - 3), PAL.leaf4);
+    r.px(R(hx - sx), R(hy - 3), PAL.leaf3);
+    // a leaf riding each curl
+    leaf3(r, R(hx - dir.x * 9), R(hy - dir.y * 9 - 3 - (Math.floor(el / 60) % 2)), Math.floor(el / 70) + j, j % 2 ? PAL.leaf3 : PAL.leaf4);
+  }
+}
+
+/** Semitones below the first whistle for each falling card in turn (a descending minor-pentatonic run). */
+const FALL_STEPS = [0, 3, 5, 7, 10, 12, 15] as const;
 
 /** Floor shadow stamps of this frame (filled by the card loop, drawn by the floor raster). */
 const floorShadows: { x: number; y: number; k: number }[] = [];
@@ -1433,35 +1596,79 @@ function drawCarrier(r: Raster, cr: Carrier, el: number): void {
     }
 }
 
-/** The whirl: three stepped wind curls spinning and growing at the start point; unwinds as the stroke leaves. */
-function drawWhirl(r: Raster, c: XY, el: number): void {
+/**
+ * The whirl: a little TORNADO standing on the end tile of the row — six stepped wind rings stacked into a funnel
+ * (~30 px tall, widening upward), spinning, white leading tips on the front arcs; four leaves orbit it at different
+ * heights; a dust ring turns on the tile. It grows ring by ring from the floor; as the stroke leaves it leans
+ * downwind and unwinds (`wind`: +1 the stroke runs right).
+ */
+function drawWhirl(r: Raster, floor: XY, el: number, wind: number): void {
   const grow = ease.out(el / T.whirlMs);
-  const unwind = seg(el, T.stroke, 140);
-  const rot = (el / 1000) * 15;
-  const curls: readonly (readonly [number, number, number])[] = [
-    [5, PAL.white, 0],
-    [9, PAL.leaf4, 2.1],
-    [13, PAL.leaf3, 4.2],
-  ];
-  for (const [rad0, col, ph] of curls) {
-    const rad = rad0 * (0.4 + 0.6 * grow) * (1 + unwind * 0.8);
-    const span = Math.PI * (1.25 - unwind * 0.9);
-    const n = Math.max(6, R(rad * 3));
-    let prev: XY | null = null;
-    for (let k = 0; k <= n; k++) {
-      const a = rot + ph + (k / n) * span;
-      // a curl: the radius tightens toward the head of each arc
-      const rr = rad * (0.75 + 0.25 * (k / n));
-      const p = { x: R(c.x + Math.cos(a) * rr), y: R(c.y + Math.sin(a) * rr * 0.55) };
-      const cc = k > n * 0.75 ? (col === PAL.white ? PAL.leaf4 : col === PAL.leaf4 ? PAL.leaf3 : PAL.leaf2) : col;
-      if (prev) r.line(prev.x, prev.y, p.x, p.y, k < 2 ? PAL.leaf2 : cc);
-      prev = p;
+  const unwind = seg(el, T.stroke, 150);
+  const N = 7;
+  const shownRings = Math.min(N, Math.ceil(grow * N + 0.01));
+  // the dust ring on the tile (dashed, turning)
+  if (unwind < 0.8) {
+    const rot = el / 90;
+    const rx = R(8 + 8 * grow);
+    for (let a = 0; a < 20; a++) {
+      if ((a + Math.floor(el / 50)) % 4 === 0) continue;
+      const an = rot + (a / 20) * Math.PI * 2;
+      const front = Math.sin(an) > 0;
+      r.px(R(floor.x + Math.cos(an) * rx), R(floor.y + Math.sin(an) * rx * 0.42), front ? PAL.stone4 : PAL.stone3);
     }
   }
-  // the eye of the whirl
-  if (unwind < 1) {
-    r.px(c.x, c.y, PAL.white);
-    r.px(c.x + 1, c.y, PAL.leaf4);
+  for (let i = 0; i < shownRings; i++) {
+    const z = 2 + i * 5 + unwind * i * 2;
+    const rx = (4 + i * 2.6) * (0.55 + 0.45 * grow) * (1 + unwind * 0.6);
+    const ry = rx * 0.38;
+    const cx = floor.x + wind * unwind * i * 4 + (i % 2 ? 1 : 0);
+    const cy = floor.y - z;
+    const rot = (el / 1000) * (13 + i * 1.6) + i * 0.9;
+    const span = Math.PI * (1.4 - unwind * 1.0);
+    const n = Math.max(8, R(rx * 3.2));
+    let prev: XY | null = null;
+    for (let k = 0; k <= n; k++) {
+      const an = rot + (k / n) * span;
+      const p = { x: R(cx + Math.cos(an) * rx), y: R(cy + Math.sin(an) * ry) };
+      const front = Math.sin(an) > -0.1;
+      const lead = k >= n - 1;
+      const col = lead ? PAL.white : !front ? PAL.leaf2 : k > n * 0.6 ? PAL.leaf4 : PAL.leaf3;
+      if (prev) {
+        r.line(prev.x, prev.y, p.x, p.y, col);
+        // the front arcs are 2 px thick (a solid band of wind, not a wire)
+        if (front && unwind < 0.6) r.line(prev.x, prev.y + 1, p.x, p.y + 1, lead ? PAL.leaf4 : PAL.leaf2);
+      }
+      prev = p;
+    }
+    // speed streaks inside the funnel's body (short slanted dashes racing round)
+    if (i > 0 && unwind < 0.7) {
+      for (let k = 0; k < 2; k++) {
+        const an = -rot * 1.3 + k * Math.PI + i;
+        if (Math.sin(an) < 0.1) continue;
+        const x0 = R(cx + Math.cos(an) * rx * 0.6);
+        const y0 = R(cy + Math.sin(an) * ry * 0.6 + 2);
+        const sx = Math.sin(an) > 0 ? -1 : 1;
+        r.px(x0, y0, PAL.leaf4);
+        r.px(x0 + sx, y0, PAL.leaf3);
+        r.px(x0 + sx * 2, y0 + 1, PAL.leaf2);
+      }
+    }
+  }
+  // the eye: a white core column flickering up the middle
+  if (unwind < 0.5 && grow > 0.4) {
+    const hgt = R(26 * grow);
+    for (let z = 3; z < hgt; z += 2) if ((z + Math.floor(el / 40)) % 6 < 3) r.px(floor.x + (z % 4 < 2 ? 0 : 1), floor.y - z, z % 3 ? PAL.leaf4 : PAL.white);
+  }
+  // the leaves orbiting it (they are flung off downwind as it unwinds)
+  if (grow > 0.3) {
+    for (let k = 0; k < 6; k++) {
+      const z = 4 + k * 6;
+      const an = (el / 1000) * (9 + k) + k * 1.6;
+      const rx = 8 + k * 3 + unwind * 30;
+      const p = { x: R(floor.x + Math.cos(an) * rx + wind * unwind * 26), y: R(floor.y - z + Math.sin(an) * rx * 0.4 - unwind * 6) };
+      leaf3(r, p.x, p.y, Math.floor(el / 60) + k, k % 2 ? PAL.leaf3 : PAL.leaf4);
+    }
   }
 }
 

@@ -32,6 +32,22 @@ function seals(p: PlayerId): Scenario['stage'] {
   return p === 0 ? { zones: 5, p0: me, p1: them } : { zones: 5, active: 1, p1: me, p0: them };
 }
 
+/**
+ * The viewer is NOT the caster (a vsBot duel where the bot casts): the screen keeps player 1's hand, so player 2's
+ * two cards must land in the mini-hand. The staged duel is hot-seat; this step turns the viewer into a vsBot one
+ * (P2 = the bot) and hands the screen back to P1 before P2 casts.
+ */
+const viewAsP1: Step = (D) => {
+  const q = D as unknown as { views?: { info?: { mode: string; cpu: Set<PlayerId> }; hand?: { setOwner(p: PlayerId, faceDown?: boolean): Promise<void> } } };
+  const info = q.views?.info;
+  if (info) {
+    Object.defineProperty(info, 'mode', { value: 'vsBot', configurable: true, writable: true });
+    info.cpu.add(1);
+  }
+  void q.views?.hand?.setOwner(0, false);
+  return null;
+};
+
 const PACK: Record<string, Scenario> = {
   eWellPail: { desc: 'Kuyu Kovası (P1, elden): kuyu, çıkrık, kova; iki kart balık gibi ele sıçrar', stage: hand(0), steps: [pail(0)] },
   eWellPailP2: { desc: 'Kuyu Kovası (P2, elden): aynalı', stage: hand(1), steps: [pail(1)] },
@@ -39,6 +55,7 @@ const PACK: Record<string, Scenario> = {
   eWellPailSetP2: { desc: 'Kuyu Kovası kapalıdan (P2): kuyu kartın kendi karosunda', stage: set(1), steps: [pail(1)] },
   eWellPailSeal: { desc: 'Kuyu Kovası (P1): ilk çekilen kart beşinci mühür — düello kazanılır, ikinci çekiş yok', stage: seals(0), steps: [pail(0)] },
   eWellPailSealP2: { desc: 'Kuyu Kovası (P2): ilk çekilen kart beşinci mühür — düello kazanılır', stage: seals(1), steps: [pail(1)] },
+  eWellPailBot: { desc: 'Kuyu Kovası (P2 = bot, ekran P1 elinde): kartlar P2 mini eline küçülerek iner', stage: hand(1), steps: [viewAsP1, { ui: 'wait', ms: 700 }, pail(1)] },
   // a person plays it with the mouse (the hand fan, the hover, then the card)
   eWellPailPlay: { desc: 'Kuyu Kovası (P1): elle oyna', stage: hand(0), steps: [] },
 };

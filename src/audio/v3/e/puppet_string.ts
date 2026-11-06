@@ -136,15 +136,22 @@ export const RECIPES = {
     verb: 0.22,
     vary: 0.04,
     play(v) {
-      // the foot (a small dry wooden knock: a marionette's carved foot, no stone, no hollow body), the knee joint a
-      // beat later (a dry high click), the strings catching the weight (a quiet taut twang), a breath of dust
-      woodSmall(v, 1250, 0, 0.3, 0.035);
-      woodSmall(v, 2050, 0.006, 0.15, 0.022);
-      thump(v, 0, 300, 220, 0.08, 0.025);
-      woodSmall(v, 2700, 0.048, 0.12, 0.018);
-      pluck(v, midiHz(76), 0.018, 0.13, 0.34, { bright: 0.7, settle: 0.05 });
-      pluck(v, midiHz(83), 0.022, 0.05, 0.26, { bright: 0.5, settle: 0.05 });
-      puff(v, 0.005, 0.03, 0.08, 3200, { kind: 'pink' });
+      // r4: the JOINTS lead (§5.1 "eklem tıkırtısı"): a tight triplet of tiny high clicks — ankle, knee, hip —
+      // 2.4–3.2 kHz, 14 / 22 ms apart, each a pin-sized lath mode with its own pinched noise tick; under them only a
+      // very small toe tap (no mid knock: that is the well's ratchet), the strings catching the weight (a quiet taut
+      // twang) and a breath of dust
+      [
+        [0, 3200, 0.42],
+        [0.016, 2600, 0.38],
+        [0.04, 3000, 0.3],
+      ].forEach(([t, f, g]) => {
+        woodSmall(v, f, t, g * 0.7, 0.01);
+        v.noise('white', { t, g: perc(g * 1.4, 0.004, 0.0002), to: v.filt('bandpass', hz(v, f * 1.5), 4) });
+      });
+      woodSmall(v, 2100, 0.002, 0.08, 0.016);
+      pluck(v, midiHz(88), 0.02, 0.03, 0.22, { bright: 0.6, settle: 0.05 });
+      pluck(v, midiHz(76), 0.024, 0.018, 0.2, { bright: 0.5, settle: 0.05 });
+      sweep(v, 0.004, 0.05, [5200, 7400, 6000], 0.02, { kind: 'white', q: 3, peakAt: 0.3 });
     },
   },
   e_puppetCreak: {
@@ -190,18 +197,21 @@ export const RECIPES = {
     gap: 0.02,
     verb: 0.45,
     play(v) {
-      // the snap: a hard broadband crack (2–3 ms), the released tension's low "thwack", then the high pluck (B5 at
-      // pitch 1) whose tension lets go — a long glide down (−35 % over 0.28 s)
+      // r4: a STRING, not glass — one short narrow tick (1 ms, band-limited), the released tension's low "thwack",
+      // then the high pluck (B5 at pitch 1) holding its note a beat before the tension lets go: a long tonal glide
+      // down (−45 % over 0.5 s) with a slow vibrato as the loose string wobbles; the loose end whips away
       const f = midiHz(83);
-      crack(v, 0, 0.42, { hp: hz(v, 1600), lp: hz(v, 12000), n: 2, gap: 0.004, dec: 0.0028 });
-      thump(v, 0, 210, 118, 0.34, 0.045);
-      v.noise('white', { t: 0, g: perc(0.16, 0.02, 0.0003), to: v.filt('bandpass', 700, 1.6) });
+      crack(v, 0, 0.22, { hp: hz(v, 2400), lp: hz(v, 6500), n: 1, dec: 0.0012 });
+      thump(v, 0, 210, 118, 0.3, 0.045);
       for (let k = 1; k <= 4; k++) {
         const fk = hz(v, f * k * Math.sqrt(1 + 0.0009 * k * k));
-        v.tone(k === 1 ? 'triangle' : 'sine', [[0, fk * 1.015], [0.015, fk, 'e'], [0.28, fk * 0.65, 'e']], { t: 0.002, g: perc(0.2 / k, 0.4 / Math.sqrt(k), 0.0005) });
+        const o = v.tone(k === 1 ? 'triangle' : 'sine', [[0, fk * 1.02], [0.012, fk, 'e'], [0.07, fk, 'e'], [0.55, fk * 0.55, 'e']], {
+          t: 0.002,
+          g: [[0, 0], [0.003, 0.17 / k], [0.12, 0.11 / k], [0.62 / Math.sqrt(k), 0.0001, 'e']],
+        });
+        v.lfo(o.osc.detune, 9, 18, { d: 0.6 });
       }
-      // the loose end whips away
-      sweep(v, 0.01, 0.14, [6000, 3800, 1400], 0.05, { kind: 'white', q: 3, peakAt: 0.2 });
+      sweep(v, 0.01, 0.12, [4200, 2600, 1200], 0.03, { kind: 'pink', q: 2.5, peakAt: 0.2 });
     },
   },
   e_puppetStagger: {
@@ -235,10 +245,13 @@ export const RECIPES = {
     gap: 0.05,
     verb: 0.3,
     play(v) {
-      // the strings yank: the whip of five lines going taut at once (a short bright swish) and one low taut pluck
-      sweep(v, 0, 0.08, [2400, 5600, 3400], 0.04, { kind: 'white', q: 4, peakAt: 0.5 });
-      pluck(v, midiHz(71), 0.03, 0.06, 0.24, { bright: 0.55, settle: 0.04 });
-      pluck(v, midiHz(78), 0.036, 0.03, 0.18, { bright: 0.5, settle: 0.04 });
+      // the strings yank (r4: +6 dB, the hop's UP sound): the whip of five lines going taut at once (a short bright
+      // swish) and the taut string pulled UP in pitch as the weight comes on (B4 → E5 in 60 ms, held, a quick decay)
+      sweep(v, 0, 0.08, [2400, 5600, 3400], 0.08, { kind: 'white', q: 4, peakAt: 0.5 });
+      pluck(v, midiHz(71), 0.03, 0.12, 0.24, { bright: 0.55, settle: 0.04 });
+      pluck(v, midiHz(78), 0.036, 0.06, 0.18, { bright: 0.5, settle: 0.04 });
+      v.tone('triangle', [[0, midiHz(71)], [0.06, midiHz(76), 'e'], [0.2, midiHz(76) * 1.01]], { t: 0.02, g: [[0, 0], [0.012, 0.13], [0.09, 0.09], [0.24, 0.0001, 'e']] });
+      v.tone('sine', [[0, midiHz(83)], [0.06, midiHz(88), 'e']], { t: 0.02, g: [[0, 0], [0.012, 0.05], [0.18, 0.0001, 'e']] });
     },
   },
   e_puppetCrossBreak: {

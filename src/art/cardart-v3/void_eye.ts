@@ -37,37 +37,51 @@ interface Geo {
   pupil: number;
   /** the iris looks down by this much */
   look: number;
+  /** lid band width (the lit lip + skin; the in-game eye's lids) */
+  lid: number;
   /** first row of the lower sky band */
   split: number;
-  /** cloud puffs: [cx, cy, r] (their union is the bank) */
+  /** cloud puffs behind the eye: [cx, cy, r] (their union is the bank) */
   clouds: readonly (readonly [number, number, number])[];
-  /** silhouettes: stamp index, top-left, fill (farthest first: the path climbs toward the pupil) */
-  sil: readonly (readonly [number, number, number, number])[];
+  /** cloud puffs IN FRONT of the eye: they overlap the lids (the eye looks down between the clouds) */
+  front: readonly (readonly [number, number, number])[];
+  /** silhouettes: stamp index, top-left, fill, mirrored (they face the pupil); the far / big ones first */
+  sil: readonly (readonly [number, number, number, number, boolean])[];
 }
 
 const BIG: Geo = {
   k: 2,
-  eye: [44, 23],
+  eye: [44, 22],
   eh: 20,
   ew: 12,
   iris: 9,
   pupil: 4,
-  look: 5,
+  look: 8,
+  lid: 3,
   split: 54,
   clouds: [
-    [3, 38, 7],
-    [8, 51, 9],
-    [19, 60, 8],
-    [31, 66, 7],
-    [85, 38, 7],
-    [80, 51, 9],
-    [69, 60, 8],
-    [57, 66, 7],
+    [3, 40, 7],
+    [8, 52, 9],
+    [19, 61, 8],
+    [31, 67, 7],
+    [85, 40, 7],
+    [80, 52, 9],
+    [69, 61, 8],
+    [57, 67, 7],
+  ],
+  front: [
+    [44, -5, 8],
+    [33, -2, 5],
+    [55, -2, 5],
+    [29, 24, 4],
+    [60, 26, 4],
   ],
   sil: [
-    [0, 4, 46, PAL.void0],
-    [1, 16, 38, PAL.void1],
-    [2, 26, 30, PAL.void2],
+    [0, 2, 46, PAL.void2, false],
+    [5, 73, 44, PAL.void2, true],
+    [1, 12, 31, PAL.void2, false],
+    [4, 64, 31, PAL.void3, true],
+    [4, 25, 37, PAL.void3, false],
   ],
 };
 
@@ -78,36 +92,48 @@ const SMALL: Geo = {
   ew: 6,
   iris: 4,
   pupil: 2,
-  look: 2,
+  look: 3,
+  lid: 2,
   split: 27,
   clouds: [
-    [1, 19, 4],
-    [4, 26, 5],
-    [10, 30, 4],
-    [16, 34, 4],
-    [43, 19, 4],
-    [40, 26, 5],
-    [34, 30, 4],
-    [28, 34, 4],
+    [1, 20, 4],
+    [4, 27, 5],
+    [10, 31, 4],
+    [16, 35, 4],
+    [43, 20, 4],
+    [40, 27, 5],
+    [34, 31, 4],
+    [28, 35, 4],
+  ],
+  front: [
+    [22, -3, 4],
+    [15, 13, 2],
+    [30, 14, 2],
   ],
   sil: [
-    [3, 4, 20, PAL.void1],
-    [4, 10, 15, PAL.void2],
+    [3, 1, 21, PAL.void2, false],
+    [6, 38, 20, PAL.void2, true],
+    [7, 7, 14, PAL.void3, false],
+    [7, 32, 14, PAL.void3, true],
   ],
 };
 
-// silhouettes ('#' body); big: a wolf, a winged drake, a robed figure; small: 3-px beasts
+// silhouettes ('#' body), drawn facing RIGHT (mirrored on the right side). big: a wolf (pointed ears, raised tail),
+// a bat-winged drake, (2 unused), a bird; a horned demon head; small: a 4-px beast, a horned head, a bird
 // prettier-ignore
 const SILS: readonly (readonly string[])[] = [
-  ['..........#.', '.........###', '#..#######..', '.#########..', '..########..', '..##....##..', '..#......#..'],
-  ['#.........#', '##...#...##', '.###.#.###.', '..#######..', '....###....', '.....#.....'],
+  ['#.........#..', '##.......###.', '.#########.##', '.#########...', '..##...##....', '..#.....#....'],
+  ['#...........#', '##...#.#...##', '###..###..###', '.###########.', '..#########..', '....#...#....'],
   ['.###.', '.###.', '..#..', '#####', '.###.', '.###.', '.#.#.'],
   ['...#', '####', '####', '#..#'],
-  ['##.##', '.###.', '..#..'],
+  ['#.....#', '.##.##.', '..###..', '...#...'],
+  ['#.......#', '##.....##', '.#.###.#.', '..#####..', '..##.##..', '..#####..', '...###...', '..#####..'],
+  ['#.#', '###', '.#.'],
+  ['##.##', '.###.'],
 ];
 
-function paintClouds(p: PixelCanvas, g: Geo): void {
-  const inside = (x: number, y: number) => g.clouds.some(([cx, cy, r]) => (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r + r);
+function paintClouds(p: PixelCanvas, g: Geo, list: Geo['clouds'] = g.clouds): void {
+  const inside = (x: number, y: number) => list.some(([cx, cy, r]) => (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r + r);
   for (let y = 0; y < p.h; y++)
     for (let x = 0; x < p.w; x++) {
       if (!inside(x, y)) continue;
@@ -115,8 +141,8 @@ function paintClouds(p: PixelCanvas, g: Geo): void {
       let c: number = PAL.night2;
       if (!inside(x, y - g.k)) c = PAL.night3;
       else if (!inside(x - g.k, y - g.k) && !inside(x, y - 2 * g.k)) c = PAL.night3;
-      else if (!inside(x, y + 3 * g.k) || g.clouds.every(([cx, cy, r]) => (x - cx) * (x - cx) + (y - cy) * (y - cy) > r * r * 0.35 || y < cy)) {
-        if (g.clouds.some(([cx, cy, r]) => y > cy + r * 0.35 && (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r + r)) c = PAL.night1;
+      else if (!inside(x, y + 3 * g.k) || list.every(([cx, cy, r]) => (x - cx) * (x - cx) + (y - cy) * (y - cy) > r * r * 0.35 || y < cy)) {
+        if (list.some(([cx, cy, r]) => y > cy + r * 0.35 && (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r + r)) c = PAL.night1;
       }
       p.set(x, y, c);
     }
@@ -128,14 +154,17 @@ function paintEye(subject: PixelCanvas, light: PixelCanvas, g: Geo, f: number): 
   for (let dy = -g.eh; dy <= g.eh; dy++) {
     const fr = 1 - (dy / g.eh) * (dy / g.eh);
     const hw = Math.floor(g.ew * fr);
-    for (let dx = -hw - 2; dx <= hw + 2; dx++) {
+    for (let dx = -hw - g.lid; dx <= hw + g.lid; dx++) {
       const x = cx + dx;
       const y = cy + dy;
       const a = Math.abs(dx);
       if (a > hw) {
         if (hw < 1 && a > 1) continue;
+        // the in-game lids: the lit (left) lid a mist lip, night4 skin, night3 shade; the right lid night4 → night2
         const kk = a - hw;
-        subject.set(x, y, dx < 0 ? (kk === 1 ? PAL.mist : PAL.night4) : kk === 1 ? PAL.night4 : PAL.night2);
+        const L = [PAL.mist, PAL.night4, PAL.night3];
+        const Rr = [PAL.night4, PAL.night3, PAL.night2];
+        subject.set(x, y, (dx < 0 ? L : Rr)[Math.min(kk - 1, 2)]);
         continue;
       }
       const ux = dx;
@@ -222,8 +251,12 @@ function paint(l: ArtLayers, f: number, g: Geo): void {
   paintGlow(l.backdrop, g);
   paintClouds(l.subject, g);
   const bob = f === 1 || f === 2 ? 1 : 0;
-  g.sil.forEach(([i, x, y, c], n) => {
+  const stamp = (i: number, flip: boolean) => {
     const rows = SILS[i];
+    return flip ? rows.map((r) => [...r].reverse().join('')) : rows;
+  };
+  g.sil.forEach(([i, x, y, c, flip], n) => {
+    const rows = stamp(i, flip);
     const yy = y - ((bob + n) % 2);
     const on = (rx: number, ry: number) => rows[ry]?.[rx] === '#';
     // its own ink outline first (it rises out of the cloud bank: the bank's matter must not swallow it)
@@ -232,8 +265,10 @@ function paint(l: ArtLayers, f: number, g: Geo): void {
         if (!on(rx, ry) && (on(rx - 1, ry) || on(rx + 1, ry) || on(rx, ry - 1) || on(rx, ry + 1))) l.subject.set(x + rx, yy + ry, PAL.ink);
     rows.forEach((r, ry) => [...r].forEach((ch, rx) => ch === '#' && l.subject.set(x + rx, yy + ry, c)));
   });
-  rim(l.subject, PAL.void3, { skip: [PAL.night3, PAL.night2, PAL.night1, PAL.ink], only: (x, y) => g.sil.some(([i, sx, sy]) => x >= sx && x < sx + SILS[i][0].length && y >= sy - 1 && y < sy + SILS[i].length) });
+  rim(l.subject, PAL.void4, { skip: [PAL.night3, PAL.night2, PAL.night1, PAL.ink], only: (x, y) => g.sil.some(([i, sx, sy]) => x >= sx && x < sx + SILS[i][0].length && y >= sy - 1 && y < sy + SILS[i].length) });
   paintEye(l.subject, l.light, g, f);
+  // the cloud lobes in front: over the lids, top and sides (the eye looks down between the clouds)
+  paintClouds(l.subject, g, g.front);
   ink(l.subject);
   // hand clean-up at 1×: close the corner-only gaps of the outline (two ink pixels meeting on a diagonal over the
   // sky read as a 2×2 checker): the upper-right one of the pair is filled
@@ -248,11 +283,11 @@ function paint(l: ArtLayers, f: number, g: Geo): void {
       }
   }
   paintCrack(l.light, l.subject, g);
-  // mote trails: from each silhouette's head on along the path toward the pupil, stepping with f
+  // mote trails: from each silhouette's head (the corner that faces the eye) toward the pupil, stepping with f
   const [ex, ey] = [g.eye[0], g.eye[1] + g.look];
-  g.sil.forEach(([i, x, y]) => {
+  g.sil.forEach(([i, x, y, , flip]) => {
     const w = SILS[i][0].length;
-    const sx = x + w - 1;
+    const sx = flip ? x : x + w - 1;
     const sy = y - 1;
     const n = g.k === 2 ? 3 : 1;
     for (let j = 1; j <= n; j++) {

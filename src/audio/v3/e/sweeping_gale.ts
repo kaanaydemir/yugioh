@@ -39,35 +39,48 @@ function rustle(v: Voice, t: number, d: number, g: number, n: number, pan?: read
 
 /**
  * The gale's body travelling across the stereo field (`pan` from → to) over `d` seconds — a BROOM stroke, not plain
- * wind: a scrape at its head ("shk"), then dense band-passed bristle grains (a stiff broom dragged over stone,
- * "shhhk") surging in gusts, a narrow air body under them, a low push, and a leaf-rustle bed riding the front. The
- * 2–6 kHz band is kept thin on purpose so each card's paper snap (e_galeSnap, 1–2 kHz body + a high crack) sits on
- * top of it.
+ * wind. Its identity is the STIFF BRISTLES: a hard drag transient where the broom bites (a driven low-mid knock and
+ * a grit scrape), then a RHYTHM of push-drag strokes — each one a burst of sparse, hard straw scratches at 5–8 kHz
+ * (band-passed crackle, a short "ksh" of bright noise) over a dull 250-Hz drag of the head on stone — accelerating
+ * as the gale gathers (five strokes, the third the strongest). Between strokes the air is thin: only a quiet low
+ * 400-Hz breath and a low push. The 1–4 kHz band is kept nearly EMPTY on purpose: that is where a generic gust
+ * (windGust, sshGustR, e_pageGust) lives, and where each card's paper snap (e_galeSnap) has to cut through.
  */
 function galeBody(v: Voice, d: number, pan: readonly [number, number]): void {
   const p = v.panner([[0, pan[0]], [d * 0.5, pan[0] * 0.15 + pan[1] * 0.85], [d, pan[1], 'e']]);
-  // ---- the scrape at the head: a driven low-mid burst train and a fast band sweep down (the broom bites)
-  v.bursts([0, 0.011, 0.024, 0.04], [0.4, 0.32, 0.24, 0.15], { dec: [0.02, 0.016, 0.014, 0.012], f: 1150, q: 0.9, kind: 'white', drive: 1.7, to: p });
-  sweep(v, 0, 0.14, [2300, 1500, 800], 0.22, { kind: 'white', q: 2.2, peakAt: 0.12, to: p });
-  // ---- the bristles: dense grains through a gust envelope (four surges, the second the strongest)
-  const gust = v.amp([[0, 0], [d * 0.06, 1], [d * 0.16, 0.55], [d * 0.27, 1.15], [d * 0.38, 0.6], [d * 0.48, 0.95], [d * 0.6, 0.45], [d * 0.7, 0.6], [d, 0.0001, 'e']], { to: p });
-  // the bristles' own 'teeth': two narrow resonant bands (720 Hz, 1.3 kHz) of noise chopped by an irregular
-  // fast flutter (a broom's grain, ~70 / 110 Hz), plus sparse clicks on top — a comb a smooth whoosh never has
-  const g1 = v.flutter(70, 0.55, { d: d + 0.05, base: 0.55, to: gust });
-  v.noise('white', { g: 1.7, d: d, to: v.filt('bandpass', 720, 3.2, { to: g1 }) });
-  const g2 = v.flutter(110, 0.6, { d: d + 0.05, base: 0.5, to: gust });
-  v.noise('white', { t: 0.015, g: 1.0, d: d, to: v.filt('bandpass', 1300, 3.6, { to: g2 }) });
-  v.crackle({ t: 0.03, d: d * 0.7, n: 120, g: 0.6, f: 3300, q: 2.4, dec: 0.008, curve: 0.9, to: gust });
-  // ---- the air under the bristles: a narrow pink band that opens a little and settles (never the main voice)
-  const bp = v.filt('bandpass', [[0, 380], [d * 0.3, 1150, 'e'], [d, 520, 'e']], 1.4, { to: p });
-  v.noise('pink', { g: [[0, 0], [d * 0.1, 0.16], [d * 0.3, 0.2], [d * 0.6, 0.12], [d, 0.0001, 'e']], to: bp });
-  // ---- the low push under the front (felt, not heard as a tone)
-  const lp = v.filt('lowpass', [[0, 120], [d * 0.3, 260, 'e'], [d, 90, 'e']], 0.9, { to: p });
-  v.noise('brown', { g: [[0, 0], [d * 0.12, 0.12], [d * 0.5, 0.05], [d, 0.0001, 'e']], to: lp });
-  thump(v, 0.02, 95, 48, 0.08, 0.2);
-  // ---- leaves and paper scraps ride the front (sparse, high)
-  rustle(v, d * 0.08, d * 0.78, 0.09, 26, pan);
+  // ---- the bite: a driven low-mid knock train (the broom head hits the stone) + a short grit scrape on top
+  v.bursts([0, 0.009, 0.02, 0.034], [0.75, 0.55, 0.38, 0.22], { dec: [0.026, 0.02, 0.016, 0.012], f: 340, q: 1.1, kind: 'white', drive: 2.4, to: p });
+  thump(v, 0, 120, 52, 0.3, 0.14, { drive: 1.4 });
+  v.crackle({ t: 0, d: 0.07, n: 26, g: 1.1, f: 6800, q: 1.4, dec: 0.004, curve: 0.5, to: p });
+  // ---- the strokes: push-drag, push-drag … (start, length, strength)
+  const strokes: readonly (readonly [number, number, number])[] = [
+    [0.05, 0.16, 0.75],
+    [0.22, 0.15, 0.9],
+    [0.38, 0.14, 1.0],
+    [0.53, 0.13, 0.8],
+    [0.67, 0.16, 0.55],
+  ];
+  const hi = v.filt('highpass', 4400, 0.9, { to: v.filt('lowpass', 8600, 0.9, { to: v.filt('lowpass', 9400, 0.7, { to: p }) }) });
+  const drag = v.filt('bandpass', 250, 1.3, { to: p });
+  for (const [t0, len, g] of strokes) {
+    const s = t0 * d / 0.9;
+    const l = len * d / 0.9;
+    // the straw: sparse hard scratches, densest at the stroke's middle
+    v.crackle({ t: s, d: l, n: R0(28 * g), g: 1.25 * g, f: 6400, q: 1.3, dec: 0.006, curve: 1.6, to: hi });
+    // the "ksh" body of the stroke: bright noise, fast in, dragged out
+    v.noise('white', { t: s, g: [[0, 0], [l * 0.18, 0.2 * g], [l * 0.6, 0.12 * g], [l, 0.0001, 'e']], to: hi });
+    // the head dragging on stone (dull, under the straw)
+    v.noise('brown', { t: s, g: [[0, 0], [l * 0.25, 0.4 * g], [l, 0.0001, 'e']], to: drag });
+  }
+  // ---- the thin air between strokes and the low push under the front (felt, never the main voice)
+  const bp = v.filt('bandpass', [[0, 300], [d * 0.4, 480, 'e'], [d, 320, 'e']], 1.8, { to: p });
+  v.noise('pink', { g: [[0, 0], [d * 0.1, 0.04], [d * 0.6, 0.03], [d, 0.0001, 'e']], to: bp });
+  const lp = v.filt('lowpass', [[0, 120], [d * 0.3, 240, 'e'], [d, 90, 'e']], 0.9, { to: p });
+  v.noise('brown', { g: [[0, 0], [d * 0.12, 0.08], [d * 0.5, 0.03], [d, 0.0001, 'e']], to: lp });
+  // ---- leaves ride the front (sparse, very high)
+  rustle(v, d * 0.08, d * 0.78, 0.07, 18, pan);
 }
+const R0 = Math.round;
 
 export const RECIPES = {
   e_galeStir: {
@@ -219,9 +232,13 @@ export const RECIPES = {
     verb: 0.3,
     vary: 0.06,
     play(v) {
-      // a little gust carries a fallen card's leaves to the pile: a dry leaf rustle drawn along a soft breath
-      rustle(v, 0, 0.26, 0.9, 12, [0.5, -0.5]);
-      sweep(v, 0, 0.28, [700, 1300, 900], 0.4, { kind: 'pink', q: 1.6, peakAt: 0.5 });
+      // a little gust carries a fallen card's leaves to the pile: LEAFY and tick-led — four leaves tapping past
+      // (bright dry ticks, each with a tiny scrape), a dense high rustle drawn across, only a whisper of air
+      const pn = v.panner([[0, 0.5], [0.28, -0.5]]);
+      v.bursts([0, 0.055, 0.105, 0.15, 0.2], [0.5, 0.42, 0.36, 0.3, 0.2], { dec: 0.005, f: 5600, q: 2.2, kind: 'white', to: pn });
+      v.bursts([0.003, 0.058, 0.108, 0.153], [0.16, 0.14, 0.12, 0.1], { dec: 0.012, f: 3900, q: 3, kind: 'white', to: pn });
+      rustle(v, 0, 0.26, 0.75, 16, [0.5, -0.5]);
+      sweep(v, 0.02, 0.2, [4200, 6400, 5200], 0.05, { kind: 'white', q: 2.6, peakAt: 0.5, pan: [0.4, -0.4] });
     },
   },
   e_galePile: {
@@ -239,13 +256,18 @@ export const RECIPES = {
   e_galeDie: {
     cap: 1,
     gap: 0.3,
-    verb: 0.45,
+    verb: 0.3,
     play(v) {
-      // Büyü Mührü cuts the gale before it is born: the stirring air falls still — a breath sinking and
-      // choked off, the circling leaves dropping (ticks thinning out, lower), a dull paper slump
-      sweep(v, 0, 0.42, [1300, 700, 240], 0.5, { kind: 'pink', q: 1.2, peakAt: 0.12 });
-      v.crackle({ t: 0.05, d: 0.4, n: 12, g: 0.26, f: 3200, q: 1.6, dec: 0.006, curve: 0.6 });
-      puff(v, 0.3, 0.45, 0.09, 900, { kind: 'brown' });
+      // Büyü Mührü cuts the gale before it is born: the stirring air is CHOKED — a muffled breath bending down
+      // (low-passed, sinking 520 → 140 Hz) and stopped short, the leaves dropping (a few low dull ticks), then a
+      // dull paper slump as the card sags (a soft low knock, no air)
+      const lp = v.filt('lowpass', [[0, 1400], [0.26, 380, 'e']], 0.9);
+      const bp = v.filt('bandpass', [[0, 520], [0.24, 140, 'e']], 2.2, { to: lp });
+      v.noise('pink', { g: [[0, 0], [0.03, 0.55], [0.2, 0.4], [0.235, 0.0001, 'e']], to: bp });
+      v.tone('sine', [[0, 300], [0.24, 110, 'e']], { g: [[0, 0], [0.02, 0.05], [0.22, 0.03], [0.24, 0.0001, 'e']], to: lp });
+      v.bursts([0.12, 0.19, 0.27], [0.12, 0.09, 0.06], { dec: 0.007, f: 1900, q: 2, kind: 'white' });
+      thump(v, 0.3, 150, 70, 0.32, 0.09);
+      puff(v, 0.3, 0.3, 0.09, 520, { kind: 'brown' });
     },
   },
 } satisfies Record<string, Recipe>;

@@ -7,14 +7,15 @@
 //          stands up on its tile), "KUKLA İPİ" plate, a short hover
 //   ~380   release: the orb leaves the card's top edge and zips to the point above the victim; the spent card
 //          drops to the graveyard behind it
-//   +0     THE CROSS: a dark-gold wooden marionette cross pops out of the orb (gold flash + star flare), drops
-//          8 px with a pendulum overshoot and hangs ~46 px over the victim's head, bobbing — e_puppetCross
+//   +0     THE CROSS: the orb unspools into a dark-gold wooden marionette cross (r4: a hot core, the bars growing
+//          out stepwise, the full hot cross, then the inked wood; the knot glints, light runs out to the caps), drops
+//          6 px with a pendulum overshoot and hangs ~46 px over the victim's head, bobbing — e_puppetCross
 //          ("tok" on the catch); a gold light pool opens on the victim's tile
 //   +260   FIVE STRINGS drop one after another (75 ms apart: the hands, the feet, the HEAD last), each a 1-px gold4 line with a white falling tip — e_puppetTsing ×5 (E5 G5 A5 B5 D6,
 //          panned with the string); each lands on its limb with a star hook: flash frame → small star — e_puppetHook,
 //          the string buzzes ±1 px for 120 ms, a 1-px jolt in the body
 //   +670   tension: the cross lifts 3 px, the five strings straighten, the body rises 2 px on them
-//   +760   the SPIRAL GLINT: a 5×5 teal spiral turns in its eye (4 frames × 70 ms, ~1 turn) — e_puppetGlint
+//   +760   the SPIRAL GLINT: a 7×7 inked teal spiral turns once in its eyes (4 frames × 60 ms + a 2-frame hold) — e_puppetGlint
 //   +1020  THREE JERKY PUPPET HOPS (400 ms each) to the new zone: the cross jerks ahead first (anticipation),
 //          the strings slant, the body is yanked up in 3 stepped pixels (lift 12) — e_puppetCreak; it travels a
 //          third of the way on 2-frame stop-motion steps; it drops, 1-px bounce, dust — e_puppetStep. Its card
@@ -23,7 +24,7 @@
 //          the flip) — e_puppetTurn; the new tile flashes gold
 //   +2520  the strings draw up into the cross (top → bottom) — e_puppetSettle; the cross shrinks to the small
 //          cross that keeps hanging over it; ONE thin light string stays
-//   ~2740  done (measured: ePuppet 4.87 s game time from the click, opening included). For the rest of the turn the small cross hangs over the monster and its single string follows
+//   ~2740  done (measured r4: ePuppet 5.25 s game time from the click, opening included). For the rest of the turn the small cross hangs over the monster and its single string follows
 //          the body wherever it goes (attacks too), swaying, a bead of light running down it now and then.
 //
 // THE RETURN (End Phase, controlChange 'return', sourceUid null — claimed by the borrowed slot's byUid):

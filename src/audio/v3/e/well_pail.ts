@@ -11,21 +11,23 @@
 //   e_wellClick    one ratchet tooth of the crank: a 330 Hz wooden tick (played once per crank step, faster)
 //   e_wellRope     the rope takes the weight: a short fibrous creak (pulse train through a wooden band)
 //   e_wellSlosh    the full bucket breaks the surface: a gulp, sloshing water, two bubbles
-//   e_wellSpill    the overflow: a liquid pour (pink 800–1500 Hz band, slow wobble) made of dense small resonant
-//                  bubbles (700–2000 Hz) and drops pattering on stone — no hiss
+//   e_wellSpill    the overflow over the wooden lip: a thin high water thread + drips knocking on the staves in the
+//                  330 Hz family (each with a tiny drip), a few dull drops far down the shaft — no broad pour
+//   e_wellTip      the bucket tips on its bail: a short wooden creak ending on a small tick (softer on the tip back)
 //   e_wellCatch    the pawl catches at the top: "klak" (two clicks, a wooden thud)
 //   e_wellLeap     a card leaps out like a fish: "şlap-GLOOP-fwip" (a wet slap over a deep 150–250 Hz resonant gulp,
 //                  then a pitched paper flutter that follows the flight down to the hand)
 //   e_wellTap      the wet card lands in the hand: a soft paper slap with one drip (replaces the hand's cardPlace)
-//   e_wellShake    the second card shakes the water off: hard wet flutters + a bright spray of droplets (the
-//                  brightest cue of the scene)
+//   e_wellShake    the second card shakes the water off: a wet paper rattle (fast flutter) with a hard flap per
+//                  jerk + a bright spray of droplets flung sideways (the brightest cue of the scene)
 //   e_wellDown     the bucket drops back: the ratchet freewheels (a fast, falling click run) → a deep plop
 //   e_wellLast     the crank's very last tooth: one brighter tick and a short wooden ring
-//   e_wellFade     the well dissolves into teal motes: rising water bubbles and a soft airy lift
+//   e_wellFade     the well dissolves into teal motes: a last wooden creak that sags then lifts, deep irregular
+//                  bubbles from the shaft, a soft airy lift
 
 import type { Recipe } from '../../sounds';
 import type { Voice } from '../../synth';
-import { midiHz, perc } from '../../synth';
+import { perc } from '../../synth';
 import { puff, sweep, thump } from '../kit';
 
 /** The windlass' voice: a dry wooden tick at `f` (Hz) — a short noise snap through a wooden band + a quick body. */
@@ -97,7 +99,7 @@ export const RECIPES = {
     cap: 8,
     gap: 0.018,
     verb: 0.22,
-    play: lift(5, (v) => {
+    play: lift(6, (v) => {
       // one ratchet tooth: the card's 330 Hz signature (the scene raises the pitch as the crank speeds up)
       woodTick(v, 0, 330, 0.36);
     }),
@@ -138,32 +140,57 @@ export const RECIPES = {
     cap: 1,
     gap: 0.3,
     verb: 0.35,
-    play: lift(6, (v) => {
-      // the separating layer: water pouring over the lip — a low pink pour band with a slow wobble, made liquid by
-      // dense small resonant bubbles (sine glides 700–2000 Hz, 15–30 ms apart) and drops on stone; almost no hiss
-      const d = 0.8;
-      const bp = v.filt('bandpass', [[0, 950], [d, 1250, 'e']], 1.3);
-      v.wander(bp.frequency, 4.5, 260, { d });
-      v.noise('pink', { g: [[0, 0], [0.06, 0.16], [d * 0.7, 0.12], [d, 0.0001, 'e']], to: bp });
-      let t = 0.03;
+    play: lift(7, (v) => {
+      // the separating layer: water running over a WOODEN lip — not a pour but a trickle: a thin, fast-wandering
+      // water thread (one narrow band, low level) and, on top of it, drips knocking on the wet staves in the
+      // windlass' own 330 Hz family (each knock with its tiny bright drip), then a few drops landing far down in the
+      // shaft (dull, distant plinks)
+      const d = 0.82;
+      const bp = v.filt('bandpass', [[0, 1150], [d, 1450, 'e']], 3.2);
+      v.wander(bp.frequency, 17, 300, { d });
+      v.noise('pink', { g: [[0, 0], [0.04, 0.13], [d * 0.7, 0.1], [d, 0.0001, 'e']], to: bp });
+      const fam = [825, 990, 1155, 1320, 990]; // the 330 Hz family (×2½…×4), high: the staves are thin, wet wood
+      let t = 0.02;
       let i = 0;
-      while (t < d - 0.06) {
-        const f = v.r(700, 2000);
-        bubble(v, t, f, v.r(0.035, 0.07) * (1 - (t / d) * 0.5), v.r(0.018, 0.035));
-        t += v.r(0.015, 0.03);
+      while (t < d - 0.08) {
+        const f = fam[i % fam.length] * v.r(0.98, 1.03);
+        const g = v.r(0.12, 0.2) * (1 - (t / d) * 0.45);
+        // the knock on the stave: a damp wooden tick (little snap, short body)
+        v.noise('white', { t, g: perc(g * 0.5, 0.004, 0.0002), to: v.filt('bandpass', f * 6, 3) });
+        v.tone('sine', [[0, f * 1.04], [0.015, f, 'e']], { t, g: perc(g * 0.6, 0.026, 0.0006) });
+        v.tone('sine', f * 2.71, { t, g: perc(g * 0.22, 0.018, 0.0004) });
+        // … and its drip
+        bubble(v, t + 0.006, v.r(1400, 2200), g * 0.4, v.r(0.012, 0.02));
+        t += v.r(0.05, 0.11);
         i++;
       }
-      // drops landing on the stones: soft, low taps
-      for (let k = 0; k < 5; k++) v.tone('sine', [[0, 900], [0.02, 600, 'e']], { t: 0.1 + k * 0.13 + v.r(0, 0.03), g: perc(0.04, 0.03, 0.001) });
-      v.noise('white', { g: [[0, 0], [0.1, 0.012], [d, 0.0001, 'e']], to: v.filt('bandpass', 3000, 1.5) });
-      void i;
+      // drops landing on the water far below: dull, low, late
+      for (let k = 0; k < 4; k++) {
+        const tt = 0.16 + k * 0.17 + v.r(0, 0.04);
+        v.tone('sine', [[0, 620], [0.04, 980, 'e']], { t: tt, g: perc(0.035, 0.05, 0.001), to: v.filt('lowpass', 1400, 0.8) });
+      }
+    }),
+  },
+  e_wellTip: {
+    cap: 2,
+    gap: 0.06,
+    verb: 0.3,
+    play: lift(6, (v) => {
+      // the bucket tips on its bail: the iron pin turns in its wet wooden ear — a short tonal SQUEAK (a sine
+      // gliding up, rattled by a fast friction tremolo) with a little grit, ending on a small 330-family tick
+      const d = 0.13;
+      const am = v.flutter(70, 0.9, { d, base: 0.1 });
+      v.tone('sine', [[0, 1450], [d, 1720, 'e']], { g: [[0, 0], [0.015, 0.09], [d * 0.8, 0.07], [d, 0.0001, 'e']], to: am });
+      v.tone('sine', [[0, 2900], [d, 3440, 'e']], { g: [[0, 0], [0.015, 0.025], [d, 0.0001, 'e']], to: am });
+      v.noise('white', { g: [[0, 0], [0.01, 0.06], [d, 0.0001, 'e']], to: v.filt('bandpass', 2600, 3) });
+      woodTick(v, d - 0.01, 495, 0.18, { snap: 0.7, body: 0.9 });
     }),
   },
   e_wellCatch: {
     cap: 1,
     gap: 0.2,
     verb: 0.3,
-    play: lift(5, (v) => {
+    play: lift(8, (v) => {
       // the pawl drops into its tooth and holds the weight: "kla-k" — two ticks, a wooden thud under the second
       woodTick(v, 0, 392, 0.32);
       woodTick(v, 0.045, 330, 0.44, { body: 1.6 });
@@ -210,17 +237,24 @@ export const RECIPES = {
     gap: 0.2,
     verb: 0.4,
     play: lift(7, (v) => {
-      // the brightest cue: hard wet flutters (a card shaken: paper + water), one per jerk …
+      // the brightest cue: a WET PAPER RATTLE — the card flaps hard in the air: a fast paper flutter (a ~45 Hz
+      // amplitude rattle through a papery band) under the whole shake, one hard wet flap per jerk …
+      const d = 0.34;
+      const pb = v.filt('bandpass', [[0, 1300], [d * 0.4, 1900, 'e'], [d, 1200, 'e']], 1.6);
+      const fl = v.flutter(46, 0.9, { d, base: 0.08, to: pb });
+      v.noise('white', { g: [[0, 0], [0.01, 0.3], [d * 0.5, 0.2], [d, 0.0001, 'e']], to: fl });
+      v.noise('pink', { g: [[0, 0], [0.01, 0.1], [d, 0.0001, 'e']], to: v.flutter(23, 0.8, { d, base: 0.2, to: v.filt('bandpass', 520, 1.4) }) });
       [0, 0.046, 0.092, 0.138, 0.184, 0.23].forEach((t, i) => {
-        sweep(v, t, 0.05, [2400, 5200, 3000], 0.24 - i * 0.025, { kind: 'white', q: 1.8, peakAt: 0.35 });
-        puff(v, t, 0.07, 0.04, 2200, { kind: 'pink' });
+        sweep(v, t, 0.045, [2200, 4600, 2800], 0.2 - i * 0.022, { kind: 'white', q: 1.8, peakAt: 0.3 });
+        puff(v, t, 0.06, 0.035, 2000, { kind: 'pink' });
       });
-      // … and a bright spray of droplets flung away, spread wide
-      const pans = [v.panner(-0.7), v.panner(-0.2), v.panner(0.25), v.panner(0.7)];
-      for (let i = 0; i < 14; i++) {
-        const t = 0.02 + i * 0.022 + v.r(0, 0.015);
-        const f = v.r(1800, 3600);
-        v.tone('sine', [[0, f], [0.022, f * 1.7, 'e']], { t, g: perc(0.07, 0.026, 0.001), to: pans[i % 4] });
+      // … and a bright spray of droplets flung sideways, spread wide (heaviest on the first two reversals)
+      const pans = [v.panner(-0.75), v.panner(-0.25), v.panner(0.25), v.panner(0.75)];
+      for (let i = 0; i < 16; i++) {
+        const t = 0.01 + i * 0.02 + v.r(0, 0.012);
+        const f = v.r(1700, 3400);
+        const g = i < 7 ? 0.075 : 0.045;
+        v.tone('sine', [[0, f], [0.02, f * 1.7, 'e']], { t, g: perc(g, 0.024, 0.001), to: pans[i % 4] });
       }
     }),
   },
@@ -258,13 +292,23 @@ export const RECIPES = {
   e_wellFade: {
     cap: 1,
     gap: 0.3,
-    verb: 0.6,
+    verb: 0.55,
     play: lift(8, (v) => {
-      // the well dissolves upward into teal motes: water bubbles rising in an E-major pentatonic ladder + a soft air lift
-      const steps = [64, 66, 68, 71, 73, 76, 78];
-      steps.forEach((m, i) => bubble(v, 0.03 + i * 0.055, midiHz(m), 0.09 * (1 - i * 0.08), 0.06));
-      sweep(v, 0, 0.55, [600, 2400, 4200], 0.08, { kind: 'pink', q: 1.2, peakAt: 0.6 });
-      v.tone('sine', midiHz(76), { t: 0.3, g: [[0, 0], [0.05, 0.03], [0.45, 0.0001, 'e']] });
+      // the well comes apart into motes: the windlass' wood CREAKS one last time — a friction pulse train that sags
+      // (falling) and then lifts away (rising) as the frame goes — over a few deep, irregular bubbles from the shaft
+      // (low pops gliding up, no scale) and a soft airy lift that carries the motes up
+      const d = 0.58;
+      const bp = v.filt('bandpass', [[0, 1250], [0.22, 820, 'e'], [d, 1700, 'e']], 4.5);
+      const rate = v.flutter(30, 0.9, { d, base: 0.08, to: bp });
+      v.noise('white', { g: [[0, 0], [0.04, 0.22], [0.25, 0.16], [d, 0.0001, 'e']], to: rate });
+      v.tone('sawtooth', [[0, 150], [0.22, 104, 'e'], [d, 190, 'e']], { g: [[0, 0], [0.05, 0.028], [d, 0.0001, 'e']], to: v.filt('lowpass', 520, 1.6) });
+      [
+        [0.05, 820, 0.09, 0.06],
+        [0.13, 1150, 0.07, 0.045],
+        [0.21, 930, 0.08, 0.05],
+        [0.33, 1380, 0.05, 0.04],
+      ].forEach(([t, f, g, dd]) => bubble(v, t, f, g, dd));
+      sweep(v, 0.12, 0.5, [2200, 5200, 8200], 0.1, { kind: 'white', q: 1.3, peakAt: 0.65 });
     }),
   },
 } satisfies Record<string, Recipe>;

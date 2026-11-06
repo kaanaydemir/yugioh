@@ -17,43 +17,43 @@
 // The massDestroy (registerLaneE, this file) — ONE collective scene for every per-card event of the wipe:
 //   +0     THE RIFT: a star flare where the orb hits; a vertical 1-px white crack with violet lips zig-zags down and
 //          up the sky (4 stepped growths), short side cracks branch off, glass flakes of the sky fall — e_voidRift.
-//          The sky layer (rift + eye) lies OVER the night veil but UNDER the tile glows, the cards and every unit:
-//          the eye hangs in the sky BEHIND the back row (a back-row monster stands in front of it)
-//   +220   THE LIDS OPEN sideways (stepped, eased): a vertical almond EYE 45×81 px — night lids with a lit lip,
-//          violet-black sclera, a ringed violet iris (turning fibres), a black STARRY pupil with twinkling
+//          The sky layer (rift + eye) lies IN FRONT of the units and the piles (DEPTH.FX + 1): a back-row monster
+//          under the sky point never hides the eye; the risen bodies float just under it, the silhouettes of the
+//          pull go in front of it (they are swallowed by the pupil)
+//   +220   THE LIDS OPEN sideways (stepped, eased): a sky-sized vertical almond EYE 71×93 px — night lids with a lit
+//          lip, violet-black sclera, a ringed violet iris (turning fibres), a black STARRY pupil with twinkling
 //          stars and a white catch-light; a violet light pool breathes under it — e_voidLid ("şııııp")
-//   +580   it looks round: the iris twitches left, right (searching)
-//   +740   THE GAZE falls: the iris drops 6 px, a violet light washes over the field, every doomed tile lights violet,
+//   +580   it looks round: the iris twitches left, right (searching) — e_voidTwitch ("tk … tk")
+//   +740   THE GAZE falls: the iris drops 8 px, a violet light washes over the field, every doomed tile lights violet,
 //          face-down cards are seen through and flip face up one after another — e_voidGaze, e_voidReveal ×n;
-//          the 28 Hz swell starts under it — e_voidSwell
+//          the 28 Hz swell starts under it and climbs to the contraction — e_voidSwell
 //   +860   THE COLLECTIVE RISE: every monster (both sides, tokens and magic_hat decoys too) squats 1 px, tears off
-//          the floor with a 2-px snap and floats up to its own seat on a U-shaped crown that cradles the eye (left
-//          bodies on the left arm, right on the right, the outer seats higher) — slowly, together — turning round on
-//          the way (3 facing flips, each with a one-frame violet edge silhouette), swaying 1 px; their shadows shrink
-//          on the floor, motes rise from their tiles — e_voidRise (the upward choir, no tremolo)
+//          the floor with a 2-px snap and floats up to its seat on a crown fanned out on both sides of the eye
+//          (left bodies on the left arm, right on the right; box tops never above y 40, the HUD band) — slowly,
+//          together — turning round twice on the way (a 4-frame squash turn 0.66 → 0.33 → mirrored → 1 with a 1-px
+//          void4 OUTLINE, never a fill), swaying 1 px; shadows shrink, motes rise — e_voidRise (no tremolo)
 //   +1180  a GUARDIAN CHARM answers: its tile flares gold, a gold tether snaps up to its monster and yanks it back
-//          down onto its tile (thud, dust, a gold ring); "KORUNDU" shows over its head for 450 ms and is gone
+//          down onto its tile (thud, dust, a gold outline); "KORUNDU" shows over its head for 450 ms and is gone
 //          before the contraction — e_voidSave, e_voidThud
-//   +1900  THE PUPIL CONTRACTS (two stepped frames, 7 → 4 → 2 px) — e_voidTick (dry, close); hit-stop: every body freezes; every
-//          risen body flashes WHITE for one frame, then becomes a flat void3 silhouette with a void4 rim (tint
-//          FILLS only: palette colours, never a multiply)
-//   +1960  THE PULL: every silhouette is snapped to the pupil in 4 stepped, accelerating frames (positions only),
-//          10 ms apart, 1-px streak trails converging on the pupil behind them; each body pops into a dense mote
-//          burst at the pupil rim (the pupil flicks white on each), its tile flashes violet and goes dark —
-//          e_voidGulp (reverse glass suction → glass pinch); the swell and the choir stop
-//   +2200  the pupil GULPS (2 → 5 → 4 → 3): an iris-ring flash and a 2-frame white rim on the lids, a violet flash
-//          leaves the eye
-//   +2330  THE EYE CLOSES (lids slide shut in 120 ms) — e_voidBlink; the cards go home now (each destroyed card
-//          lifts off its tile and arcs to its owner's graveyard, 45 ms apart, a soft glass tick as it lands —
-//          e_voidCard, max 3 voices); a token / decoy has no card: it went into the eye whole
-//   +2520  BLINK 1 (opens a crack 0.35 in 3 steps, shuts in 3), a fully shut hold of 100 ms,
-//   +2740  BLINK 2 — e_voidBlink on each shut
-//   +2900  THE TEAR: one purple drop (7×10 with a highlight) swells at the bottom of the slit in 3 frames, hangs,
-//   +3020  falls with smear frames (ease-in) onto the centre of the board;
-//   +3240  it LANDS: two stepped splash rings (void4 then void3, ~48 px), a crown of 8 droplets, a violet stain on
-//          the floor fading in steps, a strong violet floor flash, 3 px shake — e_voidDrip; the slit is gone, the
-//          night veil lifts in 4 steps
-//   +3580  end
+//   +1870  the choir and the swell stop dead (a 30 ms gap of silence for the tick)
+//   +1900  THE PUPIL CONTRACTS (two stepped frames, 10 → 6 → 3 px) — e_voidTick (dry, close); hit-stop: every body
+//          freezes for one frame as a void3 body inside a 1-px WHITE outline (the first full-body colour change)
+//   +1940  THE PULL, all at once (3 ms apart): flat void3 / void2 silhouettes in void4 outlines snap to the pupil in
+//          3 stepped, accelerating frames (30 → 60 → 86 %) while they SHRINK (0.8 → 0.55 → 0.3), 1-px streaks
+//          converging behind them; each pops into a mote burst at the pupil rim (the pupil flicks white), its tile
+//          flashes violet and its card flies home at once (≤ 240 ms, a soft glass tick — e_voidCard); a token /
+//          decoy tile crumbles — e_voidGulp (inward falling suction → glass pinch)
+//   +2120  the pupil GULPS (3 → 7 → 5 → 4): an iris-ring flash and a white rim on the lids, a violet flash
+//   +2220  THE EYE CLOSES (lids slide shut in 120 ms; the shut eye shows as a lid seam with hanging lashes) —
+//          e_voidBlink; every card is home by now: the blinks play on a still board
+//   +2400  BLINK 1 (opens a crack 0.35 in 3 steps, shuts in 3), +2600 BLINK 2 — e_voidBlink on each shut
+//   +2720  the seam seals from the top down to the slit at its bottom tip (3 steps)
+//   +2740  THE TEAR: one purple drop swells at the slit in 4 frames to 9×13 (a one-frame white glint), hangs —
+//          e_voidTink —
+//   +2880  falls with smear frames (ease-in) to the board centre (or the nearest tile no saved monster stands on);
+//   +3060  it LANDS: two stepped splash rings, a crown of 10 droplets, a violet stain fading in steps, a violet floor
+//          flash, 3 px shake — e_voidDrip; the night veil lifts in 4 steps
+//   +3340  end
 // The ground NEVER opens (YENI_KARTLAR: "zemin hiç açılmaz"): everything goes UP.
 
 import Phaser from 'phaser';
@@ -81,17 +81,26 @@ type MassCtx = LaneECtx<'massDestroy'>;
 
 // ================================================================ geometry
 
-/** Half sizes of the open eye (a vertical almond) and of the iris. */
-const EH = 40;
-const EW = 22;
-const IRIS = 15;
-/** The eye's centre: over the middle of the field, in the sky behind the back row. */
+/** Half sizes of the open eye (a vertical almond) and of the iris: a sky-sized eye, 71 × 93 px with its lids. */
+const EH = 46;
+const EW = 30;
+const IRIS = 20;
+/** The top edge the eye and every risen body keep clear of (the phase bar / LP panels live above it). */
+const HUD_CLEAR = 40;
+/** The eye's centre: over the middle of the field, in the sky over the back row (its top stays under the phase bar). */
 function eyeAt(): XY {
-  return { x: R(BOARD_CENTER.x), y: Math.max(54, R(BOARD_CENTER.y - 120)) };
+  return { x: R(BOARD_CENTER.x), y: Math.max(EH + 22, R(BOARD_CENTER.y - 124)) };
 }
-/** The sky layer: over the night veil, under the tile glows (TILE_FX), the cards and the units. */
-const SKY_DEPTH = DEPTH.TILE_FX - 0.3;
-/** The night veil: over the light layer's own dim (TILE_FX − 0.5), under the sky layer. */
+/**
+ * The sky layer (rift + eye): IN FRONT of the units and the piles, so a back-row monster standing under the sky
+ * point never hides the eye; under the risen bodies' own band once they are silhouettes (see RISE_DEPTH / PULL_DEPTH).
+ */
+const SKY_DEPTH = DEPTH.FX + 1;
+/** Bodies while they rise float just under the eye (they pass behind its lens, never over it). */
+const RISE_DEPTH = DEPTH.FX + 0.2;
+/** From the contraction on the silhouettes are in front of the eye: they are pulled INTO the pupil. */
+const PULL_DEPTH = DEPTH.FX + 2;
+/** The night veil: over the light layer's own dim (TILE_FX − 0.5), under the tile glows. */
 const NIGHT_DEPTH = DEPTH.TILE_FX - 0.4;
 
 // ================================================================ timings (scene ms from the massDestroy)
@@ -107,20 +116,23 @@ const T = {
   liftMs: 1000,
   save: 1180,
   contract: 1900,
-  pull: 1960,
-  /** 4 stepped frames per body */
+  /** the pull starts one 40 ms frame after the contraction: no held silhouette */
+  pull: 1940,
+  /** 3 stepped frames per body (+ the arrival) */
   pullStep: 40,
-  pullStagger: 10,
-  gulp: 2200,
-  close: 2330,
+  pullStagger: 3,
+  gulp: 2120,
+  close: 2220,
   closeMs: 120,
-  cards: 2330,
-  blink1: 2520,
-  blink2: 2740,
-  tear: 2900,
-  tearFall: 3020,
-  land: 3240,
-  end: 3580,
+  blink1: 2400,
+  blink2: 2600,
+  /** the closed seam seals from the top down to the tear's slit (3 steps) */
+  seal: 2720,
+  sealMs: 120,
+  tear: 2740,
+  tearFall: 2880,
+  land: 3060,
+  end: 3340,
 } as const;
 
 // ================================================================ helpers
@@ -198,10 +210,14 @@ interface EyeState {
   /** iris brightness 0..2 */
   glow: number;
   el: number;
-  /** the slit fades away at the end (0..1 = gone) */
+  /** the slit is gone (0 = shown, 1 = gone) */
   fade: number;
   /** the gulp: 1 = the iris' outer ring flashes white, 2 = + a white rim on the lids */
   flash: number;
+  /** the eye has closed for good: no rift any more, the shut lids (the seam) show instead */
+  closed: boolean;
+  /** the visible part of the closed seam (1 = the whole shut eye … the slit at its bottom tip that holds the tear) */
+  seam: number;
 }
 
 /** 1-px zig-zag of the rift (deterministic, period 10). */
@@ -209,41 +225,47 @@ const JAG = [0, 0, 1, 1, 1, 0, -1, -1, 0, 0];
 const jag = (y: number) => JAG[((y % JAG.length) + JAG.length) % JAG.length];
 /** Side cracks: [row offset from the centre, direction, length]. */
 const BRANCH: readonly (readonly [number, number, number])[] = [
-  [-44, -1, 6],
-  [-30, 1, 4],
-  [34, -1, 5],
-  [47, 1, 7],
-  [-52, 1, 3],
+  [-50, -1, 7],
+  [-36, 1, 5],
+  [40, -1, 6],
+  [52, 1, 8],
+  [-58, 1, 4],
 ];
 /** Stars of the pupil (unit-circle positions) and their twinkle phase. */
 const STARS: readonly (readonly [number, number, number])[] = [
   [-0.45, -0.3, 0],
   [0.3, -0.55, 1],
   [0.15, 0.35, 2],
-  [-0.3, 0.45, 1],
+  [-0.3, 0.5, 1],
   [0.55, 0.1, 0],
   [-0.05, -0.05, 2],
+  [0.6, -0.35, 2],
+  [-0.62, 0.15, 0],
 ];
+/** Lash rows (offsets from the centre). */
+const LASHES = [-34, -14, 14, 34] as const;
 
 function drawEye(r: Raster, c: XY, s: EyeState): void {
-  const L = Math.round(s.crack * (EH + 10));
-  const faded = s.fade >= 1;
-  if (faded) return;
-  const dim = s.fade > 0.5;
-  // ---- the rift (always under the lids; beyond the tips it IS the eye's tear in the sky)
-  for (let dy = -L; dy <= L; dy++) {
-    const x = c.x + jag(c.y + dy);
-    const tip = Math.abs(dy) > L - 3;
-    r.px(x - 1, c.y + dy, dim ? PAL.void1 : PAL.void2);
-    r.px(x + 1, c.y + dy, dim ? PAL.void1 : PAL.void2);
-    r.px(x, c.y + dy, dim ? PAL.void2 : tip ? PAL.void4 : PAL.white);
-  }
-  if (s.crack > 0.6 && !dim) {
-    for (const [oy, dir, n] of BRANCH) {
-      if (Math.abs(oy) > L) continue;
-      for (let k = 1; k <= n; k++) r.px(c.x + jag(c.y + oy) + dir * (k + 1), c.y + oy + (k >> 1) * Math.sign(oy), k === n ? PAL.void2 : PAL.void3);
+  if (s.fade >= 1) return;
+  // ---- the rift (under the lids; beyond the tips it IS the eye's tear in the sky) — gone once the eye has shut
+  if (!s.closed && s.crack > 0) {
+    const L = Math.round(s.crack * (EH + 8));
+    for (let dy = -L; dy <= L; dy++) {
+      const x = c.x + jag(c.y + dy);
+      const tip = Math.abs(dy) > L - 3;
+      r.px(x - 1, c.y + dy, PAL.void2);
+      r.px(x + 1, c.y + dy, PAL.void2);
+      r.px(x, c.y + dy, tip ? PAL.void4 : PAL.white);
+    }
+    if (s.crack > 0.6) {
+      for (const [oy, dir, n] of BRANCH) {
+        if (Math.abs(oy) > L) continue;
+        for (let k = 1; k <= n; k++) r.px(c.x + jag(c.y + oy) + dir * (k + 1), c.y + oy + (k >> 1) * Math.sign(oy), k === n ? PAL.void2 : PAL.void3);
+      }
     }
   }
+  // the shut lids lie under a blink's narrow lens (its tips are the seam)
+  if (s.closed && s.seam > 0) drawSeam(r, c, s.seam);
   if (s.open <= 0) return;
   // ---- the lens
   for (let dy = -EH; dy <= EH; dy++) {
@@ -289,11 +311,11 @@ function drawEye(r: Raster, c: XY, s: EyeState): void {
           if (R(sx * s.rp) === ux && R(sy * s.rp) === uy) col = (Math.floor(s.el / 160) + ph) % 3 === 0 ? PAL.white : PAL.void3;
         }
       } else if (d <= s.rp + 1.2) col = s.glow > 1 ? PAL.white : PAL.void4;
-      else if (d <= 9) col = s.glow > 0.5 ? PAL.void4 : PAL.void3;
-      else if (d <= 13) {
+      else if (d <= 12.5) col = s.glow > 0.5 ? PAL.void4 : PAL.void3;
+      else if (d <= 17) {
         const ang = Math.atan2(uy, ux);
-        // fine radial fibres (every 4th of 32 sectors), turning slowly
-        const spoke = Math.floor(((ang + Math.PI + s.el / 1400) / (Math.PI * 2)) * 32) % 4 === 0;
+        // fine radial fibres (every 4th of 40 sectors), turning slowly
+        const spoke = Math.floor(((ang + Math.PI + s.el / 1400) / (Math.PI * 2)) * 40) % 4 === 0;
         col = spoke ? (s.glow > 1.5 ? PAL.void4 : PAL.void3) : s.glow > 1.5 ? PAL.void3 : PAL.void2;
       } else if (d <= IRIS) col = s.flash >= 1 ? PAL.white : PAL.void1;
       else if (d <= IRIS + 1 && s.flash >= 1) col = PAL.void4;
@@ -309,13 +331,45 @@ function drawEye(r: Raster, c: XY, s: EyeState): void {
   }
   // lashes: short ink spikes on each lid, pointing out and down
   if (s.open > 0.5) {
-    for (const oy of [-24, -8, 8, 24]) {
+    for (const oy of LASHES) {
       const f = 1 - (oy / EH) * (oy / EH);
       const hw = Math.floor(EW * s.open * f) + 5;
       for (const side of [-1, 1]) {
         r.px(c.x + side * hw, c.y + oy, PAL.ink);
         r.px(c.x + side * (hw + 1), c.y + oy + 1, PAL.ink);
+        r.px(c.x + side * (hw + 2), c.y + oy + 1, PAL.ink);
       }
+    }
+  }
+}
+
+/**
+ * The SHUT eye: the two lids meet on a dark violet seam (lit lid left, shaded right, ink outline, the lashes hanging
+ * down). `part` < 1 seals it from the top: only the lower part — at the end the slit that holds the tear — is left.
+ */
+function drawSeam(r: Raster, c: XY, part: number): void {
+  const from = EH - Math.max(4, R(2 * EH * part));
+  for (let dy = from; dy <= EH; dy++) {
+    const f = 1 - (dy / EH) * (dy / EH);
+    const hw = Math.floor(5 * Math.sqrt(f));
+    const y = c.y + dy;
+    // the slit glows faintly (void3) between the lids; the lit lid's outer edge catches a mist lip
+    r.px(c.x, y, Math.abs(dy) < EH - 3 ? PAL.void3 : PAL.void2);
+    for (let k = 1; k <= hw + 1; k++) {
+      r.px(c.x - k, y, k === hw + 1 && hw > 1 ? PAL.mist : k === 1 ? PAL.night3 : PAL.night4);
+      r.px(c.x + k, y, k === 1 ? PAL.night2 : k === hw + 1 ? PAL.night2 : PAL.night3);
+    }
+    r.px(c.x - hw - 2, y, PAL.ink);
+    r.px(c.x + hw + 2, y, PAL.ink);
+  }
+  r.px(c.x, c.y + from - 1, PAL.ink);
+  if (part < 0.6) return;
+  for (const oy of LASHES) {
+    if (oy < from) continue;
+    const hw = Math.floor(5 * Math.sqrt(1 - (oy / EH) * (oy / EH))) + 3;
+    for (const side of [-1, 1]) {
+      r.px(c.x + side * hw, c.y + oy + 1, PAL.ink);
+      r.px(c.x + side * (hw + 1), c.y + oy + 2, PAL.ink);
     }
   }
 }
@@ -393,8 +447,13 @@ interface Body {
   tile: TileCard | null;
   faceDown: boolean;
   ghost: Phaser.GameObjects.Sprite | null;
-  /** the silhouette's 1-px rim (4 fill copies, one pixel out) from the contraction on */
+  /** a 1-px outline (4 fill copies, one pixel out): shown on a turn, a save, the contraction and the pull */
   rims: Phaser.GameObjects.Sprite[];
+  /** the outline shows until this scene ms (Infinity from the contraction on) */
+  rimUntil: number;
+  /** the opaque box size at the start */
+  boxW: number;
+  boxH: number;
   /** the ghost's start (sprite position) and its floor point */
   x0: number;
   y0: number;
@@ -411,9 +470,11 @@ interface Body {
   /** the pull's start (scene ms) */
   pullAt: number;
   ph: number;
-  /** the three facing flips (scene ms) */
+  /** the two turns (scene ms) */
   flips: number[];
-  edgeUntil: number;
+  /** the running turn's start (-1: none) and whether it has mirrored yet */
+  turn: number;
+  turned: boolean;
   gone: boolean;
   light: LightHandle | null;
   /** saved: when it was yanked back (ms) */
@@ -559,6 +620,9 @@ function newBody(uid: Uid, cardId: CardId, player: PlayerId, zone: number, owner
     faceDown: kind !== 'decoy' && (!unit || !unit.sprite.visible),
     ghost: null,
     rims: [],
+    rimUntil: -1,
+    boxW: 24,
+    boxH: 32,
     x0: floor.x,
     y0: floor.y,
     floor: { x: R(floor.x), y: R(floor.y) },
@@ -571,7 +635,8 @@ function newBody(uid: Uid, cardId: CardId, player: PlayerId, zone: number, owner
     pullAt: T.pull,
     ph: 0,
     flips: [],
-    edgeUntil: -1,
+    turn: -1,
+    turned: false,
     gone: false,
     light: null,
     yank: -1,
@@ -603,31 +668,44 @@ function ghostOf(sc: Phaser.Scene, b: Body): void {
     }
     u.hide();
   }
-  g.setDepth(DEPTH.FX + 2 + g.y / 1000);
+  g.setDepth(RISE_DEPTH + g.y / 10000);
   b.ghost = g;
   b.x0 = g.x;
   b.y0 = g.y;
   const box = spriteBox(sc, g);
   b.offX = R(g.x - box.cx);
   b.offY = R(g.y - box.cy);
+  b.boxW = R(box.w);
+  b.boxH = R(box.h);
 }
 
 /**
- * The risen seats: a U-shaped crown cradling the eye. Bodies left of the eye take the left arm, the others the
- * right; the seat nearest the eye is the lowest, the outer ones climb. Every body rises at least 34 px.
+ * The risen seats: a crown fanned out on both sides of the eye. Bodies left of the eye take the left arm, the
+ * others the right; the seat nearest the eye is the lowest, the outer ones climb a little. Every seat keeps its
+ * box top at or under HUD_CLEAR (never over the phase bar / LP panels): a crowded arm compresses sideways instead
+ * of climbing. Bodies overlap their neighbours by about a third of their width (the inner one in front).
  */
 function seat(bodies: Body[], eye: XY): void {
   const rise = bodies.filter((b) => b.kind !== 'saved' && b.ghost);
   for (const side of [-1, 1] as const) {
     const arm = rise.filter((b) => (side < 0 ? b.x0 < eye.x : b.x0 >= eye.x)).sort((a, b) => Math.abs(a.x0 - eye.x) - Math.abs(b.x0 - eye.x));
-    const n = arm.length;
-    const step = n > 1 ? Math.min(30, 118 / (n - 1)) : 0;
+    if (!arm.length) continue;
+    const inner = EW + 8;
+    const room = (side < 0 ? eye.x - 26 : GAME_W - 26 - eye.x) - inner;
+    // natural spacing: each body takes 62 % of its width; squeeze when the arm would leave the screen
+    const need = arm.reduce((acc, b, j) => acc + (j === arm.length - 1 ? b.boxW : b.boxW * 0.62), 0);
+    const k = need > room ? room / need : 1;
+    let at = inner;
     arm.forEach((b, j) => {
-      const cx = eye.x + side * (EW + 24 + j * step);
-      const cy = eye.y + 30 - j * (n > 1 ? 44 / Math.max(1, n - 1) : 0) - (j === 0 ? 0 : 4);
-      const box = cy0Of(b);
+      const cx = eye.x + side * (at + (b.boxW * k) / 2);
+      at += b.boxW * 0.62 * k;
+      let cy = eye.y + 24 - j * 7;
+      cy = Math.min(cy, cy0Of(b) - 30);
+      cy = Math.max(cy, HUD_CLEAR + Math.ceil(b.boxH / 2) + 1);
       b.tx = R(cx + b.offX);
-      b.ty = R(Math.min(cy, box - 34) + b.offY);
+      b.ty = R(cy + b.offY);
+      // the inner seats in front of the outer ones while they rise
+      b.ghost!.setDepth(RISE_DEPTH + (10 - j) / 100);
     });
   }
   for (const b of bodies) {
@@ -638,32 +716,38 @@ function seat(bodies: Body[], eye: XY): void {
 }
 const cy0Of = (b: Body) => b.y0 - b.offY;
 
-/** Lay a 1-px rim of fill copies under a silhouette. */
+/** Lay a 1-px outline of fill copies (one pixel out on 4 sides) under a body, in `color`. */
 function rimOf(sc: Phaser.Scene, b: Body, color: number): void {
   const g = b.ghost;
   if (!g) return;
-  for (const r of b.rims) r.destroy();
+  if (b.rims.length) {
+    for (const r of b.rims) r.setTintFill(color);
+    moveRims(b);
+    return;
+  }
   b.rims = [
     [-1, 0],
     [1, 0],
     [0, -1],
     [0, 1],
-  ].map(([dx, dy]) =>
-    sc.add
-      .sprite(g.x + dx, g.y + dy, g.texture.key, g.frame.name)
-      .setOrigin(g.originX, g.originY)
-      .setFlipX(g.flipX)
-      .setDepth(g.depth - 0.001)
-      .setTintFill(color)
-      .setData('d', [dx, dy]),
-  );
+  ].map(([dx, dy]) => sc.add.sprite(g.x + dx, g.y + dy, g.texture.key, g.frame.name).setTintFill(color).setData('d', [dx, dy]));
+  moveRims(b);
 }
-function moveRims(b: Body): void {
+/** Keep the outline on its body: position, frame, facing, origin, scale, depth; shown while the body is outlined. */
+function moveRims(b: Body, el = 0): void {
   const g = b.ghost;
   if (!g) return;
+  const on = g.visible && el < b.rimUntil;
   for (const r of b.rims) {
     const [dx, dy] = r.getData('d') as [number, number];
-    r.setPosition(g.x + dx, g.y + dy).setVisible(g.visible);
+    r.setVisible(on);
+    if (!on) continue;
+    if (r.frame.name !== g.frame.name) r.setFrame(g.frame.name);
+    r.setPosition(g.x + dx, g.y + dy)
+      .setFlipX(g.flipX)
+      .setOrigin(g.originX, g.originY)
+      .setScale(g.scaleX, g.scaleY)
+      .setDepth(g.depth - 0.0001);
   }
 }
 
@@ -683,8 +767,9 @@ async function cardHome(ctx: MassCtx, owner: PlayerId, cardId: CardId, from: XY,
   const to0 = pile.topXY();
   const to = { x: R(to0.x), y: R(to0.y) };
   const dist = Math.hypot(to.x - a.x, to.y - a.y);
-  const ms = R(220 + Math.min(160, dist * 0.45));
-  const arc = R(Math.min(30, 12 + dist * 0.1));
+  // fast (≤ 240 ms): every card is home before the eye's first blink, the blinks play on a still board
+  const ms = R(150 + Math.min(90, dist * 0.25));
+  const arc = R(Math.min(22, 8 + dist * 0.08));
   await run(sc, ms, (t) => {
     if (!img.active) return;
     const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
@@ -697,6 +782,25 @@ async function cardHome(ctx: MassCtx, owner: PlayerId, cardId: CardId, from: XY,
   if (img.active) img.destroy();
 }
 
+/**
+ * Where the tear lands: the centre of the board, unless a saved monster stands there — then the nearest monster
+ * tile to the centre that nobody kept (it is empty after the wipe), so the splash is never hidden by a survivor.
+ */
+function tearPoint(bodies: Body[]): XY {
+  const mid = { x: R(BOARD_CENTER.x), y: R(BOARD_CENTER.y) };
+  const kept = bodies.filter((b) => b.kind === 'saved').map((b) => b.floor);
+  const clear = (p: XY) => kept.every((k) => Math.abs(k.x - p.x) > 34 || Math.abs(k.y - p.y) > 26);
+  if (clear(mid)) return mid;
+  const cands: XY[] = [];
+  for (const pl of [0, 1] as PlayerId[])
+    for (let z = 0; z < 5; z++) {
+      const p = zoneXY(pl, 'monster', z);
+      cands.push({ x: R(p.x), y: R(p.y) });
+    }
+  const ok = cands.filter(clear).sort((a, b) => Math.hypot(a.x - mid.x, a.y - mid.y) - Math.hypot(b.x - mid.x, b.y - mid.y));
+  return ok[0] ?? mid;
+}
+
 async function voidEyeWipe(ctx: MassCtx): Promise<void> {
   const sc = ctx.scene;
   const field = ctx.views.field;
@@ -706,18 +810,20 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
   nightDown(sc); // no-op when the activation hook already dimmed
   bodies.forEach((b, i) => {
     b.ph = rng() * Math.PI * 2;
-    // three facing flips spread over the rise, each body on its own beat
-    const o = (i * 47) % 130;
-    b.flips = [T.lift + 220 + o, T.lift + 520 + o, T.lift + 820 + o].filter((t) => t < T.contract - 40);
+    // two slow turns spread over the rise, each body on its own beat (a turn is 4 × 30 ms: it ends long before
+    // the contraction)
+    const o = (i * 53) % 150;
+    b.flips = [T.lift + 260 + o, T.lift + 640 + o].filter((t) => t < T.contract - 160);
   });
   for (const c of cards) c.tile = field.tileOf(c.uid);
+  const landAt = tearPoint(bodies);
 
-  // ---- the canvases: the sky (the eye, behind the units), the air (motes, streaks, tether, tear), the floor
-  const sky = Raster.around(sc, eye.x, eye.y, EW * 2 + 14, (EH + 22) * 2, SKY_DEPTH);
+  // ---- the canvases: the sky (the eye, over the units), the air (motes, streaks, tether, tear), the floor
+  const sky = Raster.around(sc, eye.x, eye.y, (EW + 8) * 2, (EH + 14) * 2, SKY_DEPTH);
   const air = new Raster(sc, 0, 0, 640, 360, DEPTH.FX + 6);
   const floor = new Raster(sc, 0, 0, 640, 360, DEPTH.TILE_FX + 2);
   const motes = new Motes();
-  const S: EyeState = { crack: 0, open: 0, ix: 0, iy: 0, rp: 9, glow: 0, el: 0, fade: 0, flash: 0 };
+  const S: EyeState = { crack: 0, open: 0, ix: 0, iy: 0, rp: 8, glow: 0, el: 0, fade: 0, flash: 0, closed: false, seam: 0 };
   const pupil = (): XY => ({ x: eye.x + S.ix, y: eye.y + S.iy });
 
   // ---- lights
@@ -744,6 +850,16 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
   let lastBite = -999;
   /** streak trails left by the pull: [x0, y0, x1, y1, born] */
   const streaks: [number, number, number, number, number][] = [];
+  /** the spell / trap cards that break with the wipe go home with the first body the eye takes */
+  let cardsSent = false;
+  const sendCards = () => {
+    if (cardsSent) return;
+    cardsSent = true;
+    cards.forEach((c, k) => {
+      const { tile } = field.release(c.uid);
+      flights.push(cardHome(ctx, c.owner, c.cardId, tile ? tile.home : zoneXY(c.owner, 'spellTrap', 0), tile, k * 30));
+    });
+  };
 
   // stars flare where the orb hit (the rift starts from it)
   bg(starFlare(sc, eye, 200, [PAL.white, PAL.void4, PAL.void3, PAL.void2, PAL.void1], 22));
@@ -754,40 +870,41 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
     S.el = el;
     // ================================ the eye's state
     S.crack = q(ease.out(seg(el, T.rift, T.riftMs)), 4);
-    // after the second blink the rift seals from both tips toward the slit (4 steps); only the slit that holds the
-    // tear is left, and it is gone once the drop lets go
-    if (el >= T.blink2 + BLINK_MS) S.crack = 1 - q(seg(el, T.blink2 + BLINK_MS, 140), 4) * 0.86;
     S.open = lidAt(el);
+    S.closed = el >= T.close;
+    // the shut seam seals from the top down to the tear's slit (3 steps) right after the second blink
+    S.seam = 1 - q(seg(el, T.seal, T.sealMs), 3) * 0.9;
     // the open eye breathes: the lids ease 1 px in and out (nothing stands still)
-    if (el > T.lid + T.lidMs && el < T.close) S.open = Math.floor(el / 420) % 2 ? 0.95 : 1;
-    // looks round, then the gaze falls
-    if (el < T.gaze) S.ix = el >= T.look ? (el < T.look + 90 ? -2 : el < T.look + 180 ? 2 : 0) : 0;
+    if (el > T.lid + T.lidMs && el < T.close) S.open = Math.floor(el / 420) % 2 ? 0.96 : 1;
+    // looks round (left, right: searching), then the gaze falls
+    if (el < T.gaze) S.ix = el >= T.look ? (el < T.look + 70 ? -3 : el < T.look + 140 ? 3 : 0) : 0;
     else S.ix = 0;
-    S.iy = el < T.gaze ? 0 : q(ease.out(seg(el, T.gaze, 120)), 3) * 6;
-    if (el >= T.close) S.iy = 6;
+    S.iy = el < T.gaze ? 0 : q(ease.out(seg(el, T.gaze, 120)), 3) * 8;
+    if (el >= T.close) S.iy = 8;
     // the pupil: dilates as it looks, contracts in two stepped frames, bites on each arrival, gulps
-    if (el < T.contract) S.rp = el >= T.gaze ? 7 : 6;
-    else if (el < T.contract + 40) S.rp = 4;
-    else if (el < T.gulp) S.rp = el - lastBite < 34 ? 3 : 2;
-    else if (el < T.gulp + 40) S.rp = 5;
-    else if (el < T.gulp + 90) S.rp = 4;
-    else S.rp = 3;
+    if (el < T.contract) S.rp = el >= T.gaze ? 10 : 8;
+    else if (el < T.contract + 20) S.rp = 6;
+    else if (el < T.gulp) S.rp = el - lastBite < 34 ? 4 : 3;
+    else if (el < T.gulp + 40) S.rp = 7;
+    else if (el < T.gulp + 80) S.rp = 5;
+    else S.rp = 4;
     S.glow = el >= T.contract && el < T.contract + 50 ? 2 : el - lastBite < 34 ? 2 : el >= T.pull && el < T.gulp + 60 ? 1 : el >= T.gaze ? 0.6 : 0;
     S.flash = el >= T.gulp && el < T.gulp + 34 ? 2 : el >= T.gulp && el < T.gulp + 80 ? 1 : 0;
-    S.fade = el < T.tearFall + 40 ? 0 : el < T.tearFall + 100 ? 0.6 : 1;
+    S.fade = el < T.tearFall + 40 ? 0 : 1;
 
     // ================================ marks
     once('lid', el, T.lid, () => {
       playV3('e_voidLid', { volume: 0.9 });
-      eyeLight = lightPool(sc, eye.x, eye.y, { color: PAL.void3, radius: 80, floorY: fieldMid.y, air: 0.75, airRadius: 46, intensity: 0, anim: 'breathe', fadeIn: 0 });
+      eyeLight = lightPool(sc, eye.x, eye.y, { color: PAL.void3, radius: 96, floorY: fieldMid.y, air: 0.75, airRadius: 58, intensity: 0, anim: 'breathe', fadeIn: 0 });
       eyeLight.setIntensity(1, 420);
     });
+    once('look', el, T.look, () => playV3('e_voidTwitch', { volume: 0.85 }));
     once('gaze', el, T.gaze, () => {
       playV3('e_voidGaze', { volume: 0.9 });
       swell = startV3('e_voidSwell', { volume: 0.85 });
       gazeLight = lightPool(sc, fieldMid.x, fieldMid.y, { color: PAL.void3, radius: 150, intensity: 0, tint: 0.6, fadeIn: 0 });
       gazeLight.setIntensity(1.1, 260);
-      gazeBeam = lightBeam(sc, { x: eye.x, y: eye.y + 6 }, { x: fieldMid.x, y: fieldMid.y - 30 }, PAL.void3, 0, { width: 44, intensity: 0.55, shimmer: 0.2 });
+      gazeBeam = lightBeam(sc, { x: eye.x, y: eye.y + 8 }, { x: fieldMid.x, y: fieldMid.y - 30 }, PAL.void3, 0, { width: 52, intensity: 0.55, shimmer: 0.2 });
       for (const t of doomedTiles) if (t.active) t.setHighlight(PAL.void3);
       // face-down cards are seen through: they flip up one after another
       bodies
@@ -809,9 +926,9 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
         if (b.faceDown && b.kind !== 'saved') b.unit = field.addUnit(b.uid, { hidden: true });
         ghostOf(sc, b);
         if (b.ghost && b.faceDown) {
-          // a revealed body steps out of its card: one violet fill frame
-          b.ghost.setTintFill(PAL.void4);
-          b.edgeUntil = el + 50;
+          // a revealed body steps out of its card: a violet outline for two frames (never a fill before the contraction)
+          rimOf(sc, b, PAL.void4);
+          b.rimUntil = el + 60;
         }
         if (b.ghost) b.light = lightPool(sc, b.x0, b.y0 - 12, { color: PAL.void3, radius: 14, floorY: b.y0, air: 0.35, intensity: 0.7, anim: 'breathe' });
       }
@@ -826,74 +943,69 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
         if (b) b.yank = el;
       });
     }
+    // the choir and the swell stop dead 40 ms before the tick: the dry tick lands in a gap of silence
+    once('hush', el, T.contract - 30, () => {
+      (swell as { stop(ms?: number): void } | null)?.stop(25);
+      (choir as { stop(ms?: number): void } | null)?.stop(25);
+    });
     once('contract', el, T.contract, () => {
       playV3('e_voidTick', { volume: 1 });
-      // the hit-stop is the bodies' own: from here every body holds still until its pull (the eye keeps living)
+      // the hit-stop is the bodies' own: every body holds still for one frame (the eye keeps living); each one
+      // flashes a WHITE 1-px outline round a void3 body (fills only: palette colours, never a multiply)
       for (const b of bodies) {
         if (b.kind === 'saved' || !b.ghost) continue;
-        b.ghost.anims.stop();
-        b.ghost.setTintFill(PAL.white);
+        const g = b.ghost;
+        g.anims.stop();
+        g.setScale(1);
+        g.setTintFill(PAL.void3);
+        g.setDepth(PULL_DEPTH + g.y / 1000);
+        rimOf(sc, b, PAL.white);
+        b.rimUntil = Infinity;
       }
     });
-    once('silhouette', el, T.contract + 30, () => {
-      // a flat violet silhouette inside a one-pixel void4 rim (fills only: palette colours)
+    once('silhouette', el, T.pull, () => {
+      // flat violet silhouettes inside a void4 outline, pulled at once (6 ms apart, nearest first)
+      playV3('e_voidGulp', { volume: 1 });
       const order = bodies.filter((b) => b.kind !== 'saved' && b.ghost).sort((a, c) => Math.hypot(a.ghost!.x - eye.x, a.ghost!.y - eye.y) - Math.hypot(c.ghost!.x - eye.x, c.ghost!.y - eye.y));
       order.forEach((b, k) => {
-        // neighbours alternate void3 / void2 fills so overlapping bodies stay apart inside their void4 rims
-        b.ghost!.setTintFill(k % 2 ? PAL.void2 : PAL.void3);
+        const g = b.ghost!;
+        // neighbours alternate void3 / void2 fills so overlapping bodies stay apart inside their void4 outlines
+        g.setTintFill(k % 2 ? PAL.void2 : PAL.void3);
         rimOf(sc, b, PAL.void4);
-        b.px0 = b.ghost!.x;
-        b.py0 = b.ghost!.y;
+        const box = spriteBox(sc, g);
+        b.offX = R(g.x - box.cx);
+        b.offY = R(g.y - box.cy);
+        b.px0 = g.x;
+        b.py0 = g.y;
         b.pullAt = T.pull + k * T.pullStagger;
       });
     });
-    once('pull', el, T.pull, () => {
-      playV3('e_voidGulp', { volume: 1 });
-      (swell as { stop(ms?: number): void } | null)?.stop(300);
-      (choir as { stop(ms?: number): void } | null)?.stop(220);
-    });
     once('gulp', el, T.gulp, () => {
-      void lightFlash(sc, eye.x, eye.y, PAL.void4, 70, 380, { floorY: fieldMid.y, air: 0.9, intensity: 1.2 });
+      void lightFlash(sc, eye.x, eye.y, PAL.void4, 80, 380, { floorY: fieldMid.y, air: 0.9, intensity: 1.2 });
       (gazeBeam as BeamHandle | null)?.fadeOut(200);
       (gazeLight as LightHandle | null)?.setIntensity(0.4, 200);
       for (const b of bodies) if (b.kind !== 'saved') void b.light?.fadeOut(120);
     });
     once('close', el, T.close + 60, () => playV3('e_voidBlink', { volume: 0.9 }));
-    once('cards', el, T.cards, () => {
-      // the cards go home while the eye blinks
-      let k = 0;
-      for (const t of doomedTiles) if (t.active) t.setHighlight(null);
-      for (const b of bodies) {
-        if (b.kind !== 'monster') continue;
-        const { tile } = field.release(b.uid);
-        field.forget(b.uid);
-        flights.push(cardHome(ctx, b.owner, b.cardId, tile ? tile.home : b.floor, tile, k * 45));
-        k++;
-      }
-      for (const c of cards) {
-        const { tile } = field.release(c.uid);
-        flights.push(cardHome(ctx, c.owner, c.cardId, tile ? tile.home : zoneXY(c.owner, 'spellTrap', 0), tile, k * 45));
-        k++;
-      }
-    });
     once('blink1', el, T.blink1 + 100, () => playV3('e_voidBlink', { volume: 0.7, pitch: 1.08 }));
     once('blink2', el, T.blink2 + 100, () => playV3('e_voidBlink', { volume: 0.6, pitch: 1.16 }));
     once('tearLight', el, T.tear, () => {
-      tearLight = lightPool(sc, eye.x, eye.y + EH, { color: PAL.void4, radius: 18, floorY: fieldMid.y, air: 0.7, airRadius: 10, intensity: 1, fadeIn: 60 });
+      playV3('e_voidTink', { volume: 0.8 });
+      tearLight = lightPool(sc, eye.x, eye.y + EH, { color: PAL.void4, radius: 20, floorY: fieldMid.y, air: 0.7, airRadius: 12, intensity: 1, fadeIn: 60 });
       (eyeLight as LightHandle | null)?.setIntensity(0.4, 300);
     });
     once('land', el, T.land, () => {
-      playV3('e_voidDrip', { volume: 1, pan: panAt(fieldMid.x) });
+      playV3('e_voidDrip', { volume: 1, pan: panAt(landAt.x) });
       void (tearLight as LightHandle | null)?.fadeOut(120);
       void shake(sc, 160, 3);
-      void lightFlash(sc, fieldMid.x, fieldMid.y, PAL.void4, 70, 560, { intensity: 1.8, ring: true });
+      void lightFlash(sc, landAt.x, landAt.y, PAL.void4, 70, 560, { intensity: 1.8, ring: true });
       void (eyeLight as LightHandle | null)?.fadeOut(400);
       void (gazeLight as LightHandle | null)?.fadeOut(500);
       bg(wait(sc, 120).then(() => nightUp(sc)));
       // the crown of droplets
-      for (let k = 0; k < 8; k++) {
-        const a = Math.PI + (k / 7) * Math.PI;
-        motes.add({ x: fieldMid.x + R(Math.cos(a) * 3), y: fieldMid.y - 1, vx: Math.cos(a) * (50 + (k % 2) * 18), vy: -70 - (k % 3) * 24 + Math.sin(a) * 10, g: 420, life: 360, c: k % 2 ? PAL.void4 : PAL.white, trail: true });
+      for (let k = 0; k < 10; k++) {
+        const a = Math.PI + (k / 9) * Math.PI;
+        motes.add({ x: landAt.x + R(Math.cos(a) * 4), y: landAt.y - 1, vx: Math.cos(a) * (56 + (k % 2) * 20), vy: -80 - (k % 3) * 26 + Math.sin(a) * 10, g: 420, life: 380, c: k % 2 ? PAL.void4 : PAL.white, trail: true });
       }
     });
 
@@ -905,49 +1017,57 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
     for (const b of bodies) {
       const g = b.ghost;
       if (!g || !g.active || b.gone) continue;
-      // ---- THE PULL: 4 stepped, accelerating frames to the pupil; then a mote burst at the rim
-      if (b.kind !== 'saved' && el >= T.pull && fired.has('silhouette')) {
+      // ---- THE PULL: 3 stepped, accelerating frames to the pupil, shrinking (1 → 0.8 → 0.55 → 0.3); then gone
+      if (b.kind !== 'saved' && fired.has('silhouette')) {
         const u = el - b.pullAt;
         if (u < 0) {
-          moveRims(b);
+          moveRims(b, el);
           continue;
         }
-        const FR = [0.1, 0.32, 0.64, 1] as const;
-        const fi = Math.min(3, Math.floor(u / T.pullStep));
-        const f = FR[fi];
+        const FR = [0.3, 0.6, 0.86] as const;
+        const SC = [0.8, 0.55, 0.3] as const;
+        const fi = Math.floor(u / T.pullStep);
         const cx0 = b.px0 - b.offX;
         const cy0 = b.py0 - b.offY;
-        const cx = R(cx0 + (pp.x - cx0) * f);
-        const cy = R(cy0 + (pp.y - cy0) * f);
         if (fi < 3) {
-          g.setPosition(cx + b.offX, cy + b.offY);
-          moveRims(b);
+          const f = FR[fi];
+          const k = SC[fi];
+          const cx = R(cx0 + (pp.x - cx0) * f);
+          const cy = R(cy0 + (pp.y - cy0) * f);
+          g.setScale(k);
+          g.setPosition(R(cx + b.offX * k), R(cy + b.offY * k));
+          moveRims(b, el);
           if (!g.getData('s' + fi)) {
             g.setData('s' + fi, true);
-            const box = spriteBox(sc, g);
             // three streaks from where it hung: its top, centre and bottom, converging on the pupil
-            const hh = R(box.h / 2);
-            streaks.push([cx0, cy0 - hh, cx, cy - R(hh * (1 - f)), el], [cx0, cy0, cx, cy, el], [cx0, cy0 + hh, cx, cy + R(hh * (1 - f)), el]);
+            const hh = R(b.boxH / 2);
+            streaks.push([cx0, cy0 - hh, cx, cy - R(hh * k), el], [cx0, cy0, cx, cy, el], [cx0, cy0 + hh, cx, cy + R(hh * k), el]);
           }
         } else {
           // arrival: it pops into a dense burst at the pupil rim and is gone
           b.gone = true;
           g.setVisible(false);
-          moveRims(b);
+          moveRims(b, el);
           lastBite = el;
           for (let m = 0; m < 14; m++) {
             const a = (m / 14) * Math.PI * 2 + b.ph;
             const rr = S.rp + 4 + (m % 3) * 2;
             motes.add({ x: pp.x + Math.cos(a) * rr, y: pp.y + Math.sin(a) * rr, to: pp, life: 90 + (m % 4) * 30, c: m % 3 === 0 ? PAL.white : m % 3 === 1 ? PAL.void4 : PAL.void3 });
           }
-          // its tile flashes and goes dark; a token / decoy tile crumbles (it has no card to keep)
-          if (b.tile?.active) {
-            // its tile flashes violet for a beat and goes dark
-            const t = b.tile;
-            t.setHighlight(PAL.void4);
-            bg(wait(sc, 60).then(() => t.active && t.setHighlight(null)));
-          }
-          if (b.kind === 'token' || b.kind === 'decoy') {
+          // its tile flashes violet; its card goes home now, fast (all cards are home before the blinks)
+          const t = b.tile;
+          if (t?.active) t.setHighlight(PAL.void4);
+          if (b.kind === 'monster') {
+            bg(
+              wait(sc, 40).then(() => {
+                if (t?.active) t.setHighlight(null);
+                const { tile } = field.release(b.uid);
+                field.forget(b.uid);
+                flights.push(cardHome(ctx, b.owner, b.cardId, tile ? tile.home : b.floor, tile, 0));
+              }),
+            );
+          } else {
+            // a token / decoy has no card: its tile crumbles (it went into the eye whole)
             const { tile } = field.release(b.uid);
             field.forget(b.uid);
             if (b.kind === 'decoy') field.remove(b.uid);
@@ -956,12 +1076,13 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
               flights.push(tile.fadeOut(200).then(() => tile.destroy()));
             }
           }
+          sendCards();
         }
         continue;
       }
       // the hit-stop: frozen in place from the contraction to the pull
       if (el >= T.contract && b.kind !== 'saved') {
-        moveRims(b);
+        moveRims(b, el);
         continue;
       }
       // ---- the rise: squat 1 px (anticipation), snap 2 px (tears off), then the slow float to its seat
@@ -982,6 +1103,10 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
       const sway = el >= T.lift + 110 ? Math.round(Math.sin(el / 300 + b.ph)) : 0;
       // the guardian charm's save: yanked down in 160 ms (ease-in), lands, stays
       if (b.kind === 'saved' && b.yank >= 0) {
+        if (b.turn >= 0) {
+          b.turn = -1;
+          g.setScale(1);
+        }
         const y = seg(el, b.yank + 90, 160);
         const held = 1 - ease.in(y);
         gy = b.y0 - Math.max(0, Math.min(b.y0 - gy, (b.y0 - b.ty) * 0.6 + 2) * held);
@@ -992,11 +1117,12 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
           void shake(sc, 90, 1);
           b.tile?.ringBurst(PAL.gold3, 360);
           b.tile?.dust(10, 0.8);
-          g.setTintFill(PAL.gold4);
-          b.edgeUntil = el + 40;
+          // a gold outline for two frames (it is kept)
+          rimOf(sc, b, PAL.gold4);
+          b.rimUntil = el + 60;
           // "KORUNDU" just over its head (kept under the eye's tip), 450 ms, gone before the contraction
           const top = spriteBox(sc, g).top;
-          const wy = R(Math.max(eye.y + EH + 14, top - 3));
+          const wy = R(Math.max(eye.y + EH + 12, top - 3));
           const w = pixelText(sc, b.floor.x, wy, 'KORUNDU', { size: 'md', color: PAL.gold3 }).setOrigin(0.5, 1).setDepth(DEPTH.FX_TOP);
           const life = Math.min(450, Math.max(200, T.contract - 20 - el));
           words.push(
@@ -1013,18 +1139,30 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
       }
       g.x = R(gx + (b.landed ? 0 : sway));
       g.y = R(gy);
-      // turning: three facing flips, each with a one-frame violet edge silhouette (no rotation, no scale)
-      if (el < T.contract && !(b.kind === 'saved' && b.yank >= 0) && b.flips.length && el >= b.flips[0]) {
-        b.flips.shift();
-        g.setFlipX(!g.flipX);
-        g.setOrigin(1 - g.originX, g.originY);
-        g.setTintFill(PAL.void4);
-        b.edgeUntil = el + 20;
+      // turning: two slow turns — the body narrows (0.66 → 0.33), mirrors, widens back (0.33 → 0.66 → 1), 30 ms a
+      // frame, a 1-px void4 OUTLINE round it while it turns (no fill, no rotation)
+      if (el < T.contract && !(b.kind === 'saved' && b.yank >= 0)) {
+        if (b.turn < 0 && b.flips.length && el >= b.flips[0]) {
+          b.flips.shift();
+          b.turn = el;
+          b.turned = false;
+          rimOf(sc, b, PAL.void4);
+          b.rimUntil = el + 120;
+        }
+        if (b.turn >= 0) {
+          const fi = Math.floor((el - b.turn) / 30);
+          if (fi >= 2 && !b.turned) {
+            b.turned = true;
+            g.setFlipX(!g.flipX);
+            g.setOrigin(1 - g.originX, g.originY);
+          }
+          if (fi >= 4) {
+            b.turn = -1;
+            g.setScale(1);
+          } else g.setScale([0.66, 0.33, 0.33, 0.66][fi], 1);
+        }
       }
-      if (b.edgeUntil >= 0 && el >= b.edgeUntil && el < T.contract) {
-        b.edgeUntil = -1;
-        g.clearTint();
-      }
+      moveRims(b, el);
       b.light?.setPosition(g.x, g.y - 14, b.floor.y);
       // motes rising off its tile while it floats
       if (el >= T.lift && el < T.contract && b.kind !== 'saved' && rng() < dtS / 70) {
@@ -1056,24 +1194,24 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
           const ry = Math.max(2, rx >> 1);
           const c = v > 0.7 ? PAL.void2 : col;
           // a 2-px band (the outer ring and one pixel inside it), whole pixels
-          for (let a = 0; a < 160; a++) {
-            const ang = (a / 160) * Math.PI * 2;
+          for (let a = 0; a < 180; a++) {
+            const ang = (a / 180) * Math.PI * 2;
             const cs = Math.cos(ang);
             const sn = Math.sin(ang);
-            r.px(R(fieldMid.x + cs * rx), R(fieldMid.y + sn * ry), c);
-            r.px(R(fieldMid.x + cs * (rx - 1)), R(fieldMid.y + sn * Math.max(1, ry - 1)), c);
+            r.px(R(landAt.x + cs * rx), R(landAt.y + sn * ry), c);
+            r.px(R(landAt.x + cs * (rx - 1)), R(landAt.y + sn * Math.max(1, ry - 1)), c);
           }
         };
-        ring(0, 22, PAL.void4);
-        ring(70, 16, PAL.void3);
+        ring(0, 26, PAL.void4);
+        ring(70, 18, PAL.void3);
         // the stain (stepped tones)
         const sc3 = u < 100 ? PAL.void4 : u < 190 ? PAL.void3 : u < 270 ? PAL.void2 : u < 330 ? PAL.void1 : -1;
         if (sc3 >= 0) {
           for (let yy = -2; yy <= 2; yy++) {
-            const w = [3, 6, 7, 6, 3][yy + 2];
-            for (let xx = -w; xx <= w; xx++) r.px(fieldMid.x + xx, fieldMid.y + yy, sc3);
+            const w = [4, 7, 8, 7, 4][yy + 2];
+            for (let xx = -w; xx <= w; xx++) r.px(landAt.x + xx, landAt.y + yy, sc3);
           }
-          if (u < 190) r.px(fieldMid.x - 3, fieldMid.y - 1, PAL.white);
+          if (u < 190) r.px(landAt.x - 3, landAt.y - 1, PAL.white);
         }
       }
     });
@@ -1098,22 +1236,24 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
         r.line(from.x, from.y - 4, ex, ey, late ? PAL.gold2 : PAL.gold3);
         if (!late) r.line(from.x + 1, from.y - 4, ex + 1, ey, PAL.gold4);
       }
-      // the tear: swells at the bottom of the slit (3 frames), hangs, falls with smear frames to the board centre
+      // the tear: swells at the bottom of the slit (4 frames, the last one with a white glint), hangs, falls with
+      // smear frames onto its landing point
       if (el >= T.tear && el < T.land) {
-        const sy = eye.y + EH + 2;
+        const sy = eye.y + EH + 3;
         const sw = el - T.tear;
         const fall = ease.in(seg(el, T.tearFall, T.land - T.tearFall));
-        const x = eye.x;
-        const y = R(sy + (fieldMid.y - 6 - sy) * fall);
+        const x = R(eye.x + (landAt.x - eye.x) * fall);
+        const y = R(sy + (landAt.y - 1 - sy) * fall);
         (tearLight as LightHandle | null)?.setPosition(x, y, fieldMid.y);
-        const size = sw < 40 ? 0 : sw < 80 ? 1 : 2;
-        if (el < T.tearFall) drawDrop(r, x, sy + [1, 3, 5][size], size, 0);
-        else {
+        if (el < T.tearFall) {
+          const size = sw < 30 ? 0 : sw < 60 ? 1 : sw < 90 ? 2 : 3;
+          drawDrop(r, x, sy + [1, 3, 6, 9][size], size as 0 | 1 | 2 | 3, 0, sw >= 90 && sw < 130);
+        } else {
           // smear: the stretched drop + two fading ghost copies above it, spaced by the speed
-          const v = R(4 + fall * 14);
-          drawDrop(r, x, y, 2, Math.min(5, R(fall * 8)));
-          if (fall > 0.08) r.rect(x - 1, y - 12 - v, 3, v, PAL.void3);
-          if (fall > 0.3) r.rect(x, y - 14 - v * 2, 1, v, PAL.void2);
+          const v = R(4 + fall * 16);
+          drawDrop(r, x, y, 3, Math.min(6, R(fall * 9)), false);
+          if (fall > 0.08) r.rect(x - 1, y - 16 - v, 3, v, PAL.void3);
+          if (fall > 0.3) r.rect(x, y - 18 - v * 2, 1, v, PAL.void2);
         }
       }
     });
@@ -1125,9 +1265,11 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
   });
 
   // ================================ tidy up
+  sendCards();
   for (const b of bodies) {
     if (b.kind === 'saved') {
       b.ghost?.destroy();
+      for (const r of b.rims) r.destroy();
       b.unit?.show();
       b.unit?.settle();
       continue;
@@ -1135,7 +1277,7 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
     b.ghost?.destroy();
     for (const r of b.rims) r.destroy();
   }
-  // the motes of the splash keep drawing while the last cards land
+  // the motes of the splash keep drawing a moment longer
   const tail = run(sc, 160, (_t, _el, dt) => {
     motes.step(dt);
     air.draw((r) => motes.draw(r));
@@ -1152,10 +1294,11 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
 }
 
 /**
- * The purple tear (feet at y): size 0 a bead 3×4, 1 a drop 5×7, 2 the full drop 7×10 — a void3 body, a void4 lit
- * left side, a white glint, a void2 belly, ink outline; `stretch` px longer while it falls.
+ * The purple tear (feet at y): size 0 a bead 3×4, 1 a drop 5×7, 2 a drop 7×10, 3 the full drop 9×13 — a void3
+ * body, a void4 lit left side, a white glint (2×2 + a one-frame white flare on `shine`), a void2 belly, ink
+ * outline; `stretch` px longer while it falls.
  */
-function drawDrop(r: Raster, x: number, y: number, size: 0 | 1 | 2, stretch: number): void {
+function drawDrop(r: Raster, x: number, y: number, size: 0 | 1 | 2 | 3, stretch: number, shine: boolean): void {
   if (size === 0) {
     r.rect(x - 1, y - 3, 3, 3, PAL.void3);
     r.px(x - 1, y - 3, PAL.void4);
@@ -1166,7 +1309,7 @@ function drawDrop(r: Raster, x: number, y: number, size: 0 | 1 | 2, stretch: num
     return;
   }
   // rows from the top: half widths of the body (a pointed top, round bottom)
-  const rows = size === 1 ? [0, 1, 1, 2, 2, 2, 1] : [0, 0, 1, 1, 2, 2, 3, 3, 3, 3, 2];
+  const rows = size === 1 ? [0, 1, 1, 2, 2, 2, 1] : size === 2 ? [0, 0, 1, 1, 2, 2, 3, 3, 3, 3, 2] : [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 4, 3];
   const H = rows.length + stretch;
   const top = y - H;
   for (let i = 0; i < H; i++) {
@@ -1186,6 +1329,15 @@ function drawDrop(r: Raster, x: number, y: number, size: 0 | 1 | 2, stretch: num
   r.px(x, top - 1, PAL.ink);
   r.rect(x - rows[rows.length - 1], y, rows[rows.length - 1] * 2 + 1, 1, PAL.ink);
   // the highlight
-  r.px(x - 1, top + R(H * 0.55), PAL.white);
-  if (size === 2) r.px(x - 1, top + R(H * 0.55) + 1, PAL.white);
+  const hy = top + R(H * 0.5);
+  r.px(x - 1, hy, PAL.white);
+  if (size >= 2) r.px(x - 1, hy + 1, PAL.white);
+  if (size === 3) r.px(x - 2, hy + 1, PAL.white);
+  if (shine) {
+    // the hang's one-frame flare: a white cross on the glint
+    r.px(x - 2, hy, PAL.white);
+    r.px(x - 1, hy - 1, PAL.white);
+    r.px(x - 1, hy + 2, PAL.white);
+    r.px(x - 3, hy + 1, PAL.white);
+  }
 }

@@ -28,7 +28,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
 ### S3 Boşluk Gözü (`void_eye`)
 - Resim: `src/art/cardart-v3/void_eye.ts` (88×68 + elle 44×34, 4 kare yaşayan resim). Sinematik + toplu yok etme:
   `src/cinematics/spells/void_eye.ts` (activate kancası + `registerLaneE('massDestroy')`; tüm destroy / tokenVanish /
-  Koruyucu Tılsım olayları tek kolektif yükselişte). SFX: `src/audio/v3/e/void_eye.ts` (13 tarif, `e_void*`).
+  Koruyucu Tılsım olayları tek kolektif yükselişte). SFX: `src/audio/v3/e/void_eye.ts` (15 tarif, `e_void*`).
 - Senaryolar: `src/duel/scenarios/e_void_eye.ts` (eVoid, eVoidP2, eVoidQuick, eVoidSet, eVoidSetP2, eVoidOne,
   eVoidCharm, eVoidSovereign, eVoidEquip); test `tests/e/void_eye.test.ts`.
 - Kanıt: `shots/e/void_eye/r2/` (quick.png, quick_zoom.png, quick_pull.png, quick_tear.png, quick_land.png, p2_full.png,
@@ -39,7 +39,19 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
   kapanış + iki ayrı kırpma (100 ms kapalı bekleme); büyük damla (7×10), asılma, lekeli iki halkalı sıçrama;
   e_voidSwell yalnız 28 Hz katları (tremolo yok), e_voidGulp cam emiş → cam çimdik (chasmShut LSD 17,4 dB);
   kartlar göz kırparken mezarlığa (kendi e_voidCard sesi, cardPlace yok); magic_hat sahte şapkası da yükselir.
-- Ölçüm (oyun ms): eVoidQuick 5,85 sn, eVoidSet/SetP2 5,83 sn, eVoidOne/Charm/Equip 5,85 sn; kamera 0.
+- Eleştiri turu 2 düzeltmeleri: göz katmanı artık birimlerin ve destelerin ÖNÜNDE (DEPTH.FX+1; yükselen gövdeler
+  altında, çekişteki silüetler önünde) — kalabalık sahada arka sıra gözü kapatmaz; göz büyüdü (EW 30, EH 46: 71×93 px);
+  oturma yerleri HUD bandının altında (kutu üstü ≥ y 40, kalabalık kol yana sıkışır); dönüş = 2 adet 4 karelik
+  sıkışma-dönüş + 1 px void4 dış hat (dolgu yok); kasılma = beyaz 1 px dış hat + void3 gövde (beyaz ≤ %1,33);
+  çekiş kasılmadan 1 kare sonra hepsi birlikte başlar, gövdeler 0,8 → 0,55 → 0,3 küçülür; kartlar çekişte (≤ 240 ms)
+  eve gider, kırpmalar durgun sahada; kapalı göz = kirpikli kapak dikişi, ikinci kırpmadan sonra 120 ms'de yarığa
+  kapanır; damla 9×13 + 1 karelik beyaz parıltı, kurtarılan canavarın altına düşmez. SFX: tik +6,5 dB ve önünde 30 ms
+  sessizlik; swell 1,6 sn, tepesi kasılmada, gövdesi 112–336 Hz; e_voidGulp aşağı/içe emiş (Lid ile LSD 12,1 dB);
+  yeni e_voidTwitch (iris bakınması) ve e_voidTink (damla şişmesi). Resim: iris aşağı bakar, bulut lopları kapakların
+  üstünde ve yanlarında, iki yanda 5 okunur silüet (kurt, yarasa-kanat ejder, boynuzlu iblis, kuşlar).
+- Kanıt (tur 2): `shots/e/void_eye/r3/` (quick.png, eye_open.png, contract.png, pull40.png, tear.png, seam.png,
+  set.png, p2.png, one.png, art/, sfx/, measure.json).
+- Ölçüm (oyun ms): eVoidQuick/One/Charm 5,53 sn, eVoidSet 5,52 sn (pay 5,57 sn); kamera 0.
   Sahibin kararı: sabit süre sınırı yok.
 
 ### S5 Harman Eleği (`winnow_sieve`)
