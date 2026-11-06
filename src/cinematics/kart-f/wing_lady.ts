@@ -33,7 +33,7 @@
 import type Phaser from 'phaser';
 import { CARDS } from '../../data/cards';
 import type { GameEvent, GameState, PlayerId, Uid } from '../../engine/types';
-import { PAL, RAMPS } from '../../art/palette';
+import { PAL } from '../../art/palette';
 import type { AnyMonsterAnim, MonsterPointName } from '../../art/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { FieldView } from '../../duel/FieldView';
@@ -44,7 +44,8 @@ import { pixelText } from '../../ui/text';
 import { registerCardHook, registerEvent, registerObserver, registerStrike } from '../api';
 import type { CinematicContext, StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
-import { atFrame, panAt, play, start, takeCharge } from '../_v3/sound';
+import { atFrame, fade, hitSoundFor, hush, panAt, play, start, takeCharge } from '../_v3/sound';
+import { setCombatSfx } from '../../vfx/combat';
 import type { SfxName } from '../../audio/sfx';
 import { behindBodies, cardLeaves } from '../_v3/card';
 import { contactFlash } from '../_v3/flash';
@@ -67,6 +68,17 @@ const BLESS: readonly SfxName[] = ['khBless1', 'khBless2', 'khBless3', 'khBless4
 
 /** Uids an animation of ours currently owns (the observer keeps its hands off them). */
 const BUSY = new Set<Uid>();
+
+/** Scene time of the last khSong we started (round 2 #1: a bless run holds its own root when the song has decayed). */
+let songAt = -1e9;
+function singSong(sc: Phaser.Scene, o: { volume: number; pan: number }): void {
+  songAt = sc.time.now;
+  play('khSong', o);
+}
+/** Her song is still holding its A4 (the slur returns to A4 at 0.78 s and fades by 1.25 s). */
+function songHeld(sc: Phaser.Scene): boolean {
+  return sc.time.now - songAt < 650;
+}
 
 // ================================================================ geometry
 
@@ -318,6 +330,7 @@ async function blessBeat(ctx: AnyCtx, ladyUid: Uid | null, ladyHome: XY, allies:
   for (const a of list) if (a.ev && a.unit!.shownStats.atk !== a.ev.prevAtk && mode !== 'arrive') void a.unit!.setStats(a.ev.prevAtk, a.ev.prevDef, false);
   const pan = panAt(ladyHome.x);
   let anim: Promise<void> = Promise.resolve();
+  let root: { stop(ms?: number): void } | null = null;
   try {
     // ---- the charge: her wings lift, the blade rises, the jewel steps up
     if (ladyOk && lady && mode !== 'compact') {
@@ -333,7 +346,7 @@ async function blessBeat(ctx: AnyCtx, ladyUid: Uid | null, ladyHome: XY, allies:
         anim = lady.playRange('special', lady.markFrame('special', 'release', 4));
       } else {
         const f0 = 0;
-        if (mode === 'full') play('khSong', { volume: 0.8, pan });
+        if (mode === 'full') singSong(sc, { volume: 0.8, pan });
         void lightPool(sc, lady.home.x, lady.home.y, { color: PAL.leaf3, radius: 16, floorY: lady.home.y, intensity: 0.4, fadeIn: 120 })
           .fadeOut(900)
           .catch(() => undefined);
@@ -344,6 +357,9 @@ async function blessBeat(ctx: AnyCtx, ladyUid: Uid | null, ladyHome: XY, allies:
     }
     // ---- release: the downstroke sends one current per ally (staggered)
     const total = list.length;
+    // the chord's root (round 2 #1): her A4 held under the voices, so the first ally's voice already makes a dyad
+    // and the chord never thins to a lone voice once her song has decayed (softer while the song still holds its A4)
+    if (total > 0) root = start('khBlessRoot', { volume: songHeld(sc) ? 0.55 : 0.85, pan });
     let n0 = 0;
     // the chord: count the allies already blessed by her (an arrival completes the existing chord)
     if (mode === 'arrive') n0 = Math.max(0, field.units().filter((u) => u.player === (lady?.player ?? list[0]?.unit?.player) && auraOf(u) && !list.some((a) => a.uid === u.uid)).length);
@@ -378,6 +394,8 @@ async function blessBeat(ctx: AnyCtx, ladyUid: Uid | null, ladyHome: XY, allies:
     // her salute settles on its own (the next event may start: the sprite returns to idle by itself)
     if (ladyOk && lady) await capped(sc, anim, mode === 'arrive' ? 0 : mode === 'afterSummon' ? 80 : 200);
   } finally {
+    // the root rings on under the held voices and fades with them
+    root?.stop(900);
     if (lady) lady.posed = false;
     for (const a of allies) BUSY.delete(a.uid);
   }
@@ -389,10 +407,14 @@ async function unblessBeat(ctx: AnyCtx, origin: XY | null, allies: Ally[], o: { 
   const field = ctx.views.field;
   for (const a of allies) BUSY.add(a.uid);
   try {
-    const sing = o.sound !== false && allies.length > 0 ? start('khUnbless', { volume: 0.75, pan: panAt(origin?.x ?? 320) }) : null;
+    // the chord counts DOWN (round 2 #1): exactly as many voices fall as allies lose the aura
+    const n = Math.max(1, Math.min(4, allies.length));
+    const voice = `khUnbless${n}` as SfxName;
+    const sing = o.sound !== false && allies.length > 0 ? start(voice, { volume: 0.8, pan: panAt(origin?.x ?? 320) }) : null;
     const jobs = allies.map(async (a, k) => {
       const u = a.unit ?? field.unit(a.uid);
-      await sleep(sc, k * 80);
+      // each peel is its own beat after the voice (round 2 #6: never on the same ms)
+      await sleep(sc, 80 + k * 110);
       if (!u || u.retired) return;
       const after = bonusIn(ctx.stateAt(ctx.events.length), a.uid);
       const aura = auraOf(u);
@@ -406,8 +428,8 @@ async function unblessBeat(ctx: AnyCtx, origin: XY | null, allies: Ally[], o: { 
       if (a.ev && (u.shownStats.atk !== a.ev.atk || u.shownStats.def !== a.ev.def)) await u.setStats(a.ev.atk, a.ev.def, true);
     });
     await Promise.all(jobs);
-    await sleep(sc, 200);
-    sing?.stop(200);
+    await sleep(sc, 120 + n * 130);
+    sing?.stop(260);
   } finally {
     for (const a of allies) BUSY.delete(a.uid);
   }
@@ -566,8 +588,20 @@ if (LOOK_V3)
   registerEvent(
     'flip',
     async (ctx: Ctx<'flip'>) => {
-      await ctx.base();
       const ev = ctx.ev;
+      // her own flip (round 2 #2): the shared flip's generic beast roar (summon-b/flip.ts roarSmall / roarBig on the
+      // rise) is skipped — her song (khSong, the bless below) is her one voice
+      if (ctx.cardId(ev.uid) === ID) {
+        const sfx0 = ctx.sfx;
+        ctx.sfx = (name, opts) => {
+          if (name !== 'roarSmall' && name !== 'roarBig') sfx0(name, opts);
+        };
+        try {
+          await ctx.base();
+        } finally {
+          ctx.sfx = sfx0;
+        }
+      } else await ctx.base();
       if (ev.cause !== 'flipSummon' && ev.cause !== 'attacked') return;
       const uid = ev.uid;
       // a lady flipped: her statChange run follows (after the paired summon) — bless now, before a sync snaps it
@@ -625,7 +659,27 @@ function goldOnset(sc: Phaser.Scene, u: MonsterUnit): Promise<void> {
   });
 }
 
-async function glideIn(S: Stage): Promise<void> {
+/** The first of the six back-wing beat frames (summon f4). */
+const first0 = 4;
+
+/** The salute's floor wing: span 12 → 24 → 36 over three frames (tone 3), then tone 3 → 2 → 1 → gone in 300 ms. */
+function saluteWing(sc: Phaser.Scene, home: XY): Promise<void> {
+  const px = layer(sc, FLOOR_DEPTH + 1);
+  const open = 3 * STEP_MS;
+  return animate(sc, open + 300, (_t, el) => {
+    px.clear();
+    if (el >= open + 300) return;
+    if (el < open) {
+      const k = Math.min(2, Math.floor(el / STEP_MS));
+      paintFloorLight(px, home.x, home.y - 1, 12 + k * 12, 3);
+      return;
+    }
+    const k = Math.min(2, Math.floor(((el - open) / 300) * 3));
+    paintFloorLight(px, home.x, home.y - 1, 36 - k * 2, (3 - k) as 1 | 2 | 3);
+  }).then(() => px.g.destroy());
+}
+
+async function glideIn(S: Stage, rush0: { stop(ms?: number): void } | null): Promise<void> {
   const sc = S.scene;
   const u = S.unit;
   const home = { ...S.home };
@@ -652,7 +706,8 @@ async function glideIn(S: Stage): Promise<void> {
   // ---- 0–200: a sunlit wing of floor light sweeps in ahead of her
   const glow = layer(sc, FLOOR_DEPTH + 1);
   const pan0 = panAt(startFloor.x);
-  const rush = start('khGlideIn', { volume: 0.9, pan: pan0 });
+  // the rush was started under the card slam by the summon hook (round 2 #5: a far air out of silence)
+  const rush = rush0 ?? start('khGlideIn', { volume: 0.9, pan: pan0 });
   let lightAt = { ...startFloor };
   let lightSpan = 6;
   let lightTone: 1 | 2 | 3 = 1;
@@ -700,8 +755,10 @@ async function glideIn(S: Stage): Promise<void> {
     prev = at;
   });
   streams.g.destroy();
-  // ---- 620: the brake-flare (f2–f3), the W; the rush lets go
-  rush.stop(140);
+  // ---- 620: the brake-flare (f2–f3), the W; the rush's tail runs on under the first backwing downstroke and lets
+  // go 80 ms after it (round 2 #5: no hole between the glide and the beats)
+  atFrame(u, 'summon', first0 + 1, () => void sleep(sc, 80).then(() => rush.stop(160)), { late: true, maxMs: 1600 });
+  void sleep(sc, 1200).then(() => rush.stop(200));
   // the brake runs a touch quicker than the table, the run-out and fold quicker still (the salute must come
   // while the glide is still in the eye: summon + bless ≤ 2.4 s scene, critique 7)
   const brake = u.playRange('summon', 2, undefined, { timeScale: 1.25 });
@@ -711,7 +768,7 @@ async function glideIn(S: Stage): Promise<void> {
   }, { late: true, maxMs: 2200 });
   // three back-wing beats over six frames (mid · down · mid · up · mid · down, summon f4–f9): the sprite bobs in
   // its own frames, the cinematic sinks her toward the floor under it; a beat sound and a crescent on each downstroke
-  const first = 4;
+  const first = first0;
   const lifts = [10, 8, 6, 5, 3, 1];
   for (let b = 0; b < lifts.length; b++) {
     const f = first + b;
@@ -746,6 +803,8 @@ async function glideIn(S: Stage): Promise<void> {
     { late: true, maxMs: 2000 },
   );
   atFrame(u, 'summon', landF + 1, () => play('khToe', { volume: 0.7, pan: panAt(home.x) }), { late: false, maxMs: 2200 });
+  // two frames on: the jewel glints (a soft shimmer bridging the land and the song, round 2 #5)
+  atFrame(u, 'summon', landF + 2, () => play('khJewel', { volume: 0.7, pan: panAt(home.x) }), { late: false, maxMs: 2400 });
   // ---- the salute (f11): the jewel flares, she sings her first note, the badge pops
   const saluteF = landF + 4;
   await untilShown(u, 'summon', saluteF, 2600);
@@ -753,8 +812,13 @@ async function glideIn(S: Stage): Promise<void> {
   if (glow.g.active) glow.g.destroy();
   setFeet(u, home);
   jewelFlare(sc, u, 140);
-  play('khSong', { volume: 0.85, pan: panAt(home.x) });
-  S.finale({ ring: 36, ramp: RAMPS.gold, shake: 0, sfx: null, playerRing: false });
+  singSong(sc, { volume: 0.85, pan: panAt(home.x) });
+  // the salute's own word (round 2 #3: no shared finale ring around the tile): her wing-shaped floor light flares
+  // OPEN under her at twice the aura's span in three steps and settles to nothing — the same gold wing the aura
+  // will lay under every buffed ally; then the badge pops
+  void saluteWing(sc, home);
+  void lightFlash(sc, home.x, home.y - 2, PAL.gold3, 26, 360, { floorY: home.y, intensity: 0.6 });
+  void u.badge.pop();
   // the bless (if any) launches off the salute's flare; alone, she holds the salute out
   const blessNext = S.ctx.events.some((e, i) => i > S.ctx.index && e.type === 'statChange');
   await capped(sc, brake, blessNext ? 90 : 600);
@@ -766,7 +830,13 @@ if (LOOK_V3)
     'summon',
     async (ctx) => {
       if (ctx.ev.from !== 'hand') return ctx.base();
-      await runSummon(ctx, async () => undefined, glideIn);
+      // the rush starts under the card slam (round 2 #5: the far air rises out of silence while the card lands)
+      const rush = start('khGlideIn', { volume: 0.9, pan: panAt(zoneXY(ctx.ev.player, 'monster', ctx.ev.zone).x) });
+      try {
+        await runSummon(ctx, async () => undefined, (S) => glideIn(S, rush));
+      } finally {
+        void sleep(ctx.scene, 1600).then(() => rush.stop(200));
+      }
       // Kanat Selamı follows at once (inside this handler: no sync snaps the allies' plates in between)
       const run = takeAuraRun(ctx as unknown as AnyCtx, ctx.index + 1, 0);
       await playRun(ctx as unknown as AnyCtx, run, 'afterSummon');
@@ -886,7 +956,15 @@ async function kestrel(s: StrikeArgs): Promise<void> {
     // ---- f6 contact: the wing clap
     u.pose('attack', conF);
     const tipNow = pointNow(u, 'muzzle', aim);
-    s.impact(tipNow);
+    // her clap / cry / skid IS the contact (round 2 #2): the battle's generic body blow (impactHeavy / impactLight,
+    // the duelist's on a direct hit) and the guard's shield bell are skipped inside the contact call; a struck body
+    // with its own material still answers, re-played ~7 dB under her accent (the reed_heron precedent)
+    const tgt = s.target && !s.direct && s.target.sprite.active ? s.target : null;
+    const mats = tgt ? [hitSoundFor(tgt, { kind: 'physical', heavy: true }), hitSoundFor(tgt, { kind: 'physical', heavy: false })].filter((x): x is SfxName => !!x) : [];
+    const generic: SfxName[] = ['impactHeavy', 'impactLight', ...(s.blocked ? (['shieldBlock'] as SfxName[]) : []), ...mats];
+    hush(generic, () => s.impact(tipNow));
+    const struck = tgt ? hitSoundFor(tgt, { kind: 'physical', heavy: !s.blocked }) : null;
+    if (struck) play(struck, { volume: s.blocked ? 0.5 : 0.45, pan: panAt(tipNow.x) });
     const tgtH = s.target && !s.direct ? Math.max(14, Math.min(30, Math.abs(s.target.worldPoint('top').y - s.target.home.y) * 0.6)) : 10;
     const centre = s.target && !s.direct ? s.target.core() : { x: tipNow.x, y: tipNow.y };
     void clapFx(sc, rint(centre), s.direct ? 10 : tgtH, dir, s.blocked);
@@ -1057,18 +1135,28 @@ function featherEdgeSpark(sc: Phaser.Scene, u: MonsterUnit, face: number): void 
   const wrist = rint({ x: c.x + face * 3, y: c.y - 6 });
   const path = pixelPath([wrist, { x: (wrist.x + tip.x) / 2 + face * 2, y: (wrist.y + tip.y) / 2 - 1 }, tip]);
   const px = layer(sc, u.sprite.depth + 0.7);
-  void animate(sc, 3 * STEP_MS, (t) => {
+  // round 2 #10: five frames (gold4 held two, then gold3, gold3, gold2) and 5–7 px dashes with a gold4 head, so the
+  // buckler is the readable event of the blow at 1×
+  const tones = [PAL.gold4, PAL.gold4, PAL.gold3, PAL.gold3, PAL.gold2];
+  void animate(sc, tones.length * STEP_MS, (t) => {
     px.clear();
     if (t >= 1) return;
-    const f = Math.min(2, Math.floor(t * 3));
-    const tone = [PAL.gold4, PAL.gold3, PAL.gold2][f];
+    const f = Math.min(tones.length - 1, Math.floor(t * tones.length));
+    const tone = tones[f];
+    const step = Math.max(0, f - 1);
     path.forEach((p, i) => {
-      if (f === 0 || (i + f) % 2 === 0) px.dot(p.x + face * f, p.y, tone);
+      if (f <= 1 || (i + f) % 2 === 0) {
+        px.dot(p.x + face * step, p.y, tone);
+        if (f <= 1) px.dot(p.x + face * step, p.y - 1, PAL.gold3);
+      }
     });
-    for (let k = 0; k < 3; k++) {
-      const p = path[Math.min(path.length - 1, Math.round(((k + 1) * path.length) / 4))];
-      const d = 2 + f * 3;
-      px.dot(p.x + face * d, p.y - k + 1, tone).dot(p.x + face * (d + 1), p.y - k + 1, tone);
+    for (let k = 0; k < 4; k++) {
+      const p = path[Math.min(path.length - 1, Math.round(((k + 1) * path.length) / 5))];
+      const d = 2 + f * 2;
+      const len = k % 2 === 0 ? 7 : 5;
+      const y = p.y - k + 1;
+      // a dash flying back along the blow: dim tail at the buckler, the gold4 head leading
+      for (let j = 0; j < len; j++) px.dot(p.x + face * (d + j), y, j >= len - 2 ? PAL.gold4 : j >= len - 4 ? tone : PAL.gold2);
     }
   }).then(() => px.g.destroy());
 }
@@ -1088,10 +1176,23 @@ if (LOOK_V3)
         if (!u.sprite.active || !u.guarding) return;
         const before = new Set(sc.children.list);
         const face = u.flipX ? -1 : 1; // she faces the attacker
+        // her buckler owns the beat's sound (round 2 #2): the struck-body call plays khBuckler (CharacterSounds.struck
+        // .guard); the battle's generic shield bell / impact, played synchronously right after this event (vfx/combat
+        // blockClang, combatImpact), stay off for this call and anything already ringing fades (shield_titan precedent)
+        setCombatSfx(false);
+        queueMicrotask(() => {
+          setCombatSfx(true);
+          fade(['shieldBlock', 'impactLight', 'impactHeavy'], 12);
+        });
+        const bodyD = u.sprite.depth;
         const hide = onFrame(sc, (_dt, el) => {
           const want = u.sprite.depth + 0.5;
           for (const o of sc.children.list) {
             if (before.has(o)) continue;
+            // the shared impact burst drawn just behind the struck body (_v3/react.ts behindBody: the white star, the
+            // air rings and the cyan (water-ramp) sparks at depth − 0.4 … − 0.1): hidden — her gold spark is the read
+            const od = (o as unknown as { depth?: number }).depth;
+            if (typeof od === 'number' && od >= bodyD - 0.45 && od < bodyD - 0.05 && 'setVisible' in o) (o as unknown as { setVisible(v: boolean): void }).setVisible(false);
             if (o.type === 'Image') {
               // the hex-shield glint (MonsterUnit guardGlint: an ADD raster at the body's depth + 0.5)
               const im = o as Phaser.GameObjects.Image;
@@ -1119,8 +1220,13 @@ if (LOOK_V3)
 
 // ================================================================ death "Düşen Pelerin"
 
-/** The bird silhouette: night0 body, gold rim; `span` half wingspan, `up` wing lift (px at the tips), `flat` a slab. */
-function paintBird(px: Px, cx: number, cy: number, span: number, up: number, rim: number, fill: number, flat = false): void {
+/**
+ * The bird silhouette — HER kestrel (round 2 #7, no longer a black bat stamp): the inner wings and the body in her
+ * own rufous earth2 (an earth3 lit row on top) barred with night2 dashes, the pointed hands slate (night2 with a
+ * night3 lit row), a 1-px night0 outline, and the gold rim on the LEADING (top) edge only. `span` half wingspan, `up`
+ * wing lift (px at the tips), `dim` the far end of the flight (one tone darker), `flat` the cape slab on her back.
+ */
+function paintBird(px: Px, cx: number, cy: number, span: number, up: number, rim: number, dim = false, flat = false): void {
   const S = Math.max(2, Math.round(span));
   const set = new Set<string>();
   const put = (x: number, y: number) => set.add(`${x},${y}`);
@@ -1148,13 +1254,26 @@ function paintBird(px: Px, cx: number, cy: number, span: number, up: number, rim
     for (const dx of [-2, -1, 0, 1, 2]) put(cx + dx, cy + 6);
     for (const dx of [-3, -1, 1, 3]) put(cx + dx, cy + 7);
   }
-  // two tones: the night fill and a lighter band along the top (lit) edge of the wings and the back (night2 over
-  // night1; night1 over night0) — a body with a light plane, not a flat glyph
-  const band = fill === PAL.night0 ? PAL.night1 : PAL.night2;
+  const lit = dim ? PAL.earth2 : PAL.earth3;
+  const warm = dim ? PAL.earth1 : PAL.earth2;
+  const bar = dim ? PAL.night1 : PAL.night2;
+  const hand = dim ? PAL.night1 : PAL.night2;
+  const handLit = dim ? PAL.night2 : PAL.night3;
   for (const k of set) {
     const [x, y] = k.split(',').map(Number);
-    px.dot(x, y, !flat && !set.has(`${x},${y - 1}`) ? band : fill);
+    const top = !set.has(`${x},${y - 1}`);
+    const dx = Math.abs(x - cx);
+    const isHand = !flat && dx > Math.max(2, S * 0.55);
+    let c: number;
+    if (isHand) c = top ? handLit : hand;
+    else if (top) c = lit;
+    // the barring: short night2 dashes across the inner wing (every third column, below the lit row)
+    else if (!flat && dx > 1 && dx % 3 === 1 && set.has(`${x},${y - 1}`) && set.has(`${x},${y + 1}`)) c = bar;
+    else if (flat && dx % 4 === 2 && set.has(`${x},${y - 1}`)) c = bar;
+    else c = warm;
+    px.dot(x, y, c);
   }
+  // the outline: gold on the leading (top) edge, night0 everywhere else
   for (const k of set) {
     const [x, y] = k.split(',').map(Number);
     for (const [dx, dy] of [
@@ -1162,8 +1281,12 @@ function paintBird(px: Px, cx: number, cy: number, span: number, up: number, rim
       [-1, 0],
       [0, 1],
       [0, -1],
-    ])
-      if (!set.has(`${x + dx},${y + dy}`)) px.dot(x + dx, y + dy, rim);
+    ]) {
+      const q = `${x + dx},${y + dy}`;
+      if (set.has(q)) continue;
+      const leading = dy === -1;
+      px.dot(x + dx, y + dy, leading ? rim : PAL.night0);
+    }
   }
 }
 
@@ -1202,6 +1325,18 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
     else leave = Promise.resolve();
   };
   ctx.scene.events.emit('v3:dying', u);
+  // round 2 #11: her drop shadow is pinned under the body on the floor for the whole death (the knock-back's lift
+  // left it floating above the tile, detached), and it goes with the body when the bird lifts off
+  const pinHold = () => {
+    const sh = u.shadow;
+    if (!sh.active) return;
+    if (u.sprite.active && u.sprite.visible) {
+      const x = Math.round(u.sprite.x);
+      sh.setPosition(x, Math.abs(x - home.x) < 24 ? Math.round(home.y) : feetOf(u).y);
+    } else sh.setVisible(false);
+  };
+  sc.events.on('postupdate', pinHold);
+  const pinShadow = () => sc.events.off('postupdate', pinHold);
   let unbless: Promise<void> = Promise.resolve();
   try {
     const n = u.frameCount('death');
@@ -1253,7 +1388,8 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
       u.markFrame('death', 'dissolve', 4),
       () => {
         play('khFlatten', { volume: 0.85, pan });
-        if (run.length) unbless = unblessBeat(ctx as unknown as AnyCtx, home, run.map((r) => ({ uid: r.ev.uid, ev: r.ev, unit: ctx.unit(r.ev.uid) })));
+        // the unbless is its own beat, 120 ms after the flatten (round 2 #6; its peels follow it by 80 ms more)
+        if (run.length) unbless = sleep(sc, 120).then(() => unblessBeat(ctx as unknown as AnyCtx, home, run.map((r) => ({ uid: r.ev.uid, ev: r.ev, unit: ctx.unit(r.ev.uid) }))));
       },
       { late: true, maxMs: 2400 },
     );
@@ -1286,37 +1422,45 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
     const fade = [PAL.night2, PAL.night1, PAL.night0];
     for (let k = 0; k < 4; k++) {
       px.clear();
-      if (k === 0) paintBird(px, body.x, body.y - 1, 13, 0, PAL.gold2, PAL.night0, true);
-      else paintBird(px, body.x, body.y - 1 - k * 4, k === 1 ? 10 : k === 2 ? 14 : 17, k === 1 ? 1 : k === 2 ? 4 : 6, PAL.gold3, PAL.night1);
+      if (k === 0) paintBird(px, body.x, body.y - 1, 13, 0, PAL.gold3, false, true);
+      else paintBird(px, body.x, body.y - 1 - k * 4, k === 1 ? 10 : k === 2 ? 14 : 17, k === 1 ? 1 : k === 2 ? 4 : 6, PAL.gold4);
       if (spr.active) {
         if (k < fade.length) spr.setTintFill(fade[k]);
         else spr.setVisible(false);
       }
-      if (k === 2) born();
+      // the wings open fully: the first beat in the air
+      if (k === 3) play('khBirdBeat', { volume: 0.75, pan });
       await sleep(sc, STEP_MS);
     }
     if (spr.active) {
       spr.setVisible(false);
       spr.clearTint();
     }
-    born();
     const from = { x: body.x, y: body.y - 13 };
     const ctl = { x: (from.x + pile.x) / 2, y: Math.min(from.y, pile.y) - 34 };
-    await animate(sc, 400, (t) => {
+    // the bird LEADS (round 2 #7): her card is born only once the bird is well on its way (170 ms into the flight)
+    // and follows it — the bird dives into the pile, the card lands after it
+    let lastFlap = 0;
+    await animate(sc, 400, (t, el) => {
       px.clear();
+      if (el >= 170) born();
       if (t >= 1) return;
       const p = rint(quad(from, ctl, { x: pile.x, y: pile.y - 4 }, E.inOutQ(t)));
       const span = Math.max(8, Math.round(17 - Math.max(0, t - 0.4) * 16));
-      const flap = Math.floor(t * 7) % 4;
+      const flap = Math.floor(t * 9) % 4;
       const up = flap === 0 ? 7 : flap === 1 ? 2 : flap === 2 ? -3 : 3;
-      const rim = t < 0.45 ? PAL.gold3 : t < 0.75 ? PAL.gold2 : PAL.gold1;
-      const fill = t < 0.8 ? PAL.night1 : PAL.night0;
-      paintBird(px, p.x, p.y, span, up, rim, fill);
+      // a soft wing beat on each downstroke, panned along the path toward the graveyard (round 2 #6)
+      if (flap === 2 && lastFlap !== 2) play('khBirdBeat', { volume: t < 0.5 ? 0.65 : 0.5, pan: panAt(p.x) });
+      lastFlap = flap;
+      const rim = t < 0.45 ? PAL.gold4 : t < 0.75 ? PAL.gold3 : PAL.gold2;
+      paintBird(px, p.x, p.y, span, up, rim, t >= 0.8);
     });
     px.g.destroy();
   } catch (e) {
     console.error('[wing_lady] death failed', e);
   } finally {
+    pinShadow();
+    if (u.shadow.active) u.shadow.setVisible(false);
     born();
     u.posed = false;
     if (!u.retired) u.retire(0);

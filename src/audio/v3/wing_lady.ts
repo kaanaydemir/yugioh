@@ -100,33 +100,78 @@ function tick(v: Voice, t: number, g: number, o: { to?: AudioNode } = {}): void 
   thump(v, t, 260, 180, g * 0.3, 0.03, { to: o.to });
 }
 
-/** A held chord voice joining her song (slow attack: it JOINS the chord). */
-function blessVoice(f: number): Recipe {
+/**
+ * A held chord voice joining her song (slow attack: it JOINS the chord). Round 2 #1: every voice is HELD long enough
+ * (≈ 1.0 s at level, 1.6 s to silence) that the second and third land while the earlier ones still sound, and each
+ * is level-matched to the first (`lv`: the formant bank favours the voices whose 2nd harmonic sits on the 1150 Hz
+ * formant — C#5 — so the others are trimmed up / down to land within 6 dB of it, measured with an FFT).
+ */
+function blessVoice(f: number, lv: number): Recipe {
   return {
     cap: 6,
     gap: 0.01,
     verb: 0.5,
-    duck: 0.25,
+    duck: 0.12,
     play(v) {
       const e = v.echo(0.18, 0.2, { wet: 0.3 });
-      sing(v, 0, f, [[0, 0], [0.04, 0.05], [0.5, 0.045], [0.9, 0.0001, 'e']], { to: e, vibAt: 0.1, bright: 0.8 });
-      sing(v, 0, f, [[0, 0], [0.04, 0.05], [0.5, 0.045], [0.9, 0.0001, 'e']], { vibAt: 0.1, bright: 0.8 });
+      const env: Pt[] = [[0, 0], [0.06, 0.07 * lv], [0.95, 0.06 * lv], [1.6, 0.0001, 'e']];
+      sing(v, 0, f, env, { to: e, vibAt: 0.12, bright: 0.8 });
+      sing(v, 0, f, env, { vibAt: 0.12, bright: 0.8, body: 0.55 });
     },
   };
 }
 
+/**
+ * The aura's loss for `k` buffed allies (round 2 #1): exactly k chord voices — the highest first — bend down a
+ * semitone and drop out one by one (130 ms apart), leaving her root A4, which holds and fades last.
+ */
+function unblessVoices(k: number): Recipe {
+  const voices = [CS5, E5, A5, CS6].slice(0, Math.max(1, Math.min(4, k))).reverse();
+  return {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.5,
+    duck: 0.25,
+    play(v) {
+      const e = v.echo(0.2, 0.25, { wet: 0.3 });
+      voices.forEach((f, i) => {
+        const t = i * 0.13;
+        sing(v, t, [[0, f], [0.08, f], [0.22, f * 0.944, 'e']], [[0, 0], [0.03, 0.06], [0.16, 0.05], [0.28, 0.0001, 'e']], { to: e, vibAt: 0.3, body: 0.5 });
+      });
+      const end = voices.length * 0.13;
+      sing(v, 0, A4, [[0, 0], [0.05, 0.05], [end + 0.25, 0.045], [end + 0.75, 0.0001, 'e']], { to: e, vibAt: 0.2, body: 0.5 });
+    },
+  };
+}
+
+/** One soft wing beat of the death bird (round 2 #6: on its flap frames), lighter and higher than hers alive. */
+function birdBeat(v: Voice, t: number, g: number): void {
+  thump(v, t, 150, 95, g * 0.35, 0.06);
+  puff(v, t + 0.003, g * 0.75, 0.09, 900, { kind: 'pink' });
+  sweep(v, t, 0.1, [500, 900, 560], g * 0.3, { kind: 'pink', q: 1.4, peakAt: 0.3 });
+}
+
 export const WING_LADY_RECIPES = {
   // ------------------------------------------------------------------ summon "Rüzgâr Kapısı"
-  /** arrive (sustained): the approaching air of the low glide (a doppler fall), the thrum fading in at the end. */
+  /**
+   * arrive (sustained): round 2 #5 — it starts UNDER the card slam (the summon hook starts it, ≈ 0.34 s before the
+   * glide) as a far air rising out of silence, then the approaching air of the low glide (a doppler fall) and the
+   * thrum fading in at the end; the cinematic stops it 80 ms after the first backwing downstroke (the tail overlaps it).
+   */
   khGlideIn: {
     cap: 2,
     gap: 0.1,
-    verb: 0.3,
+    verb: 0.35,
     duck: 0.3,
     play(v) {
-      sweep(v, 0, 1.3, [1200, 900, 600], 0.5, { kind: 'pink', q: 1.6, peakAt: 0.55 });
-      sweep(v, 0.05, 1.2, [2200, 1600, 1100], 0.12, { kind: 'white', q: 2.2, peakAt: 0.5 });
-      thrum(v, 0.5, 0.9, [[0, 0], [0.3, 0.12], [0.9, 0.0001, 'e']], { rate: 20 });
+      // far air: a high thin band rising out of nothing while the card lands (0–0.7 s)
+      sweep(v, 0, 0.75, [2600, 1900, 1500], 0.22, { kind: 'white', q: 2.6, peakAt: 0.9 });
+      sweep(v, 0.05, 0.7, [700, 1000, 1150], 0.32, { kind: 'pink', q: 1.4, peakAt: 0.92 });
+      // the glide's doppler fall (the main body: she appears ≈ 0.7 s after the slam and glides ≈ 0.4 s)
+      sweep(v, 0.6, 1.3, [1250, 900, 560], 0.8, { kind: 'pink', q: 1.6, peakAt: 0.45 });
+      sweep(v, 0.64, 1.2, [2300, 1600, 1100], 0.2, { kind: 'white', q: 2.2, peakAt: 0.35 });
+      // the brake: the thrum swells under the brake-flare and the first backwing beat
+      thrum(v, 0.95, 1.1, [[0, 0], [0.3, 0.4], [0.75, 0.32], [1.1, 0.0001, 'e']], { rate: 20 });
     },
   },
   /** One backwing beat of the brake (summon f4–f6; the strike's back-flaps at a lower volume). */
@@ -140,15 +185,35 @@ export const WING_LADY_RECIPES = {
       wingBeat(v, 0, 0.42);
     },
   },
-  /** land (summon f7): the front toe touches — a light tick and the last soft air settling. */
+  /**
+   * land (summon f10): round 2 #5 — a layered settle with weight (≈ 10 dB over the old lone tick): the toe tick, the
+   * wings folding (a pink rustle, lp 900, 80 ms), a short warm thump at 140 Hz, and a breathy hummed "hm" on A3.
+   */
   khBackwing: {
     cap: 3,
     gap: 0.05,
-    verb: 0.25,
-    duck: 0.35,
+    verb: 0.3,
+    duck: 0.4,
     play(v) {
-      tick(v, 0, 0.32);
-      puff(v, 0.005, 0.12, 0.16, 500, { kind: 'pink' });
+      tick(v, 0, 0.7);
+      thump(v, 0.004, 150, 120, 0.85, 0.11, { drive: 1.2 });
+      puff(v, 0.012, 0.75, 0.08, 900, { kind: 'pink', att: 0.006 });
+      sweep(v, 0.02, 0.16, [700, 1100, 600], 0.3, { kind: 'pink', q: 1.3, peakAt: 0.3 });
+      puff(v, 0.05, 0.09, 0.16, 3000, { kind: 'white', att: 0.02 });
+      hum(v, 0.05, A3, [[0, 0], [0.04, 0.1], [0.16, 0.07], [0.34, 0.0001, 'e']]);
+    },
+  },
+  /** The jewel glint two frames after the land (round 2 #5: bridges the land and the song): a soft A6 / E7 shimmer. */
+  khJewel: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.55,
+    duck: 0.1,
+    play(v) {
+      const e = v.echo(0.11, 0.3, { wet: 0.4, tone: 5000 });
+      v.tone('triangle', midiHz(93), { g: [[0, 0], [0.01, 0.07], [0.35, 0.0001, 'e']], to: e });
+      v.tone('sine', midiHz(100), { t: 0.05, g: [[0, 0], [0.01, 0.04], [0.3, 0.0001, 'e']], to: e });
+      puff(v, 0, 0.05, 0.25, 7000, { kind: 'white', att: 0.08 });
     },
   },
   /** The back foot (summon f8, the strike's touch down): one light tick. */
@@ -179,10 +244,27 @@ export const WING_LADY_RECIPES = {
     },
   },
   // ------------------------------------------------------------------ Kanat Selamı (the chord counts the allies)
-  khBless1: blessVoice(CS5),
-  khBless2: blessVoice(E5),
-  khBless3: blessVoice(A5),
-  khBless4: blessVoice(CS6),
+  khBless1: blessVoice(CS5, 1),
+  khBless2: blessVoice(E5, 1.25),
+  khBless3: blessVoice(A5, 1.1),
+  khBless4: blessVoice(CS6, 1),
+  /**
+   * The chord's root (sustained; round 2 #1): her A4 held soft under every bless run whose song is not sounding
+   * (arrival, a late bless, the flip / revive once the song has decayed) — the first bless voice is a dyad, not a
+   * lone tone. The run stops it after the last voice has joined.
+   */
+  khBlessRoot: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.5,
+    duck: 0.1,
+    play(v) {
+      const e = v.echo(0.18, 0.2, { wet: 0.3 });
+      const env: Pt[] = [[0, 0], [0.12, 0.08], [2.6, 0.072], [3.2, 0.0001, 'e']];
+      sing(v, 0, A4, env, { to: e, vibAt: 0.2, bright: 0.7, body: 0.55 });
+      hum(v, 0.02, A3, [[0, 0], [0.2, 0.02], [2.6, 0.018], [3.2, 0.0001, 'e']]);
+    },
+  },
   /** One air current leaving her wingtip toward an ally (low-q air rising, never a whistle). */
   khCurrent: {
     cap: 6,
@@ -206,20 +288,12 @@ export const WING_LADY_RECIPES = {
       crack(v, 0, 0.05, { hp: 3000, lp: 8000, n: 1, dec: 0.003 });
     },
   },
-  /** The aura's loss (sustained): the chord voices bend down a semitone and drop out one by one; her root fades. */
-  khUnbless: {
-    cap: 2,
-    gap: 0.05,
-    verb: 0.5,
-    duck: 0.25,
-    play(v) {
-      const e = v.echo(0.2, 0.25, { wet: 0.3 });
-      // E5 and C#5 bend down a semitone and stop, staggered; the root A4 holds and fades
-      sing(v, 0, [[0, E5], [0.08, E5], [0.2, E5 * 0.944, 'e']], [[0, 0], [0.03, 0.05], [0.14, 0.04], [0.24, 0.0001, 'e']], { to: e, vibAt: 0.3 });
-      sing(v, 0.12, [[0, CS5], [0.08, CS5], [0.22, CS5 * 0.944, 'e']], [[0, 0], [0.03, 0.05], [0.16, 0.04], [0.28, 0.0001, 'e']], { to: e, vibAt: 0.3 });
-      sing(v, 0, A4, [[0, 0], [0.05, 0.045], [0.4, 0.04], [0.85, 0.0001, 'e']], { to: e, vibAt: 0.2 });
-    },
-  },
+  /** The aura's loss (sustained): the chord counts DOWN — khUnbless<k> drops exactly k voices; her root fades last. */
+  khUnbless: unblessVoices(2),
+  khUnbless1: unblessVoices(1),
+  khUnbless2: unblessVoices(2),
+  khUnbless3: unblessVoices(3),
+  khUnbless4: unblessVoices(4),
   /** A floor light folding away toward her (per ally): a short falling air. */
   khPeel: {
     cap: 6,
@@ -313,6 +387,63 @@ export const WING_LADY_RECIPES = {
       sweep(v, 0.02, 0.3, [500, 1200, 900], 0.22, { kind: 'pink', q: 1.2, peakAt: 0.5 });
     },
   },
+  // ------------------------------------------------------------------ struck / guard (round 2 #2: CharacterSounds.struck)
+  /**
+   * Her guard "Kanat Kalkanı" takes a blow (the buckler wing): a feather-fan "frrp" (the thrum chopped by an AM that
+   * falls 24 → 10 Hz over 120 ms), the 1.9 kHz ratio-2.4 parry tick of her blade, and a short breathed A4 "hm!".
+   */
+  khBuckler: {
+    cap: 3,
+    gap: 0.04,
+    verb: 0.3,
+    duck: 0.4,
+    play(v) {
+      const am = v.ring([[0, 24], [0.12, 10, 'e'], [0.16, 10]], { d: 0.17, mix: 0.85 });
+      const bp = v.filt('bandpass', 1000, 2.2, { to: am });
+      v.noise('pink', { d: 0.16, g: [[0, 0], [0.006, 0.9], [0.06, 0.55], [0.15, 0.0001, 'e']], to: bp });
+      thump(v, 0, 170, 110, 0.4, 0.06);
+      blade(v, 0.01, 0.34, 0.12);
+      hum(v, 0.03, A4, [[0, 0], [0.015, 0.12], [0.08, 0.07], [0.16, 0.0001, 'e']]);
+      puff(v, 0.03, 0.1, 0.08, 4000, { kind: 'white' });
+    },
+  },
+  /** Struck (light): the feathers ruffle and her breath catches — a short "ah" falling off C#5. */
+  khStruck: {
+    cap: 3,
+    gap: 0.04,
+    verb: 0.3,
+    duck: 0.4,
+    play(v) {
+      puff(v, 0, 0.5, 0.06, 1600, { kind: 'pink', att: 0.002 });
+      thump(v, 0, 160, 100, 0.45, 0.07);
+      sing(v, 0.02, [[0, CS5], [0.12, A4, 'e']], [[0, 0], [0.012, 0.09], [0.07, 0.06], [0.16, 0.0001, 'e']], { breath: 0.05, vibAt: 0.3 });
+    },
+  },
+  /** Struck (heavy): a deeper body blow, the wings flaring with a rustle, the gasp lower and longer. */
+  khStruckHeavy: {
+    cap: 3,
+    gap: 0.04,
+    verb: 0.35,
+    duck: 0.5,
+    play(v) {
+      thump(v, 0, 120, 60, 0.85, 0.12, { drive: 1.5 });
+      puff(v, 0, 0.6, 0.1, 1200, { kind: 'pink', att: 0.002 });
+      sweep(v, 0.02, 0.2, [700, 1500, 800], 0.35, { kind: 'pink', q: 1.3, peakAt: 0.25 });
+      sing(v, 0.03, [[0, CS5], [0.2, E4, 'e']], [[0, 0], [0.012, 0.11], [0.1, 0.07], [0.24, 0.0001, 'e']], { breath: 0.07, vibAt: 0.3, vib: 16 });
+    },
+  },
+  /** Struck by magic: a fizz through the feathers and a high breathed "ih!" on E5. */
+  khStruckMagic: {
+    cap: 3,
+    gap: 0.04,
+    verb: 0.45,
+    duck: 0.4,
+    play(v) {
+      sweep(v, 0, 0.22, [3000, 5200, 2600], 0.25, { kind: 'white', q: 3, peakAt: 0.2 });
+      thump(v, 0, 180, 120, 0.35, 0.06);
+      sing(v, 0.02, [[0, E5], [0.14, CS5, 'e']], [[0, 0], [0.01, 0.08], [0.08, 0.05], [0.18, 0.0001, 'e']], { breath: 0.06, vibAt: 0.3, bright: 1.3 });
+    },
+  },
   // ------------------------------------------------------------------ death "Düşen Pelerin"
   /** deathStart (death f1): the song breaks — a note on A4 slides down to E4 and cuts to breath. */
   khSongBreak: {
@@ -358,17 +489,32 @@ export const WING_LADY_RECIPES = {
       puff(v, 0.004, 0.14, 0.16, 700, { kind: 'brown' });
     },
   },
-  /** burst (the bird lifts off her outline and flies to the graveyard): a receding air + her last note far away. */
+  /**
+   * burst (the bird lifts off her outline and flies to the graveyard): round 2 #6 — +6 dB, the lift-off beat, a
+   * receding air, and her last note (A5) far away with an echo tail long enough to ring over the card's landing.
+   * The bird's further wing beats are khBirdBeat, fired on its flap frames.
+   */
   khBirdFlight: {
     cap: 2,
     gap: 0.1,
-    verb: 0.6,
+    verb: 0.65,
     duck: 0.5,
     play(v) {
-      wingBeat(v, 0, 0.36);
-      sweep(v, 0.02, 0.55, [1400, 900, 300], 0.32, { kind: 'pink', q: 1.3, peakAt: 0.3 });
-      const e = v.echo(0.22, 0.35, { wet: 0.5, tone: 2600 });
-      sing(v, 0.08, A5, [[0, 0], [0.06, 0.035], [0.3, 0.03], [0.6, 0.0001, 'e']], { to: e, vibAt: 0.05, bright: 0.6 });
+      birdBeat(v, 0, 0.9);
+      sweep(v, 0.02, 0.6, [1400, 900, 300], 0.62, { kind: 'pink', q: 1.3, peakAt: 0.3 });
+      const e = v.echo(0.22, 0.45, { wet: 0.6, tone: 2600 });
+      sing(v, 0.08, A5, [[0, 0], [0.06, 0.075], [0.34, 0.06], [0.7, 0.0001, 'e']], { to: e, vibAt: 0.05, bright: 0.6 });
+    },
+  },
+  /** One wing beat of the death bird in flight (on its downstroke frames; panned along its path). */
+  khBirdBeat: {
+    cap: 6,
+    gap: 0.03,
+    verb: 0.5,
+    duck: 0.15,
+    vary: 0.04,
+    play(v) {
+      birdBeat(v, 0, 0.7);
     },
   },
   // ------------------------------------------------------------------ revive (soul_recall)
@@ -383,16 +529,19 @@ export const WING_LADY_RECIPES = {
       hum(v, 0, [[0, A3], [1.1, A4, 'e'], [1.4, A4]], [[0, 0], [0.4, 0.04], [1.1, 0.06], [1.45, 0.0001, 'e']]);
     },
   },
-  /** reviveLand: her first note (A4, short) + one backwing beat. */
+  /**
+   * reviveLand: one backwing beat and the toe settling, an indrawn breath — no sung note (round 2 #8: the revive's
+   * song (khSong, the roar) starts on this same frame and is her ONE voice; two A4 onsets at once sounded doubled).
+   */
   khReviveLand: {
     cap: 2,
     gap: 0.1,
-    verb: 0.5,
+    verb: 0.45,
     duck: 0.5,
     play(v) {
-      wingBeat(v, 0, 0.45);
-      const e = v.echo(0.18, 0.2, { wet: 0.3 });
-      sing(v, 0.02, A4, [[0, 0], [0.04, 0.09], [0.3, 0.07], [0.55, 0.0001, 'e']], { to: e, breath: 0.05 });
+      wingBeat(v, 0, 0.6);
+      tick(v, 0.03, 0.4);
+      puff(v, 0.0, 0.1, 0.18, 3500, { kind: 'white', att: 0.1 });
     },
   },
 } satisfies Record<string, Recipe>;
@@ -407,6 +556,8 @@ export const WING_LADY_VOICE: CharacterSounds | null = {
   charge: 'khHover',
   release: 'khStoop',
   impact: 'khClap',
+  // round 2 #2: her own struck body and her guard's buckler (hitSoundFor): no generic impact / shield bell on her
+  struck: { light: 'khStruck', heavy: 'khStruckHeavy', magic: 'khStruckMagic', guard: 'khBuckler' },
   deathStart: 'khSongBreak',
   dissolve: 'khFlatten',
   afterDissolve: [[3, 'khFallThud', 0.9]],

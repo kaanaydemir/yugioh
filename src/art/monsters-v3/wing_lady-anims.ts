@@ -84,11 +84,13 @@ const G0: PD = {
   // the buckler: the near wing's arm swung forward over the shoulder, its hand dropping in front of her as a
   // feathered shield, the primaries fanned down as separate points at belt height
   wn: { a: -6, len: 27, bend: 78, chord: 10, side: -1, cv: 0.48, ps: 0.56 },
-  wf: { a: -104, len: 24, bend: -12 },
-  // the parry blade crosses IN FRONT of the buckler, its whole length clear above the wing's edge
+  wf: { a: -128, len: 26, bend: -18 },
+  // the parry blade crosses IN FRONT of the buckler, its whole length clear above the wing's edge — held level and
+  // forward on the fencer's line (round 2 #9: no longer raised up like every other guard: the tip path from idle is
+  // forward, not up)
   gx: 46,
   gy: 37,
-  sa: -62,
+  sa: -12,
   sash: { th: 150, amp: 1 },
   braid: { th: 110, amp: 0.8 },
 };
@@ -96,16 +98,25 @@ const GUARD_N = 6;
 function guardPose(f: number): Pose {
   const k = ((f % GUARD_N) + GUARD_N) % GUARD_N;
   const t = k / GUARD_N;
+  // round 2 #9 (sameness vs steel_silencer's guard loop): three layers on three different clocks, none of them the
+  // body's — the buckler's primaries FLUTTER on f2 / f4 only (a quick fan-out of the hand and the chord, a kestrel
+  // shaking its feathers), the far wing BREATHES on f1 and f3–f5 (a 1-2-1 lift that skips f2), and the parry blade
+  // feints on the flutter beats; the body holds still; the holds are uneven (long rest, short flutter beats)
+  const flutter = k === 2 ? 0.7 : k === 4 ? 0.45 : 0;
+  const farLift = [0, 1, 0, 1, 1.2, 0.5][k];
   return K({
     ...G0,
-    wn: { ...G0.wn, bend: 46 + (k === 2 || k === 4 ? 2 : 0) },
-    wf: { ...G0.wf, a: -104 + 1.5 * sn(t + 0.2) },
+    // the parry blade answers the flutter: it ticks forward-down on the flutter beats (a fencer's wrist feint,
+    // f2 / f4) and lifts back on f3 / f5 — a two-cycle tip path no other guard loop has
+    sa: -12 + [0, 0, 2, 0, 2, 0][k],
+    wn: { ...G0.wn, bend: 46 + 3 * flutter, chord: 10 + Math.round(flutter), ps: 0.56 - 0.03 * flutter },
+    wf: { ...G0.wf, a: -128 - farLift, len: 26 + (k === 4 ? 1 : 0) },
     sash: { ...G0.sash, ph: t, flick: k === 3 ? 1.5 : 0 },
     braid: { ...G0.braid, ph: t },
     glint: 0,
   });
 }
-const GUARD_HOLDS = [180, 150, 160, 180, 150, 140];
+const GUARD_HOLDS = [200, 150, 90, 170, 80, 180];
 
 // ------------------------------------------------------------------ toGuard / fromGuard
 // toGuard: the near wing rises (straight up, behind the head), then sweeps forward over the shoulder and down.
@@ -117,7 +128,7 @@ function toGuardPose(f: number): Pose {
   // f3 / f4 double as her GUARD-HIT (MonsterUnit.brace plays toGuard f4 → f3 → f4 → guard on a blocked blow):
   // f3 the buckler bends under the blow (the wing hand pressed up, the shoulders rocked back, the knees give),
   // f4 it flares back out (the primaries fanned 2–3 px wider) before it settles into the guard
-  const bend = K({ ...G0, lean: -1, crouch: 2, hx: 0, gx: 45, gy: 38, sa: -72, wn: { ...(G0.wn as Wing), a: -16, len: 25, bend: 60, chord: 10 } });
+  const bend = K({ ...G0, lean: -1, crouch: 2, hx: 0, gx: 45, gy: 38, sa: -22, wn: { ...(G0.wn as Wing), a: -16, len: 25, bend: 60, chord: 10 } });
   const flare = K({ ...G0, lean: 0, wn: { ...(G0.wn as Wing), len: 28, chord: 12, bend: 74, ps: 0.52 } });
   const keys = [K(UPW, mix(i0, g, 0.15)), K({ ...UPW, wn: { ...UPW.wn, a: -80 } }, mix(i0, g, 0.35)), K(OVER, mix(i0, g, 0.55)), mix(K(OVER, mix(i0, g, 0.7)), bend, 0.6), flare, g];
   return keys[f] ?? g;

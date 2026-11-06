@@ -29,23 +29,29 @@ const bolt = (p: PlayerId, target: ZoneRef): Step => (D) => ({
 });
 const mon = (player: PlayerId, index: number): ZoneRef => ({ player, zone: 'monster', index });
 
-/** A side for the 5-zone summon: two hawks (WIND) around her zone, a wolf (FIRE: visibly skipped) between. */
-// the lane in FRONT of her (zone 3 for P1) stays empty (critique r1 #8): nothing covers her landing or her salute;
-// the FIRE wolf stands behind her, under her glide-in (she passes over it), and the current passes it to the hawk
-const FIVE: (CardId | null)[] = ['storm_hawk', 'ember_wolf', null, null, 'storm_hawk'];
-const FIVE_P2: (CardId | null)[] = ['storm_hawk', null, null, 'ember_wolf', 'storm_hawk'];
+/** A side for the 5-zone summon: two hawks (WIND) at the board's ends, her lane (2) and BOTH neighbours (1, 3) empty. */
+// round 2 #4: the neighbouring lanes in front of and behind her stay empty, so her wings have floor around them from
+// the land to the salute (in r1 the wolf behind her still overlapped her front half); the FIRE skip is its own
+// scenario (khSummonSkip: the wolf one lane further away, the current visibly passes it)
+const FIVE: (CardId | null)[] = ['storm_hawk', null, null, null, 'storm_hawk'];
+const FIVE_P2: (CardId | null)[] = ['storm_hawk', null, null, null, 'storm_hawk'];
 
 const scenarios: Record<string, Scenario> = {
   // ---- summon "Rüzgâr Kapısı" + Kanat Selamı (the aura switches on: the statChange run of her arrival)
   khSummon: {
-    desc: 'Kanat Hanımı: summoned between two Fırtına Atmacası (+300 each) and a Kor Kurdu (FIRE: skipped)',
+    desc: 'Kanat Hanımı: summoned into zone 2 with two Fırtına Atmacası at the ends (+300 each), lanes 1 and 3 empty',
     stage: { zones: 5, p0: { hand: ['wing_lady'], monsters: FIVE }, p1: { monsters: [null, 'shade_assassin'] } },
     steps: [summon('wing_lady', 2)],
   },
   khSummonP2: {
-    desc: 'Kanat Hanımı, player 2: summoned between two hawks and a wolf',
+    desc: 'Kanat Hanımı, player 2: summoned into zone 2 with two hawks at the ends',
     stage: { zones: 5, active: 1, p0: { monsters: [null, 'shade_assassin'] }, p1: { hand: ['wing_lady'], monsters: FIVE_P2 } },
     steps: [summon('wing_lady', 2, [], 1)],
+  },
+  khSummonSkip: {
+    desc: 'Kanat Hanımı summoned into zone 1 (0 and 2 empty): the current passes a Kor Kurdu (FIRE, zone 3) to the hawk (zone 4)',
+    stage: { zones: 5, p0: { hand: ['wing_lady'], monsters: [null, null, null, 'ember_wolf', 'storm_hawk'] }, p1: { monsters: [null, 'shade_assassin'] } },
+    steps: [summon('wing_lady', 1)],
   },
   khSummonAlone: {
     desc: 'Kanat Hanımı summoned with no WIND ally (the entrance alone, a single sung note)',
