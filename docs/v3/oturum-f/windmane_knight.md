@@ -578,7 +578,7 @@ mane tip, feet = between the soles. `attackImpactFrame` 5 = attack release.
 | sounds | `src/audio/v3/windmane_knight.ts` | 24 `wmk*` recipes from `./kit.ts` blocks + Voice only (helpers `howl`, `bannerSnap`, `plate`, `footfall`, `flutterBed` are compositions of kit blocks, no new DSP); `WINDMANE_KNIGHT_VOICE` set (all roles incl. revive pair) |
 | scenarios | `src/duel/scenarios/windmane_knight.ts` | 30 `fs*` keys: Summon(P2), Turn1Summon, Charge(P2), Effect, StormAtk(P2), StormDirect(P2), StormBlocked(P2), StormDies, Calm(P2), NoBattle, Attack(P2), Direct(P2), Blocked(P2), Guard(P2), Kill(P2), Trade, Revive(P2) |
 
-**Shared one-liners:** `_v3/presets.ts` `DEATH_PRESETS.windmane_knight` → `{ material: 'light', accent: 'stone' }` (no longer the reserved
+**Shared one-liners:** `_v3/presets.ts` `DEATH_PRESETS.windmane_knight` → `{ material: 'light', accent: 'stone' }` (**superseded by the gate fix below: now `{ material: 'light', accent: 'light' }`, as §7 says**; no longer the reserved
 stone ending; NOT plant/crystal as §0.1 #12 proposed: `plant` sheds green leaf motes and the `crystal` accent cyan glints — both foreign
 to the knight. The preset only matters on fallback paths: the knight's own death never shatters); `RHYTHM.windmane_knight` →
 `{ flare: 260, slam: 330, exit: 740 }`. `MONSTER_GLOW` was already gold4/gold3 (art stage).

@@ -143,7 +143,7 @@ function attackPose(f: number): Pose {
     // gate fix: the charge pose's TENSE twin (the declaration's held charge trembles between f1 and f2 — declare.ts
     // keepCharging — while a trap or the titan's ward holds the battle): the same planted body and raised lance, the
     // grip squeezed 1 px, the mane ripple travelling on and lifting, the pennon cracking the other way, the eyes up
-    { crouch: 1, bx: -1, gx: 70, gy: 54, la: -58, lb: 36, lf: 40, mane: { th: 190, ph: 0.155, amp: 1.5 }, pen: 1, pph: 0.55, eyes: 2 },
+    { crouch: 1, bx: -1, gx: 70, gy: 54, la: -58, lb: 36, lf: 40, mane: { th: 190, ph: 0.155, amp: 1.5 }, pen: 0, pph: 0.6, eyes: 2 },
     { crouch: 2, bx: -2, lean: -1, fbx: 37, gx: 60, gy: 55, la: -28, lb: 38, lf: 38, mane: { th: 188, ph: 0.18, amp: 1.4 }, pen: 2 },
     COUCH,
     { ...COUCH, bx: 0, lean: 1, gx: 55, mane: { ...COUCH.mane, ph: 0.32 } },

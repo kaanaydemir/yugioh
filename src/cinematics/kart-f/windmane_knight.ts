@@ -1157,18 +1157,24 @@ async function recoilHome(u: MonsterUnit, home: XY, px: number, ms: number, rnd:
   const sc = u.scene;
   const dir = u.flipX ? -1 : 1;
   const f = feetOf(u);
-  await animate(sc, 100, (t) => setFeet(u, rint({ x: f.x - dir * px * E.outQ(t), y: f.y + (px / 2) * E.outQ(t) * dir })));
+  // the shove runs under the recoil (scene time: it waits out the hit-stop like the recoil does)
+  const shove = animate(sc, 100, (t) => setFeet(u, rint({ x: f.x - dir * px * E.outQ(t), y: f.y + (px / 2) * E.outQ(t) * dir })));
+  // he starts home on the recoil's 'recover' mark (its last frames play under the first step), or once it let go
   await new Promise<void>((resolve) => {
     let el = 0;
     onFrame(sc, (dt) => {
       el += dt;
-      if (!u.claimed || u.retired || !u.sprite.active || el > 1500) {
+      const fi = u.frameInfo();
+      const reel = fi.anim === 'hit' || fi.anim === 'hitHeavy' || fi.anim === 'hitMagic';
+      const recovering = reel && fi.anim !== null && fi.frame >= u.markFrame(fi.anim, 'recover', 4);
+      if (!u.claimed || recovering || u.retired || !u.sprite.active || el > 1500) {
         resolve();
         return false;
       }
       return true;
     });
   });
+  await shove;
   if (!u.sprite.active || u.retired) return;
   await stride(u, feetOf(u), home, ms, rnd, { steps: 2, sound: true });
 }
@@ -1191,7 +1197,9 @@ async function lanceStrike(s: StrikeArgs): Promise<void> {
   const relF = u.markFrame('attack', 'release', 6);
   const conF = u.markFrame('attack', 'contact', 7);
   const held = strikeStartFrame(u);
-  const f0 = held > 0 ? Math.min(held + 1, relF) : 0;
+  // gate fix: attack f2 is the charge pose's tense twin (only the held declaration trembles on it): the couch skips it
+  const chF = u.markFrame('attack', 'charge', 1);
+  const f0 = held > 0 ? Math.min(held === chF ? chF + 2 : held + 1, relF) : 0;
   const loses = s.ctx.ev.result === 'attackerDestroyed' || s.ctx.ev.result === 'bothDestroyed';
   const aim = aimOf(s);
   const goal0 = lungeFeet(u, 'attack', conF, aim, s.direct ? 10 : s.blocked ? 7 : 3);
