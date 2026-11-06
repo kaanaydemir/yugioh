@@ -85,16 +85,18 @@ const G0: Pose = {
 };
 export function guardPose(f: number): Pose {
   const k = f % GUARD_N;
-  // three small lives on three phases: the horns test the air (a 1-px forward jab, f1–f2), the breath lifts the back
-  // and the neck (f3–f4), the tail clamps (f5) — the pike never drops
+  // r4: his own guard life — the pike WEAVES (the horn tips trace a 1-px loop over the 6 frames: up, forward, down,
+  // back), one forehoof SCRAPES the floor (lifted on f2–f3, struck down on f4) and an ear FLICKS on f5.
+  // The pike never drops. One feature changes per frame: f1 the pike rises a pixel, f2 it weaves forward, f3 it settles and the forehoof
+  // lifts, f4 the hoof strikes down and the pike draws back, f5 an ear flicks
+  const WY = [-4, -5, -5, -5, -4, -4];
+  const WX = [12, 13, 13, 13, 12, 12];
   return {
     ...G0,
-    hdx: k === 1 || k === 2 ? 13 : 12,
-    // the horn tips waver a pixel (f2) and the barrel breathes (f3–f4)
-    hdy: k === 1 || k === 2 ? -5 : -4,
-    br: k === 3 || k === 4 ? 1 : 0,
-    sniff: k === 2 ? 1 : 0,
-    tail: k === 5 ? 2 : 0,
+    hdx: WX[k],
+    hdy: WY[k],
+    ear: k === 5 ? 1 : 2,
+    fn: k === 2 || k === 3 ? leg(9, -2, 6) : G0.fn,
     mane: k / GUARD_N,
     maneK: 1,
     t: k / GUARD_N,
@@ -216,7 +218,8 @@ const ROAR_HOLDS = [80, 150, 100, 160, 130, 100, 110, 120, 140];
 
 const HIT: Pose[] = [
   // f0 (the contact frame, HA-21 local): the ears flatten, the eyes shut, the nostrils flare — the head snaps back on f1
-  { ...IDLE0, hdx: 7, ear: 2, blink: 2, sniff: 1 },
+  // (HA-21: the contact frame stays LOCAL — the head recoils 1 px, the ears pin, the eyes shut, the tail clamps)
+  { ...IDLE0, hdx: 7, ear: 2, blink: 2, sniff: 1, tail: 2 },
   // f1: the head is tossed up and back (6 px up, 5 back), the ears pinned flat to the skull
   { ...IDLE0, hipX: -11, shX: 7, shY: -31, hdx: 3, hdy: -17, ha: A.up, ear: 2, blink: 2, mane: 0.3, maneK: 2, tail: 2 },
   // f2: the 1-px body squash as the blow lands through the legs
@@ -231,11 +234,12 @@ const HIT_HOLDS = [50, 60, 90, 100, 110, 130];
 const HH: Pose[] = [
   // f0 (contact): the ears flatten, the eyes shut, the tail clamps — the head is thrown up on f1
   { ...IDLE0, hdx: 7, ear: 2, blink: 2, sniff: 2, tail: 2 },
-  // f1–f2: he skitters back on buckled hind legs, a front hoof up
-  { ...IDLE0, hipX: -13, hipY: -26, shX: 5, shY: -29, hdx: 4, hdy: -14, ha: A.up, ear: 2, blink: 2, fn: leg(7, -3, 30), ff: leg(11, 0, 4), hn: leg(-15, 0, -26), hf: leg(-11, 0, -24), mane: 0.3, tail: 2, dust: 0.2 },
-  { ...IDLE0, hipX: -13, hipY: -27, shX: 5, shY: -29, hdx: 5, hdy: -12, ear: 2, blink: 1, fn: leg(6, -2, 20), ff: leg(10, 0, 2), hn: leg(-15, 0, -22), hf: leg(-11, 0, -20), mane: 0.5, tail: 2, dust: 0.5 },
-  // f3: the front hoof plants, he catches himself
-  { ...IDLE0, hipX: -12, hipY: -28, shX: 6, hdx: 7, ear: 1, fn: leg(8, 0, 0), hn: leg(-14, 0, -16), mane: 0.7 },
+  // f1–f2: the hind legs BUCKLE (the haunches drop 4 px, the hocks bend hard) and he skitters back two steps, the
+  // head driven down and forward (where a light hit tosses it up), a front hoof off the floor
+  { ...IDLE0, hipX: -13, hipY: -25, shX: 6, shY: -28, hdx: 7, hdy: -8, ha: A.level, ear: 2, blink: 2, fn: leg(7, -3, 30), ff: leg(11, 0, 4), hn: leg(-15, 0, -40), hf: leg(-11, 0, -38), mane: 0.3, tail: 2, dust: 0.2 },
+  { ...IDLE0, hipX: -14, hipY: -25, shX: 5, shY: -28, hdx: 6, hdy: -9, ha: A.level, ear: 2, blink: 1, fn: leg(5, -2, 20), ff: leg(9, 0, 2), hn: leg(-17, 0, -34), hf: leg(-13, 0, -32), mane: 0.5, tail: 2, dust: 0.5 },
+  // f3: the front hoof plants, he catches himself, the haunches come back up
+  { ...IDLE0, hipX: -12, hipY: -27, shX: 6, hdx: 7, hdy: -10, ear: 1, fn: leg(8, 0, 0), hn: leg(-15, 0, -20), hf: leg(-11, 0, -18), mane: 0.7 },
   { ...IDLE0, hipX: -11, ear: 1, mane: 0.85, nose: 1 },
   { ...IDLE0, ear: 1, mane: 0.95 },
   { ...IDLE0 },
@@ -247,7 +251,7 @@ const STIFF = { fn: leg(10, 0, 0), ff: leg(14, 0, 0), hn: leg(-13, 0, 0), hf: le
 const HM: Pose[] = [
   // f0–f2: the coat goes rigid — the legs locked straight and spread a pixel, the eye wide, the mane teeth on end;
   // both horn tips flash a 3×3 star that opens (f1) and steps out (f2)
-  { ...IDLE0, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, t: 0 },
+  { ...IDLE0, hdx: 7, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, t: 0 },
   { ...IDLE0, hipX: -9, hipY: -30, shX: 9, shY: -31, hdx: 9, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, ...STIFF, t: 1 / 12 },
   { ...IDLE0, hipX: -11, hipY: -30, shX: 7, shY: -31, hdx: 7, hdy: -12, ear: 2, blink: 3, glint: 1, rigid: 1, tail: 1, ...STIFF, t: 2 / 12 },
   { ...IDLE0, hipY: -30, shY: -31, hdy: -12, ear: 1, blink: 0, rigid: 1, ...STIFF, t: 3 / 12 },
@@ -291,25 +295,29 @@ const LIE: Pose = {
 };
 /** The wind frames: the mound is peeled from the windward (front) side column by column; the laid horns sink with the
  *  grass under them onto the floor line and slide back from the killer; the top blades sway as a wave running leeward. */
-const WIND_N = 5;
+const WIND_N = 3;
 const windFrame = (i: number): Pose => {
-  const w = 0.17 + i * 0.19;
+  const w = 0.2 + i * 0.3;
   const k = Math.min(1, w * 1.25);
   return { ...LIE, grass: 1, wind: w, press: 1, t: (i % 3) / 3, hornDy: rnd(k * 13), hornDx: -rnd(k * 12), hornLayF: rnd(-26 + k * 18) };
 };
 const DEATH: Pose[] = [
+  // f0 (the reaction): the blow lands — a 1-px recoil, the ears pinned, the eyes shut, the head jerked back
   { ...HH[0] },
-  // a weak rear
+  // f1: a weak rear (held: he tries to rise once)
   { ...IDLE0, hipY: -28, shX: 6, shY: -35, hdx: 7, hdy: -12, ha: A.up, ear: 2, blink: 1, fn: leg(11, -4, 90), ff: leg(14, -3, 70), hn: leg(-11, 0, -20), hf: leg(-7, 0, -18), tail: 2 },
-  // the forelegs fold first: a kneel
-  { ...IDLE0, hipY: -27, shX: 7, shY: -20, hdx: 9, hdy: -8, ha: A.down, ear: 2, blink: 1, fn: leg(4, -1, 82), ff: leg(8, -1, 80), hn: leg(-12, 0, -20), hf: leg(-8, 0, -18), tail: 2, mane: 0.3 },
-  // the hind legs follow; he lies down curled, the head last, the horns coming down (dissolve: the first grass band
-  // climbs from the hooves)
-  { ...LIE, hdy: -7, hornLay: -48, grass: 0.34, mane: 0.5 },
-  // the horns lie on the floor; the second band
+  // f2: the forelegs fold first — a kneel, the chest down, the haunches still up, the head held
+  { ...IDLE0, hipY: -27, shX: 7, shY: -20, hdx: 9, hdy: -9, ha: A.level, ear: 2, blink: 1, fn: leg(4, -1, 82), ff: leg(8, -1, 80), hn: leg(-12, 0, -20), hf: leg(-8, 0, -18), tail: 2, mane: 0.3 },
+  // f3: then the hind legs fold under him — the rump sinks to the floor, the head still up
+  { ...IDLE0, hipX: -11, hipY: -15, shX: 7, shY: -16, hdx: 10, hdy: -8, ha: A.level, ear: 2, blink: 1, fn: leg(2, -1, 82), ff: leg(6, -1, 80), hn: leg(-4, -1, -72), hf: leg(-1, -1, -70), tail: 2, mane: 0.4 },
+  // f4: the head last — it sinks, the horns lowered gently toward the floor
+  { ...LIE, hdy: -7, blink: 1, hornLay: -48, mane: 0.5 },
+  // f5 (dissolve): the horns down on the floor; the first grass band climbs from the hooves
+  { ...LIE, grass: 0.34, mane: 0.55 },
+  // f6: the second band
   { ...LIE, grass: 0.67, mane: 0.6, t: 1 / 3 },
-  // the mound is grass in his shape (three bands on his body planes); its top blades sway as a wave running leeward,
-  // and the first gust presses the windward edge down and lifts the first tops
+  // f7: the mound is grass in his shape (three bands on his body planes); its top blades sway as a wave running
+  // leeward, and the first gust presses the windward edge down and lifts the first tops
   { ...LIE, grass: 1, mane: 0.8, press: 1, wind: 0.07, t: 2 / 3 },
   // the wind takes it: peeled from the windward side into a curving, climbing ribbon (the card's SeedStream carries it)
   ...Array.from({ length: WIND_N }, (_, i) => windFrame(i)),
@@ -317,9 +325,15 @@ const DEATH: Pose[] = [
   { ...LIE, grass: 1, wind: 1, hornDy: 13, hornDx: -12, hornLayF: -8 },
 ];
 export const deathPose = (f: number): Pose => DEATH[Math.min(f, DEATH.length - 1)];
-const D_HOLDS = [50, 50, 60, 80, 60, 70, ...Array.from({ length: WIND_N }, () => 110), 200];
+// r4: the collapse is READ (the reaction, the weak rear, forelegs, hind legs, the head last: 50 / 110 / 120 / 110 /
+// 130), the time taken back from the grass mound (the bands 70 / 70, the gust 90, three wind frames of 120)
+const D_HOLDS = [50, 110, 120, 110, 130, 70, 70, 90, ...Array.from({ length: WIND_N }, () => 120), 200];
 /** The first death frame of the wind (the card's watcher carries the ribbon from it). */
-export const DEATH_WIND0 = 6;
+export const DEATH_WIND0 = 8;
+/** The death frames of the fold: forelegs, hind legs (the card's watcher thuds on them). */
+export const DEATH_FOLD = [2, 3] as const;
+/** The first grass band (the dissolve mark). */
+export const DEATH_GRASS0 = 5;
 
 // ------------------------------------------------------------------ revive (10 frames): the death run backwards
 
@@ -353,7 +367,7 @@ export const ANIMS: Record<MonsterAnim, AnimSpec> = {
 };
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
   summon: spec(SUMMON.length, 10, false, SU_HOLDS, { land: 5 }),
-  death: spec(DEATH.length, 14, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 3 }),
+  death: spec(DEATH.length, 14, false, D_HOLDS, { impact: 0, contact: 0, dissolve: DEATH_GRASS0 }),
   revive: spec(REVIVE.length, 10, false, RV_HOLDS, { land: 5 }),
   hitHeavy: spec(HH.length, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 4 }),
   hitMagic: spec(HM.length, 12, false, HM_HOLDS, { impact: 0, contact: 0, recover: 4 }),

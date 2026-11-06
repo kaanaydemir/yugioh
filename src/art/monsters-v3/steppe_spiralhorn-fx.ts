@@ -305,29 +305,39 @@ export function deathPasses(f: Frame, stage: 'matter' | 'light'): void {
       while (d < cap && solid(x + dx * (d + 1), y + dy * (d + 1))) d++;
       return d;
     };
+    // r4: three clean tone bands measured on each column of the body (leaf1 shadow under the barrel, leaf2 flank,
+    // leaf3 lit top, a few leaf4 tips on the top rim), the lit edge leaf3 and the far edge leaf1; the coat's own dark
+    // lines (the neck / head / barrel separations) stay as leaf0, so the mound keeps his barrel, neck and head line
     for (let i = 0; i < conv.length; i += 2) {
       const x = conv[i];
       const y = conv[i + 1];
       if (!p.isOpaque(x, y)) continue;
       const above = solid(x, y - 1) && !frontY(f, x, y - 1);
-      const up = runS(x, y, 0, -1, 3);
-      const dn = runS(x, y, 0, 1, 3);
-      const tl = runS(x, y, ls, 0, 3);
-      const aw = runS(x, y, -ls, 0, 3);
-      // three bands that follow his body planes: the coat's own tones step to leaf (lit coat → leaf3, mid → leaf2,
-      // shade → leaf1), the top rim and the lit edge leaf3, the underside and the far side leaf1
-      const own = TO_GRASS[src.get(x, y) ?? -1];
-      const c = above || up < 1 || tl < 1 ? PAL.leaf3 : dn < 2 || aw < 1 ? PAL.leaf1 : own !== undefined ? own : up < 2 || (up < 3 && tl < 3) ? PAL.leaf3 : dn < 2 || aw < 2 ? PAL.leaf1 : PAL.leaf2;
-      p.set(x, y, c === PAL.leaf4 ? PAL.leaf3 : c);
+      const up = runS(x, y, 0, -1, 14);
+      const dn = runS(x, y, 0, 1, 14);
+      const tl = runS(x, y, ls, 0, 2);
+      const aw = runS(x, y, -ls, 0, 2);
+      const own = src.get(x, y) ?? -1;
+      if (own === PAL.earth0 || own === PAL.earth1) {
+        // the coat's shading lines become the grass's darkest step (the body's anatomy stays readable)
+        p.set(x, y, own === PAL.earth0 ? PAL.leaf0 : PAL.leaf1);
+        continue;
+      }
+      const fr = dn / Math.max(1, up + dn);
+      let c = up < 1 || above ? (hash2(x, y, 77) < 0.22 ? PAL.leaf4 : PAL.leaf3) : fr > 0.7 ? PAL.leaf3 : fr > 0.3 ? PAL.leaf2 : PAL.leaf1;
+      if (tl < 1 && fr > 0.28 && up >= 1) c = PAL.leaf3;
+      if (aw < 1 && fr < 0.6) c = PAL.leaf1;
+      p.set(x, y, c);
     }
-    // the grass grain: short leaf1 strokes in the mid band (2 px, vertical, sparse), so the mound reads as standing grass
+    // the grass grain: a few long leaf1 strokes in the flank band (3 px, vertical, sparse) — standing blades, not noise
     for (let i = 0; i < conv.length; i += 2) {
       const x = conv[i];
       const y = conv[i + 1];
-      if (x % 3 !== 1 || (y & 1) !== 0 || hash2(x, y >> 1, 57) > 0.42) continue;
-      if (p.get(x, y) === PAL.leaf2 && p.get(x, y + 1) === PAL.leaf2 && p.get(x, y - 1) === PAL.leaf2) {
+      if (x % 5 !== 2 || y % 4 !== 0 || hash2(x, y >> 2, 57) > 0.5) continue;
+      if (p.get(x, y) === PAL.leaf2 && p.get(x, y + 1) === PAL.leaf2 && p.get(x, y + 2) === PAL.leaf2 && p.get(x, y - 1) === PAL.leaf2) {
         p.set(x, y, PAL.leaf1);
         p.set(x, y + 1, PAL.leaf1);
+        p.set(x, y + 2, PAL.leaf1);
       }
     }
     // the wind presses the windward (front) edge of the mound down before it peels: the top rows of the front columns
@@ -360,7 +370,7 @@ export function deathPasses(f: Frame, stage: 'matter' | 'light'): void {
     // a 3-state wave runs along the top leeward (−x): each column leans back / stands / leans forward in turn
     const sway = Math.round(o.t * 3) % 3;
     if (b)
-      for (let x = b.x + 1; x < b.x + b.w - 1; x += 3) {
+      for (let x = b.x + 2; x < b.x + b.w - 2; x += 5) {
         let y = b.y;
         // the first grass pixel from the top of this column
         while (y < b.y + b.h && !(p.isOpaque(x, y) && (p.get(x, y) === PAL.leaf3 || p.get(x, y) === PAL.leaf2 || p.get(x, y) === PAL.leaf1) && frontY(f, x, y))) y++;
@@ -368,12 +378,12 @@ export function deathPasses(f: Frame, stage: 'matter' | 'light'): void {
         const part = comp.at(x, y);
         if (part === Part.hornN || part === Part.hornF) continue;
         const edge = p.isOpaque(x, y - 1) && p.get(x, y - 1) !== PAL.ink;
-        const hgt = edge ? 2 : 2 + ((x * 5) % 3);
+        const hgt = edge ? 3 : 4 + ((x * 5) % 3);
         const ph = ((x >> 2) + sway) % 3;
         const lean = ph === 0 ? -1 : ph === 1 ? 0 : 1;
         for (let i = 1; i <= hgt; i++) {
-          const xx = x + (i > 1 ? lean : 0) + (i > 2 ? lean : 0);
-          f.p.set(xx, y - i, i === hgt ? PAL.leaf4 : PAL.leaf3);
+          const xx = x + (i > 2 ? lean : 0) + (i > 4 ? lean : 0);
+          f.p.set(xx, y - i, i === hgt ? PAL.leaf4 : i === 1 ? PAL.leaf2 : PAL.leaf3);
         }
         if (!edge && o.grass >= 1 && (x * 7) % 5 === 0) put(f, x + lean * 2, y - hgt, PAL.white);
       }

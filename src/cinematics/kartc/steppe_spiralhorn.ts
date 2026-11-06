@@ -49,7 +49,7 @@ import { PAL } from '../../art/palette';
 import type { AnyMonsterAnim } from '../../art/types';
 import { monsterFrame } from '../../art/textures';
 import { AX, GY, skeleton } from '../../art/monsters-v3/steppe_spiralhorn-rig';
-import { AF, DEATH_WIND0, framePoints, framePose } from '../../art/monsters-v3/steppe_spiralhorn-anims';
+import { AF, DEATH_FOLD, DEATH_GRASS0, DEATH_WIND0, framePoints, framePose } from '../../art/monsters-v3/steppe_spiralhorn-anims';
 import { APEX_PITCH } from '../../audio/v3/steppe_spiralhorn';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { DEPTH, LOOK_V3, unitDepth, type XY } from '../../view/layout';
@@ -340,7 +340,10 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
     const farUp = farTip('attack', AF.contact, lunge);
     const fxDepth = Math.max(u.sprite.depth, tDepth) + 0.7;
     // the smear: the swing of the tips round the head, from the levelled scoop up through the target to the toss
-    hornSweep(sc, { from: tipAt(u, 'attack', AF.scoop, stop), to: tipUp }, { from: farTip('attack', AF.scoop, stop), to: farUp }, sgn, fxDepth);
+    // (direct: the swing starts at the plate's floor in front of the duelist — he scoops the floor up at him)
+    const sweepFrom = s.direct ? { x: R(plate.x - sgn * 2), y: R(plate.y - 2) } : tipAt(u, 'attack', AF.scoop, stop);
+    const sweepFromF = s.direct ? { x: R(plate.x - sgn * 7), y: R(plate.y - 1) } : farTip('attack', AF.scoop, stop);
+    hornSweep(sc, { from: sweepFrom, to: tipUp }, { from: sweepFromF, to: farUp }, sgn, fxDepth);
     tipGlints(sc, [tipUp, farUp, { x: R((tipUp.x + farUp.x) / 2 + sgn * 3), y: R((tipUp.y + farUp.y) / 2 + 6) }], fxDepth + 0.1);
     const footing: XY = target && target.sprite.active ? { x: R(target.home.x), y: R(target.home.y) } : s.direct ? plate : { x: R(aim.x), y: R(aim.y) };
     grassSpray(sc, footing, sgn, seedN(), Math.max(fxDepth, unitDepth(footing.y) + 1), 8);
@@ -358,10 +361,11 @@ async function sicrayis(s: StrikeArgs): Promise<void> {
     void lightFlash(sc, hitAt.x, hitAt.y, PAL.white, 10, 140, { floorY: s.direct ? plate.y : aim.y, intensity: 0.6 });
     // the seed burst blooms one frame after the flash (never hidden under it): a dense crown leaning leeward, so it
     // opens BESIDE the damage number, five big plumed seeds that read at 1×
-    const burstAt = { x: R(hitAt.x + sgn * 2), y: R(hitAt.y - 6) };
+    // (direct: it bursts out of the plate's floor at the duelist's feet and stays low, clear of the portrait banner)
+    const burstAt = s.direct ? { x: R(plate.x - sgn * 12), y: R(plate.y - 2) } : { x: R(hitAt.x + sgn * 2), y: R(hitAt.y - 6) };
     const burstSeed = seedN();
     void sleep(sc, 34).then(() =>
-      seedBurst(sc, burstAt, R((s.direct ? plate.y : aim.y) + 2), sgn, { n: 22, big: 5, tilt: 0.42, spread: 1.25, power: 1.12, depth: Math.max(curlDepth, DEPTH.FX - 2), seed: burstSeed, glideMs: 1100 }),
+      seedBurst(sc, burstAt, R((s.direct ? plate.y : aim.y) + 2), sgn, { n: 22, big: 5, tilt: s.direct ? 0.75 : 0.42, spread: s.direct ? 1.5 : 1.25, power: s.direct ? 0.42 : 1.12, depth: Math.max(curlDepth, DEPTH.FX - 2), seed: burstSeed, glideMs: s.direct ? 750 : 1100 }),
     );
     if (loses) {
       // the stronger side answers on this frame: the battle owns him now (he dies where he tossed)
@@ -629,14 +633,14 @@ async function steppeEntrance(S: Stage): Promise<void> {
     // ---- one long high bound in from off screen (P1 from the left edge, P2 from the right)
     const cam = sc.cameras.main;
     const startX = sgn > 0 ? cam.worldView.x - 28 : cam.worldView.x + cam.worldView.width + 28;
-    // P2 enters from the right edge on a lower floor line, and passes BEHIND the duelist figure that stands between the
-    // edge and his tile: until he has cleared the duelist's x his depth stays under the duelist's, so the figure (and
-    // the portrait panel above it) is never covered by the bound
-    const from: XY = { x: startX, y: sgn > 0 ? home.y - 8 : home.y + 10 };
-    const leapMs = 540;
-    const lift = sgn > 0 ? arc(16, 30) : arc(6, 19);
-    const pathAt = (t: number): XY => lerpXY(from, home, t);
-    const duel = sgn < 0 ? S.ctx.views.duelists?.get(S.player)?.sprite ?? null : null;
+    // r4: both leave their edge LOW. P1 passes under the wall banner and the torch pillar, never across them. P2 leaves
+    // the right edge well under the player's HUD panel and bounds in on a floor line IN FRONT of the duelist's pedestal
+    // (drawn in front of it, as the floor says), low enough that his body passes below the figure, never through it
+    const from: XY = { x: startX, y: sgn > 0 ? home.y + 14 : home.y + 50 };
+    const leapMs = 560;
+    // P2's floor path keeps its low (front) row until he is past the pedestal, then curves up onto his tile
+    const pathAt = (t: number): XY => (sgn > 0 ? lerpXY(from, home, t) : { x: lerp(from.x, home.x, t), y: lerp(from.y, home.y, Math.pow(t, 5)) });
+    const lift = sgn > 0 ? arc(8, 26) : arc(8, 24);
     u.showSprite();
     show(u, 'summon', 0);
     place(u, from, lift(0));
@@ -645,27 +649,35 @@ async function steppeEntrance(S: Stage): Promise<void> {
     let si = 0;
     let fluted = false;
     let shown = -1;
-    await animate(sc, leapMs, (t) => {
-      const f = t < 0.3 ? 0 : t < 0.55 ? 1 : t < 0.76 ? 2 : t < 0.9 ? 3 : 4;
-      if (f !== shown) {
-        shown = f;
-        show(u, 'summon', f);
-      }
-      const p = pathAt(t);
-      const h = lift(t);
-      place(u, p, h);
-      if (duel && duel.active && p.x > duel.x - 42) u.sprite.setDepth(Math.min(u.sprite.depth, duel.depth - 0.5));
-      if (!fluted && t >= 0.36) {
-        fluted = true;
-        play('sshFluteRise', { volume: 0.9, pan: panAt(p.x) });
-      }
-      // two or three seeds shaken loose from the mane, trailing behind
-      while (si < seeds.length && t >= seeds[si]) {
-        si++;
-        const c = u.framePoint(AX - 8, GY - 34);
-        seedBurst(sc, { x: R(c.x), y: R(c.y) }, R(home.y + 2 + si * 2), (-sgn) as 1 | -1, { n: 1, depth: DEPTH.FX - 2, seed: Math.floor(r() * 1e6), glideMs: 700, spread: 0, power: 0.25 });
-      }
-    });
+    // the leap shadow (the light layer's floor shadow under him) only once his floor point is over the board top —
+    // never on the board's side wall or the floor beyond it: off the board he reads to it as high in the air (the
+    // light layer drops the foot shadow above 28 px), the sprite itself stays where place() put it
+    const offBoard = (p: XY) => Math.abs(p.x - home.x) > 70 || Math.abs(p.y - home.y) > 40;
+    try {
+      await animate(sc, leapMs, (t) => {
+        const f = t < 0.3 ? 0 : t < 0.55 ? 1 : t < 0.76 ? 2 : t < 0.9 ? 3 : 4;
+        if (f !== shown) {
+          shown = f;
+          show(u, 'summon', f);
+        }
+        const p = pathAt(t);
+        const h = lift(t);
+        place(u, p, h);
+        if (offBoard(p)) u.lift = Math.max(u.lift, 30);
+        if (!fluted && t >= 0.36) {
+          fluted = true;
+          play('sshFluteRise', { volume: 0.9, pan: panAt(p.x) });
+        }
+        // two or three seeds shaken loose from the mane, trailing behind
+        while (si < seeds.length && t >= seeds[si]) {
+          si++;
+          const c = u.framePoint(AX - 8, GY - 34);
+          seedBurst(sc, { x: R(c.x), y: R(c.y) }, R(home.y + 2 + si * 2), (-sgn) as 1 | -1, { n: 1, depth: DEPTH.FX - 2, seed: Math.floor(r() * 1e6), glideMs: 700, spread: 0, power: 0.25 });
+        }
+      });
+    } finally {
+      if (!u.retired) u.lift = 0;
+    }
     place(u, home, 0);
     await growing;
 
@@ -778,19 +790,19 @@ function watchDeath(sc: Phaser.Scene, u: MonsterUnit): void {
         started = true;
         play('sshExhale', { volume: 0.9, pan });
       }
-      if (!fold1 && f >= 2) {
+      if (!fold1 && f >= DEATH_FOLD[0]) {
         fold1 = true;
         fold1At = el;
         play('sshFold', { volume: 0.85, pan });
       }
       // the hind legs follow the forelegs: a separate, lower thud (never on top of the first)
-      if (fold1 && !fold2 && f >= 3 && el - fold1At >= 130) {
+      if (fold1 && !fold2 && f >= DEATH_FOLD[1] && el - fold1At >= 90) {
         fold2 = true;
         play('sshFold', { volume: 0.7, pan, pitch: 0.86 });
       }
       // the coat starts turning to grass (the kit's dissolve beat misses it when the pose joins on that frame; a
       // second call inside the recipe's gap is dropped)
-      if (!turned && f >= 3) {
+      if (!turned && f >= DEATH_GRASS0) {
         turned = true;
         play('sshGrassTurn', { volume: 0.9, pan });
       }
