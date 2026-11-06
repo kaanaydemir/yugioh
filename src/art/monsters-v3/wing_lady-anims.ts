@@ -1,14 +1,20 @@
 // Kanat Hanımı v3 — animations of the kestrel-winged swordswoman: pose tables, holds, marks, points.
 // (Design: docs/v3/oturum-f/wing_lady.md §1–§4 with the critique fold-in §11.)
 //
-// Sameness (tools/sameness.ts --against all, round 2: 11 / 42 out-of-plan pairs UYARI, no KALIR) — what sets her apart:
-//   steel_silencer   MOTsig 0.65 (both thrust forward) — hers is a hover → flat stoop → wing CLAP, his a lunge; guard
-//                    0.74 (was 0.84): her parry blade is held LEVEL on the fencer's line, the buckler flutters f2 / f4
-//   windmane_knight  guard 0.91 (out of plan) — his tower of plate vs her wing buckler + far wing mantled back
-//   shade_assassin   guard 0.87 (proxy) — his crouched blade guard vs her feathered buckler; silhouettes differ (KEY 0.31)
-//   hollow_ogre      MOTsig 0.73 · mudgrasp_spirit 0.70 (MOTavg 0.46) · dusk_sorcerer 0.68 · tide_harpooner 0.67 ·
-//   abyss_magus 0.62 · straw_decoy 0.61 · steppe_spiralhorn 0.59 · venom_drake 0.59 — the shared "reach forward" stick
-//                    path of any forward strike; none of them hovers, stoops from the air or claps two wings round a target
+// Sameness (tools/sameness.ts --against all; gate-fix round 2026-11-06: 7 / 42 out-of-plan pairs UYARI, no KALIR
+// and no metric at the KALIR line; was 11 with two loops at the line) — what sets her apart:
+//   idle             the KESTREL HEAD: the head holds still in space while the chest breathes, and the blade's
+//                    point reaches FORWARD as she peers (windmane_knight 0.91 → 0.27, abyss_magus 0.28 → 0.08, the
+//                    idle RHYTHM match with abyss_magus / tide_harpooner gone)
+//   attack           the hover holds the blade AIMED forward-down at the prey (never cocked back like every other
+//                    wind-up) → the flat stoop → the wing CLAP (steel_silencer 0.65 → 0.50; abyss_magus, dusk_sorcerer,
+//                    venom_drake, steppe_spiralhorn MOTsig now under 0.55)
+//   steel_silencer   guard 0.74: her parry blade is held LEVEL on the fencer's line, the buckler flutters f2 / f4
+//   shade_assassin   idle 0.84 (v1 proxy: silhouette mass) — both breathe up-back; hers is two big kestrel wings over a
+//                    still head, his a crouched cloak; silhouettes differ (KEY 0.31)
+//   hollow_ogre 0.73 / tide_harpooner 0.67 (special: the salute raises the blade, his club / harpoon rise too) ·
+//   mudgrasp_spirit 0.70 (roar: both throw the head back; MOTavg 0.48) · seal_leg_l 0.65 · straw_decoy 0.61 (token
+//                    placeholder) — read in the blind eye test (docs/v3/oturum-f/wing_lady.md, gate fix)
 
 import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
 import { BRAID0, GY, NEUTRAL, SASH0, WING_FAR0, WING_NEAR0, jewelOf, skeleton, type Pose, type Ribbon, type Wing } from './wing_lady-rig';
@@ -61,11 +67,20 @@ export function idlePose(f: number): Pose {
   const lag = (1 - Math.cos((t - 1 / IDLE_N) * TAU)) / 2;
   return {
     ...NEUTRAL,
-    // the breath shows in the body: the chest (and with it the shoulders, the wing roots and the head) rises a
-    // pixel through the wing breath (f4–f11)
+    // the breath shows in the body: the chest (and with it the shoulders and the wing roots) rises a pixel through
+    // the wing breath (f4–f10); the wings SPREAD on the breath (length) more than they swing back
     chest: k >= 4 && k <= 10 ? -1 : 0,
-    // the head lags the chest by a frame each way (f4 up late, f11 down late), then the 1-px "listening" dip at f13
-    hy: k === 4 || k === 13 ? 1 : k === 11 ? -1 : 0,
+    // gate fix (sameness vs windmane_knight's breathing idle, MOTloop 0.91): the KESTREL HEAD. A hovering kestrel's
+    // head stays fixed in space while its body moves; hers does the same through the breath (hy cancels the chest on
+    // f4–f10), and it moves only in quick bird TICKS: a snap forward to fix a point (f6–f7), back, a glance back
+    // toward the far wing (f12), then the 1-px "listening" dip (f13). The body breathes; the head does not.
+    hy: (k >= 4 && k <= 10) || k === 13 ? 1 : 0,
+    hx: 0,
+    // the blade follows her eye: while the head snaps forward (f6–f9) the hand drops a pixel and the wrist tips the
+    // point forward, so the tip reaches toward what she is looking at (forward, not up — the staff / sword idles
+    // of abyss_magus and the bipeds rise with the breath)
+    sa: k >= 5 && k <= 8 ? 48 : NEUTRAL.sa,
+    gy: NEUTRAL.gy + (k >= 5 && k <= 8 ? 1 : 0),
     wn: { ...WING_NEAR0, a: WING_NEAR0.a + 2 - 10 * br, len: WING_NEAR0.len + 1.5 * br, bend: WING_NEAR0.bend + 3 - 8 * lag + 4 * sn(2 * t), cv: 0.42 + 0.07 * sn(2 * t) },
     wf: { ...WING_FAR0, a: WING_FAR0.a - 1 + 7 * lag, len: WING_FAR0.len + 1.2 * lag, bend: WING_FAR0.bend + 3 - 7 * br + 4 * sn(2 * t + 0.25), cv: 0.45 + 0.07 * sn(2 * t + 0.25) },
     braid: { ...BRAID0, ph: t, amp: 2.4 },
@@ -152,12 +167,12 @@ function fromGuardPose(f: number): Pose {
 const FG_HOLDS = [60, 60, 70, 70, 70];
 
 // ------------------------------------------------------------------ attack "Kerkenez Hamlesi" (12)
-// crouch (wings lift, blade drawn back) · downstroke rise · HOVER (f2/f3: only the wings move — the head, the
-// jewel and the blade are pixel-identical: the kestrel's locked head) · fold into a swept V · the flat stoop
+// crouch (wings lift, the blade comes down to AIM forward-down at the prey) · downstroke rise · HOVER (f2/f3: only
+// the wings move — the head, the jewel and the aimed blade are pixel-identical: the kestrel's locked head and eye) · fold into a swept V · the flat stoop
 // (release) · contact: the WING CLAP, both wings snapped forward around the target, the blade thrust · rebound
 // up and back, wings open · two back-flaps home · touch down.
 
-const HOVER: PD = { by: -5, crouch: 0, lean: 1, fbx: 33, fby: GY - 1, ffx: 39, ffy: GY, gx: 39, gy: 45, sa: 195, face: 'calm', jewel: 2 };
+const HOVER: PD = { by: -5, crouch: 0, lean: 1, fbx: 33, fby: GY - 1, ffx: 39, ffy: GY, gx: 41, gy: 46, sa: 40, face: 'calm', jewel: 2 };
 const A_N = 14;
 /** the clap (contact): both wings arc AHEAD of a clear body — the far wing high, the near wing low, their tips
  *  curling toward each other like brackets — and the blade thrust straight out between them, point first */
@@ -170,7 +185,7 @@ const CLAP: PD = {
 function attackPose(f: number): Pose {
   const keys: PD[] = [
     { wn: { a: -134 }, wf: { a: -101 } },
-    { crouch: 3, lean: -1, gx: 39, gy: 47, sa: 190, wn: { a: -150, len: 29, bend: -6 }, wf: { a: -116, bend: -8 }, sash: { ph: 0.3 }, braid: { ph: 0.3 } },
+    { crouch: 3, lean: -1, gx: 41, gy: 48, sa: 40, wn: { a: -150, len: 29, bend: -6 }, wf: { a: -116, bend: -8 }, sash: { ph: 0.3 }, braid: { ph: 0.3 } },
     { ...HOVER, wn: { a: 148, len: 27, bend: 18, chord: 10 }, wf: { a: 122, len: 22, bend: 14 }, sash: { ph: 0.45, th: 160 }, braid: { ph: 0.4 } },
     { ...HOVER, wn: { a: -150, len: 29, bend: -4 }, wf: { a: -118, len: 24, bend: -6 }, sash: { ph: 0.45, th: 160 }, braid: { ph: 0.4 } },
     { by: -3, rot: 14, lean: 2, fbx: 33, fby: GY - 1, ffx: 38, ffy: GY - 1, gx: 46, gy: 43, sa: 4, wn: { a: 176, len: 22, bend: 8, chord: 9 }, wf: { a: 166, len: 20, bend: 8 }, sash: { th: 178, ph: 0.6 }, braid: { th: 150, ph: 0.6 } },
@@ -247,7 +262,8 @@ const ROAR_HOLDS = [80, 110, 160, 70, 110, 100, 110, 110, 120, 130];
 function hitPose(f: number): Pose {
   const keys: PD[] = [
     // f0 stays local (KK-4): the struck face, the wings jolt a step
-    { face: 'struck', chest: -1, wn: { a: -137, len: 28 }, wf: { a: -101 }, jewel: 2 },
+    // (the head keeps the idle's kestrel lock on the f0 flinch: the chest jumps, the head stays put)
+    { face: 'struck', chest: -1, hy: 1, wn: { a: -137, len: 28 }, wf: { a: -101 }, jewel: 2 },
     // f1–f2: the torso snaps back from the hips (feet planted), the head tips back with the eyes shut, the wings
     // flare out
     { lean: -2, hx: -1, crouch: 1, hr: -8, face: 'closed', gx: 42, gy: 47, wn: { a: -150, len: 30, bend: -10, chord: 11 }, wf: { a: -112, len: 26 }, sash: { th: 60, curl: -20 }, braid: { th: 70 } },
@@ -280,7 +296,9 @@ const HH_HOLDS = [50, 60, 130, 110, 100, 120, 130];
 const SHUT: PD = { nearFront: true, wn: { a: -40, len: 24, bend: 58, chord: 10, side: -1, cv: 0.5, ps: 0.62 }, wf: { a: -96, len: 19, bend: -10 } };
 function hitMagicPose(f: number): Pose {
   const keys: PD[] = [
-    { face: 'closed', jewel: 0, chest: -1, wn: { a: -129, len: 28 }, wf: { a: -100 } },
+    // f0 stays local at every idle phase (HA-21 phase): the eyes shut and the jewel blinks out, the head keeps its
+    // kestrel lock, the wings sit near the idle's mid breath
+    { face: 'closed', jewel: 0, chest: -1, hy: 1, wn: { a: -135, len: 27 }, wf: { a: -98 } },
     { ...SHUT, bx: 1, face: 'closed', hr: 6, crouch: 1, jewel: 0, sash: { th: 120 } },
     { ...SHUT, bx: -1, face: 'closed', hr: 6, crouch: 1, jewel: 1, sash: { th: 140 } },
     { wn: { a: -88, len: 26, bend: 0, side: 1, chord: 10, cv: 0.45, ps: 0.66 }, wf: { a: -92 }, crouch: 1, jewel: 1 },
