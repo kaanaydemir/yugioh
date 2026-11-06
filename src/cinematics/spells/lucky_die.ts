@@ -63,7 +63,7 @@ import type Phaser from 'phaser';
 import type { CardId } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
 import { PAL, PLAYER_RAMP } from '../../art/palette';
-import { BOARD_COLS, BOARD_MID_COL, BOARD_ROWS, DEPTH, LANE_MID, LOOK_V3, type XY, duelistXY, isoToScreen, monsterRow, unitDepth, zoneXY } from '../../view/layout';
+import { BOARD_COLS, BOARD_MID_COL, BOARD_ROWS, DEPTH, LANE_MID, LOOK_V3, type XY, duelistXY, isoToScreen, screenToIso, monsterRow, unitDepth, zoneXY } from '../../view/layout';
 import { Raster, floorRing, onFrame, run } from '../../vfx/setpieces';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import { wait } from '../../vfx/core';
@@ -115,6 +115,9 @@ export const DIE_T = Object.freeze({
   fadeMs: 240,
 });
 
+/** Just under the stat badges (duel/StatBadge BADGE_DEPTH = FX − 20), over every body. */
+const UNDER_BADGES = DEPTH.FX - 21;
+
 /** Half edge of the die (world units): ≈ 36 px wide on screen. */
 const H = 9;
 /** The die's raster box. */
@@ -145,9 +148,9 @@ interface DieState {
   shadow: number;
   el: number;
   /** At rest on the floor: sorted with the bodies by its floor point; airborne / rolling it flies over every body and
-   *  stat badge (DEPTH.FX — a badge is never drawn across the tumbling die). */
+   *  body (DEPTH.FX); low, it stays under the stat badges. */
   grounded: boolean;
-  /** Its depth at rest: over the badges (FX − 10) unless a body stands in front of it (then sorted by its floor). */
+  /** Its depth at rest: just under the badges, over the bodies, unless a body stands in front of it (then sorted by its floor). */
   restDepth: number;
 }
 
@@ -172,7 +175,9 @@ function makeDie(sc: Phaser.Scene, s: DieState, seed: number): DieView {
     const ox = c.x - BOX / 2;
     const oy = c.y - BOX / 2;
     ras.moveTo(ox, oy);
-    ras.img.setDepth(s.grounded ? s.restDepth : DEPTH.FX);
+    // high in the air it flies over everything; low (rolling, teetering, at rest) it slides UNDER the stat badges (they
+    // count while it lies there and must stay readable) unless a body stands in front of it
+    ras.img.setDepth(s.grounded ? s.restDepth : s.z > H * 2.2 ? DEPTH.FX : unitDepth(s.fy) + 0.5);
     ras.begin();
     if (s.h > 0) {
       paintDie(ras.pc, BOX / 2, BOX / 2, s.h, s.M, s.look);
@@ -556,6 +561,8 @@ interface DieRun {
   /** statChange events of the boost (indices) and the spell's own graveyard trip (−1: none). */
   stats: number[];
   gi: number;
+  /** The rest spot and path, when the caller already chose the spawn by it. */
+  plan?: RestPlan;
 }
 
 type Box = { x0: number; y0: number; x1: number; y1: number };
@@ -566,85 +573,193 @@ const avatarBox = (p: PlayerId): Box => {
   return { x0: d.x - 12, y0: d.y - 42, x1: d.x + 12, y1: d.y + 4 };
 };
 
-/**
- * Where the die comes to rest: always on the CASTER's side, in front of its own monsters — the free-est floor spot
- * (whole pixels) on a grid over the caster's half of the bridge (preferred: the die is the caster's luck, thrown in
- * front of its own row) back through its monster row to its front strip. Never past the bridge's middle line. A spot
- * loses points for every body standing IN FRONT of the die (it would hide it) or under it, for every stat badge under
- * the die or under the face in the air (the badges must stay readable while they count), for a duelist under it, for
- * its distance from the boosted monsters (the sparks make a short fan) and from the preferred row.
- */
-function restSpot(ctx: AnyCtx, player: PlayerId, from: XY, targets: readonly XY[]): XY & { occluded: boolean; faceDx: number } {
-  const bodies: { box: Box; floor: number; badge: Box; mine: boolean }[] = [];
+/** The throw's ground path: spawn floor → three bounce contacts (b1, b2, b3) → two rolls along `d` → rest. b1 / b2 may
+ *  bend sideways off the straight line (`bend`, px, perpendicular on screen) so the contacts stay on free floor. */
+interface DiePath {
+  d: readonly [number, number, number];
+  step: XY;
+  b1: XY;
+  b2: XY;
+  b3: XY;
+  /** The first leg's apex (world units): a long throw past a crowded row flies higher, over the stat badges. */
+  apex0: number;
+}
+
+function planPath(f0: XY, rest: XY, bend: number, f1 = 0.62): DiePath {
+  const d = groundDir(rest.x - f0.x, rest.y - f0.y);
+  const step = floorStep(d);
+  const rollLen = 4 * H; // two quarter rolls, 2h each (world units)
+  const b3: XY = { x: rest.x - step.x * rollLen, y: rest.y - step.y * rollLen };
+  const dx = b3.x - f0.x;
+  const dy = b3.y - f0.y;
+  const l = Math.hypot(dx, dy) || 1;
+  const n = { x: -dy / l, y: dx / l };
+  const f2 = f1 + (1 - f1) * 0.62;
+  const b1: XY = { x: f0.x + dx * f1 + n.x * bend, y: f0.y + dy * f1 + n.y * bend };
+  const b2: XY = { x: f0.x + dx * f2 + n.x * bend * 0.45, y: f0.y + dy * f2 + n.y * bend * 0.45 };
+  const apex0 = Math.max(DIE_T.apex[0], Math.min(70, DIE_T.apex[0] + (Math.hypot(b1.x - f0.x, b1.y - f0.y) - 80) * 0.3));
+  return { d, step, b1, b2, b3, apex0 };
+}
+
+interface Body {
+  box: Box;
+  floor: number;
+  home: XY;
+  badge: Box;
+  mine: boolean;
+}
+
+function boardBodies(ctx: AnyCtx, player: PlayerId): Body[] {
+  const bodies: Body[] = [];
   for (const p of [0, 1] as const)
     for (const slot of ctx.state.players[p].monsters) {
       if (!slot) continue;
       const u = ctx.unit(slot.uid);
       if (!u || u.retired) continue;
       const sil = silhouetteOf(u.sprite);
-      const h = u.home;
+      const h = { x: R(u.home.x), y: R(u.home.y) };
       const box = sil ? { x0: sil.left, y0: sil.top, x1: sil.right, y1: sil.bottom } : { x0: h.x - 14, y0: h.y - 40, x1: h.x + 14, y1: h.y };
-      bodies.push({ box, floor: h.y, badge: { x0: h.x - 18, y0: h.y + 4, x1: h.x + 18, y1: h.y + 18 }, mine: p === player });
+      const bi = u.badge?.image;
+      const bb = bi && bi.visible ? bi.getBounds() : null;
+      const badge = bb ? { x0: Math.floor(bb.x), y0: Math.floor(bb.y), x1: Math.ceil(bb.x + bb.width), y1: Math.ceil(bb.y + bb.height) } : { x0: h.x - 18, y0: h.y + 4, x1: h.x + 18, y1: h.y + 18 };
+      bodies.push({ box, floor: h.y, home: h, badge, mine: p === player });
     }
+  return bodies;
+}
+
+const pad = (b: Box, n: number): Box => ({ x0: b.x0 - n, y0: b.y0 - n, x1: b.x1 + n, y1: b.y1 + n });
+
+/** What a floor contact costs: the die's box over bodies and badges, and its dust ring on a monster's own tile. */
+function contactCost(p: XY, bodies: readonly Body[], k: number, avatars: readonly Box[] = []): number {
+  const die: Box = { x0: p.x - 19, y0: p.y - 34, x1: p.x + 19, y1: p.y + 3 };
+  let c = 0;
+  for (const a of avatars) c += area(pad(a, 4), die) * 6 * k;
+  for (const bd of bodies) {
+    // a body in front would hide the bounce: the worst place for it
+    c += area(die, bd.box) * (bd.floor > p.y ? 8 : 2) * k;
+    c += area(die, pad(bd.badge, 2)) * 7 * k;
+    // the dust ring (≈ 20 px across) must not land on a monster's tile, under its feet
+    const q = Math.abs(p.x - bd.home.x) / 34 + Math.abs(p.y - bd.home.y) / 17;
+    if (q < 1) c += (1 - q) * 2400 * k;
+  }
+  return c;
+}
+
+/** What a flight costs: the die's box sampled along a leg in the air, over badges (they count) and bodies. */
+function flightCost(a: XY, b: XY, z0: number, apex: number, bodies: readonly Body[]): number {
+  let c = 0;
+  for (const t of [0.2, 0.4, 0.6, 0.8]) {
+    const z = z0 + (H - z0) * t + 4 * apex * t * (1 - t);
+    const x = a.x + (b.x - a.x) * t;
+    const y = a.y + (b.y - a.y) * t - z * KZ;
+    const die: Box = { x0: x - 18, y0: y - 18, x1: x + 18, y1: y + 18 };
+    for (const bd of bodies) c += area(die, bd.badge) * 3 + area(die, bd.box) * 0.8;
+  }
+  return c;
+}
+
+/** The face in the air: straight over the die, or slid sideways / lifted when that is clearer of the stat badges
+ *  (padded 6 px), enemy bodies, the duelists and the portrait screens. */
+function faceSpot(q: XY, bodies: readonly Body[], avatars: readonly Box[], screens: readonly Box[]): { dx: number; dy: number; cost: number } {
+  let best = { dx: 0, dy: 0, cost: Infinity };
+  for (const dy of [0, -8, 6])
+    for (const dx of [0, 14, -14, 26, -26, 38, -38, 50, -50]) {
+      const cy = q.y - 55 + dy;
+      const face: Box = { x0: q.x + dx - 17, y0: cy - 17, x1: q.x + dx + 17, y1: cy + 17 };
+      let fs = Math.abs(dx) * 2 + Math.abs(dy) * 3;
+      for (const bd of bodies) {
+        fs += area(face, pad(bd.badge, 6)) * 4;
+        if (!bd.mine) fs += area(face, bd.box) * 1.5;
+      }
+      for (const a of avatars) fs += area(face, a) * 2;
+      for (const sr of screens) fs += area(face, sr) * 6;
+      if (face.y0 < 52) fs += (52 - face.y0) * 30;
+      if (fs < best.cost) best = { dx, dy, cost: fs };
+    }
+  return best;
+}
+
+export interface RestPlan extends XY {
+  occluded: boolean;
+  faceDx: number;
+  faceDy: number;
+  path: DiePath;
+  score: number;
+}
+
+/**
+ * Where the die comes to rest AND how it gets there: always on the CASTER's side — the free-est floor spot (whole
+ * pixels) on a grid over the caster's half of the bridge back through its monster row to its front strip and the board's
+ * side columns. Never past the bridge's middle line. A plan loses points for every body standing IN FRONT of the die
+ * (it would hide it) or under it, for every stat badge under the die or under the face in the air (the badges must stay
+ * readable while they count), for a duelist under it, for its distance from the boosted monsters, AND for its path:
+ * each of the three bounce contacts and the two rolls is scored like the rest spot (a bounce never lands on a
+ * monster's tile or throws its dust under one), the flight over badges and bodies costs too, and the bounces may bend
+ * sideways off the straight line round occupied tiles.
+ */
+function restSpot(ctx: AnyCtx, player: PlayerId, from: XY, targets: readonly XY[]): RestPlan {
+  const bodies = boardBodies(ctx, player);
   const avatars = [avatarBox(0), avatarBox(1)];
   const mr = monsterRow(player);
-  // grid rows run from the bridge's middle line (exclusive) toward the caster; +1 = toward the caster
   const back = player === 0 ? 1 : -1;
   const mid = (monsterRow(0) + monsterRow(1)) / 2;
-  // the caster's half of the bridge through its own monster row: no preference inside that band; nearer the middle
-  // line than its inner edge reads as the opponent's ground (steep cost); behind the monster row costs a little
   const inner = mid + back * 0.4;
   const outer = mr;
   const aim = targets.length ? { x: targets.reduce((a, q) => a + q.x, 0) / targets.length, y: targets.reduce((a, q) => a + q.y, 0) / targets.length } : zoneXY(player, 'monster', LANE_MID);
-  let best: XY & { occluded: boolean; faceDx: number } = { ...isoToScreen(BOARD_MID_COL, (inner + outer) / 2), occluded: false, faceDx: 0 };
   const screens: readonly Box[] = ARENA_NT ? SCREENS.map((r) => ({ x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h })) : [];
-  let bestScore = Infinity;
-  for (let k = 0.15; k <= Math.abs(mr - mid) + 0.6 + 1e-6; k += 0.05)
-    for (let col = 0.4; col <= BOARD_COLS - 1.4 + 1e-6; col += 0.1) {
+  const f0 = { x: R(from.x), y: R(from.y) };
+  let best: RestPlan | null = null;
+  for (let k = 0.15; k <= Math.min(Math.abs(mr - mid) + 1.0, (BOARD_ROWS - 1) / 2 - 0.1) + 1e-6; k += 0.05)
+    for (let col = 0.2; col <= BOARD_COLS - 1.2 + 1e-6; col += 0.1) {
       const row = mid + back * k;
       const f = isoToScreen(col, row);
       const q = { x: R(f.x), y: R(f.y) };
-      // the throw needs room for its three bounces and two rolls
-      const reach = Math.hypot(q.x - from.x, q.y - from.y);
-      if (reach < 44) continue;
-      // the face in the air (≈ 72 px over the floor) must stay clear of the top HUD
+      const reach = Math.hypot(q.x - f0.x, q.y - f0.y);
+      if (reach < 52) continue;
       if (q.y < 108) continue;
       const die: Box = { x0: q.x - 19, y0: q.y - 34, x1: q.x + 19, y1: q.y + 3 };
-      const d = (row - mid) * back; // distance from the middle line toward the caster
+      const d = (row - mid) * back;
       const dIn = (inner - mid) * back;
       const dOut = (outer - mid) * back;
-      let score = Math.max(0, 70 - reach) * 12 + Math.hypot(q.x - aim.x, q.y - aim.y) * 1.2 + (d < dIn ? (dIn - d) * 160 : d > dOut ? (d - dOut) * 30 : 0);
+      let score = Math.max(0, 80 - reach) * 12 + Math.hypot(q.x - aim.x, q.y - aim.y) * 0.9 + (d < dIn ? (dIn - d) * 160 : d > dOut ? (d - dOut) * 30 : 0);
       for (const bd of bodies) {
         score += area(die, bd.box) * (bd.floor > q.y ? 4 : 1.5);
         score += area(die, bd.badge) * 3;
       }
       for (const a of avatars) score += area(die, a) * 6;
-      // the face in the air: straight over the die, or slid a little sideways when that is clearer
-      let faceBest = Infinity;
-      let faceDx = 0;
-      for (const dx of [0, 14, -14, 26, -26]) {
-        const face: Box = { x0: q.x + dx - 17, y0: q.y - 72, x1: q.x + dx + 17, y1: q.y - 38 };
-        let fs = Math.abs(dx) * 2;
-        for (const bd of bodies) {
-          fs += area(face, bd.badge) * 3;
-          // the face over an enemy body would read as aiming at it
-          if (!bd.mine) fs += area(face, bd.box) * 1.5;
+      if (best && score >= best.score) continue;
+      const fc = faceSpot(q, bodies, avatars, screens);
+      score += fc.cost;
+      if (best && score >= best.score) continue;
+      // the path: the cheapest bend
+      let pathBest: { path: DiePath; cost: number } | null = null;
+      for (const f1 of [0.45, 0.62, 0.74, 0.84])
+      for (const bend of [0, 12, -12, 24, -24, 36, -36]) {
+        const path = planPath(f0, q, bend, f1);
+        // the throw itself needs length: the first bounce well away from the hand, room for the arc
+        const throwLen = Math.hypot(path.b3.x - f0.x, path.b3.y - f0.y);
+        if (throwLen < 50) continue;
+        let c = Math.abs(bend) * 0.6 + Math.max(0, 76 - throwLen) * 10;
+        // every contact on the board's tiles (not off its edge)
+        for (const b of [path.b1, path.b2, path.b3]) {
+          const g = screenToIso(b.x, b.y);
+          c += (Math.max(0, -0.1 - g.col) + Math.max(0, g.col - (BOARD_COLS - 0.9)) + Math.max(0, -0.1 - g.row) + Math.max(0, g.row - (BOARD_ROWS - 0.9))) * 900;
         }
-        for (const a of avatars) fs += area(face, a) * 2;
-        // the portrait screens and the phase bar stay clear
-        for (const sr of screens) fs += area(face, sr) * 6;
-        if (face.y0 < 52) fs += (52 - face.y0) * 30;
-        if (fs < faceBest) {
-          faceBest = fs;
-          faceDx = dx;
-        }
+        c += contactCost(path.b1, bodies, 1, avatars) + contactCost(path.b2, bodies, 0.8, avatars) + contactCost(path.b3, bodies, 0.8, avatars);
+        const rollMid = { x: (path.b3.x + q.x) / 2, y: (path.b3.y + q.y) / 2 };
+        c += contactCost(rollMid, bodies, 0.6);
+        c += flightCost(f0, path.b1, 14, path.apex0, bodies) + flightCost(path.b1, path.b2, H, DIE_T.apex[1], bodies) + flightCost(path.b2, path.b3, H, DIE_T.apex[2], bodies);
+        // the rolls must stay on the board
+        if (!pathBest || c < pathBest.cost) pathBest = { path, cost: c };
       }
-      score += faceBest;
-      if (score < bestScore) {
-        bestScore = score;
-        best = { ...q, occluded: bodies.some((bd) => bd.floor > q.y && area(die, bd.box) > 0), faceDx };
-      }
+      if (!pathBest) continue;
+      score += pathBest.cost;
+      if (!best || score < best.score) best = { ...q, occluded: bodies.some((bd) => bd.floor > q.y && area(die, bd.box) > 0), faceDx: fc.dx, faceDy: fc.dy, path: pathBest.path, score };
     }
+  if (!best) {
+    const q = isoToScreen(BOARD_MID_COL, (inner + outer) / 2);
+    best = { x: R(q.x), y: R(q.y), occluded: false, faceDx: 0, faceDy: 0, path: planPath(f0, q, 0), score: Infinity };
+  }
   return best;
 }
 
@@ -684,6 +799,17 @@ function statRun(ctx: AnyCtx, di: number): number[] {
   return out;
 }
 
+/** Floor points of the boosted monsters (the statChanges at `stats`) that are on screen. */
+function targetHomes(ctx: AnyCtx, stats: readonly number[]): XY[] {
+  const out: XY[] = [];
+  for (const i of stats) {
+    const e = evAt(ctx, i, 'statChange');
+    const u = e ? ctx.unit(e.uid) : undefined;
+    if (u && !u.retired && u.sprite.visible) out.push({ x: R(u.home.x), y: R(u.home.y) });
+  }
+  return out;
+}
+
 async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
   const sc = ctx.scene;
   const T = DIE_T;
@@ -706,25 +832,21 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
     return { x: R(p.x), y: R(p.y) };
   });
 
-  // ---- the path: spawn → three bounces → two rolls → rest
-  const rest = restSpot(ctx, r.player, { x: r.spawn.x, y: r.spawnFloor }, live.map((q) => ({ x: R(q.u!.home.x), y: R(q.u!.home.y) })));
-  const d = groundDir(rest.x - r.spawn.x, rest.y - r.spawnFloor);
-  const axis: readonly [number, number, number] = [-d[1], d[0], 0]; // z × d: a forward roll
-  const step = floorStep(d);
-  const rollLen = 4 * H; // two quarter rolls, 2h each (world units)
-  const b3: XY = { x: rest.x - step.x * rollLen, y: rest.y - step.y * rollLen };
+  // ---- the path: spawn → three bounces → two rolls → rest (planned with the rest spot: every contact on free floor)
   const f0: XY = { x: r.spawn.x, y: r.spawnFloor };
+  const rest = r.plan ?? restSpot(ctx, r.player, f0, live.map((q) => ({ x: R(q.u!.home.x), y: R(q.u!.home.y) })));
+  const { d, step, b1, b2, b3, apex0 } = rest.path;
+  const axis: readonly [number, number, number] = [-d[1], d[0], 0]; // z × d: a forward roll
   const lerpXY = (a: XY, b: XY, t: number): XY => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-  const b1 = lerpXY(f0, b3, 0.62);
-  const b2 = lerpXY(f0, b3, 0.86);
   const final = upright(N);
+  console.log('DIEDBG', JSON.stringify({spawn:r.spawn,floor:r.spawnFloor,rest:{x:rest.x,y:rest.y,fdx:rest.faceDx,fdy:rest.faceDy},b1,b2,b3,apex0}));
   // the tumble, counted backwards from the rest pose: angles (radians) at each contact
   const TH = { start: -QT * 9, b1: -QT * 5, b2: -QT * 3, b3: -QT * 2 };
   const PH = { start: QT * 2, b1: QT, b2: 0 };
   const PS = { start: QT * 1.5, b1: 0 };
   const pose = (th: number, ph: number, ps: number): M3 => mul(rot([0, 0, 1], snap(ps)), mul(rot(axis, snap(th)), mul(rot(d, snap(ph)), final)));
 
-  const S: DieState = { fx: r.spawn.x, fy: r.spawnFloor, z: (r.spawnFloor - r.spawn.y) / KZ, jx: 0, jy: 0, h: 0, M: pose(TH.start, PH.start, PS.start), look: {}, cut: -1, shadow: 1, el: 0, grounded: false, restDepth: rest.occluded ? unitDepth(rest.y) + 0.5 : DEPTH.FX - 10 };
+  const S: DieState = { fx: r.spawn.x, fy: r.spawnFloor, z: (r.spawnFloor - r.spawn.y) / KZ, jx: 0, jy: 0, h: 0, M: pose(TH.start, PH.start, PS.start), look: {}, cut: -1, shadow: 1, el: 0, grounded: false, restDepth: unitDepth(rest.y) + 0.5 };
   const die = makeDie(sc, S, r.spawn.x * 3 + N);
   const pool = lightPool(sc, r.spawn.x, r.spawn.y, { color: PAL.gold3, radius: 26, floorY: r.spawnFloor, air: 0.5, airRadius: 14, intensity: 0, anim: 'breathe', fadeIn: 0 });
   pool.setIntensity(0.9, 120);
@@ -805,7 +927,7 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
   sfx('e_dieThrow');
   pool.setIntensity(0.75, 120);
   const legs: { from: XY; to: XY; z0: number; ms: number; apex: number; th: [number, number]; ph: [number, number]; ps: [number, number] }[] = [
-    { from: start, to: b1, z0: S.z, ms: T.air[0], apex: T.apex[0], th: [TH.start, TH.b1], ph: [PH.start, PH.b1], ps: [PS.start, PS.b1] },
+    { from: start, to: b1, z0: S.z, ms: T.air[0] + R((apex0 - T.apex[0]) * 2), apex: apex0, th: [TH.start, TH.b1], ph: [PH.start, PH.b1], ps: [PS.start, PS.b1] },
     { from: b1, to: b2, z0: H, ms: T.air[1], apex: T.apex[1], th: [TH.b1, TH.b2], ph: [PH.b1, PH.b2], ps: [0, 0] },
     { from: b2, to: b3, z0: H, ms: T.air[2], apex: T.apex[2], th: [TH.b2, TH.b3], ph: [0, 0], ps: [0, 0] },
   ];
@@ -906,7 +1028,7 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
 
   // ---- PIPS LIFT into the face in the air
   await wait(sc, T.pipsAfter);
-  const faceAt: XY = { x: C.x + rest.faceDx, y: C.y - 46 };
+  const faceAt: XY = { x: C.x + rest.faceDx, y: C.y - 46 + rest.faceDy };
   const face = airFace(sc, faceAt, N, dud);
   face.frame(true);
   const pipFrom = pipOffsets(final, H, N).map((o) => ({ x: C.x + R(o.x), y: C.y + R(o.y) }));
@@ -1063,11 +1185,22 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   // hovers beside its duelist, out over the arena wall: the die is born on the board edge in front of its top corner)
   const c = ip(op.center);
   const dir = player === 0 ? 1 : -1;
-  const born = set ? { spawn: { x: c.x + dir * 22, y: c.y + 4 }, floor: R(ip(set.home).y) } : handSpawn(player, c);
+  // a set card: the die is born beside its tile, on the side whose throw runs clearest (the plan scores the path)
+  const homes = targetHomes(ctx, stats);
+  let born = set ? { spawn: { x: c.x + dir * 22, y: c.y + 4 }, floor: R(ip(set.home).y) } : handSpawn(player, c);
+  let plan = restSpot(ctx, player, { x: born.spawn.x, y: born.floor }, homes);
+  if (set) {
+    const alt = { spawn: { x: c.x - dir * 22, y: c.y + 4 }, floor: R(ip(set.home).y) };
+    const altPlan = restSpot(ctx, player, { x: alt.spawn.x, y: alt.floor }, homes);
+    if (altPlan.score < plan.score) {
+      born = alt;
+      plan = altPlan;
+    }
+  }
   const floor = born.floor;
   const spawn: XY = born.spawn;
   await op.release(spawn, { path: 'arc', lift: 10, ms: 140, size: 2, ramp: GOLD_FX, floorTo: floor });
-  await playDie(ctx, { player, value: roll.value, spawn, spawnFloor: floor, stats, gi });
+  await playDie(ctx, { player, value: roll.value, spawn, spawnFloor: floor, stats, gi, plan });
 });
 
 // ================================================================ a diceRoll of this card on its own (v3)

@@ -184,3 +184,59 @@ export class FlungLinks {
 }
 
 
+
+// ================================================================ the heavy lash chain (2-px links)
+
+/** One HEAVY link (the lash: reads at 1× over a long run): ring 6×4 with a 2×2 hole, or an edge-on bar 5×2. */
+function heavyLink(b: PixBag, x: number, y: number, kind: number, hor: boolean, t: Tones, core: boolean): void {
+  const [hi, mid, lo] = t;
+  const P = (u: number, v: number, c: number): void => (hor ? b.set(x + u, y + v, c) : b.set(x + v, y + u, c));
+  if (kind === 0) {
+    for (let u = -3; u <= 2; u++)
+      for (let v = -2; v <= 1; v++) {
+        const corner = (u === -3 || u === 2) && (v === -2 || v === 1);
+        if (corner) continue;
+        const hole = (u === -1 || u === 0) && (v === -1 || v === 0);
+        if (hole) {
+          P(u, v, core && v === -1 ? PAL.white : PAL.ink);
+          continue;
+        }
+        P(u, v, v === -2 || u === -3 ? hi : v === 1 || u === 2 ? lo : mid);
+      }
+  } else {
+    for (let u = -2; u <= 2; u++) {
+      P(u, -1, core && Math.abs(u) <= 1 ? PAL.white : u === 2 ? mid : hi);
+      P(u, 0, u === -2 ? mid : lo);
+    }
+  }
+}
+
+/**
+ * The lash's chain: heavy links (pitch 5, alternating ring / bar) along a polyline; `heat(i)` 0 iron … 2 hot, `core(i)`
+ * gives link i a 1-px white-hot core (the travelling crest).
+ */
+export function heavyChainLinks(b: PixBag, pts: readonly XY[], o: { heat?: (i: number) => number; core?: (i: number) => boolean } = {}): XY[] {
+  const out: XY[] = [];
+  let acc = 0;
+  let n = 0;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i];
+    const c = pts[i + 1];
+    const len = Math.hypot(c.x - a.x, c.y - a.y);
+    if (len <= 0) continue;
+    const dx = (c.x - a.x) / len;
+    const dy = (c.y - a.y) / len;
+    const hor = Math.abs(dx) >= Math.abs(dy);
+    while (acc <= len) {
+      const x = R(a.x + dx * acc);
+      const y = R(a.y + dy * acc);
+      const h = o.heat ? o.heat(n) : 0;
+      heavyLink(b, x, y, n % 2, hor, h >= 2 ? HOT : h >= 1 ? WARM : IRON, o.core ? o.core(n) : false);
+      out.push({ x, y });
+      n++;
+      acc += n % 2 === 0 ? 5 : 4;
+    }
+    acc -= len;
+  }
+  return out;
+}

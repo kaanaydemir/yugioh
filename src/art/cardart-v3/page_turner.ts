@@ -12,8 +12,10 @@
 //             ink lines on the left page (night2). The teal3 rim runs on the shadow side (IŞ-7).
 //   light     never outlined: four-point ink stars (teal4 / void3 arms, white cores), the white glint on the turning
 //             page's crest = the focus, a teal nib at the end of the writing.
-// Small (44×34): the same composition painted again at 1× density by the same code (geometry in big pixels, halved),
-// then corrected by hand: the page lines, the cards' frames and the stars are redrawn natively so they read at 1×.
+// Small (44×34): composed natively (own geometry, not a halving): a 33-px-wide spread lifted 2 px, the turning page
+// more upright so its crest — the focus and the brightest pixels (white glint) — sits at (25, 8); a tighter teal ring
+// arches over the spread; a folding page and a card back leave the right page, a second card back rises high on the
+// left; three crisp night3 text lines on the left page; stars without white cores except near the crest.
 // Living art: 4 frames × 160 ms, palette only, ≤ 2 px motion: the turning page rises a step and falls back, the stars
 // twinkle (arms grow / shrink), the cards bob a pixel, the nib blinks.
 

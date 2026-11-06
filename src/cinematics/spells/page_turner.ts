@@ -16,32 +16,36 @@
 //   0      common v3 spell opening (spells/_kit): the hand card flies beside its owner (a set card stands up on its
 //          own tile), "SAYFA ÇEVİREN" plate, short hover (hold 200)
 //   ~360   RELEASE: the card pours into an orb that lobs to the middle of the field, a tile and a half up
-//   B+0    BIRTH: rune glyphs converge on the spot, the closed tome inks itself in from its middle (teal silhouette
-//          → a 2-frame white rim → leather), drops 3 px and settles; a shadow + a warm pool on the floor — e_pageBirth
-//   B+150  OPEN: the front board swings over to the right (8 stepped angles, 1-px overshoot), the spread falls open
-//          on blank pages — e_pageOpen
-//   B+330  GATHER: every hand card leaves its hand in turn (caster first, the other side 35 ms behind, 62 ms
+//   B+0    BIRTH (280, constructed — never a filled box): a ring of 4×5 runes flies in and SNAPS onto the cover's
+//          outline while a teal ink line draws it from the top centre down both sides (white heads) — e_pageInkline;
+//          then the gold caps, clasp and spine bands appear, then the leather fills in from the spine outward and the
+//          outline turns ink (e_pageBirth: the tome takes its weight), a 2-frame white rim, a 3-px drop; shadow + pool
+//   B+330  OPEN: the front board swings over to the right (8 stepped angles), the spread falls open — e_pageOpen
+//   B+510  GATHER: every hand card leaves its hand in turn (caster first, the other side 35 ms behind, 62 ms
 //          apart): flies on an arc, shrinks through native sizes, its face BLEACHES row by row into a sepia page
-//          and it slaps flat onto its owner's page; the page stack thickens 1 px, the page shows its print, paper
-//          motes puff — e_pageSlip on leaving, e_pageBind on landing (pitch per card)
-//   G+60   INHALE: both page halves lift at their outer edges (anticipation, 110 ms) — e_pageInhale
-//   G+170  PAT: the right half slams over the left in 4 frames (80 ms, ease-in) and the tome re-centres; on the
-//          contact frame a 1-frame white rim, a 2-px squash, paper motes burst from the edges, dust ring on the
-//          floor, 2-px shake, 60 ms freeze, white-gold flash on the floor — e_pagePat (the card's separating sound)
-//   P+40   the shut tome strains: it rattles sideways (0 1 0 −1 … 2 px) harder and harder
-//   P+150  RIFFLE: the board flies open again and 14 pages turn by themselves in a gust (RIFFLE_TIMES: 46 → 20 →
-//          46 ms apart, each turn 130 ms, wind streaks across the book) — e_pageRiffle, one flap per page; every
-//          old page leaves as a PRESSED LEAF (the card's face pressed sepia into paper) off a turning page's crest
-//          and glides, swaying in stepped shears, to its owner's graveyard; the pile takes it — e_pageLeaf each
-//   R+~520 REOPENED: the spread rests on fresh pages; ink blots bloom into twinkling ink stars — e_pageInk
-//   F=R+600 FOLD: for every draw (caster first, 72 ms apart; the other side 36 ms behind) a page lifts off its
-//          owner's page (its shadow on the page under it) and folds into a card in 5 steps (flat, corners in, sides in,
-//          a white press, the card back);
-//          a thin teal thread runs from that player's deck to it (the deck pile gives a card) — e_pageFold; the
-//          card then flies to its hand (the hand's own flight + flip, or the mini-hand)
-//   +160   CLOSE: the book shuts softly (150 ms) — e_pageShut — and comes apart into runes from the top down in 4
-//          bands, teal glyphs rising and dimming; the spent spell card leaves the spot for the graveyard —
-//          e_pageRunes; the pool and the shadow fade
+//          and it slaps flat onto its owner's page; the page stack thickens 1 px, the page shows its print, tumbling
+//          3×2 paper sheets puff — e_pageSlip on leaving, e_pageBind on landing (pitch per card)
+//   G+60   INHALE (140): both outer page edges lift 1, 2, 4 px and HOLD — e_pageInhale
+//   G+200  PAT: the right half slams over the left in 4 frames (80 ms, ease-in); the closed tome is TOOLED (inset
+//          border, gold corner caps, a raised spine with gold bands, a lozenge round the teal boss, a strap + clasp);
+//          on contact a 1–2-FRAME white rim, a 2-px squash, the breath squeezed out of both edges as stepped
+//          paper-sheet slivers (gust plumes), loose sheets + tumbling paper motes, a low flat earth-tone dust puff
+//          rolling along the floor shadow, 2-px shake, 70-ms freeze — e_pagePat (a low, dry book clap)
+//   P+20   the shut tome strains: it rattles sideways (0 1 0 −1 … 2 px) harder and harder — e_pageStrain
+//   P+130  RIFFLE: the board flies open again and 14 pages turn by themselves (RIFFLE_TIMES: 46 → 20 → 46 ms apart,
+//          each turn 130 ms; several in flight at once). Each sheet CURLS (its free edge lifts past the hinge line),
+//          has a lit crest, a shade band at the spine and faint print on the side you see; long curved gust arcs
+//          sweep over the spine with the turns — e_pageRiffle flaps (one per page) over e_pageGust (its flutter on
+//          the same schedule); old pages leave as PRESSED LEAVES to their owners' graveyards — e_pageLeaf each
+//   R+520  REOPENED: ink drops bloom over 3 frames into 7–9-px four-point stars with white cores — e_pageInk
+//   F=R+660 FOLD: for every draw (caster first, 72 ms apart; the other side 36 ms behind) a page lifts off and folds
+//          into a card in 5 steps — flat with a centre crease; the top corners fold down across real diagonals
+//          (triangle flaps, shade band); the sides fold in (an envelope); a sideways squash; the white press —
+//          e_pageFold + e_pageCrease ×3 + e_pagePress; a teal thread from the deck; the card flies to its hand
+//   +120   CLOSE: the book shuts softly (150 ms) — e_pageShut — then PEELS apart in 4 bands, top first, 60 ms
+//          apart: each band breaks into leather fragments that lift and crumble, then turn into rising runes (4×5,
+//          a teal rim) on stepped arcs, dimming — e_pageRunes + e_pageTear per band; a gold glint flares where the
+//          clasp was — e_pageGlint; the spent card leaves for the graveyard; the pool and the shadow fade
 // EDGES — uneven hands (each side binds and deals its own count), an empty hand (that side sends / gets nothing; with
 // both empty the book opens on blank pages, holds, shuts PAT and dissolves — no riffle), a short deck (fewer folds
 // than pages lost). The duel ending on a draw (five seals) simply stops the folds at the last draw the engine made.
@@ -93,7 +97,7 @@ export const PAGE_T = Object.freeze({
   flipMs: 130,
   leafMs: 520,
   inkAfter: 520,
-  foldAfter: 700,
+  foldAfter: 660,
   foldGap: 72,
   foldLag: 36,
   /** the fold's 4 steps (flat, corners, sides, press); the deal flight takes over on the last */
@@ -102,7 +106,7 @@ export const PAGE_T = Object.freeze({
   dealMs: 250,
   /** short deck: a starved page lifts, crumples and flops */
   fizzleMs: 300,
-  closeAfter: 160,
+  closeAfter: 120,
   closeMs: 150,
   /** the peel: 4 bands this far apart, each row of fragments → runes rising */
   peelGap: 60,

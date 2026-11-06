@@ -209,7 +209,7 @@ export const RECIPES = {
       v.tone('sawtooth', [[0, 108], [0.08, 190, 'e'], [0.14, 140, 'e']], { g: [[0, 0], [0.012, 0.35], [0.12, 0.2], [0.18, 0.0001, 'e']], to: gr });
       // torn soil fizzing high (well above every chain's band)
       v.noise('white', { t: 0.01, g: [[0, 0], [0.012, 2.2], [0.24, 0.0001, 'e']], to: v.filt('bandpass', [[0, 7800], [0.2, 5600, 'e']], 1.2, { t: 0.01 }) });
-      v.noise('brown', { t: 0, g: [[0, 0], [0.02, 1.1], [0.34, 0.0001, 'e']], to: v.filt('lowpass', [[0, 900], [0.34, 200, 'e']], 1.1) });
+      v.noise('brown', { t: 0, g: [[0, 0], [0.02, 0.8], [0.34, 0.0001, 'e']], to: v.filt('lowpass', [[0, 900], [0.34, 200, 'e']], 1.1) });
       thump(v, 0.01, 110, 46, 0.6, 0.22, { drive: 1.6 });
       // the chains break: two heavy iron cracks (dark FM, ~300 / 230 Hz with a 150 Hz body), not bright pings
       iron(v, 0.004, 196, 0.42, 0.35, 1.6);
@@ -317,12 +317,12 @@ export const RECIPES = {
       sweep(v, 0, 0.2, [260, 700, 8000], 0.6, { q: 1.6, peakAt: 0.92, pan: [-0.3, 0.3] });
       ironLinks(v, 0.02, 0.17, 7, 0.1, { f0: 420, f1: 720, curve: 0.8, pan: 0.5, index: 1.3 });
       const T0 = 0.2;
-      v.noise('white', { t: T0, g: perc(2.8, 0.01, 0.0001), to: v.filt('highpass', 2500, 0.7) });
+      v.noise('white', { t: T0, g: perc(2.0, 0.01, 0.0001), to: v.filt('highpass', 2500, 0.7) });
       // the air the tip tore: a bright hiss tail (well above the bind's range)
       v.noise('white', { t: T0 + 0.006, g: [[0, 1.8], [0.14, 0.0001, 'e']], to: v.filt('bandpass', [[0, 10500], [0.14, 7000, 'e']], 0.9, { t: T0 + 0.006 }) });
       v.tone('square', [[0, 6200], [0.012, 900, 'e']], { t: T0, g: perc(0.22, 0.018, 0.0002), to: v.filt('lowpass', 9000) });
-      crack(v, T0 + 0.004, 1.9, { hp: 3000, lp: 12000, n: 3, gap: 0.006, dec: 0.014 });
-      thump(v, T0, 96, 62, 1.3, 0.16, { drive: 2 });
+      crack(v, T0 + 0.004, 1.4, { hp: 3000, lp: 12000, n: 3, gap: 0.006, dec: 0.014 });
+      thump(v, T0, 96, 62, 1.8, 0.18, { drive: 2 });
       // the links jangle down the chain after the hit, dark
       ironLinks(v, T0 + 0.03, 0.26, 7, 0.14, { f0: 420, f1: 720, curve: 1.3, pan: 0.5, index: 1.3 });
     },
