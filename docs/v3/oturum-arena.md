@@ -461,3 +461,73 @@ typecheck temiz, palcheck PASS (`fl-8.png`), vitest arena-nt platform/wall/scree
 Kalan farklar: hedefin havuzu yumuşak hale, bizimki basamaklı (palet + dither kuralı); sol üst zemin (levha/ızgara) sis bankının
 altında kaldığı için az okunuyor (sis maddesi); hedefteki duvara yükselen dikey borular yok; mangal alevinin çevresindeki ince
 sıcak hale yok (dither halesi noktalı okunduğu için kapatıldı); sağ mangal hedeften 26 px sağda (sahne geometrisi farkı).
+
+#### Zemin ve mangallar — eleştiri turu 1/3 düzeltmeleri (2026-11-06)
+Önce: `shots/arena/fr1-0.png` (+ `fr1-0-sbs.png`, sissiz `fr1-0-nofog.png`, `fr1-0-zl-nofog.png`). Dosya: yalnız `src/art/arena-nt/hallfloor.ts`.
+Sissiz görüntüler: `--eval` ile `arena-nt:lights` atlasının `fog*` kareleri gizlenerek çekildi (yalnız inceleme için).
+0. Yarım kalmış önceki düzenleme `PIPES` dizisini bozmuştu (eski dizinin kuyruğu kalmıştı) → onarıldı, typecheck temiz.
+1. **#1 zeminde yoğun ekran-kapısı dither** — REDDEDİLDİ (bu maddenin dışı): zemin dokusunun kendisinde dither yok (`fr1-3-nofog.png`
+   temiz düz levhalar). Görülen yoğun dither, `view/board-nt/lights.ts`'teki sis atlasının (`fogFront`/`fogBack`/`fogWisp`) koyu
+   sıralı-dither bankaları; zeminin neredeyse tamamını (sol 0–240, sağ 400–640) örtüyor ve hedefin açık-gri yumuşak sisi gibi değil
+   koyu leke gibi okunuyor. Sis maddesine bildirildi; sise dokunmadım (sahibi başka, sahip sisi çok seviyor).
+2. **#2 levha/ızgara okunmuyor** (geçerli): levhalar ~1.5× (hw 24–32), üst yüz zeminden bir ton açık (night3), uzak kenarlar night4,
+   yakın kenar 1 px + 2 px ink yan; ızgara açık çerçeve içinde koyu yarıklar + aydınlık çubuk. Havuza düşen levha (106,262; ısınınca
+   "paspas" gibi okunuyordu) 72,236'ya, ızgarayı kesen sol boru yukarı (y 185) alındı (`fr1-7-zl.png`).
+3. **#3 borular ince** (geçerli): 8 px kesit (ink / night4 parlak bant / gövde / night1-night0 gölge bandı / ink), kızıl kelepçeler
+   büyüdü, HUD ve el altından çıkarıldı; iki dikey yükselen boru (sol hologram kaidesine, sağ duvara doğru) eklendi (`fr1-9-nofog.png`).
+4. **#4 sağ mangal** (geçerli): 540,260 → 522,248 (hedef 514,222'ye ~18 px yaklaştı; sahnenin sağ köşesine yaslanıyor, hedefteki gibi).
+   Daha yukarısı sahne duvarının içine giriyordu (`fr1-8-zr.png`).
+5. **#5 havuz** (geçerli): 3 temiz basamak (dış skin0 sıcak koyu / orta skin1 amber / kaide dibinde earth3 parlak halka), basamak
+   sınırı dither'ı 0.08 → 0.04 (dar), basamaklar 1 / 0.6 / 0.38 (`fr1-5-pool.png`). Sahne gölgesi (stone0) artık havuz içinde açık
+   zeminle aynı ısıtılıyor → havuzu kesen düz koyu kenar ("dikdörtgen yama") kalktı; sağ mangal gölgeye yakın olduğu için bu şart.
+6. **#6 alev küçük, hale yok** (geçerli): alev boyu 14–17, karın genişliği 9 px; alevin silüetini saran 2 kademeli palet halesi
+   (fire1 bitişik, fire0 bir dış halka; kâse ve taşın üstüne binmez), alev kareleriyle birlikte hareket ediyor — noktalı halka değil (`fr1-4-flame.png`).
+7. **#7 zemin tonu** — REDDEDİLDİ: hedef zemin örnekleri #1f2044 / #202347 (640×360'a ölçeklenmiş); bizim taban night2 #1b2352 en yakın
+   palet tonu, bir üst ton night3 #28356f belirgin daha açık-mavi. Derzler zaten 1 px (üst kenar night3 dudak, alt kenar night0).
+   "Daha mavi/koyu" algısı üstteki koyu sis dither'ından geliyor (bkz. 1).
+Son: `shots/arena/fr1-9.png`, `fr1-9-sbs.png`, sissiz `fr1-9-nofog.png`; yakınlar `fr1-5-pool.png`, `fr1-7-zl.png`, `fr1-8-zr.png`, film `fr1-4-flame.png`.
+typecheck temiz, palcheck PASS (`fr1-9.png`), vitest arena-nt/board-nt geçti (5 başarısız test canavar/kart dosyalarında, bu işle ilgisiz).
+v1: değişiklik yalnız `hallfloor.ts` (yalnız v3 zemin/mangal yolu).
+Kalan farklar: sis açıkken zemin detayı (levha, ızgara, boru) koyu sis dither'ı altında kayboluyor — sis maddesi; sahnenin L-çentiği
+ve geniş düşen gölgesi sol zemini boş gösteriyor — sahne/podyum maddesi; havuz hedefin yumuşak halesine göre hâlâ basamaklı.
+
+#### Zemin ve mangallar — eleştiri turu 2/3 düzeltmeleri (2026-11-06)
+Önce: `shots/arena/fr2-0.png` (+ `fr2-0-sbs.png`, sissiz `fr2-0-nofog.png`; hedef yakınları `fr2-tgt-l.png`, `fr2-tgt-r.png`). Dosya: yalnız `src/art/arena-nt/hallfloor.ts`.
+1. **#4 sağ mangal** (geçerli): kaide 3 px yukarı (522,248 → 522,245); sahne duvarına girmiyor (`fr2-1-zr.png`).
+2. **#3 havuz düz** (geçerli): havuz bir basamak genişledi — 1.36×rx'te soluk dış basamak (zemin night2 → stone1, gölge stone0 → stone1:
+   ışığın arduvaz üstünde sönen gri-sıcak ucu); dither sınırı yine dar (0.04). Havuz artık 4 basamaklı, hedefteki yumuşak geniş haleye
+   daha yakın (`fr2-2-zl.png`, `fr2-2-zr.png`).
+3. **#2 levha/ızgara az** (geçerli, kısmen): ipucu çubuğunun ve sahne gölgesinin altında hiç görünmeyen ızgara (446,272) kaldırıldı,
+   sol mangal ile HUD arasına yeni levha (40,282). Denenen iki ek parça (470,292 ızgara; 506,318 levha) sahne gölgesi / SAVAŞ düğmesi
+   altında kaldığı için geri alındı (`fr2-3-nofog.png`).
+4. **#2 parlak kenarlar** (geçerli): levha/ızgaraların ışığa bakan sol-üst kenarı night4 → steel, sağ-üst night4; perçin başları steel → mist.
+   Levhalar sissiz görüntüde açıkça okunuyor (`fr2-4-nofog.png`).
+5. **#1 koyu sis bankaları / siyah kamalar** — REDDEDİLDİ (bu maddenin dışı): sissiz görüntüde zemin temiz (`fr2-5-nofog.png`); kara leke
+   ve ekran-kapısı dither `view/board-nt/lights.ts` sis atlasından geliyor (sis maddesi). Derz kontrastını artırmak sis altında yine
+   görünmez, sissiz hedefe göre de fazla sert olurdu — derzler olduğu gibi kaldı.
+6. **#2 sahne tabanı ve arka duvar boyunca borular** — REDDEDİLDİ: sahne tabanı (sahne maddesi) ve arka duvar (duvar maddesi) bu maddenin
+   dosyaları değil; zemindeki dört boru (iki yükselen dahil) duruyor.
+7. **#7 L-çentik / geniş gölge / sis dither** — kapsam dışı (sahne ve sis maddeleri), bildirildi.
+Son: `shots/arena/fr2-5.png`, `fr2-5-sbs.png`, sissiz `fr2-5-nofog.png`. typecheck temiz, palcheck PASS (`fr2-5.png`).
+v1: board-nt/arena-nt yalnız v3 yolu; değişiklik yalnız `hallfloor.ts`.
+Kalan farklar: sis açıkken zeminin büyük kısmı koyu dither sisi altında (sis maddesi); hedef levhalar zeminden koyu + ince aydınlık kenarlı,
+bizimkiler bir ton açık; hedefte sahne tabanı/duvar boruları var.
+
+#### Zemin ve mangallar — eleştiri turu 3/3 düzeltmeleri (2026-11-06)
+Önce: `shots/arena/fr3-0.png` (+ `fr3-0-sbs.png`, sol zemin yakını `fr3-0-zl.png`). Dosya: yalnız `src/art/arena-nt/hallfloor.ts`.
+1. **#1 zemin tek düz lacivert** (geçerli): her üç döşemeden biri bir palet basamağı koyu (night1, düz, dither yok) → zemin orta-ton
+   çeşitlemesi kazandı (`fr3-1-sbs.png`).
+2. **#1 levhalar okunmuyor** (geçerli): levha üstü artık zeminden bir basamak KOYU (night1, hedefteki koyu çelik gibi), ışığa bakan
+   sol-üst kenar steel / sağ-üst night4 kaldı; levhayı iso eksende ikiye bölen 1 px derz (night0 + night3 alt dudak). Koyu levha +
+   aydınlık kenar sis altında da okunuyor (`fr3-2-zl.png`, `fr3-2-sbs.png`).
+3. **#4 havuzun dış basamağı gürültülü** (geçerli): en dış soluk basamağın dither sınırı kaldırıldı (tek palet tonu, temiz kenar);
+   iç basamaklarda dar dither kaldı (`fr3-3-pool.png`). Kalan noktalı doku sis atlasından (sis maddesi).
+4. **#1 yeni parçalar** — KISMEN REDDEDİLDİ: sol bant (x0–140, y190–280) zaten bir ızgara + üç levha taşıyor; sorun sayıları değil
+   okunurluklarıydı (2. adımla çözüldü). 58,198 ızgarası sahne gölgesi + koyu sis bankası altında (sis/sahne maddesi). Alt orta
+   (x230–330, y320–350) tamamen el kartlarının altında → oraya parça koymak görünmez.
+5. **#3 sol mangal konumu** — REDDEDİLDİ: hedefte alev ≈137,252, bizde ≈141,249 (640×360); fark ≤4 px, kural gereği taşınmadı.
+6. **#2 sahne tabanı / arka duvar boruları**, **#5 L-çentik ve geniş gölge** — kapsam dışı (sahne ve duvar maddeleri), tekrar bildirildi.
+Son: `shots/arena/fr3-3.png`, `fr3-3-sbs.png`, `fr3-3-pool.png`. typecheck temiz, palcheck PASS (`fr3-3.png`),
+vitest arena-nt + board-nt 34/34. v1: değişiklik yalnız v3 zemin dokusunda (`hallfloor.ts`).
+Kalan farklar: hedef zemin daha gri-mor ve sisle benekli; sol üst zeminin bir kısmı koyu sis dither'ı altında (sis maddesi);
+hedefteki sahne tabanı/duvar boruları yok (sahne/duvar maddeleri).

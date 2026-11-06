@@ -15,30 +15,35 @@ import { bayer4 } from './lights';
 /** Brazier bases: the bottom tip of the plinth (screen px). Flame centre = base + (0, BRAZIER.flameY - BRAZIER.h + 1). */
 export const BRAZIERS: readonly { x: number; y: number; period: number; phase: number }[] = [
   { x: 141, y: 284, period: 540, phase: 0 },
-  { x: 514, y: 256, period: 600, phase: 230 },
+  { x: 522, y: 245, period: 600, phase: 230 },
 ];
 
 type FeatureKind = 'plate' | 'grate';
 /** Raised riveted plates and grates (diamond centre, half width; half height = hw / 2). */
 const FEATURES: readonly { kind: FeatureKind; x: number; y: number; hw: number }[] = [
-  { kind: 'plate', x: 34, y: 244, hw: 22 },
-  { kind: 'grate', x: 96, y: 226, hw: 18 },
-  { kind: 'plate', x: 72, y: 276, hw: 20 },
-  { kind: 'plate', x: 566, y: 192, hw: 24 },
-  { kind: 'grate', x: 586, y: 238, hw: 18 },
-  { kind: 'grate', x: 452, y: 280, hw: 16 },
-  { kind: 'plate', x: 466, y: 330, hw: 22 },
-  { kind: 'grate', x: 182, y: 346, hw: 16 },
+  // critique 1/3 #2: ~1.5x larger, at the target's spots in floor that stays visible (not under the HUD / hand / stage shadow)
+  { kind: 'grate', x: 58, y: 198, hw: 26 },
+  { kind: 'plate', x: 34, y: 246, hw: 30 },
+  { kind: 'plate', x: 72, y: 236, hw: 24 }, // clear of the brazier pool (a warmed plate read as a floor mat)
+  { kind: 'plate', x: 562, y: 192, hw: 32 },
+  { kind: 'grate', x: 590, y: 232, hw: 26 },
+  { kind: 'plate', x: 584, y: 290, hw: 30 },
+  // critique 2/3 #2: the grate at 446,272 sat under the hint bar / stage shadow (never seen) — replaced by a plate in
+  // open floor between the left brazier and the HUD
+  { kind: 'plate', x: 40, y: 282, hw: 20 },
 ];
 
 /** Pipes lying on the floor: polylines of horizontal / iso (2:1) / vertical (riser) segments, `cap` = ends sink into the floor. */
 const PIPES: readonly { pts: readonly (readonly [number, number])[]; clamps: readonly number[] }[] = [
-  // left: from under the HUD panel up-right, a riser, then along the floor under the hand
-  { pts: [[118, 316], [166, 292], [166, 284], [216, 284]], clamps: [150, 196] },
-  // right: between the hand and the buttons
-  { pts: [[420, 296], [500, 296]], clamps: [462] },
-  // right edge: up-right toward the corner
-  { pts: [[580, 268], [580, 262], [640, 232]], clamps: [610] },
+  // critique 1/3 #3: routed through floor that stays visible (clear of the HUD panel and the hand)
+  // left low: rises out of the floor beside the HUD, an elbow, then runs right toward the hand (the target's L)
+  { pts: [[166, 314], [166, 298], [212, 298]], clamps: [186] },
+  // left high: from the left edge up-right, along the floor, then a riser climbing to the back wall
+  { pts: [[0, 202], [34, 185], [96, 185], [96, 150]], clamps: [16, 64] },
+  // right: from the right edge along the floor, an elbow, then down into the floor (the target's right L)
+  { pts: [[640, 262], [612, 262], [612, 278]], clamps: [626] },
+  // right high: a riser climbing from the floor beside the hologram plinth to the back wall
+  { pts: [[640, 206], [624, 206], [624, 150]], clamps: [630] },
 ];
 
 // ---------------------------------------------------------------------------------------------- floor base
@@ -55,9 +60,9 @@ function flagPixel(x: number, y: number): Color {
   const px = x + 0.5 - (NT_OX + (col - row) * 32);
   const py = y + 0.5 - (NT_OY + (col + row) * 16);
   const dv = 16 - (Math.abs(px) / 2 + Math.abs(py));
-  if (dv < 1) return SEAM;
-  // light from the top left: the flag's top-left edge catches it (a 1-px lip just inside the seam)
-  if (dv < 2 && px < 0 && py < 0) return LIP;
+  // critique 1/3 #7: visible thin seams like the target — a 1-px lit line on the flag's top edges (the gap's far lip),
+  // a 1-px dark line on its bottom edges (the gap's shadow); no thick dark grout
+  if (dv < 1) return py < 0 ? LIP : SEAM;
   // a sparse scuff here and there (deterministic), never a pattern
   const h = Math.imul((col * 73856093) ^ (row * 19349663), 0x27d4eb2d) >>> 0;
   if (h % 5 === 0) {
@@ -65,6 +70,9 @@ function flagPixel(x: number, y: number): Color {
     const sy = ((h >>> 16) % 16) - 8;
     if (Math.abs(px - sx) < 2 && Math.round(py) === sy && Math.abs(sx) / 2 + Math.abs(sy) < 11) return PAL.night1;
   }
+  // critique 3/3 #1: a mid-tone variation so the floor never reads as one flat field — about one flag in three is a
+  // darker worn flag (one palette step down, flat, no dither)
+  if ((h >>> 4) % 3 === 0) return PAL.night1;
   return BASE;
 }
 
@@ -76,46 +84,52 @@ function paintFeature(p: PixelCanvas, ox: number, oy: number, f: (typeof FEATURE
   const put = (x: number, y: number, c: Color): void => {
     if (x - ox >= 0 && y - oy >= 0 && x - ox < p.w && y - oy < p.h) p.set(x - ox, y - oy, c);
   };
-  for (let y = Math.floor(f.y - hh - 1); y <= Math.ceil(f.y + hh + 2); y++)
+  // critique 1/3 #2: a raised plate reads by VALUE — its top is one step lighter than the floor (night3 on night2), the
+  // two far edges catch the top-left light (night4), the two near edges a 1-px rim, then a 2-px ink side on the floor
+  for (let y = Math.floor(f.y - hh - 1); y <= Math.ceil(f.y + hh + 3); y++)
     for (let x = Math.floor(f.x - hw - 1); x <= Math.ceil(f.x + hw + 1); x++) {
       const dx = x + 0.5 - f.x;
       const dy = y + 0.5 - f.y;
       const d = Math.abs(dx) / hw + Math.abs(dy) / hh;
-      // the plate stands 1 px proud: a dark side under its two lower edges
-      const below = Math.abs(dx) / hw + Math.abs(dy - 1) / hh;
       if (d > 1) {
+        const below = Math.abs(dx) / hw + Math.abs(dy - 2) / hh;
         if (below <= 1 && dy > 0) put(x, y, PAL.ink);
         continue;
       }
-      const edge = d > 1 - 1.6 / hh;
-      if (edge) {
-        put(x, y, dy < 0 && dx < 0 ? PAL.night3 : dy < 0 ? PAL.night2 : PAL.ink);
+      if (d > 1 - 1.2 / hh) {
+        // critique 2/3 #2: brighter lit edges — the top-left edge faces the light (steel), the top-right night4
+        put(x, y, dy < 0 ? (dx < 0 ? PAL.steel : PAL.night4) : PAL.night1);
         continue;
       }
-      let c: Color = PAL.night2;
-      if (f.kind === 'grate') {
-        // the grille: a dark well crossed by iso bars (both axes), a 1-px frame of plate around it
+      let c: Color = PAL.night3;
+      if (f.kind === 'plate') {
+        // critique 3/3 #1: the plate top sits one step BELOW the floor (night1, like the target's dark steel) so the
+        // lit rim carries it; one seam splits it in two along an iso axis (dark line + lit lower lip)
+        c = PAL.night1;
+        const sv = Math.round(dx / 2 - dy);
+        if (sv === 0 && Math.abs(dx) < hw - 6) c = PAL.night0;
+        else if (sv === -1 && Math.abs(dx) < hw - 6) c = PAL.night3;
+      } else if (f.kind === 'grate') {
+        // the grille: a lighter frame around a well of dark slots running along one iso axis (lit bar between slots)
         const di = Math.abs(dx) / (hw - 5) + Math.abs(dy) / (hh - 2.5);
         if (di <= 1) {
-          const u = Math.floor((dx / 2 + dy) + 64);
-          const v = Math.floor((dx / 2 - dy) + 64);
-          c = u % 3 === 0 || v % 4 === 0 ? PAL.night2 : PAL.ink;
-          if (c === PAL.night2 && (u % 3 === 0) && dy < 0) c = PAL.night3;
-        } else if (di <= 1.18) c = PAL.night1;
+          const u = (((Math.floor(dx / 2 + dy) + 64) % 4) + 4) % 4;
+          c = u === 0 ? PAL.night4 : u === 3 ? PAL.night2 : PAL.ink;
+        } else if (di <= 1.16) c = PAL.night2;
       }
       put(x, y, c);
     }
   if (f.kind === 'plate') {
-    // four rivets near the tips (lit head + ink foot)
+    // four rivets near the tips (lit head + ink foot) and a faint diagonal seam across the plate
     const r = [
-      [f.x - hw + 6, f.y],
-      [f.x + hw - 6, f.y],
-      [f.x, f.y - hh + 3],
-      [f.x, f.y + hh - 3],
+      [f.x - hw + 7, f.y],
+      [f.x + hw - 7, f.y],
+      [f.x, f.y - hh + 4],
+      [f.x, f.y + hh - 4],
     ];
     for (const [rx, ry] of r) {
-      put(Math.round(rx), Math.round(ry) - 1, PAL.night4);
-      put(Math.round(rx), Math.round(ry), PAL.ink);
+      put(Math.round(rx), Math.round(ry) - 1, PAL.mist);
+      put(Math.round(rx), Math.round(ry), PAL.night1);
     }
   }
 }
@@ -123,9 +137,10 @@ function paintFeature(p: PixelCanvas, ox: number, oy: number, f: (typeof FEATURE
 // ---------------------------------------------------------------------------------------------- pipes
 
 /** Cross-section of a pipe lying on the floor, top to bottom (6 px): outline, highlight, body, shade, outline. */
-const PIPE_V: readonly Color[] = [PAL.ink, PAL.night3, PAL.night4, PAL.night3, PAL.night2, PAL.night2, PAL.night1, PAL.ink];
+// critique 1/3 #3: chunky and readable — a lit band (night4), body, a dark shadow band, 6 px between the outlines
+const PIPE_V: readonly Color[] = [PAL.ink, PAL.night4, PAL.night3, PAL.night3, PAL.night2, PAL.night1, PAL.night0, PAL.ink];
 /** Cross-section of a riser, left to right (lit from the left). */
-const PIPE_H: readonly Color[] = [PAL.ink, PAL.night3, PAL.night4, PAL.night3, PAL.night2, PAL.night2, PAL.night1, PAL.ink];
+const PIPE_H: readonly Color[] = [PAL.ink, PAL.night4, PAL.night3, PAL.night3, PAL.night2, PAL.night1, PAL.night0, PAL.ink];
 const CLAMP_V: readonly Color[] = [PAL.ink, PAL.crim2, PAL.crim3, PAL.crim2, PAL.crim1, PAL.crim1, PAL.crim0, PAL.ink];
 const PN = PIPE_V.length;
 const PR = PN >> 1;
@@ -149,7 +164,11 @@ function paintPipe(p: PixelCanvas, ox: number, oy: number, pipe: (typeof PIPES)[
     const [x1, y1] = pts[i + 1];
     if (x0 === x1) {
       // riser: horizontal cross-section, from the lower end up to the upper one
-      for (let y = Math.min(y0, y1) - 2; y <= Math.max(y0, y1) + 2; y++) for (let k = 0; k < PN; k++) put(x0 - PR + k, y, PIPE_H[k]);
+      const ym = Math.round((y0 + y1) / 2);
+      for (let y = Math.min(y0, y1) - 2; y <= Math.max(y0, y1) + 2; y++) {
+        const cl = Math.abs(y - ym) <= 1 && Math.abs(y1 - y0) > 20;
+        for (let k = cl ? -1 : 0; k < PN + (cl ? 1 : 0); k++) put(x0 - PR + k, y, (cl ? CLAMP_V : PIPE_H)[Math.max(0, Math.min(PN - 1, k))]);
+      }
       continue;
     }
     const s = (y1 - y0) / (x1 - x0);
@@ -167,17 +186,22 @@ function paintPipe(p: PixelCanvas, ox: number, oy: number, pipe: (typeof PIPES)[
       for (let dx = -5; dx <= 5; dx++) {
         const d = Math.hypot(dx, dy * 1.1);
         if (d > 4.4) continue;
-        put(x + dx, y + dy, d > 3.6 ? PAL.ink : dx + dy < -1 ? PAL.night4 : dx + dy < 2 ? PAL.night3 : PAL.night2);
+        put(x + dx, y + dy, d > 3.6 ? PAL.ink : dx + dy < -2 ? PAL.night4 : dx + dy < 2 ? PAL.night3 : PAL.night2);
       }
   }
   // the free ends: a flange ring sinking into the floor (ends at the canvas border just run off)
   for (const i of [0, pts.length - 1]) {
     const [x, y] = pts[i];
-    if (x <= 0 || x >= 639) continue;
-    for (let dy = -5; dy <= 5; dy++)
-      for (let dx = -2; dx <= 2; dx++) {
-        if (Math.abs(dy) === 5 && Math.abs(dx) === 2) continue;
-        put(x + dx, y + dy, Math.abs(dx) === 2 || Math.abs(dy) === 5 ? PAL.ink : dx < 0 ? PAL.night4 : PAL.night2);
+    if (x <= 0 || x >= 639 || y <= oy) continue;
+    const nb = pts[i === 0 ? 1 : i - 1];
+    // a lying pipe ends in an upright ring; a riser's foot in a flat collar on the floor
+    const riser = nb[0] === x;
+    const [rw, rh] = riser ? [5, 2] : [2, 5];
+    for (let dy = -rh; dy <= rh; dy++)
+      for (let dx = -rw; dx <= rw; dx++) {
+        if (Math.abs(dy) === rh && Math.abs(dx) === rw) continue;
+        const rim = Math.abs(dx) === rw || Math.abs(dy) === rh;
+        put(x + dx, y + dy, rim ? PAL.ink : (riser ? dy < 0 : dx < 0) ? PAL.night4 : PAL.night2);
       }
   }
 }
@@ -185,17 +209,26 @@ function paintPipe(p: PixelCanvas, ox: number, oy: number, pipe: (typeof PIPES)[
 // ---------------------------------------------------------------------------------------------- brazier pools
 
 /** Pool radii (x; y = x / 2.2) and its centre below the post's base. */
-const POOL_RX = 40;
-const POOL_DY = -5;
-/** Warm remaps by pool level 1 (rim) .. 3 (at the post); stone0 = the stage's cast shadow, which the fire lights too. */
+const POOL_RX = 42;
+const POOL_DY = -2;
+/** Warm remaps by pool level 1 (rim) .. 3 (at the post); stone0 = the stage's cast shadow, which the fire lights exactly
+ * like open floor (a darker warm shadow left a hard straight edge across the pool). */
 const WARM: readonly ReadonlyMap<Color, Color>[] = [
+  // critique 2/3 #3: a faint outer step (the fire's light dying out on the slate: desaturated warm grey, one step)
+  new Map<Color, Color>([
+    [PAL.night1, PAL.stone0],
+    [PAL.night2, PAL.stone1],
+    [PAL.night3, PAL.stone1],
+    [PAL.night4, PAL.stone2],
+    [PAL.stone0, PAL.stone1],
+  ]),
   new Map<Color, Color>([
     [PAL.night0, PAL.earth0],
     [PAL.night1, PAL.skin0],
     [PAL.night2, PAL.skin0],
     [PAL.night3, PAL.skin1],
     [PAL.night4, PAL.skin1],
-    [PAL.stone0, PAL.earth0],
+    [PAL.stone0, PAL.skin0],
   ]),
   new Map<Color, Color>([
     [PAL.ink, PAL.earth0],
@@ -204,19 +237,21 @@ const WARM: readonly ReadonlyMap<Color, Color>[] = [
     [PAL.night2, PAL.skin1],
     [PAL.night3, PAL.skin2],
     [PAL.night4, PAL.skin2],
-    [PAL.stone0, PAL.skin0],
-  ]),
-  new Map<Color, Color>([
-    [PAL.ink, PAL.skin0],
-    [PAL.night0, PAL.skin1],
-    [PAL.night1, PAL.earth2],
-    [PAL.night2, PAL.earth2],
-    [PAL.night3, PAL.earth3],
-    [PAL.night4, PAL.earth3],
     [PAL.stone0, PAL.skin1],
   ]),
+  new Map<Color, Color>([
+    [PAL.ink, PAL.skin1],
+    [PAL.night0, PAL.earth2],
+    [PAL.night1, PAL.earth3],
+    [PAL.night2, PAL.earth3],
+    [PAL.night3, PAL.earth4],
+    [PAL.night4, PAL.earth4],
+    [PAL.stone0, PAL.earth3],
+  ]),
 ];
-const POOL_STEPS = [1, 0.66, 0.36] as const;
+// critique 1/3 #5: three clean steps — warm dark rim, amber body, a small bright ring right at the base — and a
+// narrow dither seam between them (the wide seam read as a dithered brown disc)
+const POOL_STEPS = [1.36, 1, 0.6, 0.38] as const;
 
 /** Pool level of a pixel (0 = unlit). Band edges are crossed by a 4×4 ordered dither (off the board only). */
 export function poolLevel(x: number, y: number, rx = POOL_RX): number {
@@ -226,7 +261,8 @@ export function poolLevel(x: number, y: number, rx = POOL_RX): number {
     let l = 0;
     for (let k = 0; k < POOL_STEPS.length; k++) {
       const edge = POOL_STEPS[k];
-      const w = 0.08;
+      // critique 3/3 #4: the faint outer step is one clean palette tone (its dithered seam read as a noisy halo)
+      const w = k === 0 ? 0 : 0.04;
       if (d < edge - w) l = k + 1;
       else if (d < edge + w && (edge + w - d) / (2 * w) > bayer4(x, y)) l = k + 1;
     }
@@ -260,8 +296,9 @@ export function hallFloor(x0 = 0, y0 = 150, w = 640, h = 210): HallFloor {
   const p = new PixelCanvas(w, h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) p.set(x, y, flagPixel(x0 + x, y0 + y));
   for (const f of FEATURES) paintFeature(p, x0, y0, f);
-  for (const pipe of PIPES) paintPipe(p, x0, y0, pipe);
   p.map((c, x, y) => warm(c, poolLevel(x0 + x, y0 + y)));
+  // pipes after the pools: their dark steel stays steel inside a pool (warmed it read as wood)
+  for (const pipe of PIPES) paintPipe(p, x0, y0, pipe);
   cache = { x: x0, y: y0, canvas: p };
   return cache;
 }
@@ -308,28 +345,44 @@ function isoBox(p: PixelCanvas, cx: number, cy0: number, hw: number, hh: number,
 const GLYPH: readonly string[] = ['o...o', 'oo.oo', '.o.o.', '.ooo.', '..o..'];
 
 function paintFlame(p: PixelCanvas, cx: number, base: number, frame: number): void {
-  // six frames: height breathes 10..13, the tip sways -1..+1, a spark leaves every other frame
-  const H = [13, 14, 15, 14, 12, 13][frame];
+  // six frames: height breathes 14..17, the tip sways -1..+1, a spark leaves every other frame
+  // critique 1/3 #6: a bigger flame (≈9 px wide at the belly) wrapped in a 2-step palette halo that moves with it, so the
+  // fire reads as the light source (solid rings hugging the silhouette, never a dotted ring)
+  const H = [15, 16, 17, 16, 14, 15][frame];
   const sway = [0, -1, -1, 0, 1, 1][frame];
   const top = base - H;
+  const fl = new PixelCanvas(p.w, p.h);
   for (let y = top; y <= base; y++) {
     const t = (y - top) / H; // 0 tip .. 1 base
-    const half = t < 0.15 ? 0 : t < 0.35 ? 1 : t < 0.6 ? 2 : t < 0.88 ? 3 : 2;
-    const off = Math.round(sway * (1 - t) * 1.6);
+    const half = t < 0.12 ? 0 : t < 0.3 ? 1 : t < 0.5 ? 2 : t < 0.7 ? 3 : t < 0.9 ? 4 : 3;
+    const off = Math.round(sway * (1 - t) * 1.8);
     for (let dx = -half; dx <= half; dx++) {
       const x = cx + dx + off;
       const edge = Math.abs(dx) === half;
       let c: Color;
-      if (t < 0.2) c = PAL.fire2;
-      else if (edge) c = t < 0.5 ? PAL.fire2 : PAL.fire3;
-      else if (Math.abs(dx) <= half - 2 && t > 0.55) c = t > 0.75 && dx === 0 ? PAL.white : PAL.gold4;
-      else c = t < 0.45 ? PAL.fire3 : PAL.gold3;
-      p.set(x, y, c);
+      if (t < 0.18) c = PAL.fire2;
+      else if (edge) c = t < 0.45 ? PAL.fire2 : PAL.fire3;
+      else if (Math.abs(dx) <= half - 2 && t > 0.5) c = t > 0.72 && Math.abs(dx) <= 1 ? PAL.white : PAL.gold4;
+      else c = t < 0.4 ? PAL.fire3 : PAL.gold3;
+      fl.set(x, y, c);
     }
   }
-  p.set(cx + sway * 2, top - 1, PAL.fire1);
+  fl.set(cx + sway * 2, top - 1, PAL.fire1);
+  // halo: ring 1 (fire1) touching the flame, ring 2 (fire0) outside it; only above the bowl rim (the bowl keeps its gold)
+  const isF = (x: number, y: number): boolean => fl.get(x, y) !== null && fl.get(x, y) !== undefined;
+  const ring = (x: number, y: number, r: number): boolean => {
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (Math.abs(dx) + Math.abs(dy) <= r && isF(x + dx, y + dy)) return true;
+    return false;
+  };
+  for (let y = Math.max(0, top - 3); y <= base; y++)
+    for (let x = 0; x < p.w; x++) {
+      if (isF(x, y) || p.get(x, y) !== null) continue;
+      if (ring(x, y, 1)) p.set(x, y, PAL.fire1);
+      else if (ring(x, y, 2) && y < base - 3) p.set(x, y, PAL.fire0);
+    }
+  for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) if (isF(x, y)) p.set(x, y, fl.get(x, y) as Color);
   // a spark drifting up (frames 1, 3, 5 at different heights)
-  if (frame % 2 === 1) p.set(cx - sway * 2 + (frame === 3 ? 2 : -2), top - 3 - frame, PAL.fire3);
+  if (frame % 2 === 1) p.set(cx - sway * 2 + (frame === 3 ? 3 : -3), Math.max(0, top - 2 - frame), PAL.fire3);
 }
 
 export function paintBrazier(frame: number): PixelCanvas {
@@ -347,6 +400,13 @@ export function paintBrazier(frame: number): PixelCanvas {
     const gx = left ? x - (cx - 7) : x - (cx + 2);
     const row = GLYPH[gy];
     if (row && gx >= 0 && gx < 5 && row[gx] === 'o') return left ? PAL.stone1 : PAL.stone0;
+    // a recessed panel around the glyph: groove on the top / outer side, a lit lip on the bottom / inner side
+    const u = left ? x - (cx - 9) : cx + 8 - x;
+    const v = Math.floor(y + 0.5 - yTop);
+    const inU = u >= 1 && u <= 7;
+    const inV = v >= 3 && v <= 12;
+    if ((inV && u === 1) || (inU && v === 3)) return left ? PAL.stone1 : PAL.stone0;
+    if ((inV && u === 7) || (inU && v === 12)) return left ? PAL.stone3 : PAL.stone2;
     return null;
   });
   // 3. capital (a wider slab on the shaft) — its underside edge catches the fire: a gold band on both faces
