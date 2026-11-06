@@ -744,4 +744,4 @@ and the two geometry tests are back to the pixel/polish round-3 state (`40c2458`
 on), while the final fixer's other improvements (darker empty tile floors, narrower top light band, brighter sconce pools,
 darker pillar shade) are kept. Result: one compact chamfered octagon with the P1 dais standing on the stage
 (`shots/arena/fix-orch.png` = `docs/v3/ref/arena-sonrasi.png`). Re-checked: typecheck clean, arena tests 34/34, palcheck PASS
-(off 0.11 %, white 0.88 %), filmdiff v1 / a6v1 re-run (see below).
+(off 0.11 %, white 0.88 %), filmdiff v1 17/17 + a6v1 26/26 IDENTICAL (re-run after the correction).
