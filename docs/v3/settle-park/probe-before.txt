@@ -1,0 +1,83 @@
+contact-probe (tools/contact-probe.mjs) — look v3, 2026-11-06T09:57:35.820Z
+screen = prev → contact as drawn (frame + position); frames = the same two frames in place; page = HA-21 (contact vs idle f0); phase = frames − page; % of idle f0 opaque
+bob = dy:frames % with the previous frame dy px lower (the best whole-pixel line-up); 1st = first frame change after contact; knock onset: =1st on that frame, chg another change, held no change
+
+scenario              unit                    how        t  prev → contact                rest  screen frames   page  phase  bob      @contact 1st change            knock onset         max    verdict
+pnKill                polar_needle P2 z2      pose     933  idle:7 → death:0              yes     43.4   43.4     34    9.4  -        0,0      +150ms death:1        +150ms =1st 1,0     2,0    FAIL (screen > page + 5) — idle phase +9.4
+pnKillP2              polar_needle P1 z2      pose     917  idle:9 → death:0              yes     46.3   46.3   34.3     12  -        0,0      +150ms death:1        +150ms =1st -1,0    -2,0   FAIL (screen > page + 5) — idle phase +12
+pcKill                polar_coil P2 z2        pose     917  idle:8 → death:0              yes     29.7   29.7   13.7     16  -        0,0      +133ms death:1        +133ms =1st 1,0     2,0    FAIL (screen > page + 5) — idle phase +16
+pcKillP2              polar_coil P1 z2        pose     933  idle:10 → death:0             yes     37.8   37.8   13.8     24  -        0,0      +133ms death:1        +133ms =1st -1,0    -2,0   FAIL (screen > page + 5) — idle phase +24
+psKill                polar_sovereign P2 z2   pose     767  idle:10 → death:0             yes       38     38   27.8   10.2  -        0,0      +200ms death:1        +200ms =1st 0,1     0,1    FAIL (screen > page + 5) — idle phase +10.2
+djKill                dial_jester P2 z2       pose    1350  idle:11 → death:0             yes     21.2   21.2    4.3   16.9  -        0,0      +133ms death:1        +133ms =1st 1,0     3,-1   FAIL (screen > page + 5) — idle phase +16.9
+djKillP2              dial_jester P1 z2       pose    1350  idle:13 → death:0             yes     27.9   27.9    4.3   23.7  -        0,0      +133ms death:1        +133ms =1st -1,0    -3,1   FAIL (screen > page + 5) — idle phase +23.7
+raKill                reflection_archer P2 z2 pose    1200  idle:11 → death:0             yes     24.9   24.9    0.2   24.8  -        0,0      +250ms death:1        +250ms =1st 1,0     2,0    FAIL (screen > page + 5) — idle phase +24.8
+raKillP2              reflection_archer P1 z2 pose    1200  idle:13 → death:0             yes       22     22    0.1   21.8  -        0,0      +250ms death:1        +250ms =1st -1,0    -2,0   FAIL (screen > page + 5) — idle phase +21.8
+srKill                scrap_raiders P2 z2     pose    1200  idle:9 → death:0              yes     31.1   31.1    2.4   28.7  -        0,0      +250ms death:1        +250ms =1st 1,0     2,-1   FAIL (screen > page + 5) — idle phase +28.7
+srKillP2              scrap_raiders P1 z2     pose    1217  idle:11 → death:0             yes     24.7   24.7    2.3   22.4  -        0,0      +250ms death:1        +250ms =1st -1,0    -2,-1  FAIL (screen > page + 5) — idle phase +22.4
+caxKill               crag_axeman P2 z2       pose     933  idle:7 → death:0              yes     34.9   34.9   12.9     22  -        0,0      +217ms death:1        +217ms =1st 1,0     1,0    FAIL (screen > page + 5) — idle phase +22
+kfnKill               kite_fencer P1 z2       pose     933  idle:11 → death:0             yes     39.2   39.2   21.9   17.3  -        0,0      +383ms death:1        +167ms held -1,0    -4,0   FAIL (screen > page + 5) — idle phase +17.3
+adKill                windmane_knight P1 z2   pose     750  attack:3 → hit:0              no     109.5  114.8  107.7    7.1  -        2,-1     +350ms hit:1          +583ms held -19,5   -52,25 excluded
+adKill                ashen_drake P2 z2       pose     750  idle:8 → hit:0                yes     40.3   40.3   18.6   21.8  -        0,0      +250ms hit:1          -                   0,0    FAIL (screen > page + 5) — idle phase +21.8
+saWyrmAtk             abyss_magus P2 z2       pose     933  idle:7 → death:0              yes       68     68   42.6   25.4  -        0,0      +217ms death:1        +217ms =1st 1,0     3,-1   FAIL (screen ≥ 50, screen > page + 5) — idle phase +25.4
+sbSentinelAtk         lumen_sprite P2 z2      pose    1633  idle:5 → hit:0                yes    140.2  140.2  128.1     12  -        0,0      +333ms hit:1          +333ms =1st 1,0     4,-1   FAIL (screen ≥ 50, screen > page + 5) — idle phase +12
+kaVenomAtk            ember_wolf P2 z1        pose    1100  idle:7 → hit:0                yes     90.8   90.8   90.6    0.2  -        0,0      +250ms hit:1          +250ms =1st 1,0     4,0    FAIL (screen ≥ 50) — idle phase +0.2
+
+rest loop before each resting contact (Y1b): frames shown since the settle started (else the last --hist ms) as frame:ms/nominal; ratio = time on screen ÷ nominal hold
+(each frame bounded on both sides except the last, cut by the contact, and a first one already on at the scenario's first render: ≤ only; a frame may differ by one rendered frame, 16.7 ms, from its scaled hold);
+settle = the plans of the blow (ms before contact, the loop frame aimed at, * = a target, the hold multiplier); "|" marks the first frame on screen in the settle window (ratios / skips are checked from there);
+reach = the even loop speed that would put a frame within KK-4 of THIS contact frame on screen before contact, from the first event of the chain
+skip = frames the loop stepped over: the merged step and each skipped frame's own change ÷ idleΔ (a skip is allowed only when both are ≤ 1)
+pnKill                polar_needle P2 z2      no settle  ratio 1.28…1.39
+                        reach: from attackDeclare −917 ms at idle:2+0 ms; frames within KK-4 of death:0: [0,1,11,12,13,14]; best even speed f11 ×1.23 (holds ×0.81) → within ±35 %
+                        2:117/110 3:167/120 4:167/130 5:167/120 6:150/110 7:150/120   events attackDeclare −917, battle −600, damage −0
+pnKillP2              polar_needle P1 z2      no settle  ratio 1.25…1.41
+                        reach: from attackDeclare −900 ms at idle:4+0 ms; frames within KK-4 of death:0: [0,1,11,12,13,14]; best even speed f11 ×1 (holds ×1) → within ±35 %
+                        4:150/130 5:150/120 6:150/110 7:167/120 8:183/130 9:100/110   events attackDeclare −900, battle −583, damage −0
+pcKill                polar_coil P2 z2        no settle  ratio 1.36…1.36
+                        reach: from attackDeclare −900 ms at idle:2+0 ms; frames within KK-4 of death:0: [0]; best even speed f0 ×1.76 (holds ×0.57) → OUT of ±35 %
+                        2:117/110 3:150/110 4:150/110 5:150/110 6:150/110 7:150/110 8:33/110   events attackDeclare −900, battle −583, damage −0
+pcKillP2              polar_coil P1 z2        no settle  ratio 1.36…1.36
+                        reach: from attackDeclare −917 ms at idle:4+0 ms; frames within KK-4 of death:0: [0]; best even speed f0 ×1.48 (holds ×0.68) → within ±35 %
+                        4:117/110 5:150/110 6:150/110 7:150/110 8:150/110 9:150/110 10:50/110   events attackDeclare −917, battle −600, damage −0
+psKill                polar_sovereign P2 z2   settle −467 f10 hold×1  ratio 1.33…1.36
+                        reach: from activate −750 ms at idle:5+0 ms; frames within KK-4 of death:0: [0,17,19]; best even speed f17 ×1.77 (holds ×0.56) → OUT of ±35 %
+                        5:117/110 6:133/100 | 7:133/100 8:133/100 9:150/110 10:83/110   events activate −750
+djKill                dial_jester P2 z2       no settle  ratio 1.28…1.48
+                        reach: from attackDeclare −1333 ms at idle:2+0 ms; frames within KK-4 of death:0: [0,8]; best even speed f0 ×1.21 (holds ×0.83) → within ±35 %
+                        2:117/110 3:167/120 4:167/130 5:133/100 6:133/90 7:133/100 8:167/130 9:150/110 10:150/110 11:17/120   events attackDeclare −1333, battle −1017, damage −0
+djKillP2              dial_jester P1 z2       no settle  ratio 1.25…1.41
+                        reach: from attackDeclare −1333 ms at idle:4+0 ms; frames within KK-4 of death:0: [0,8]; best even speed f0 ×1.04 (holds ×0.96) → within ±35 %
+                        4:150/130 5:133/100 6:117/90 7:133/100 8:183/130 9:150/110 10:150/110 11:150/120 12:133/100 13:33/90   events attackDeclare −1333, battle −1017, damage −0
+raKill                reflection_archer P2 z2 no settle  ratio 1.21…1.5
+                        reach: from attackDeclare −1183 ms at idle:3+0 ms; frames within KK-4 of death:0: [0]; best even speed f0 ×1.52 (holds ×0.66) → within ±35 %
+                        3:83/90 4:150/100 5:133/110 6:167/120 7:150/110 8:133/100 9:117/90 10:150/100 11:100/110   events attackDeclare −1183, battle −867, damage −0
+raKillP2              reflection_archer P1 z2 no settle  ratio 1.3…1.39
+                        reach: from attackDeclare −1183 ms at idle:5+0 ms; frames within KK-4 of death:0: [0]; best even speed f0 ×1.36 (holds ×0.74) → within ±35 %
+                        5:117/110 6:167/120 7:150/110 8:133/100 9:117/90 10:133/100 11:150/110 12:117/90 13:100/100   events attackDeclare −1183, battle −867, damage −0
+srKill                scrap_raiders P2 z2     no settle  ratio 1.21…1.41
+                        reach: from attackDeclare −1183 ms at idle:2+0 ms; frames within KK-4 of death:0: [0,8]; best even speed f0 ×1.44 (holds ×0.69) → within ±35 %
+                        2:133/120 3:150/110 4:167/120 5:133/110 6:183/130 7:150/110 8:167/120 9:100/110   events attackDeclare −1183, battle −867, damage −0
+srKillP2              scrap_raiders P1 z2     no settle  ratio 1.28…1.39
+                        reach: from attackDeclare −1200 ms at idle:4+0 ms; frames within KK-4 of death:0: [0,8,12]; best even speed f12 ×0.83 (holds ×1.2) → within ±35 %
+                        4:133/120 5:150/110 6:167/130 7:150/110 8:167/120 9:150/110 10:167/120 11:117/110   events attackDeclare −1200, battle −883, damage −0
+caxKill               crag_axeman P2 z2       settle −917 f7 hold×1, −600 f7 hold×1  ratio 1.25…1.43
+                        reach: from attackDeclare −917 ms at idle:2+0 ms; frames within KK-4 of death:0: [0]; best even speed f0 ×1.89 (holds ×0.53) → OUT of ±35 %
+                        | 2:133/120 3:167/130 4:200/140 5:150/120 6:167/120 7:100/120   events attackDeclare −917, battle −600, damage −0
+kfnKill               kite_fencer P1 z2       no settle  ratio 1.25…1.48
+                        reach: from attackDeclare −917 ms at idle:4+0 ms; frames within KK-4 of death:0: [0,15]; best even speed f15 ×1.2 (holds ×0.83) → within ±35 %
+                        4:100/100 5:133/90 6:100/80 7:117/90 8:150/110 9:133/100 10:133/90 11:50/100   events attackDeclare −917, battle −600, damage −0
+adKill                ashen_drake P2 z2       no settle  ratio 1.33…1.36
+                        reach: from attackDeclare −733 ms at idle:3+0 ms; frames within KK-4 of hit:0: [0]; best even speed f0 ×2.37 (holds ×0.42) → OUT of ±35 %
+                        3:117/110 4:133/100 5:133/100 6:150/110 7:150/110 8:50/100   events attackDeclare −733, battle −417, damage −0
+saWyrmAtk             abyss_magus P2 z2       settle −917 f7 hold×1, −600 f7 hold×1  ratio 1.28…1.41
+                        reach: from attackDeclare −917 ms at idle:2+0 ms; frames within KK-4 of death:0: [0]; best even speed f0 ×1.95 (holds ×0.51) → OUT of ±35 %
+                        | 2:117/110 3:183/130 4:200/150 5:167/130 6:150/110 7:100/110   events attackDeclare −917, battle −600, damage −0
+sbSentinelAtk         lumen_sprite P2 z2      no settle  ratio 1.33…1.5
+                        reach: from battle −1300 ms at idle:3+83 ms; frames within KK-4 of hit:0: []; best even speed - → OUT of ±35 %
+                        2:133/100 3:133/100 4:150/100 5:133/100 6:133/100 7:133/100 0:133/100 1:133/100 2:133/100 3:133/100 4:133/100 5:33/100   events battle −1300, damage −0
+kaVenomAtk            ember_wolf P2 z1        no settle  ratio 1.34…1.46
+                        reach: from attackDeclare −1083 ms at idle:1+0 ms; frames within KK-4 of hit:0: []; best even speed - → OUT of ±35 %
+                        1:133/125 2:167/125 3:183/125 4:167/125 5:167/125 6:167/125 7:100/125   events attackDeclare −1083, battle −767, damage −0
+settled contacts: worst hold ratio 1.25…1.43 (max at caxKill crag_axeman P2); holds outside ±35 %: 0; skips over a change > idleΔ: 0
+
+resting contacts failing: 17
