@@ -7,11 +7,12 @@
 //             portal: the eye's own light stands in for it (shape: false) — the rift glowing in the sky behind
 //             the lids, a stepped vertical almond in void1 / void2 bands, exactly like the in-game rift.
 //   subject   matter, ink outlined, ONE key light from the top left: two banks of night cloud that frame the eye
-//             from both sides (night3 lit tops, night2 bodies, night1 shade bands), the lids (mist lip | night4
-//             on the lit left, night2 on the right), the sclera (void0) and the iris rings (void1 limbal ring,
-//             void2 / void3 fibres) turned DOWN, three monster silhouettes on a diagonal path rising out of the
-//             left cloud bank toward the pupil — each smaller and more violet than the last (void0 → void1 →
-//             void2), each with its own ink outline with a void3 rim on their shadow side.
+//             from both sides (night4 lit tops, night3 bodies, night2 shade bands — one tone up so the lids part
+//             from them), the lids with volume (a mist lit lip | night4 on the lit left, a shaded crease, an ink
+//             rim), the sclera (void0) and the iris rings (void1 limbal ring, void2 / void3 fibres) turned DOWN,
+//             three monster silhouettes in 2 tones (void4 lit top edge, void3 body, void2 belly): a wolf (ear,
+//             tail, snout, legs) low on the left bank, a winged drake on the right bank, and a horned imp at the
+//             left lid that is being SWALLOWED — its body stretches in a tapering smear over the lids into the pupil.
 //   light     the pupil's starry black with its stars, the bright pupil ring (void4), the white catch-light (the
 //             single brightest point = the focus), the rift's white crack above and below the lids, the motes.
 // The small picture (44×34) is the same composition painted again at 1× density by the same code (eye 13×21,
@@ -22,7 +23,7 @@
 
 import { PAL } from '../palette';
 import type { PixelCanvas } from '../pixel';
-import { ink, paintBackdrop, patch, rim } from './_kit';
+import { ink, paintBackdrop, patch } from './_kit';
 import type { ArtLayers, CardArtV3 } from './_types';
 
 type XY = readonly [number, number];
@@ -47,6 +48,8 @@ interface Geo {
   front: readonly (readonly [number, number, number])[];
   /** silhouettes: stamp index, top-left, fill, mirrored (they face the pupil); the far / big ones first */
   sil: readonly (readonly [number, number, number, number, boolean])[];
+  /** the one being swallowed: its index in `sil`, stretched into a tapering void3 / void4 smear to the pupil */
+  stretch: number;
 }
 
 const BIG: Geo = {
@@ -57,7 +60,7 @@ const BIG: Geo = {
   iris: 9,
   pupil: 4,
   look: 8,
-  lid: 3,
+  lid: 4,
   split: 54,
   clouds: [
     [3, 40, 7],
@@ -77,12 +80,11 @@ const BIG: Geo = {
     [60, 26, 4],
   ],
   sil: [
-    [0, 2, 46, PAL.void2, false],
-    [5, 73, 44, PAL.void2, true],
-    [1, 12, 31, PAL.void2, false],
-    [4, 64, 31, PAL.void3, true],
-    [4, 25, 37, PAL.void3, false],
+    [0, 3, 43, PAL.void3, false],
+    [1, 70, 38, PAL.void3, true],
+    [5, 22, 25, PAL.void3, false],
   ],
+  stretch: 2,
 };
 
 const SMALL: Geo = {
@@ -111,25 +113,27 @@ const SMALL: Geo = {
     [30, 14, 2],
   ],
   sil: [
-    [3, 1, 21, PAL.void2, false],
-    [6, 38, 20, PAL.void2, true],
-    [7, 7, 14, PAL.void3, false],
-    [7, 32, 14, PAL.void3, true],
+    [3, 1, 21, PAL.void3, false],
+    [6, 37, 19, PAL.void3, true],
+    [7, 13, 13, PAL.void3, false],
   ],
+  stretch: 2,
 };
 
-// silhouettes ('#' body), drawn facing RIGHT (mirrored on the right side). big: a wolf (pointed ears, raised tail),
-// a bat-winged drake, (2 unused), a bird; a horned demon head; small: a 4-px beast, a horned head, a bird
+// silhouettes ('#' body), drawn facing RIGHT (mirrored on the right side), painted in 2 tones (a void4 lit top
+// edge, a void3 body, a void2 belly row) inside an ink outline. big: a wolf (pointed ear, raised tail, snout, four
+// legs), a winged drake (raised bat wing, long neck, tail), (2 unused), a horned imp (horns, wide shoulders, the one
+// being swallowed); small: a 5-px wolf, a horned head, a 3-px imp
 // prettier-ignore
 const SILS: readonly (readonly string[])[] = [
-  ['#.........#..', '##.......###.', '.#########.##', '.#########...', '..##...##....', '..#.....#....'],
-  ['#...........#', '##...#.#...##', '###..###..###', '.###########.', '..#########..', '....#...#....'],
+  ['...........#.', '#.........###', '.#........####', '..##########..', '..#########...', '..#.#...#.#...', '..#.#...#.#...'],
+  ['....##.......', '...####......', '..######..##.', '....####.####', '#....########', '.#.#######...', '..######.....', '....#...#....', '....#...#....'],
   ['.###.', '.###.', '..#..', '#####', '.###.', '.###.', '.#.#.'],
-  ['...#', '####', '####', '#..#'],
+  ['....#', '#..##', '.####', '.#..#'],
   ['#.....#', '.##.##.', '..###..', '...#...'],
-  ['#.......#', '##.....##', '.#.###.#.', '..#####..', '..##.##..', '..#####..', '...###...', '..#####..'],
+  ['#.....#', '##...##', '.#####.', '#######', '.#####.', '..###..', '.##.##.'],
   ['#.#', '###', '.#.'],
-  ['##.##', '.###.'],
+  ['#.#', '###', '#.#'],
 ];
 
 function paintClouds(p: PixelCanvas, g: Geo, list: Geo['clouds'] = g.clouds): void {
@@ -137,12 +141,13 @@ function paintClouds(p: PixelCanvas, g: Geo, list: Geo['clouds'] = g.clouds): vo
   for (let y = 0; y < p.h; y++)
     for (let x = 0; x < p.w; x++) {
       if (!inside(x, y)) continue;
-      // lit top band (k px), a lit left lip on each puff, the body, a shade band low on the puff
-      let c: number = PAL.night2;
-      if (!inside(x, y - g.k)) c = PAL.night3;
-      else if (!inside(x - g.k, y - g.k) && !inside(x, y - 2 * g.k)) c = PAL.night3;
+      // lit top band (k px), a lit left lip on each puff, the body, a shade band low on the puff — one tone up from
+      // the first take (night4 / night3 / night2), so the eye's ink-rimmed lids separate from the banks
+      let c: number = PAL.night3;
+      if (!inside(x, y - g.k)) c = PAL.night4;
+      else if (!inside(x - g.k, y - g.k) && !inside(x, y - 2 * g.k)) c = PAL.night4;
       else if (!inside(x, y + 3 * g.k) || list.every(([cx, cy, r]) => (x - cx) * (x - cx) + (y - cy) * (y - cy) > r * r * 0.35 || y < cy)) {
-        if (list.some(([cx, cy, r]) => y > cy + r * 0.35 && (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r + r)) c = PAL.night1;
+        if (list.some(([cx, cy, r]) => y > cy + r * 0.35 && (x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r + r)) c = PAL.night2;
       }
       p.set(x, y, c);
     }
@@ -160,11 +165,12 @@ function paintEye(subject: PixelCanvas, light: PixelCanvas, g: Geo, f: number): 
       const a = Math.abs(dx);
       if (a > hw) {
         if (hw < 1 && a > 1) continue;
-        // the in-game lids: the lit (left) lid a mist lip, night4 skin, night3 shade; the right lid night4 → night2
+        // the in-game lids: a lit lip on the lens (mist on the lit left lid), the skin, a shaded crease, an ink rim
+        // that parts them from the cloud banks
         const kk = a - hw;
-        const L = [PAL.mist, PAL.night4, PAL.night3];
-        const Rr = [PAL.night4, PAL.night3, PAL.night2];
-        subject.set(x, y, (dx < 0 ? L : Rr)[Math.min(kk - 1, 2)]);
+        const L = g.k === 2 ? [PAL.mist, PAL.night4, PAL.night1, PAL.ink] : [PAL.mist, PAL.night4];
+        const Rr = g.k === 2 ? [PAL.night4, PAL.night3, PAL.night0, PAL.ink] : [PAL.night4, PAL.night2];
+        subject.set(x, y, (dx < 0 ? L : Rr)[Math.min(kk - 1, L.length - 1)]);
         continue;
       }
       const ux = dx;
@@ -246,6 +252,35 @@ function paintCrack(light: PixelCanvas, subject: PixelCanvas, g: Geo): void {
     }
 }
 
+/**
+ * The one being swallowed: from its eye-facing side a tapering smear of its body (void3 core, void4 lit top, ink
+ * edges at 2×) stretches over the lids into the pupil — the storyboard's pull, frozen in the picture.
+ */
+function paintStretch(light: PixelCanvas, g: Geo, f: number): void {
+  const [i, x, y, , flip] = g.sil[g.stretch];
+  const rows = SILS[i];
+  const w = rows[0].length;
+  const h = rows.length;
+  const bob = (f === 1 || f === 2 ? 1 : 0) + g.stretch;
+  const sx = flip ? x - 1 : x + w;
+  const sy = y - (bob % 2) + Math.floor(h / 2);
+  const [px, py] = [g.eye[0], g.eye[1] + g.look];
+  const ex = px + (flip ? g.pupil + 1 : -(g.pupil + 1));
+  const n = Math.abs(ex - sx);
+  const half0 = g.k === 2 ? Math.floor(h / 2) : 1;
+  for (let k = 0; k <= n; k++) {
+    const t = k / Math.max(1, n);
+    const xx = sx + (flip ? -k : k);
+    const cy = Math.round(sy + (py - sy) * t);
+    const half = Math.max(0, Math.round(half0 * (1 - t) - 0.2));
+    for (let dy = -half; dy <= half; dy++) light.set(xx, cy + dy, dy === -half ? PAL.void4 : PAL.void3);
+    if (g.k === 2 && half > 0) {
+      light.set(xx, cy - half - 1, PAL.ink);
+      light.set(xx, cy + half + 1, PAL.ink);
+    }
+  }
+}
+
 function paint(l: ArtLayers, f: number, g: Geo): void {
   paintBackdrop(l.backdrop, 'SPELL', { focus: [BIG.eye[0], BIG.eye[1] + BIG.look], shape: false, horizon: 999, split: g.split * (2 / g.k) });
   paintGlow(l.backdrop, g);
@@ -263,9 +298,15 @@ function paint(l: ArtLayers, f: number, g: Geo): void {
     for (let ry = -1; ry <= rows.length; ry++)
       for (let rx = -1; rx <= rows[0].length; rx++)
         if (!on(rx, ry) && (on(rx - 1, ry) || on(rx + 1, ry) || on(rx, ry - 1) || on(rx, ry + 1))) l.subject.set(x + rx, yy + ry, PAL.ink);
-    rows.forEach((r, ry) => [...r].forEach((ch, rx) => ch === '#' && l.subject.set(x + rx, yy + ry, c)));
+    rows.forEach((r, ry) =>
+      [...r].forEach((ch, rx) => {
+        if (ch !== '#') return;
+        // 2 tones: the lit top edge void4, the belly row void2 (big only), the body `c`
+        const col = !on(rx, ry - 1) ? PAL.void4 : g.k === 2 && !on(rx, ry + 1) ? PAL.void2 : c;
+        l.subject.set(x + rx, yy + ry, col);
+      }),
+    );
   });
-  rim(l.subject, PAL.void4, { skip: [PAL.night3, PAL.night2, PAL.night1, PAL.ink], only: (x, y) => g.sil.some(([i, sx, sy]) => x >= sx && x < sx + SILS[i][0].length && y >= sy - 1 && y < sy + SILS[i].length) });
   paintEye(l.subject, l.light, g, f);
   // the cloud lobes in front: over the lids, top and sides (the eye looks down between the clouds)
   paintClouds(l.subject, g, g.front);
@@ -283,6 +324,7 @@ function paint(l: ArtLayers, f: number, g: Geo): void {
       }
   }
   paintCrack(l.light, l.subject, g);
+  paintStretch(l.light, g, f);
   // mote trails: from each silhouette's head (the corner that faces the eye) toward the pupil, stepping with f
   const [ex, ey] = [g.eye[0], g.eye[1] + g.look];
   g.sil.forEach(([i, x, y, , flip]) => {

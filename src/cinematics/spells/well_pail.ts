@@ -53,19 +53,20 @@ import type { PlayerId, Uid } from '../../engine/types';
 import { PAL, PLAYER_RAMP } from '../../art/palette';
 import { cardBackCanvas } from '../../art/cards';
 import { PixelCanvas } from '../../art/pixel';
-import { BOARD_CENTER, DEPTH, LOOK_V3, UI, type XY, duelistXY, unitDepth, zoneXY } from '../../view/layout';
-import { SCREENS } from '../../view/board-nt/layout-nt';
+import { BOARD_CENTER, BOARD_COLS, BOARD_ROWS, DEPTH, LOOK_V3, UI, type XY, duelistXY, screenToIso, sideOfRow, unitDepth, zoneXY } from '../../view/layout';
+import { HOLOS, SCREENS } from '../../view/board-nt/layout-nt';
 import { Raster, onFrame, run } from '../../vfx/setpieces';
 import { Sparks as PxSparks } from '../../vfx/combat';
 import { tween, wait } from '../../vfx/core';
 import { fxRng } from '../_v3/spellfx';
-import { hush, panAt, play as playV3 } from '../_v3/sound';
+import { hush, panAt, play as playV3, start as startV3 } from '../_v3/sound';
 import { cardLeaves } from '../_v3/card';
 import { registerCardHook } from '../api';
 import { bg, castFloor, castSpot, evAt, ip, lightFlash, lightPool, relax, setTileOf, spellOpening, type ActCtx } from './_kit';
 import type { SfxName } from '../../audio/sfx';
 
 const ID: CardId = 'well_pail';
+const WELL_DEBUG = typeof location !== 'undefined' && location.search.includes('welldbg');
 const R = Math.round;
 const TAU = Math.PI * 2;
 
@@ -88,7 +89,7 @@ export const WELL_T = Object.freeze({
   leapMax: 640,
   leapGap: 220,
   /** The shake at the top of the second card's arc: one jerk per step. */
-  shakeStepMs: 34,
+  shakeStepMs: 30,
   /** The hand registers the card this long before the leap lands (its hidden flight never completes). */
   handLead: 240,
   tipBackAfter: 150,
@@ -168,6 +169,8 @@ interface WellState {
   splashes: Splash[];
   /** dissolve cut row (local; rows above are gone), −1: whole */
   cut: number;
+  /** the dissolve's end (well clock, ms): no mote outlives it by more than a frame or two */
+  fadeEnd: number;
   el: number;
 }
 
@@ -440,7 +443,29 @@ function paintBucketLight(p: PixelCanvas, s: WellState): void {
   }
 }
 
-/** The breach: a crown of water jumps out of the mouth (columns of light, tallest in the middle), 180 ms. */
+/** Whether local pixel (x, y) is on the bucket's body or its 1-px outline (the crown's water runs round it). */
+function onBucket(s: WellState, x: number, y: number): boolean {
+  if (s.bucketY >= DEEP) return false;
+  const c = Math.cos(s.tilt);
+  const n = Math.sin(s.tilt);
+  for (const [ox, oy] of [
+    [0, 0],
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const) {
+    const dx = x + ox + 0.5 - CX;
+    const dy = y + oy + 0.5 - s.bucketY;
+    if (bucketPx(dx * c + dy * n, -dx * n + dy * c) !== null) return true;
+  }
+  return false;
+}
+
+/**
+ * The breach: a crown of water jumps out of the mouth (columns of light, tallest in the middle), 180 ms. The columns
+ * run AROUND the rising bucket (never over its staves: drawn over it they read as the bars of a cage).
+ */
 function paintFlare(p: PixelCanvas, s: WellState): void {
   if (s.flare < 0) return;
   const age = s.el - s.flare;
@@ -456,6 +481,7 @@ function paintFlare(p: PixelCanvas, s: WellState): void {
     for (let y = 0; y < hgt; y++) {
       const x = CX + cx + R((lean * y) / Math.max(1, hgt));
       const col = y >= hgt - 1 ? PAL.white : y > hgt - 4 ? PAL.water4 : (y + i) % 3 === 0 ? PAL.teal4 : PAL.teal3;
+      if (onBucket(s, x, ty - y)) continue;
       p.set(x, ty - y, col);
     }
   });
@@ -524,6 +550,7 @@ function makeWell(sc: Phaser.Scene, at: XY, seed: number, side: 1 | -1): Well {
     drops: [],
     splashes: [],
     cut: -1,
+    fadeEnd: Infinity,
     el: 0,
   };
   let lastDrip = 0;
@@ -590,7 +617,7 @@ function makeWell(sc: Phaser.Scene, at: XY, seed: number, side: 1 | -1): Well {
           if (pc.get(x, y) === null) continue;
           pc.set(x, y, y === s.cut ? PAL.teal4 : PAL.teal3);
           if (dt > 0 && (x + y) % 3 === 0 && rnd() < 0.55)
-            motes.add({ x: ox + x, y: oy + y, vx: (rnd() - 0.5) * 16, vy: -(26 + rnd() * 40), drag: 1.2, life: 280 + rnd() * 260, colors: [PAL.white, PAL.teal4, PAL.teal3, PAL.teal2], shape: rnd() < 0.15 ? 'plus' : 'px', fadeAt: 1 });
+            motes.add({ x: ox + x, y: oy + y, vx: (rnd() - 0.5) * 16, vy: -(26 + rnd() * 40), drag: 1.2, life: Math.max(40, Math.min(150 + rnd() * 110, s.fadeEnd - el + 30)), colors: [PAL.white, PAL.teal4, PAL.teal3, PAL.teal2], shape: rnd() < 0.15 ? 'plus' : 'px', fadeAt: 1 });
         }
     }
     ras.end();
@@ -800,6 +827,8 @@ function obstacles(ctx: ActCtx): Box[] {
     }
   }
   for (const r of SCREENS) out.push({ x0: r.x, y0: r.y, x1: r.x + r.w - 1, y1: r.y + r.h - 1, w: 4 });
+  // the arena's two holograms (a card shaking over one reads as leaving the board)
+  for (const h of HOLOS) out.push({ x0: h.box.x, y0: h.box.y, x1: h.box.x + h.box.w - 1, y1: h.box.y + h.box.h - 1, w: 4 });
   for (const r of [UI.p1Panel, UI.p2Panel, UI.phaseBar]) out.push({ x0: r.x, y0: r.y, x1: r.x + r.w - 1, y1: r.y + r.h - 1, w: 6 });
   return out;
 }
@@ -816,7 +845,7 @@ const rectAt = (c: XY, w: number, h: number, mx = 1, my = 1) => ({ x0: c.x - w /
 
 /** Well-local → world offsets of the mouth (the bucket's water, hanging under the drum) from the tile centre. */
 const MOUTH_DY = HANG + 3 - CY;
-const LEAP_T = Object.freeze({ burst: 100, flex: 50, shakeFlex: 30, flop: 40 });
+const LEAP_T = Object.freeze({ burst: 100, flex: 50, still: 50, flop: 40 });
 
 interface LeapPlan {
   /** mouth (start), burst top, apex, the hand's slot */
@@ -838,7 +867,12 @@ interface PlanOpts {
   avoid?: XY | null;
   /** the well's own windlass (a soft obstacle for the apex) */
   well: XY;
+  /** the caster: an apex over the opponent's half (or off the platform) reads as a card going to the opponent */
+  caster: PlayerId;
 }
+
+/** Highest apex above the burst top (px): a fish hop, not a throw across the board. */
+const APEX_MAX_H = 56;
 
 const easeOut = (k: number) => 1 - (1 - k) * (1 - k);
 
@@ -847,8 +881,9 @@ function riseAt(pl: LeapPlan, k: number): XY {
   return { x: pl.B.x + (pl.P.x - pl.B.x) * k, y: pl.B.y + (pl.P.y - pl.B.y) * easeOut(k) };
 }
 function fallAt(pl: LeapPlan, k: number): XY {
-  // a mini-hand above the apex (the other player's corner): a smooth glide up into it instead of a fall
-  const e = pl.T.y < pl.P.y ? k * k * (3 - 2 * k) : k * k;
+  // a mini-hand above the apex (the other player's corner): a smooth glide up into it instead of a fall; else a
+  // fall that leaves the apex at once (a linear-ish start, gravity after) — never a hang at the top
+  const e = pl.T.y < pl.P.y ? k * k * (3 - 2 * k) : k * (0.6 + 0.4 * k);
   return { x: pl.P.x + (pl.T.x - pl.P.x) * k, y: pl.P.y + (pl.T.y - pl.P.y) * e };
 }
 
@@ -863,13 +898,25 @@ function planLeap(obst: Box[], M: XY, T: XY, sizes: readonly (readonly [number, 
   const [aw, ah] = sizes[o.apex];
   const wellBox = { x0: o.well.x - 24, y0: o.well.y - 50, x1: o.well.x + 24, y1: o.well.y + 6 };
   let best: LeapPlan = { M, B, P: { x: B.x + o.pref.dx, y: B.y - o.pref.h }, T, apex: o.apex, cost: Infinity };
-  // (the apex may be HIGH — up in the open air over the units' heads, between the portrait screens: a real leap)
+  // the apex stays a fish hop over the caster's own side: at most APEX_MAX_H over the burst top, on the caster's
+  // half of the platform, between the well and the hand
+  const lo = Math.min(B.x, T.x) - 24;
+  const hi = Math.max(B.x, T.x) + 24;
   for (let dx = -96; dx <= 96; dx += 4)
-    for (let h = 6; h <= 124; h += 2) {
+    for (let h = 6; h <= APEX_MAX_H; h += 2) {
       const P = { x: R(B.x + dx), y: R(B.y - h) };
       const r = rectAt(P, aw, ah, o.margin, 3);
       let cost = 0;
       if (r.x0 < 6 || r.x1 > 634 || r.y0 < 22 || r.y1 > 300) cost += 4000;
+      // over the opponent's half / off the platform (read on the floor under the card): a trip to the opponent
+      // (read where the eye reads it: the tile right behind the card's centre)
+      const g = screenToIso(P.x, P.y);
+      const half = sideOfRow(g.row);
+      if (half === 1 - o.caster) cost += 3000;
+      else if (half === null) cost += 400;
+      if (g.col < -0.5 || g.col > BOARD_COLS - 0.5 || g.row < -0.5 || g.row > BOARD_ROWS - 0.5) cost += 1500;
+      // between the well and the hand (x), a soft pull
+      cost += (Math.max(0, lo - P.x) + Math.max(0, P.x - hi)) * 4;
       // hard things (units: their idle frames swing an axe or a tail; duelists) keep 8 px of air beside them, 4 above and below
       for (const b of obst) cost += overlap(r, b.w >= 10 ? { x0: b.x0 - 8, y0: b.y0 - 4, x1: b.x1 + 8, y1: b.y1 + 4 } : b) * b.w;
       cost += overlap(r, wellBox) * 3;
@@ -897,12 +944,13 @@ function planLeap(obst: Box[], M: XY, T: XY, sizes: readonly (readonly [number, 
 }
 
 /** The two leaps' plan options: two fish, different rise and side — the second one leaps higher, on the far side. */
-function leapOpts(k: number, dir: number, well: XY, avoid: XY | null, mini: boolean): PlanOpts {
+function leapOpts(k: number, dir: number, well: XY, avoid: XY | null, mini: boolean, caster: PlayerId): PlanOpts {
   const apex = mini ? 2 : k === 0 ? 4 : 5;
   return k === 0
-    ? { burst: 12, apex, margin: 5, pref: { dx: dir * 22, h: 8 }, avoid, well }
-    : // the shake swings ±7 px and rolls ±2·π/16 (a 30 × 42 card turned π/8 is 44 px wide): 7 + 7 px each side
-      { burst: 20, apex, margin: 14, pref: { dx: -dir * 10, h: 24 }, avoid, well };
+    ? { burst: 12, apex, margin: 5, pref: { dx: dir * 22, h: 8 }, avoid, well, caster }
+    : // the shake swings ±9 px and rolls ±3·π/16 (a 30 × 42 card turned 3π/16 is ~46 px wide): 9 + 7 px each side.
+      // It leaps higher than the first, still on the hand's side of the well
+      { burst: 20, apex, margin: 16, pref: { dx: dir * 4, h: 34 }, avoid, well, caster };
 }
 
 interface Leap {
@@ -927,21 +975,32 @@ interface LeapOpts {
   onLead: () => void;
   /** Called at each shake reversal (the sound plays on the first). */
   onShake?: (i: number) => void;
+  /** Called when the fall starts / on the landing's first frame (the flop, or the mini-hand taking over). */
+  onFall?: () => void;
+  onFlop?: () => void;
+  /** Called once, `ms` (scene time) before the landing. */
+  preLand?: { ms: number; fn: () => void };
   /** The last frame is the hand's own card (owner) or nothing (a mini-hand takes over). */
   plainEnd: boolean;
 }
 
-/** Shake: one jerk per step — x offset, roll (× π/16), lift. */
-const SHAKE: readonly (readonly [number, number, number])[] = [
-  [7, 2, -1],
-  [-7, -2, 0],
-  [7, 2, -1],
-  [-6, -2, 0],
-  [5, 1, -1],
-  [-4, -1, 0],
-  [2, 1, 0],
-  [0, 0, 0],
+/**
+ * Shake: one jerk per entry — x offset, roll (× π/16), lift, held steps. The first two jerks are the big ones (held
+ * two steps each, so they read as hard throws), the rest die down; before and after it the card hangs perfectly
+ * still and upright (LEAP_T.still) so the shake stands apart from the flight's wobble.
+ */
+const SHAKE: readonly (readonly [number, number, number, number])[] = [
+  [9, 3, -1, 2],
+  [-9, -3, 0, 2],
+  [7, 2, -1, 1],
+  [-6, -2, 0, 1],
+  [5, 1, -1, 1],
+  [-4, -1, 0, 1],
+  [2, 1, 0, 1],
+  [0, 0, 0, 1],
 ];
+/** The shake's scene length at `stepMs` per step (the still holds included). */
+const shakeMs = (stepMs: number): number => 2 * LEAP_T.still + SHAKE.reduce((a, j) => a + j[3], 0) * stepMs;
 
 function leapCard(sc: Phaser.Scene, player: PlayerId, seed: number, o: LeapOpts): Leap {
   const pl = o.plan;
@@ -962,6 +1021,8 @@ function leapCard(sc: Phaser.Scene, player: PlayerId, seed: number, o: LeapOpts)
   let plain = false;
   let flex = 0;
   let flexKind: 'c' | 'tail' = 'tail';
+  /** a 1-frame body squash at a shake reversal (wider and shorter for one frame) */
+  let squash = 0;
   let dead = false;
   let hidden = false;
   // the teal light the wet card carries (it lights the floor and the cards under it)
@@ -975,7 +1036,7 @@ function leapCard(sc: Phaser.Scene, player: PlayerId, seed: number, o: LeapOpts)
     if (!hidden) {
       pc.clear();
       const [w, h] = sizes[size];
-      paintCard(pc, back, rim, w, h, plain ? 0 : ang, sheen, plain, plain ? 0 : flex, flexKind);
+      paintCard(pc, back, rim, w + squash * 4, h - squash * 4, plain ? 0 : ang, sheen, plain, plain ? 0 : flex, flexKind);
       ras.pc.blit(pc, 0, 0);
     }
     ras.end();
@@ -1003,7 +1064,8 @@ function leapCard(sc: Phaser.Scene, player: PlayerId, seed: number, o: LeapOpts)
     leadDone = true;
     o.onLead();
   };
-  const total = LEAP_T.burst + o.rise + (o.shake ? LEAP_T.shakeFlex + SHAKE.length * o.shakeStepMs : LEAP_T.flex) + o.fall;
+  const total = LEAP_T.burst + o.rise + (o.shake ? shakeMs(o.shakeStepMs) : LEAP_T.flex) + o.fall;
+  let preDone = !o.preLand;
   let spent = 0;
   const phase = async (ms: number, fn: (k: number, el: number, dt: number) => void) => {
     const t0 = spent;
@@ -1011,7 +1073,12 @@ function leapCard(sc: Phaser.Scene, player: PlayerId, seed: number, o: LeapOpts)
       if (dead) return;
       fn(k, el, dt);
       sheen = (el / 20) % 40 - 10;
-      if (total - (t0 + ms * k) <= o.lead) lead();
+      const left = total - (t0 + ms * k);
+      if (left <= o.lead) lead();
+      if (!preDone && o.preLand && left <= o.preLand.ms) {
+        preDone = true;
+        o.preLand.fn();
+      }
       draw();
     });
     spent += ms;
@@ -1047,41 +1114,53 @@ function leapCard(sc: Phaser.Scene, player: PlayerId, seed: number, o: LeapOpts)
         ang = dir * ANG;
       });
     } else {
-      await phase(LEAP_T.shakeFlex, () => {
-        flexKind = 'c';
-        flex = -dir;
+      // the card hangs perfectly still and upright: the shake is a different motion from the flight
+      await phase(LEAP_T.still, () => {
         ang = 0;
+        flex = 0;
       });
       for (let i = 0; i < SHAKE.length; i++) {
         if (dead) break;
-        const [jx, roll, lift] = SHAKE[i];
+        const [jx, roll, lift, hold] = SHAKE[i];
         o.onShake?.(i);
         const sx = Math.sign(jx) || dir;
         const [w, h] = sizes[size];
         if (i < 2) {
-          // a wide SHEET of droplets thrown sideways off the card's trailing edge (the water keeps going)
-          for (let k = 0; k < 26; k++) {
-            const ey = (rnd() - 0.5) * h;
-            drops.add({ x: R(pl.P.x + jx + sx * (w / 2 + 1)), y: R(pl.P.y + ey), vx: sx * (110 + rnd() * 110), vy: -(10 + rnd() * 70) + ey * 1.5, ay: 430, life: 360 + rnd() * 240, colors: [PAL.white, PAL.water4, PAL.teal4, PAL.teal3], shape: k % 6 === 0 ? 'plus' : 'px', fadeAt: 1 });
+          // a wide SHEET of water thrown SIDEWAYS off the card's trailing edge: flat 2–3 px streaks flying far out
+          // (water4 / teal3), a couple of white heads, almost no pluses — a throw, not a sparkle
+          for (let k = 0; k < 30; k++) {
+            const ey = (rnd() - 0.5) * h * 0.9;
+            const sp = 150 + rnd() * 170;
+            drops.add({ x: R(pl.P.x + jx + sx * (w / 2 + 1)), y: R(pl.P.y + ey), vx: sx * sp, vy: -(rnd() * 40) + ey * 0.8, ay: 300, drag: 1.1, life: 300 + rnd() * 200, colors: k % 7 === 0 ? [PAL.white, PAL.water4, PAL.teal3] : [PAL.water4, PAL.water4, PAL.teal3], shape: k === 0 ? 'plus' : 'streak', len: 0.012, fadeAt: 1 });
           }
-          void lightFlash(sc, R(pl.P.x + sx * (w / 2 + 8)), pl.P.y, PAL.teal4, 26, 200, { intensity: 0.7 });
+          void lightFlash(sc, R(pl.P.x + sx * (w / 2 + 10)), pl.P.y, PAL.teal4, 28, 200, { intensity: 0.7 });
         } else if (i < 6) {
-          const n = 12 - i;
+          // the smaller jerks still fling water sideways, fewer and shorter
+          const n = 12 - i * 2;
           for (let k = 0; k < n; k++) {
-            const a2 = (k / n) * TAU + rnd() * 0.3;
-            const sp = 70 + rnd() * 50;
-            drops.add({ x: R(pl.P.x + jx + Math.cos(a2) * (w / 2 + 1)), y: R(pl.P.y + Math.sin(a2) * (h / 2 + 1)), vx: Math.cos(a2) * sp + sx * 40, vy: Math.sin(a2) * sp - 20, ay: 480, life: 300 + rnd() * 200, colors: [PAL.white, PAL.water4, PAL.teal4, PAL.teal3], shape: k % 4 === 0 ? 'plus' : 'px', fadeAt: 1 });
+            const ey = (rnd() - 0.5) * h * 0.8;
+            drops.add({ x: R(pl.P.x + jx + sx * (w / 2 + 1)), y: R(pl.P.y + ey), vx: sx * (90 + rnd() * 90), vy: -(rnd() * 30) + ey, ay: 380, drag: 1, life: 220 + rnd() * 160, colors: [PAL.water4, PAL.teal3, PAL.teal2], shape: 'streak', len: 0.012, fadeAt: 1 });
           }
         }
-        await phase(o.shakeStepMs, () => {
+        await phase(o.shakeStepMs * hold, (k) => {
           pos = { x: pl.P.x + jx, y: pl.P.y + lift };
           ang = roll * ANG;
           flexKind = 'tail';
           flex = jx === 0 ? 0 : -sx; // the tail lags behind the jerk
+          // the reversal's first frame squashes the body (the water's weight swings through it)
+          squash = jx !== 0 && k * o.shakeStepMs * hold < 17 ? 1 : 0;
         });
+        squash = 0;
       }
+      await phase(LEAP_T.still, () => {
+        pos = { ...pl.P };
+        ang = 0;
+        flex = 0;
+        squash = 0;
+      });
     }
     apexResolve();
+    o.onFall?.();
     // 4. FALL into the hand: rolling ±π/16 with tail flicks through 85 % of the way, then straight
     await phase(o.fall, (k, el, dt) => {
       pos = fallAt(pl, k);
@@ -1099,9 +1178,14 @@ function leapCard(sc: Phaser.Scene, player: PlayerId, seed: number, o: LeapOpts)
     });
     lead();
     if (dead) return;
+    if (o.preLand && !preDone) {
+      preDone = true;
+      o.preLand.fn();
+    }
     if (!o.plainEnd) {
       hidden = true;
       draw();
+      o.onFlop?.();
       return;
     }
     // 5. FLOP: the hand's own card (48 × 68, upright, its plain back) lands 2 px low, then settles on the slot
@@ -1109,6 +1193,7 @@ function leapCard(sc: Phaser.Scene, player: PlayerId, seed: number, o: LeapOpts)
     plain = true;
     pos = { x: R(pl.T.x), y: R(pl.T.y) + 2 };
     draw();
+    o.onFlop?.();
     await wait(sc, LEAP_T.flop);
     pos = { x: R(pl.T.x), y: R(pl.T.y) };
     draw();
@@ -1133,6 +1218,38 @@ function leapCard(sc: Phaser.Scene, player: PlayerId, seed: number, o: LeapOpts)
 /** The ring (a unit standing in front of it hides it) and the windlass (a unit behind it is crossed by it). */
 const ringBox = (c: XY) => ({ x0: c.x - RX - 2, y0: c.y - 14, x1: c.x + RX + 2, y1: c.y + 10 });
 const frameBox = (c: XY) => ({ x0: c.x - 24, y0: c.y - 48, x1: c.x + 24, y1: c.y - 10 });
+/** The crank's sweep (arm, peg and knob) on `side`, and the two posts (world px). */
+const crankBox = (c: XY, side: 1 | -1) => {
+  const hub = c.x + side * CRANK_OFF;
+  return { x0: side > 0 ? hub - 6 : hub - 12, y0: c.y + (AY - CY) - 14, x1: side > 0 ? hub + 12 : hub + 6, y1: c.y + (AY - CY) + 14 };
+};
+const postBoxes = (c: XY) => [
+  { x0: c.x + POST_L - CX - 1, y0: c.y + (AY - CY) - 3, x1: c.x + POST_L - CX + 4, y1: c.y - 12 },
+  { x0: c.x + POST_R - CX - 1, y0: c.y + (AY - CY) - 3, x1: c.x + POST_R - CX + 4, y1: c.y - 12 },
+];
+
+/**
+ * How much of the windlass the units standing IN FRONT of the well (feet lower on screen: drawn over it) would hide:
+ * the crank's sweep counts most (the ratchet crank is the card's signature), then the posts.
+ */
+function frontCover(obst: Box[], c: XY, side: 1 | -1): number {
+  let cost = 0;
+  const cb = crankBox(c, side);
+  for (const b of obst) {
+    if (b.uid === undefined || b.y1 - 10 < c.y - 2) continue;
+    cost += overlap(cb, b) * 40;
+    for (const pb of postBoxes(c)) cost += overlap(pb, b) * 12;
+  }
+  return cost;
+}
+
+/** The crank's side at `c`: toward the board's centre unless a unit in front would hide it there. */
+function crankSide(obst: Box[], c: XY): { side: 1 | -1; cover: number } {
+  const centre: 1 | -1 = BOARD_CENTER.x >= c.x ? 1 : -1;
+  const a = frontCover(obst, c, centre);
+  const b = frontCover(obst, c, (-centre) as 1 | -1) + 80;
+  return a <= b ? { side: centre, cover: a } : { side: (-centre) as 1 | -1, cover: b - 80 };
+}
 
 /** Units whose plates the windlass crosses at `c` (they step back for the scene). */
 function unitsBehind(ctx: ActCtx, obst: Box[], c: XY): Uid[] {
@@ -1146,7 +1263,7 @@ function unitsBehind(ctx: ActCtx, obst: Box[], c: XY): Uid[] {
  * spot. Every candidate is also scored by the clear air for its two leaps: a tile whose leaps would have to shake the
  * water off over a unit, a duelist or a screen loses to one with open space.
  */
-function wellSpot(ctx: ActCtx, player: PlayerId, setHome: XY | null, target: XY, obst: Box[], mini: boolean): XY {
+function wellSpot(ctx: ActCtx, player: PlayerId, setHome: XY | null, target: XY, obst: Box[], mini: boolean): { c: XY; side: 1 | -1 } {
   const pref = setHome ?? castSpot(player);
   const cands: { c: XY; set: boolean }[] = [];
   if (setHome) cands.push({ c: { x: R(setHome.x), y: R(setHome.y) }, set: true });
@@ -1156,10 +1273,13 @@ function wellSpot(ctx: ActCtx, player: PlayerId, setHome: XY | null, target: XY,
     cands.push({ c: { x: R(z.x), y: R(z.y) }, set: false });
   });
   const sizes = mini ? MINI_SIZES : LEAP_SIZES;
-  let best: XY | null = null;
+  let best: { c: XY; side: 1 | -1 } | null = null;
   let bd = Infinity;
   for (const { c, set } of cands) {
     let cost = Math.hypot(c.x - pref.x, c.y - pref.y);
+    // a unit in front hiding the crank / the posts: try the crank on the other end first, else another tile
+    const cs = crankSide(obst, c);
+    cost += cs.cover;
     const rb = ringBox(c);
     const fb = frameBox(c);
     for (const b of obst) {
@@ -1167,30 +1287,53 @@ function wellSpot(ctx: ActCtx, player: PlayerId, setHome: XY | null, target: XY,
       if (b.y1 - 10 >= c.y - 2 && overlap(rb, b) > 0) cost += 10000; // in front: hides the ring
       else {
         // the set tile only moves when the windlass would really cover the unit's body (its plate steps back anyway)
-        const body = set ? { ...b, y1: b.y1 - 12 } : b;
+        const body = { ...b, y1: b.y1 - 12 };
         const area = overlap(fb, body);
-        const share = area / Math.max(1, (body.x1 - body.x0) * (body.y1 - body.y0));
-        if (area > 0 && (!set || share > 0.3)) cost += 600 + area;
+        if (area > 0) cost += 600 + area;
       }
     }
     const M = { x: c.x, y: c.y + MOUTH_DY };
     const dir = target.x >= c.x ? 1 : -1;
-    const p1 = planLeap(obst, M, target, sizes, leapOpts(0, dir, c, null, mini));
-    const p2 = planLeap(obst, M, target, sizes, leapOpts(1, dir, c, p1.P, mini));
+    // the shaking card needs the most air: its apex is chosen first, the quick first hop takes what is left
+    const p2 = planLeap(obst, M, target, sizes, leapOpts(1, dir, c, null, mini, player));
+    const p1 = planLeap(obst, M, target, sizes, leapOpts(0, dir, c, p2.P, mini, player));
     cost += p2.cost * 1.5 + p1.cost * 0.5;
+    // a leap path through a unit would dim it: a free tile beside the set card is better than a ghosted monster
+    cost += (unitsCrossed(obst, p1, sizes) + unitsCrossed(obst, p2, sizes)) * 500;
     // the fish fly TO the hand: a detour away from it (out to a board edge and all the way back) costs its length
     const trip = (pl: LeapPlan) => Math.hypot(pl.P.x - M.x, pl.P.y - M.y) + Math.hypot(target.x - pl.P.x, target.y - pl.P.y);
     cost += trip(p1) + trip(p2);
-    if (set) cost -= 900; // "karonun üstüne": the set card BECOMES the well
-    if ((globalThis as { __WELL_DEBUG?: boolean }).__WELL_DEBUG) console.log('[well] tile', JSON.stringify({ c, cost: Math.round(cost), p1: [p1.P, Math.round(p1.cost)], p2: [p2.P, Math.round(p2.cost)] }));
+    if (set) cost -= 500; // "karonun üstüne": the set card BECOMES the well (unless it would hide or ghost a unit)
+    if (WELL_DEBUG) console.error('[well] tile', JSON.stringify({ c, cost: Math.round(cost), p1: [p1.P, Math.round(p1.cost)], p2: [p2.P, Math.round(p2.cost)] }));
     if (cost < bd) {
       bd = cost;
-      best = c;
+      best = { c, side: cs.side };
     }
   }
   if (best) return best;
   const cs = castSpot(player);
-  return { x: cs.x, y: castFloor(cs) };
+  const c = { x: cs.x, y: castFloor(cs) };
+  return { c, side: crankSide(obst, c).side };
+}
+
+/** The units a planned leap's card would cross (its body over their sprite by more than a sliver). */
+function unitsCrossed(obst: Box[], pl: LeapPlan, sizes: readonly (readonly [number, number])[]): number {
+  let n = 0;
+  for (const b of obst) {
+    if (b.uid === undefined) continue;
+    for (let i = 1; i <= 12; i++) {
+      const k = i / 12;
+      const q = k <= 0.35 ? riseAt(pl, k / 0.35) : fallAt(pl, (k - 0.35) / 0.65);
+      if (q.y > pl.T.y - 30) break;
+      const si = k <= 0.35 ? pl.apex : Math.min(sizes.length - 2, pl.apex + Math.floor(((k - 0.35) / 0.65) * (sizes.length - 1 - pl.apex)));
+      const [w, h] = sizes[si];
+      if (overlap(rectAt(q, w * 0.8, h * 0.8, 0, 0), b) > 40) {
+        n++;
+        break;
+      }
+    }
+  }
+  return n;
 }
 
 // ================================================================ the activation
@@ -1232,8 +1375,9 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   };
   const obst = obstacles(ctx);
   const set = setTileOf(ctx);
-  const spot = wellSpot(ctx, player, set ? ip(set.home) : null, handTarget(), obst, mini);
-  const side: 1 | -1 = BOARD_CENTER.x >= spot.x ? 1 : -1;
+  const where = wellSpot(ctx, player, set ? ip(set.home) : null, handTarget(), obst, mini);
+  const spot = where.c;
+  const side = where.side;
   const pan = panAt(spot.x);
   const op = await spellOpening(ctx, {
     uid: ev.uid,
@@ -1358,6 +1502,8 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   const airborne = new Set<Uid>();
   let prevLanded: Promise<void> = Promise.resolve();
   let prevApex: XY | null = null;
+  /** the shaking (second) card's apex is reserved first: the first hop keeps out of its air */
+  const reserved = draws.length > 1 ? planLeap(obst, well.mouth(), handTarget(), sizes, leapOpts(1, handTarget().x >= spot.x ? 1 : -1, spot, null, mini, player)).P : null;
   /** units a planned path still crosses: dimmed while the cards fly */
   const crossed = new Set<Phaser.GameObjects.Components.Alpha & Phaser.GameObjects.GameObject>();
   const dimUnder = (pl: LeapPlan) => {
@@ -1373,11 +1519,12 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
       }
       const u = hit ? ctx.unit(b.uid) : null;
       if (!u) continue;
-      for (const g of [u.sprite, u.badge.image] as (Phaser.GameObjects.Components.Alpha & Phaser.GameObjects.GameObject)[]) {
-        if (!g || !g.active || crossed.has(g)) continue;
+      // the monster stays solid (0.85: never a ghost); only its HP plate steps well back
+      ([[u.sprite, 0.85], [u.badge.image, 0.45]] as [Phaser.GameObjects.Components.Alpha & Phaser.GameObjects.GameObject, number][]).forEach(([g, a]) => {
+        if (!g || !g.active || crossed.has(g)) return;
         crossed.add(g);
-        void tween(sc, { targets: g, alpha: 0.6, duration: 100 });
-      }
+        void tween(sc, { targets: g, alpha: a, duration: 100 });
+      });
     }
   };
   const undimCrossed = () => {
@@ -1411,16 +1558,18 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
       void spr.flip(true, 150);
     }
   };
-  const leapOne = (k: number): { apex: Promise<void>; done: Promise<void> } => {
+  /** The well's clock (scene ms) at the last landing tap: the last-turn clicks duck under it. */
+  let tapAt = -1e9;
+  const leapOne = (k: number): { apex: Promise<void>; pre: Promise<void>; tapped: Promise<void>; done: Promise<void> } => {
     const di = draws[k];
     const d = evAt(ctx, di, 'draw');
-    if (!d) return { apex: Promise.resolve(), done: Promise.resolve() };
+    if (!d) return { apex: Promise.resolve(), pre: Promise.resolve(), tapped: Promise.resolve(), done: Promise.resolve() };
     ctx.consumeAt(di);
     const m = well.mouth();
     const target = handTarget();
-    const plan = planLeap(obst, m, target, sizes, leapOpts(k, dir, spot, prevApex, mini));
+    const plan = planLeap(obst, m, target, sizes, leapOpts(k, dir, spot, k === 0 ? reserved : prevApex, mini, player));
     prevApex = plan.P;
-    if ((globalThis as { __WELL_DEBUG?: boolean }).__WELL_DEBUG) console.log('[well] plan', k, JSON.stringify({ spot, plan, obst: obst.map((b) => [b.x0, b.y0, b.x1, b.y1, b.w, b.uid ?? -1].map((v) => Math.round(v))) }));
+    if (WELL_DEBUG) console.error('[well] plan', k, JSON.stringify({ spot, plan, obst: obst.map((b) => [b.x0, b.y0, b.x1, b.y1, b.w, b.uid ?? -1].map((v) => Math.round(v))) }));
     dimUnder(plan);
     const rise = R(Math.max(120, Math.min(200, 70 + Math.hypot(plan.P.x - plan.B.x, plan.P.y - plan.B.y) * 2.2)));
     const fall = R(Math.max(T.leapMin - 120, Math.min(T.leapMax - 160, 150 + Math.hypot(target.x - plan.P.x, target.y - plan.P.y) * 0.95)));
@@ -1435,6 +1584,11 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     for (let q = 0; q < 4; q++) well.drip(q % 2 === 0 ? -1 : 1, true);
     const waitPrev = prevLanded;
     let registered: Promise<void> | null = null;
+    let preResolve: () => void = () => undefined;
+    const pre = new Promise<void>((r) => (preResolve = r));
+    let tapResolve: () => void = () => undefined;
+    const tapped = new Promise<void>((r) => (tapResolve = r));
+    let flutter: { stop(ms?: number): void } | null = null;
     const lp = leapCard(sc, player, d.uid * 31 + k, {
       plan,
       sizes,
@@ -1451,13 +1605,25 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
       onShake: (i) => {
         if (i === 0) sfx('e_wellShake', { pan: panAt(plan.P.x) });
       },
+      // the paper flutter carries the whole fall down to the hand, and stops on the flop
+      onFall: () => {
+        flutter = startV3('e_wellFall', { volume: owner ? 1 : 0.6, pitch: k === 0 ? 1 : 1.05, pan: panAt((plan.P.x + target.x) / 2) });
+      },
+      onFlop: () => {
+        flutter?.stop(30);
+        flutter = null;
+        tapAt = S.el;
+        sfx('e_wellTap', { pitch: k === 0 ? 1 : 1.06, pan: panAt(target.x), volume: owner ? 1 : 0.6 });
+        tapResolve();
+      },
+      // the bucket lets go a beat before the last card lands (the drop's freewheel runs under its landing)
+      preLand: { ms: 150, fn: () => preResolve() },
     });
     const done = (async () => {
       await lp.landed;
       await (registered ?? Promise.resolve());
       await waitPrev;
       settle(d.uid as Uid);
-      sfx('e_wellTap', { pitch: k === 0 ? 1 : 1.06, pan: panAt(target.x), volume: owner ? 1 : 0.6 });
       // the wet card lands: a few drops fall off its bottom edge, a soft teal blink on the slot
       const sp = new PxSparks(sc, DEPTH.HAND + 31);
       const rnd = fxRng(d.uid * 7 + 3);
@@ -1468,10 +1634,15 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
       lp.destroy();
     })();
     prevLanded = done;
-    return { apex: lp.apexDone, done };
+    void done.then(() => {
+      preResolve();
+      tapResolve();
+      flutter?.stop(30);
+    });
+    return { apex: lp.apexDone, pre, tapped, done };
   };
   const leap1 = leapOne(0);
-  let leap2: { apex: Promise<void>; done: Promise<void> } | null = null;
+  let leap2: ReturnType<typeof leapOne> | null = null;
   if (draws.length > 1) {
     await wait(sc, T.leapGap);
     leap2 = leapOne(1);
@@ -1496,6 +1667,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
       S.bucketY = R(y0 + (DEEP - y0) * t * t);
       S.tilt = t0 * (1 - t);
     }));
+    S.fadeEnd = S.el + T.sealTearMs;
     await run(sc, T.sealTearMs, (t) => (S.cut = Math.floor((t * H) / 2) * 2));
     well.stop();
     undim();
@@ -1518,8 +1690,8 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   }
   S.brim = false;
   pool.setIntensity(0.5, 300);
-  // the bucket lets go as soon as the second card has shaken itself dry (it is already flying to the hand)
-  await (leap2 ? leap2.apex : leap1.done);
+  // the cards land first: the bucket lets go a beat (150 ms) before the last one reaches the hand
+  await (leap2 ? leap2.pre : leap1.pre);
 
   // ---- DROP: the ratchet freewheels, the bucket falls back into the shaft and plops
   sfx('e_wellDown');
@@ -1549,21 +1721,26 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   let fade: Promise<void> = Promise.resolve();
   for (let i = 0; i < 8; i++) {
     S.crank += TAU / 8;
-    if (i < 7) sfx('e_wellClick', { pitch: 1.02 - i * 0.02, volume: 0.5 });
+    // (ducked under a landing tap so the second card's landing is heard)
+    if (i < 7) sfx('e_wellClick', { pitch: 1.02 - i * 0.02, volume: S.el - tapAt < 260 ? 0.35 : 0.5 });
     if (i === 4) {
       // ---- DISSOLVE into teal motes (top down); the light fades
       sfx('e_wellFade');
       void pool.fadeOut(360);
+      S.fadeEnd = S.el + T.fadeMs;
       fade = run(sc, T.fadeMs, (t) => (S.cut = Math.floor((t * H) / 2) * 2));
     }
     await wait(sc, T.lastStepMs + i * 2);
   }
+  // the last tooth never masks the last landing: at least 120 ms after its tap
+  await (leap2 ? leap2.tapped : leap1.tapped);
+  if (S.el - tapAt < 120) await wait(sc, 120 - (S.el - tapAt));
   sfx('e_wellLast');
   S.glow = 1;
   await fade;
   well.stop();
   undim();
   await landedAll();
-  await Promise.race([Promise.all(flights), wait(sc, 200)]);
+  await Promise.race([Promise.all(flights), wait(sc, 60)]);
   await send;
 });

@@ -17,6 +17,8 @@
 //   e_wellCatch    the pawl catches at the top: "klak" (two clicks, a wooden thud)
 //   e_wellLeap     a card leaps out like a fish: "şlap-GLOOP-fwip" (a wet slap over a deep 150–250 Hz resonant gulp,
 //                  then a pitched paper flutter that follows the flight down to the hand)
+//   e_wellFall     the card's fall into the hand (started at the apex, stopped on the flop): a quiet paper flutter
+//                  whose band falls and whose rate slows as the card comes down — the whole fall has sound
 //   e_wellTap      the wet card lands in the hand: a soft paper slap with one drip (replaces the hand's cardPlace)
 //   e_wellShake    the second card shakes the water off: a wet paper rattle (fast flutter) with a hard flap per
 //                  jerk + a bright spray of droplets flung sideways (the brightest cue of the scene)
@@ -233,6 +235,22 @@ export const RECIPES = {
       bubble(v, 0.09, 1250, 0.09, 0.04);
     }),
   },
+  e_wellFall: {
+    cap: 2,
+    gap: 0.05,
+    verb: 0.3,
+    play: lift(4, (v) => {
+      // a long, quiet paper flutter (the handle stops it on the flop): the papery band falls with the card and the
+      // flap rate slows a little as it comes down; a faint airy whoosh under it, two drops shed on the way
+      const d = 1.1;
+      const bp = v.filt('bandpass', [[0, 2100], [d, 1100, 'e']], 3.2);
+      const fl = v.flutter(24, 0.8, { d, base: 0.2, to: bp });
+      v.noise('white', { g: [[0, 0], [0.05, 0.12], [d * 0.7, 0.09], [d, 0.0001, 'e']], to: fl });
+      v.noise('pink', { g: [[0, 0], [0.08, 0.035], [d, 0.0001, 'e']], to: v.filt('bandpass', [[0, 900], [d, 520, 'e']], 1.2) });
+      bubble(v, 0.18, 1650, 0.025, 0.025);
+      bubble(v, 0.41, 1380, 0.02, 0.025);
+    }),
+  },
   e_wellShake: {
     cap: 1,
     gap: 0.2,
@@ -240,19 +258,20 @@ export const RECIPES = {
     play: lift(7, (v) => {
       // the brightest cue: a WET PAPER RATTLE — the card flaps hard in the air: a fast paper flutter (a ~45 Hz
       // amplitude rattle through a papery band) under the whole shake, one hard wet flap per jerk …
-      const d = 0.42; // eight jerks × 34 scene ms × the 1.35 tempo
+      const d = 0.41; // ten 30-ms steps (the first two jerks held two) × the 1.35 tempo
       const pb = v.filt('bandpass', [[0, 1300], [d * 0.4, 1900, 'e'], [d, 1200, 'e']], 1.6);
       const fl = v.flutter(46, 0.9, { d, base: 0.08, to: pb });
       v.noise('white', { g: [[0, 0], [0.01, 0.3], [d * 0.5, 0.2], [d, 0.0001, 'e']], to: fl });
       v.noise('pink', { g: [[0, 0], [0.01, 0.1], [d, 0.0001, 'e']], to: v.flutter(23, 0.8, { d, base: 0.2, to: v.filt('bandpass', 520, 1.4) }) });
-      [0, 0.046, 0.092, 0.138, 0.184, 0.23, 0.276, 0.322].forEach((t, i) => {
-        sweep(v, t, 0.045, [2200, 4600, 2800], 0.2 - i * 0.02, { kind: 'white', q: 1.8, peakAt: 0.3 });
-        puff(v, t, 0.06, 0.035, 2000, { kind: 'pink' });
+      // (the first two jerks are the big held throws: harder, longer flaps)
+      [0, 0.081, 0.162, 0.203, 0.243, 0.284, 0.324, 0.365].forEach((t, i) => {
+        sweep(v, t, i < 2 ? 0.07 : 0.045, [2200, 4600, 2800], i < 2 ? 0.26 : 0.2 - i * 0.02, { kind: 'white', q: 1.8, peakAt: 0.3 });
+        puff(v, t, i < 2 ? 0.09 : 0.06, 0.035, 2000, { kind: 'pink' });
       });
       // … and a bright spray of droplets flung sideways, spread wide (heaviest on the first two reversals)
       const pans = [v.panner(-0.75), v.panner(-0.25), v.panner(0.25), v.panner(0.75)];
       for (let i = 0; i < 16; i++) {
-        const t = 0.01 + i * 0.02 + v.r(0, 0.012);
+        const t = (i < 7 ? 0.01 + i * 0.025 : 0.2 + (i - 7) * 0.03) + v.r(0, 0.012);
         const f = v.r(1700, 3400);
         const g = i < 7 ? 0.075 : 0.045;
         v.tone('sine', [[0, f], [0.02, f * 1.7, 'e']], { t, g: perc(g, 0.024, 0.001), to: pans[i % 4] });

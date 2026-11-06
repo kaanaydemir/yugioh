@@ -10,40 +10,47 @@
 // BEAT LIST (scene ms; ×1.35 in game time with the v3 tempo). The activation hook:
 //   0      common v3 spell opening (spells/_kit): the card leaves the hand for its owner's side (or a set card stands
 //          up on its tile), "BOŞLUK GÖZÜ" plate, a short hover. The last 160 ms of the hover: THE LIGHTS GO DOWN —
-//          a night veil (ink, over the sky / stadium / floor / tiles, under the tile glows, the cards and the units)
-//          steps down in 4 visible steps to 0.5, the light layer dims fully — e_voidDim
+//          on the palette, never with alpha: an INK stamp in 2×2 Bayer quarter steps (¼ → ½) over the sky, the wall,
+//          the platform and the pads (under the tile glows, the cards and the units); light is a hole cut in it
+//          (the eye's glow on the wall, its gaze on the field) — e_voidDim
 //   ~380   release: a violet orb leaves the card's top edge and zips straight up to the sky point over the field;
 //          the spent card drops to its graveyard behind it (card continuity)
 // The massDestroy (registerLaneE, this file) — ONE collective scene for every per-card event of the wipe:
-//   +0     THE RIFT: a star flare where the orb hits; a vertical 1-px white crack with violet lips zig-zags down and
-//          up the sky (4 stepped growths), short side cracks branch off, glass flakes of the sky fall — e_voidRift.
-//          The sky layer (rift + eye) lies IN FRONT of the units and the piles (DEPTH.FX + 1): a back-row monster
-//          under the sky point never hides the eye; the risen bodies float just under it, the silhouettes of the
-//          pull go in front of it (they are swallowed by the pupil)
-//   +220   THE LIDS OPEN sideways (stepped, eased): a sky-sized vertical almond EYE 71×93 px — night lids with a lit
-//          lip, violet-black sclera, a ringed violet iris (turning fibres), a black STARRY pupil with twinkling
-//          stars and a white catch-light; a violet light pool breathes under it — e_voidLid ("şııııp")
+//   +0     THE RIFT: a star flare where the orb hits; night cloud banks swell in round it (3 steps; lit tops, violet
+//          undersides, behind the units); a vertical 1-px white crack with violet lips zig-zags down and up the
+//          sky (4 stepped growths; it stops at the eye's bottom tip), side cracks branch off, glass flakes fall —
+//          e_voidRift. The eye lies HIGH in the sky over the back wall (its top tip under the phase bar), in front
+//          of the units (DEPTH.FX + 1, see SKY_DEPTH)
+//   +220   THE LIDS OPEN sideways (7 ease-in steps: a slow slit, then they part fast — synced to the sound): a
+//          vertical almond EYE 75 × 81 px — lids with volume (a lit lip, skin, a shaded crease, the outer fold, an
+//          ink rim), violet-black sclera, a ringed violet iris (turning fibres), a black STARRY pupil and a white
+//          catch-light; the night stamp opens round it (its glow on the wall) — e_voidLid ("şııııp")
+//          while open it LIVES: the lid lips flutter 1 px, the pupil breathes 1 px, the stars twinkle every 90 ms
 //   +580   it looks round: the iris twitches left, right (searching) — e_voidTwitch ("tk … tk")
-//   +740   THE GAZE falls: the iris drops 8 px, a violet light washes over the field, every doomed tile lights violet,
-//          face-down cards are seen through and flip face up one after another — e_voidGaze, e_voidReveal ×n;
-//          the 28 Hz swell starts under it and climbs to the contraction — e_voidSwell
+//   +740   THE GAZE falls: the iris drops 8 px, the night opens over the field in 3 steps (the violet floor light
+//          shows), every doomed tile lights violet, face-down cards flip face up one after another — e_voidGaze,
+//          e_voidReveal ×n; the 28 Hz swell starts under it and climbs to the contraction — e_voidSwell; the iris
+//          then follows the crown (it leans to the side with more bodies and wanders 1 px); a slow spiral of motes
+//          winds into the pupil
 //   +860   THE COLLECTIVE RISE: every monster (both sides, tokens and magic_hat decoys too) squats 1 px, tears off
-//          the floor with a 2-px snap and floats up to its seat on a crown fanned out on both sides of the eye
-//          (left bodies on the left arm, right on the right; box tops never above y 40, the HUD band) — slowly,
-//          together — turning round twice on the way (a 4-frame squash turn 0.66 → 0.33 → mirrored → 1 with a 1-px
-//          void4 OUTLINE, never a fill), swaying 1 px; shadows shrink, motes rise — e_voidRise (no tremolo)
+//          the floor with a 2-px snap and ascends WITHOUT EVER PARKING: a curved path (it swings outward, then in)
+//          to its seat on a crown fanned out on both sides of the eye, and from 42 % on the whole crown tightens
+//          toward the pupil, accelerating (half way in at the contraction); three slow turns each (6 × 35 ms squash
+//          turns with a 1-px void4 OUTLINE, never a fill) spread over the rise, a 1-px bob on each body's own beat;
+//          shadows shrink, motes rise — e_voidRise (no tremolo)
 //   +1180  a GUARDIAN CHARM answers: its tile flares gold, a gold tether snaps up to its monster and yanks it back
-//          down onto its tile (thud, dust, a gold outline); "KORUNDU" shows over its head for 450 ms and is gone
-//          before the contraction — e_voidSave, e_voidThud
+//          down onto its tile (thud, dust, a gold outline); "KORUNDU" on an ink plate in front of its tile for
+//          450 ms, gone before the contraction — e_voidSave, e_voidThud
 //   +1870  the choir and the swell stop dead (a 30 ms gap of silence for the tick)
 //   +1900  THE PUPIL CONTRACTS (two stepped frames, 10 → 6 → 3 px) — e_voidTick (dry, close); hit-stop: every body
-//          freezes for one frame as a void3 body inside a 1-px WHITE outline (the first full-body colour change)
-//   +1940  THE PULL, all at once (3 ms apart): flat void3 / void2 silhouettes in void4 outlines snap to the pupil in
-//          3 stepped, accelerating frames (30 → 60 → 86 %) while they SHRINK (0.8 → 0.55 → 0.3), 1-px streaks
-//          converging behind them; each pops into a mote burst at the pupil rim (the pupil flicks white), its tile
-//          flashes violet and its card flies home at once (≤ 240 ms, a soft glass tick — e_voidCard); a token /
-//          decoy tile crumbles — e_voidGulp (inward falling suction → glass pinch)
-//   +2120  the pupil GULPS (3 → 7 → 5 → 4): an iris-ring flash and a white rim on the lids, a violet flash
+//          freezes for ONE frame in its own pixels inside a 1-px WHITE outline
+//   +1940  THE PULL, all at once (3 ms apart): 3 stepped, accelerating frames to the pupil (30 → 60 → 86 %) while
+//          they SHRINK (0.8 → 0.55 → 0.3) and SINK INTO THE DARK — their own pixels in a lilac rim, then a void1,
+//          then a void0 silhouette (the rim dims void3 → void2); 1-px streaks converge behind them; each pops into a
+//          mote burst at the pupil rim (the pupil flicks white), its tile flashes violet and its card flies home at
+//          once (≤ 240 ms, a soft glass tick — e_voidCard); a token / decoy tile crumbles — e_voidGulp
+//   +2120  the pupil GULPS (3 → 7 → 5 → 4): an iris-ring flash and a white rim on the lids, a violet flash; the
+//          floor light closes in 3 steps
 //   +2220  THE EYE CLOSES (lids slide shut in 120 ms; the shut eye shows as a lid seam with hanging lashes) —
 //          e_voidBlink; every card is home by now: the blinks play on a still board
 //   +2400  BLINK 1 (opens a crack 0.35 in 3 steps, shuts in 3), +2600 BLINK 2 — e_voidBlink on each shut
@@ -51,9 +58,10 @@
 //   +2740  THE TEAR: one purple drop swells at the slit in 4 frames to 9×13 (a one-frame white glint), hangs —
 //          e_voidTink —
 //   +2880  falls with smear frames (ease-in) to the board centre (or the nearest tile no saved monster stands on);
-//   +3060  it LANDS: two stepped splash rings, a crown of 10 droplets, a violet stain fading in steps, a violet floor
-//          flash, 3 px shake — e_voidDrip; the night veil lifts in 4 steps
-//   +3340  end
+//          the clouds shrink away (3 steps)
+//   +3060  it LANDS: two stepped splash rings, a crown of 10 droplets, a violet stain fading in steps, a light hole
+//          in the night, 3 px shake — e_voidDrip; the night lifts in 2 quarter steps
+//   +3200  end (the splash rings / droplets finish in a 220 ms tail)
 // The ground NEVER opens (YENI_KARTLAR: "zemin hiç açılmaz"): everything goes UP.
 
 import Phaser from 'phaser';
@@ -81,26 +89,36 @@ type MassCtx = LaneECtx<'massDestroy'>;
 
 // ================================================================ geometry
 
-/** Half sizes of the open eye (a vertical almond) and of the iris: a sky-sized eye, 71 × 93 px with its lids. */
-const EH = 46;
+/** Half sizes of the open eye (a vertical almond) and of the iris: a sky-sized eye, 75 × 81 px with its lids. */
+const EH = 40;
 const EW = 30;
 const IRIS = 20;
 /** The top edge the eye and every risen body keep clear of (the phase bar / LP panels live above it). */
 const HUD_CLEAR = 40;
-/** The eye's centre: over the middle of the field, in the sky over the back row (its top stays under the phase bar). */
+/** Lid band width (lip, skin, crease, outer fold, outline). */
+const LID = 6;
+/**
+ * The eye's centre: over the middle of the field, HIGH in the sky over the back wall (its top tip stays just under
+ * the phase bar; its bottom tip clears the back row's heads as far as it can).
+ */
 function eyeAt(): XY {
-  return { x: R(BOARD_CENTER.x), y: Math.max(EH + 22, R(BOARD_CENTER.y - 124)) };
+  return { x: R(BOARD_CENTER.x), y: Math.max(EH + 18, R(BOARD_CENTER.y) - 102) };
 }
 /**
- * The sky layer (rift + eye): IN FRONT of the units and the piles, so a back-row monster standing under the sky
- * point never hides the eye; under the risen bodies' own band once they are silhouettes (see RISE_DEPTH / PULL_DEPTH).
+ * The sky layer (clouds, rift, eye): in front of the units and the piles. Tried behind the units (r6): on a crowded
+ * board the tall back-row monster in the centre lane hid the iris through the whole lid / look / gaze beat, so the
+ * eye is kept in front — but raised into the sky over the back wall, framed by its clouds and its glow, and smaller
+ * at the bottom tip, so it covers far less of the back row. The risen bodies float under it; the silhouettes of the
+ * pull go in front of it (RISE_DEPTH / PULL_DEPTH).
  */
 const SKY_DEPTH = DEPTH.FX + 1;
-/** Bodies while they rise float just under the eye (they pass behind its lens, never over it). */
+/** The clouds round the eye are sky proper: behind the cards and the units (they never hide a monster). */
+const CLOUD_DEPTH = DEPTH.TILE_FX + 6;
+/** Bodies while they rise float just under the eye (they pass behind its lids, never over it). */
 const RISE_DEPTH = DEPTH.FX + 0.2;
 /** From the contraction on the silhouettes are in front of the eye: they are pulled INTO the pupil. */
 const PULL_DEPTH = DEPTH.FX + 2;
-/** The night veil: over the light layer's own dim (TILE_FX − 0.5), under the tile glows. */
+/** The night stamp: over the light layer's floor stamps and the pads, under the tile glows. */
 const NIGHT_DEPTH = DEPTH.TILE_FX - 0.4;
 
 // ================================================================ timings (scene ms from the massDestroy)
@@ -132,7 +150,7 @@ const T = {
   tear: 2740,
   tearFall: 2880,
   land: 3060,
-  end: 3340,
+  end: 3200,
 } as const;
 
 // ================================================================ helpers
@@ -146,6 +164,21 @@ const seg = (el: number, a: number, ms: number) => Math.min(1, Math.max(0, (el -
 /** Quantise t to n steps (stepped, pixel-art motion). */
 const q = (t: number, n: number) => Math.floor(Math.min(1, t) * n) / n;
 
+/**
+ * The pull's tones per stepped frame: the first frame still shows the body's own pixels (shrinking, in a lilac rim),
+ * then it sinks into the dark — a void1, then a void0 silhouette — while its rim stays lilac, then dims.
+ */
+const PULL_FILL = [null, PAL.void1, PAL.void0] as const;
+const PULL_RIM = [PAL.void3, PAL.void3, PAL.void2] as const;
+
+/** A slow turn: the body narrows, mirrors at the middle, widens back (35 ms a frame). */
+const TURN = [0.75, 0.5, 0.25, 0.25, 0.5, 0.75] as const;
+const TURN_MS = 35;
+
+/** The lid lips' flutter (open fraction, 110 ms a step) and the iris' wander along the crown (px). */
+const FLUTTER = [1, 0.97, 1, 1, 0.95, 1, 0.97, 1, 1] as const;
+const WANDER = [0, 1, 1, 0, -1, 0] as const;
+
 /** One blink: 6 frames × 20 ms — opens a crack (0.12 → 0.24 → 0.35), shuts (0.24 → 0.12 → 0). */
 const BLINK = [0.12, 0.24, 0.35, 0.24, 0.12, 0] as const;
 const BLINK_MS = 120;
@@ -153,7 +186,9 @@ const BLINK_MS = 120;
 /** The eye's lid opening (0 shut … 1 open) at `el`. */
 function lidAt(el: number): number {
   if (el < T.lid) return 0;
-  if (el < T.close) return q(ease.out(seg(el, T.lid, T.lidMs)), 7);
+  // ease-in, 7 steps: the slit widens slowly, then the lids part fast — the widest motion lands on the sound's rise
+  // and the last step on its wet "p" (e_voidLid peaks at ~0.45 s game time = 333 scene ms × 1.35)
+  if (el < T.close) return q(ease.in(seg(el, T.lid, T.lidMs)), 7);
   if (el < T.close + T.closeMs) return 1 - q(seg(el, T.close, T.closeMs), 4);
   for (const b of [T.blink1, T.blink2]) {
     const u = el - b;
@@ -283,11 +318,11 @@ const JAG = [0, 0, 1, 1, 1, 0, -1, -1, 0, 0];
 const jag = (y: number) => JAG[((y % JAG.length) + JAG.length) % JAG.length];
 /** Side cracks: [row offset from the centre, direction, length]. */
 const BRANCH: readonly (readonly [number, number, number])[] = [
-  [-50, -1, 7],
-  [-36, 1, 5],
-  [40, -1, 6],
-  [52, 1, 8],
-  [-58, 1, 4],
+  [-42, -1, 7],
+  [-30, 1, 5],
+  [32, -1, 6],
+  [44, 1, 8],
+  [-47, 1, 4],
 ];
 /** Stars of the pupil (unit-circle positions) and their twinkle phase. */
 const STARS: readonly (readonly [number, number, number])[] = [
@@ -301,23 +336,76 @@ const STARS: readonly (readonly [number, number, number])[] = [
   [-0.62, 0.15, 0],
 ];
 /** Lash rows (offsets from the centre). */
-const LASHES = [-34, -14, 14, 34] as const;
+const LASHES = [-29, -12, 12, 29] as const;
+
+/**
+ * The sky's cloud lobes round the eye (as on the card art): night bodies with a lit top rim, a violet underside where
+ * the eye lights them, an ink outline. They swell in with the rift in 3 steps, drift 1 px, and shrink away (3 steps)
+ * after the tear has fallen. [dx, dy, r, drift phase]
+ */
+const CLOUDS: readonly (readonly [number, number, number, number])[] = [
+  [-36, -24, 8, 0],
+  [-50, -14, 7, 1],
+  [-41, -4, 9, 2],
+  [-55, 6, 6, 3],
+  [-39, 14, 8, 1],
+  [-32, 27, 6, 2],
+  [37, -20, 8, 2],
+  [51, -9, 7, 0],
+  [42, 2, 9, 3],
+  [54, 13, 6, 1],
+  [38, 19, 7, 0],
+  [31, 30, 6, 3],
+];
+function drawClouds(r: Raster, c: XY, scale: number, el: number, glow: boolean): void {
+  if (scale <= 0) return;
+  const lobes = CLOUDS.map(([dx, dy, rr, ph], i) => {
+    const drift = Math.floor((el + ph * 170) / 340) % 2;
+    const rr2 = rr * scale;
+    // wide, flat puffs (1.6 : 0.8), not balls
+    return { x: c.x + R(dx * (0.6 + 0.4 * scale)) + (dx < 0 ? -drift : drift), y: c.y + dy + (i % 2 ? drift : 0), rx: Math.max(1, rr2 * 1.6), ry: Math.max(1, rr2 * 0.8) };
+  });
+  const inside = (x: number, y: number) => lobes.some((l) => ((x - l.x) / l.rx) ** 2 + ((y - l.y) / l.ry) ** 2 <= 1);
+  const x0 = c.x - 74;
+  const y0 = c.y - EH - 6;
+  for (let y = y0; y <= c.y + EH + 6; y++) {
+    for (let x = x0; x <= c.x + 74; x++) {
+      if (!inside(x, y)) {
+        if (inside(x + 1, y) || inside(x - 1, y) || inside(x, y + 1) || inside(x, y - 1)) r.px(x, y, PAL.ink);
+        continue;
+      }
+      // tone bands: lit top rim (the moon side), night body, a violet underside facing the eye
+      // tone bands: a lit 1-px top rim, a night2 crown, a night1 body, a violet underside lit by the eye (brighter
+      // on the side facing the eye while it is open)
+      const towardEye = Math.abs(x - c.x) < EW + LID + 12;
+      let col: number = PAL.night1;
+      if (!inside(x, y - 1)) col = PAL.night3;
+      else if (!inside(x, y - 3)) col = PAL.night2;
+      else if (!inside(x, y + 1)) col = glow && towardEye ? PAL.void3 : PAL.void2;
+      else if (!inside(x, y + 3)) col = glow ? PAL.void2 : PAL.void1;
+      r.px(x, y, col);
+    }
+  }
+}
 
 function drawEye(r: Raster, c: XY, s: EyeState): void {
   if (s.fade >= 1) return;
   // ---- the rift (under the lids; beyond the tips it IS the eye's tear in the sky) — gone once the eye has shut
   if (!s.closed && s.crack > 0) {
+    // it tears down from above: long into the sky, but its lower end stops at the eye's bottom tip (it never runs
+    // down over the back row)
     const L = Math.round(s.crack * (EH + 8));
-    for (let dy = -L; dy <= L; dy++) {
+    const Ld = Math.round(s.crack * (EH - 2));
+    for (let dy = -L; dy <= Ld; dy++) {
       const x = c.x + jag(c.y + dy);
-      const tip = Math.abs(dy) > L - 3;
+      const tip = dy < -L + 3 || dy > Ld - 3;
       r.px(x - 1, c.y + dy, PAL.void2);
       r.px(x + 1, c.y + dy, PAL.void2);
       r.px(x, c.y + dy, tip ? PAL.void4 : PAL.white);
     }
     if (s.crack > 0.6) {
       for (const [oy, dir, n] of BRANCH) {
-        if (Math.abs(oy) > L) continue;
+        if (oy < -L || oy > Ld) continue;
         for (let k = 1; k <= n; k++) r.px(c.x + jag(c.y + oy) + dir * (k + 1), c.y + oy + (k >> 1) * Math.sign(oy), k === n ? PAL.void2 : PAL.void3);
       }
     }
@@ -331,30 +419,22 @@ function drawEye(r: Raster, c: XY, s: EyeState): void {
     const hw = Math.floor(EW * s.open * f);
     if (hw < 1) continue;
     const y = c.y + dy;
-    for (let dx = -hw - 4; dx <= hw + 4; dx++) {
+    for (let dx = -hw - LID; dx <= hw + LID; dx++) {
       const x = c.x + dx;
       const a = Math.abs(dx);
       if (a > hw) {
-        // lids: left lid lit (mist lip, night4 skin), right lid shaded; ink outline (white on the gulp's rim frames)
+        // the lids have VOLUME: a lit lip on the lens, two skin bands, a shaded crease, the outer fold catching the
+        // light again, an ink outline (white on the gulp's rim frame). The left lid is lit, the right one shaded.
         const k = a - hw;
-        const col =
-          k === 4
-            ? s.flash >= 2
-              ? PAL.white
-              : PAL.ink
-            : dx < 0
-              ? k === 1
-                ? PAL.mist
-                : k === 2
-                  ? PAL.night4
-                  : PAL.night3
-              : k === 1
-                ? s.flash >= 2
-                  ? PAL.mist
-                  : PAL.night4
-                : k === 2
-                  ? PAL.night3
-                  : PAL.night2;
+        const lit = dx < 0;
+        const up = dy < 0;
+        let col: number;
+        if (k === LID) col = s.flash >= 2 ? PAL.white : PAL.ink;
+        else if (k === 1) col = s.flash >= 2 ? PAL.white : lit ? PAL.mist : up ? PAL.night4 : PAL.night3;
+        else if (k === 2) col = lit ? PAL.night4 : PAL.night3;
+        else if (k === 3) col = lit ? (up ? PAL.night4 : PAL.night3) : PAL.night2;
+        else if (k === 4) col = lit ? PAL.night1 : PAL.night0;
+        else col = lit ? PAL.night3 : PAL.night2;
         r.px(x, y, col);
         continue;
       }
@@ -366,7 +446,7 @@ function drawEye(r: Raster, c: XY, s: EyeState): void {
       if (d <= s.rp) {
         col = PAL.ink;
         for (const [sx, sy, ph] of STARS) {
-          if (R(sx * s.rp) === ux && R(sy * s.rp) === uy) col = (Math.floor(s.el / 160) + ph) % 3 === 0 ? PAL.white : PAL.void3;
+          if (R(sx * s.rp) === ux && R(sy * s.rp) === uy) col = (Math.floor(s.el / 90) + ph) % 3 === 0 ? PAL.white : PAL.void3;
         }
       } else if (d <= s.rp + 1.2) col = s.glow > 1 ? PAL.white : PAL.void4;
       else if (d <= 12.5) col = s.glow > 0.5 ? PAL.void4 : PAL.void3;
@@ -391,7 +471,7 @@ function drawEye(r: Raster, c: XY, s: EyeState): void {
   if (s.open > 0.5) {
     for (const oy of LASHES) {
       const f = 1 - (oy / EH) * (oy / EH);
-      const hw = Math.floor(EW * s.open * f) + 5;
+      const hw = Math.floor(EW * s.open * f) + LID + 1;
       for (const side of [-1, 1]) {
         r.px(c.x + side * hw, c.y + oy, PAL.ink);
         r.px(c.x + side * (hw + 1), c.y + oy + 1, PAL.ink);
@@ -450,12 +530,14 @@ interface Mote {
   g: number;
   /** 2-px trail */
   trail: boolean;
+  /** with `to`: radians the mote winds round its target on the way in (a spiral) */
+  spin: number;
 }
 
 class Motes {
   private ms: Mote[] = [];
   add(m: Partial<Mote> & { x: number; y: number; life: number; c: number }): void {
-    this.ms.push({ vx: 0, vy: 0, to: null, age: 0, g: 0, trail: false, x0: m.x, y0: m.y, ...m });
+    this.ms.push({ vx: 0, vy: 0, to: null, age: 0, g: 0, trail: false, spin: 0, x0: m.x, y0: m.y, ...m });
   }
   step(dt: number): void {
     const s = dt / 1000;
@@ -463,8 +545,16 @@ class Motes {
       m.age += dt;
       if (m.to) {
         const t = ease.in(m.age / m.life);
-        m.x = m.x0 + (m.to.x - m.x0) * t;
-        m.y = m.y0 + (m.to.y - m.y0) * t;
+        if (m.spin) {
+          const a = m.spin * t;
+          const ox = m.x0 - m.to.x;
+          const oy = m.y0 - m.to.y;
+          m.x = m.to.x + (ox * Math.cos(a) - oy * Math.sin(a)) * (1 - t);
+          m.y = m.to.y + (ox * Math.sin(a) + oy * Math.cos(a)) * (1 - t);
+        } else {
+          m.x = m.x0 + (m.to.x - m.x0) * t;
+          m.y = m.y0 + (m.to.y - m.y0) * t;
+        }
       } else {
         m.vy += m.g * s;
         m.x += m.vx * s;
@@ -868,16 +958,21 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
   nightDown(sc); // no-op when the activation hook already dimmed
   bodies.forEach((b, i) => {
     b.ph = rng() * Math.PI * 2;
-    // two slow turns spread over the rise, each body on its own beat (a turn is 4 × 30 ms: it ends long before
+    // three slow turns spread over the whole rise, each body on its own beat (a turn is 6 × 35 ms: it ends before
     // the contraction)
     const o = (i * 53) % 150;
-    b.flips = [T.lift + 260 + o, T.lift + 640 + o].filter((t) => t < T.contract - 160);
+    b.flips = [T.lift + 150 + o, T.lift + 450 + o, T.lift + 740 + o].filter((t) => t < T.contract - TURN.length * TURN_MS - 20);
   });
   for (const c of cards) c.tile = field.tileOf(c.uid);
   const landAt = tearPoint(bodies);
+  // the iris leans toward the side of the field with more doomed bodies
+  const nL = bodies.filter((b) => b.kind !== 'saved' && b.floor.x < eye.x).length;
+  const nR = bodies.filter((b) => b.kind !== 'saved' && b.floor.x >= eye.x).length;
+  const lean = Math.sign(nR - nL);
 
   // ---- the canvases: the sky (the eye, over the units), the air (motes, streaks, tether, tear), the floor
-  const sky = Raster.around(sc, eye.x, eye.y, (EW + 8) * 2, (EH + 14) * 2, SKY_DEPTH);
+  const sky = Raster.around(sc, eye.x, eye.y, (EW + LID + 6) * 2, (EH + 16) * 2, SKY_DEPTH);
+  const cloudR = Raster.around(sc, eye.x, eye.y, 160, (EH + 16) * 2, CLOUD_DEPTH);
   const air = new Raster(sc, 0, 0, 640, 360, DEPTH.FX + 6);
   const floor = new Raster(sc, 0, 0, 640, 360, DEPTH.TILE_FX + 2);
   const motes = new Motes();
@@ -923,6 +1018,40 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
   bg(starFlare(sc, eye, 200, [PAL.white, PAL.void4, PAL.void3, PAL.void2, PAL.void1], 22));
   playV3('e_voidRift', { volume: 0.85 });
 
+  /** The tear's landing on the floor raster at scene ms `el` (also drawn by the tail after the scene). */
+  const splash = (r: Raster, el: number): void => {
+    // the tear's landing: two stepped splash rings (void4 first, void3 behind it) and a stain that fades in steps
+    if (el >= T.land) {
+      const u = el - T.land;
+      const ring = (startMs: number, maxR: number, col: number) => {
+        const v = seg(u, startMs, 300);
+        if (v <= 0 || v >= 1) return;
+        const rx = R(4 + q(ease.out(v), 6) * maxR);
+        const ry = Math.max(2, rx >> 1);
+        const c = v > 0.7 ? PAL.void2 : col;
+        // a 2-px band (the outer ring and one pixel inside it), whole pixels
+        for (let a = 0; a < 180; a++) {
+          const ang = (a / 180) * Math.PI * 2;
+          const cs = Math.cos(ang);
+          const sn = Math.sin(ang);
+          r.px(R(landAt.x + cs * rx), R(landAt.y + sn * ry), c);
+          r.px(R(landAt.x + cs * (rx - 1)), R(landAt.y + sn * Math.max(1, ry - 1)), c);
+        }
+      };
+      ring(0, 26, PAL.void4);
+      ring(70, 18, PAL.void3);
+      // the stain (stepped tones)
+      const sc3 = u < 100 ? PAL.void4 : u < 190 ? PAL.void3 : u < 270 ? PAL.void2 : u < 330 ? PAL.void1 : -1;
+      if (sc3 >= 0) {
+        for (let yy = -2; yy <= 2; yy++) {
+          const w = [4, 7, 8, 7, 4][yy + 2];
+          for (let xx = -w; xx <= w; xx++) r.px(landAt.x + xx, landAt.y + yy, sc3);
+        }
+        if (u < 190) r.px(landAt.x - 3, landAt.y - 1, PAL.white);
+      }
+    }
+  };
+
   let last = 0;
   await run(sc, T.end, (_t, el, dt) => {
     S.el = el;
@@ -932,15 +1061,18 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
     S.closed = el >= T.close;
     // the shut seam seals from the top down to the tear's slit (3 steps) right after the second blink
     S.seam = 1 - q(seg(el, T.seal, T.sealMs), 3) * 0.9;
-    // the open eye breathes: the lids ease 1 px in and out (nothing stands still)
-    if (el > T.lid + T.lidMs && el < T.close) S.open = Math.floor(el / 420) % 2 ? 0.96 : 1;
-    // looks round (left, right: searching), then the gaze falls
+    // the open eye is alive: the lid lips flutter 1 px on an uneven beat (nothing stands still)
+    if (el > T.lid + T.lidMs && el < T.close) S.open = FLUTTER[Math.floor(el / 110) % FLUTTER.length];
+    // looks round (left, right: searching), then the gaze falls; while they rise the iris follows the crown,
+    // leaning toward the side with more bodies and wandering 1 px along it
     if (el < T.gaze) S.ix = el >= T.look ? (el < T.look + 70 ? -3 : el < T.look + 140 ? 3 : 0) : 0;
-    else S.ix = 0;
+    else if (el < T.gaze + 200 || el >= T.contract) S.ix = 0;
+    else S.ix = Math.max(-2, Math.min(2, lean + WANDER[Math.floor((el - T.gaze - 200) / 170) % WANDER.length]));
     S.iy = el < T.gaze ? 0 : q(ease.out(seg(el, T.gaze, 120)), 3) * 8;
     if (el >= T.close) S.iy = 8;
     // the pupil: dilates as it looks, contracts in two stepped frames, bites on each arrival, gulps
-    if (el < T.contract) S.rp = el >= T.gaze ? 10 : 8;
+    // (the pupil breathes 1 px while it watches: 10 ↔ 9 every 300 ms)
+    if (el < T.contract) S.rp = el >= T.gaze ? (Math.floor((el - T.gaze) / 300) % 2 ? 9 : 10) : 8;
     else if (el < T.contract + 20) S.rp = 6;
     else if (el < T.gulp) S.rp = el - lastBite < 34 ? 4 : 3;
     else if (el < T.gulp + 40) S.rp = 7;
@@ -1008,28 +1140,26 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
     });
     once('contract', el, T.contract, () => {
       playV3('e_voidTick', { volume: 1 });
-      // the hit-stop is the bodies' own: every body holds still for one frame (the eye keeps living); each one
-      // flashes a WHITE 1-px outline round a void3 body (fills only: palette colours, never a multiply)
+      // the hit-stop is the bodies' own: every body holds still for ONE frame (the eye keeps living), still in its
+      // own pixels, inside a single-frame WHITE 1-px outline — the last time they are seen as themselves
       for (const b of bodies) {
         if (b.kind === 'saved' || !b.ghost) continue;
         const g = b.ghost;
         g.anims.stop();
         g.setScale(1);
-        g.setTintFill(PAL.void3);
         g.setDepth(PULL_DEPTH + g.y / 1000);
         rimOf(sc, b, PAL.white);
         b.rimUntil = Infinity;
       }
     });
     once('silhouette', el, T.pull, () => {
-      // flat violet silhouettes inside a void4 outline, pulled at once (6 ms apart, nearest first)
+      // the bodies SINK into the dark as they are pulled: their own pixels for one frame, then dark void silhouettes
+      // (void1 → void0) inside a lilac rim, pulled at once (3 ms apart, nearest first)
       playV3('e_voidGulp', { volume: 1 });
       const order = bodies.filter((b) => b.kind !== 'saved' && b.ghost).sort((a, c) => Math.hypot(a.ghost!.x - eye.x, a.ghost!.y - eye.y) - Math.hypot(c.ghost!.x - eye.x, c.ghost!.y - eye.y));
       order.forEach((b, k) => {
         const g = b.ghost!;
-        // neighbours alternate void3 / void2 fills so overlapping bodies stay apart inside their void4 outlines
-        g.setTintFill(k % 2 ? PAL.void2 : PAL.void3);
-        rimOf(sc, b, PAL.void4);
+        rimOf(sc, b, PULL_RIM[0]);
         const box = spriteBox(sc, g);
         b.offX = R(g.x - box.cx);
         b.offY = R(g.y - box.cy);
@@ -1094,6 +1224,13 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
           const cy = R(cy0 + (pp.y - cy0) * f);
           g.setScale(k);
           g.setPosition(R(cx + b.offX * k), R(cy + b.offY * k));
+          if (g.getData('fi') !== fi) {
+            g.setData('fi', fi);
+            const fill = PULL_FILL[fi];
+            if (fill === null) g.clearTint();
+            else g.setTintFill(fill);
+            for (const rr of b.rims) rr.setTintFill(PULL_RIM[fi]);
+          }
           moveRims(b, el);
           if (!g.getData('s' + fi)) {
             g.setData('s' + fi, true);
@@ -1143,7 +1280,10 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
         moveRims(b, el);
         continue;
       }
-      // ---- the rise: squat 1 px (anticipation), snap 2 px (tears off), then the slow float to its seat
+      // ---- the rise: squat 1 px (anticipation), snap 2 px (tears off), then ONE continuous ascent that never parks:
+      // a curved path (it swings outward, then in, like a slow vortex) to its seat on the crown, and from 42 % on the
+      // whole crown tightens toward the pupil (half way in by the contraction, accelerating) — the contraction
+      // finishes a motion already under way. Every body bobs 1 px on its own beat.
       let gx = b.x0;
       let gy = b.y0;
       if (el >= T.lift) {
@@ -1151,12 +1291,20 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
         if (k < 60) gy = b.y0 + 1;
         else if (k < 110) gy = b.y0 - 2;
         else {
-          const e = ease.inOut((k - 110) / (T.liftMs - 110));
-          gx = b.x0 + (b.tx - b.x0) * e;
+          const u = seg(el, T.lift + 110, T.contract - T.lift - 110);
+          const a = Math.min(1, u / 0.78);
+          const e = ease.out(a);
+          const side = b.tx >= eye.x + b.offX ? 1 : -1;
+          const swing = b.kind === 'saved' ? 0 : Math.sin(Math.PI * a) * 10 * side;
+          gx = b.x0 + (b.tx - b.x0) * e + swing;
           gy = b.y0 - 2 + (b.ty - b.y0 + 2) * e;
+          if (b.kind !== 'saved') {
+            const tight = ease.in(seg(u, 0.42, 0.58)) * 0.48;
+            gx += (pp.x + b.offX - b.tx) * tight;
+            gy += (pp.y + b.offY - b.ty) * tight;
+          }
+          gy += Math.floor((el + b.ph * 60) / 190) % 2 ? -1 : 0;
         }
-        // keep breathing after the rise ends (nothing stands still): 1 px up / down
-        if (k > T.liftMs) gy += Math.floor((k - T.liftMs) / 180) % 2 ? -1 : 0;
       }
       const sway = el >= T.lift + 110 ? Math.round(Math.sin(el / 300 + b.ph)) : 0;
       // the guardian charm's save: yanked down in 160 ms (ease-in), lands, stays
@@ -1178,16 +1326,27 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
           // a gold outline for two frames (it is kept)
           rimOf(sc, b, PAL.gold4);
           b.rimUntil = el + 60;
-          // "KORUNDU" just over its head (kept under the eye's tip), 450 ms, gone before the contraction
-          const top = spriteBox(sc, g).top;
-          const wy = R(Math.max(eye.y + EH + 12, top - 3));
+          // "KORUNDU" on an ink plate at a fixed screen y just in front of its tile (under its feet: never over the
+          // risen band, the eye or a neighbour — on a centre-lane survivor the space over its head is the eye's),
+          // 450 ms, gone before the contraction
+          const wy = b.floor.y + 22;
           const w = pixelText(sc, b.floor.x, wy, 'KORUNDU', { size: 'md', color: PAL.gold3 }).setOrigin(0.5, 1).setDepth(DEPTH.FX_TOP);
+          const pw = R(w.width) + 6;
+          const ph = R(w.height) + 4;
+          const plate = sc.add.rectangle(R(b.floor.x - pw / 2), wy - ph + 2, pw, ph, PAL.ink).setOrigin(0).setDepth(DEPTH.FX_TOP - 0.01);
+          const edge = sc.add.rectangle(R(b.floor.x - pw / 2) + 1, wy + 1, pw - 2, 1, PAL.gold1).setOrigin(0).setDepth(DEPTH.FX_TOP - 0.005);
           const life = Math.min(450, Math.max(200, T.contract - 20 - el));
           words.push(
             run(sc, life, (t) => {
-              w.y = R(wy - q(t, 4) * 4);
-              w.setVisible(t < 0.8 || Math.floor(t * 16) % 2 === 0);
-            }).then(() => w.destroy()),
+              const on = t < 0.8 || Math.floor(t * 16) % 2 === 0;
+              w.setVisible(on);
+              plate.setVisible(on);
+              edge.setVisible(on);
+            }).then(() => {
+              w.destroy();
+              plate.destroy();
+              edge.destroy();
+            }),
           );
         }
         if (b.landed) {
@@ -1205,19 +1364,19 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
           b.turn = el;
           b.turned = false;
           rimOf(sc, b, PAL.void4);
-          b.rimUntil = el + 120;
+          b.rimUntil = el + TURN.length * TURN_MS;
         }
         if (b.turn >= 0) {
-          const fi = Math.floor((el - b.turn) / 30);
-          if (fi >= 2 && !b.turned) {
+          const fi = Math.floor((el - b.turn) / TURN_MS);
+          if (fi >= TURN.length / 2 && !b.turned) {
             b.turned = true;
             g.setFlipX(!g.flipX);
             g.setOrigin(1 - g.originX, g.originY);
           }
-          if (fi >= 4) {
+          if (fi >= TURN.length) {
             b.turn = -1;
             g.setScale(1);
-          } else g.setScale([0.66, 0.33, 0.33, 0.66][fi], 1);
+          } else g.setScale(TURN[fi], 1);
         }
       }
       moveRims(b, el);
@@ -1228,50 +1387,49 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
       }
     }
 
+    // ================================ light: holes in the night stamp (the eye's glow on the wall, its gaze on the field)
+    const night = nightOf(sc);
+    if (night) {
+      const holes: NightHole[] = [];
+      const lid = lidAt(el);
+      if (S.fade < 1) {
+        if (!S.closed && lid > 0) holes.push({ x: eye.x, y: eye.y, rx: R(30 + 44 * lid), ry: EH + 12 });
+        else if (!S.closed && S.crack > 0) holes.push({ x: eye.x, y: eye.y, rx: R(16 * S.crack), ry: R((EH + 8) * S.crack) });
+        else if (S.closed) holes.push({ x: eye.x, y: eye.y + R(EH * (1 - S.seam)), rx: 16, ry: Math.max(10, R(EH * S.seam)) });
+      }
+      const gIn = q(seg(el, T.gaze, 180), 3);
+      const gOut = q(seg(el, T.gulp, 210), 3);
+      const gr = R(118 * gIn * (1 - gOut));
+      if (gr > 0) holes.push({ x: fieldMid.x, y: fieldMid.y, rx: gr, ry: R(gr * 0.52) });
+      if (el >= T.land && el < T.land + 200) holes.push({ x: landAt.x, y: landAt.y, rx: el < T.land + 100 ? 40 : 24, ry: el < T.land + 100 ? 20 : 12 });
+      night.holes = holes;
+      night.sync();
+    }
+    // a slow spiral of 1-px motes winding into the pupil while the bodies rise (the pull of the gaze)
+    if (el >= T.gaze + 80 && el < T.contract - 60 && rng() < dtS / 34) {
+      const a = rng() * Math.PI * 2;
+      const rr = 44 + rng() * 22;
+      motes.add({ x: eye.x + Math.cos(a) * rr, y: eye.y + Math.sin(a) * rr * 0.9, to: pupil(), spin: 2.4, life: 520 + rng() * 240, c: rng() < 0.2 ? PAL.white : rng() < 0.5 ? PAL.void4 : PAL.void3 });
+    }
+
     // ================================ draw
+    const clouds = el < T.tearFall + 40 ? q(seg(el, T.rift, T.riftMs), 3) : 1 - q(seg(el, T.tearFall + 40, 180), 3);
+    cloudR.draw((r) => drawClouds(r, eye, clouds, el, S.open > 0 && !S.closed));
     sky.draw((r) => drawEye(r, eye, S));
     floor.draw((r) => {
       // shrinking shadows under the risen bodies (stepped radii)
       for (const b of bodies) {
         if (!b.ghost || b.gone || el < T.lift || el >= T.pull || (b.kind === 'saved' && b.landed)) continue;
+        // (opaque ink: a solid core and a 3/4 Bayer rim — no alpha)
         const h = b.y0 - b.ghost.y;
         const rx = Math.max(2, 9 - Math.floor(h / 12));
         const ry = Math.max(1, rx >> 1);
         for (let yy = -ry; yy <= ry; yy++) {
           const w = Math.floor(rx * Math.sqrt(1 - (yy * yy) / ((ry + 0.5) * (ry + 0.5))));
-          for (let xx = -w; xx <= w; xx++) r.px(b.floor.x + xx, b.floor.y + yy, PAL.ink, 150);
+          for (let xx = -w; xx <= w; xx++) r.dpx(b.floor.x + xx, b.floor.y + yy, PAL.ink, Math.abs(xx) >= w - 1 || Math.abs(yy) === ry ? 0.75 : 1);
         }
       }
-      // the tear's landing: two stepped splash rings (void4 first, void3 behind it) and a stain that fades in steps
-      if (el >= T.land) {
-        const u = el - T.land;
-        const ring = (startMs: number, maxR: number, col: number) => {
-          const v = seg(u, startMs, 300);
-          if (v <= 0 || v >= 1) return;
-          const rx = R(4 + q(ease.out(v), 6) * maxR);
-          const ry = Math.max(2, rx >> 1);
-          const c = v > 0.7 ? PAL.void2 : col;
-          // a 2-px band (the outer ring and one pixel inside it), whole pixels
-          for (let a = 0; a < 180; a++) {
-            const ang = (a / 180) * Math.PI * 2;
-            const cs = Math.cos(ang);
-            const sn = Math.sin(ang);
-            r.px(R(landAt.x + cs * rx), R(landAt.y + sn * ry), c);
-            r.px(R(landAt.x + cs * (rx - 1)), R(landAt.y + sn * Math.max(1, ry - 1)), c);
-          }
-        };
-        ring(0, 26, PAL.void4);
-        ring(70, 18, PAL.void3);
-        // the stain (stepped tones)
-        const sc3 = u < 100 ? PAL.void4 : u < 190 ? PAL.void3 : u < 270 ? PAL.void2 : u < 330 ? PAL.void1 : -1;
-        if (sc3 >= 0) {
-          for (let yy = -2; yy <= 2; yy++) {
-            const w = [4, 7, 8, 7, 4][yy + 2];
-            for (let xx = -w; xx <= w; xx++) r.px(landAt.x + xx, landAt.y + yy, sc3);
-          }
-          if (u < 190) r.px(landAt.x - 3, landAt.y - 1, PAL.white);
-        }
-      }
+      splash(r, el);
     });
     air.draw((r) => {
       // the pull's streaks: converging 1-px lines, stepping down the void ramp as they age
@@ -1336,14 +1494,16 @@ async function voidEyeWipe(ctx: MassCtx): Promise<void> {
     for (const r of b.rims) r.destroy();
   }
   // the motes of the splash keep drawing a moment longer
-  const tail = run(sc, 160, (_t, _el, dt) => {
+  const tail = run(sc, 220, (_t, tel, dt) => {
     motes.step(dt);
     air.draw((r) => motes.draw(r));
-    floor.draw(() => undefined);
+    floor.draw((r) => splash(r, T.end + tel));
     sky.draw(() => undefined);
+    cloudR.draw(() => undefined);
   });
   await Promise.all([...flights, tail, ...words]);
   sky.destroy();
+  cloudR.destroy();
   air.destroy();
   floor.destroy();
   for (const b of bodies) b.light?.destroy();

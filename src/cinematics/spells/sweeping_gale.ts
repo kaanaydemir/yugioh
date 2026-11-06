@@ -59,8 +59,10 @@ import type { CardId } from '../../data/cards';
 import type { GameEvent, PlayerId, Uid } from '../../engine/types';
 import { PAL, RAMPS } from '../../art/palette';
 import { PixelCanvas } from '../../art/pixel';
-import { FLAT_H, FLAT_W, cardMip, poseAxes, qAxis, qMul, renderCard, restQuat, type Quat } from '../../art/cards';
-import { DEPTH, LOOK_V3, type XY, isoToScreen, screenToIso, unitDepth, zoneCell, zoneXY } from '../../view/layout';
+import { FLAT_H, FLAT_W, ISO_CX, ISO_CY, ISO_TEX_H, ISO_TEX_W, cardIsoKey, cardMip, poseAxes, qAxis, qMul, renderCard, restQuat, type Quat } from '../../art/cards';
+import { G1, GR1, SLAB_T } from '../../still/arena-geom';
+import { SLAB_RECT, buildCrackField } from '../../art/arena';
+import { BOARD_MID_COL, CARD_H, DEPTH, LOOK_V3, type XY, isoToScreen, screenToIso, unitDepth, zoneCell, zoneXY } from '../../view/layout';
 import type { TileCard } from '../../view/TileCard';
 import type { CardSprite } from '../../view/CardSprite';
 import { Raster, onFrame, run } from '../../vfx/setpieces';
@@ -111,6 +113,24 @@ const T = {
   /** after the last delivery */
   settle: 60,
 } as const;
+
+/** The fall into the void, ms after a card crosses the rim. */
+const FALL = {
+  /** the mip shrinks to ¾, then to ½ */
+  shrink1: 70,
+  shrink2: 140,
+  /** the tones step down: stone, then night */
+  tone1: 90,
+  tone2: 170,
+  /** the falling streak above it */
+  streak: 50,
+  /** its leaves set off for the pile */
+  carry: 110,
+  /** gone for good (if the lip has not swallowed it yet) */
+  gone: 260,
+} as const;
+/** px under the slab's top rim where a falling card vanishes (the slab face + the first hull tier's lip). */
+const LIP = SLAB_T + 8;
 
 // ================================================================ easing + small helpers
 
@@ -176,6 +196,14 @@ function toLocal(v: PlayerId, g: G): G {
 function scr(g: G, z = 0): XY {
   const p = isoToScreen(g[0], g[1]);
   return { x: p.x, y: p.y - z };
+}
+/** The platform's lower lip under the rim a victim's cards go over (screen x → y): player 2's cards ride to the
+ * right-hand column rim, player 1's are thrown over their own front row rim. */
+function lipLine(v: PlayerId): (x: number) => number {
+  const a = v === 1 ? isoToScreen(G1, 0) : isoToScreen(0, GR1);
+  const b = v === 1 ? isoToScreen(G1, 1) : isoToScreen(1, GR1);
+  const k = (b.y - a.y) / (b.x - a.x);
+  return (x: number) => a.y + (x - a.x) * k + LIP;
 }
 function insideSlab(g: { col: number; row: number }): boolean {
   return g.col > SLAB.c0 && g.col < SLAB.c1 && g.row > SLAB.r0 && g.row < SLAB.r1;
@@ -486,6 +514,9 @@ class Bits {
 
 const FC = 72;
 let flySeq = 0;
+/** The receding card's two tone steps (by luminance: ink, shade, body, light): stone first, then the night. */
+const RECEDE1 = [PAL.ink, PAL.night2, PAL.stone2, PAL.stone4] as const;
+const RECEDE2 = [PAL.ink, PAL.night0, PAL.night1, PAL.night3] as const;
 
 class FlyCard {
   readonly img: Phaser.GameObjects.Image;
@@ -505,10 +536,17 @@ class FlyCard {
    * Draw the card at screen centre c with pose q. Returns whether its FRONT faces the camera.
    * mask: hide the pixels that fall on the platform's top (the card is below the rim, behind a back edge).
    */
-  draw(c: XY, qq: Quat, o: { light?: number; tint?: number; tintAmt?: number; mask?: boolean; depth: number }): boolean {
+  /** Opaque pixels left after the last draw's masks (0: the card has vanished under the lip). */
+  shown = 0;
+  draw(
+    c: XY,
+    qq: Quat,
+    o: { light?: number; tint?: number; tintAmt?: number; mask?: boolean; depth: number; scale?: number; recede?: 0 | 1 | 2; lip?: ((x: number) => number) | null },
+  ): boolean {
     const pc = this.pc;
     pc.clear();
-    const { ex, ey, n } = poseAxes(qq, FLAT_W, FLAT_H);
+    const sc = o.scale ?? 1;
+    const { ex, ey, n } = poseAxes(qq, FLAT_W * sc, FLAT_H * sc);
     renderCard(pc, FC / 2, FC / 2, ex, ey, n, cardMip(this.cardId, this.player), cardMip('back', this.player), {
       light: o.light ?? 0,
       tint: o.tint,
@@ -523,6 +561,33 @@ class FlyCard {
           if (insideSlab(screenToIso(ox + x + 0.5, oy + y + 0.5))) pc.erase(x, y);
         }
     }
+    // the fall into the void: below the platform's lower lip the card is gone (it drops out of sight under the
+    // slab's first hull tier), and it recedes into the dark in two flat tone steps (palette remap by luminance)
+    const lip = o.lip ?? null;
+    const ramp = o.recede === 1 ? RECEDE1 : o.recede === 2 ? RECEDE2 : null;
+    let shown = 0;
+    if (lip || ramp) {
+      const d = pc.data;
+      for (let x = 0; x < FC; x++) {
+        const ly = lip ? lip(ox + x) - oy : Infinity;
+        for (let y = 0; y < FC; y++) {
+          if (!pc.isOpaque(x, y)) continue;
+          if (y >= ly) {
+            pc.erase(x, y);
+            continue;
+          }
+          shown++;
+          if (!ramp) continue;
+          const i = (y * FC + x) * 4;
+          const L = 0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2];
+          const col = ramp[L < 40 ? 0 : L < 95 ? 1 : L < 160 ? 2 : 3];
+          d[i] = (col >> 16) & 255;
+          d[i + 1] = (col >> 8) & 255;
+          d[i + 2] = col & 255;
+        }
+      }
+    } else shown = 1;
+    this.shown = shown;
     this.tex.context.putImageData(new ImageData(pc.data as Uint8ClampedArray<ArrayBuffer>, FC, FC), 0, 0);
     this.tex.refresh();
     this.img.setPosition(ox, oy).setDepth(o.depth).setVisible(true);
@@ -568,6 +633,10 @@ interface Swept {
   lifted: boolean;
   sawFace: boolean;
   fell: boolean;
+  /** its leaves have set off for the pile */
+  sent: boolean;
+  /** screen y of the platform's lower lip under the rim it goes over (at screen x) */
+  lip: (x: number) => number;
   gone: boolean;
   tileY: number;
 }
@@ -645,6 +714,8 @@ function collect(ctx: MassCtx, path: Path, victim: PlayerId): Collected {
         lifted: false,
         sawFace: false,
         fell: false,
+        sent: false,
+        lip: lipLine(victim),
         gone: false,
         tileY: tile ? tile.y : 0,
       });
@@ -691,7 +762,7 @@ function flight(c: Swept, tau: number, tauEdge: number): { g: G; z: number; past
   // stays LOW (it never climbs over the duelist behind the row)
   const drift = c.ride && c.kind !== 'field' ? -0.18 * ease.out(tau / 320) : 0;
   const g: G = [c.home[0] + c.along[0] * A + c.out[0] * O, c.home[1] + c.along[1] * A + c.out[1] * O + drift];
-  const peak = c.kind === 'field' ? 18 : c.ride ? 14 : 26;
+  const peak = c.kind === 'field' ? 18 : c.ride ? 22 : 26;
   const zAt = (t: number) => (t < 160 ? peak * ease.out(t / 160) : peak + R(Math.sin((t - 160) / 110) * (c.ride ? 2 : 4)));
   const past = tau >= tauEdge;
   let z = zAt(tau);
@@ -750,7 +821,16 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   await op.release(top, { ms: 1, size: 1, light: false, ramp: LEAF_FX });
   playV3('e_galeLob', { volume: 0.85, pan: panAt(top.x) });
   await lobCurl(sc, top, { x: R(start.x), y: R(start.y) });
-  const spent = wait(sc, 140).then(() => (op.leave ? op.leave(gi) : undefined));
+  // the spent hand card comes apart into the wind (its own leaves carried to the pile); a set card leaves its tile
+  const hand = !setTile && op.card && op.card.active && !(op.card as { home?: unknown }).home ? (op.card as CardSprite) : null;
+  const spent = wait(sc, 140).then(() => {
+    if (hand && gi >= 0 && !ctx.isConsumed(gi)) {
+      const g = ctx.events[gi] as Extract<GameEvent, { type: 'toGraveyard' }>;
+      ctx.consumeAt(gi);
+      return spentToLeaves(ctx as unknown as AnyCtx, hand, g.owner);
+    }
+    return op.leave ? op.leave(gi) : undefined;
+  });
   await ctx.play(mi, { galeOpened: true });
   await spent;
   if (stir.p) await stir.p;
@@ -948,23 +1028,114 @@ function tintDeep(o: Phaser.GameObjects.GameObject, color: number): void {
   else if (typeof t.setTint === 'function') t.setTint(color);
 }
 
-/** The spent waiting card goes to its graveyard (a hovering card drops to the floor first). */
+/** The spent waiting card goes to its graveyard (a set card from its tile; a hovering card is spent into leaves). */
 async function waitingCardLeaves(ctx: AnyCtx, w: GaleWait, gi: number): Promise<void> {
   const g = gi >= 0 ? (ctx.events[gi] as Extract<GameEvent, { type: 'toGraveyard' }>) : null;
   const owner = g ? g.owner : w.owner;
-  const sc = ctx.scene;
   if (w.tile && w.tile.active) {
     ctx.views.field.release(w.uid);
     return cardLeaves(ctx, { owner, cardId: ID, from: { x: R(w.tile.home.x), y: R(w.tile.home.y) }, tile: w.tile });
   }
   const c = w.card;
-  if (c && c.active) {
-    const y0 = R(c.y);
-    await run(sc, 80, (k) => c.active && c.setY(y0 + R(6 * k * k)));
-    const at = { x: R(c.x), y: castFloor({ x: c.x, y: y0 }) - 2 };
-    c.destroy();
-    return cardLeaves(ctx, { owner, cardId: ID, from: at });
+  if (c && c.active) return spentToLeaves(ctx, c, owner);
+}
+
+/**
+ * The spent hovering card (its gale has left it) comes apart into the wind: one white frame, it dissolves while its
+ * leaves burst off it downwind, and a little gust carries them to its graveyard (the pile counts up there). It never
+ * crosses the duelist's dais on the floor.
+ */
+async function spentToLeaves(ctx: AnyCtx, card: CardSprite, owner: PlayerId): Promise<void> {
+  const sc = ctx.scene;
+  const at = { x: R(card.x), y: R(card.y) };
+  const pile = ctx.views.field.pile(owner, 'graveyard');
+  const to0 = pile.topXY();
+  const to = { x: R(to0.x), y: R(to0.y) };
+  const side = to.x >= at.x ? 1 : -1;
+  const ras = new Raster(sc, 0, 0, 640, 360, DEPTH.FX_TOP + 11);
+  const bits = new Bits();
+  const rng = fxRng(at.x * 3 + at.y);
+  for (let k = 0; k < 9; k++)
+    bits.add({ kind: k % 4 === 3 ? 'paper' : 'leaf', x: at.x + R((rng() - 0.5) * 30), y: at.y + R((rng() - 0.5) * 44), vx: side * (40 + rng() * 70), vy: -30 - rng() * 40, g: 60, life: 320 + rng() * 160, ph: rng(), c: k % 2 ? PAL.leaf4 : PAL.leaf3 });
+  const cr = { from: { x: at.x + side * 6, y: at.y - 4 }, to, t0: 120, ph: rng() * 6 };
+  void card.pulse(PAL.white, 90);
+  playV3('e_galeCarry', { volume: 0.7, pan: panAt(at.x) });
+  const fading = card.dissolve(240).then(() => card.active && card.destroy());
+  let last = 0;
+  let landed = false;
+  await run(sc, cr.t0 + T.carryMs + T.dropMs + 40, (_t, el) => {
+    bits.step(el - last);
+    last = el;
+    if (!landed && el >= cr.t0 + T.carryMs + T.dropMs) {
+      landed = true;
+      const count = landingCount(pile.count, ctx.after?.players?.[owner]?.graveyard?.length);
+      pile.set(count, ID);
+      pile.bump();
+      ctx.views.hud.setCounts(owner, { grave: count });
+      playV3('e_galePile', { volume: 0.7, pan: panAt(to.x) });
+    }
+    ras.draw((r) => {
+      bits.draw(r);
+      if (!landed) drawCarrier(r, cr, el);
+    });
+  });
+  ras.destroy();
+  await fading;
+}
+
+/**
+ * Büyü Mührü killed the gale: the dead card FALLS off its hover in four stepped frames (it tips back: upright, 20°,
+ * 60°, flat), lands on the floor with a 1-px bounce (the slump), lies there a moment and fades out in two tone steps
+ * where it fell — its graveyard counts it then. It never slides over the duelist's dais.
+ */
+async function dieOnFloor(ctx: AnyCtx, card: CardSprite, owner: PlayerId): Promise<void> {
+  const sc = ctx.scene;
+  const x = R(card.x);
+  const bottom0 = R(card.y) + CARD_H / 2;
+  const floorY = castFloor({ x, y: R(card.y) }) - 2;
+  // (tilt, how far down the fall): cos of the tilt is the card's foreshortened height
+  const frames: readonly (readonly [number, number])[] = [
+    [1, 0.25],
+    [Math.cos((20 * Math.PI) / 180), 0.55],
+    [Math.cos((60 * Math.PI) / 180), 0.85],
+  ];
+  for (const [sy, p] of frames) {
+    if (!card.active) break;
+    const bottom = R(bottom0 + (floorY - bottom0) * p);
+    card.setScale(1, sy);
+    card.setY(R(bottom - (CARD_H * sy) / 2));
+    await wait(sc, 34);
   }
+  if (card.active) card.destroy();
+  // flat on the floor: the card's lying (iso) face, dimmed like the card was
+  const img = sc.add
+    .image(x, floorY, cardIsoKey(ID, 'up', owner))
+    .setOrigin(ISO_CX / ISO_TEX_W, ISO_CY / ISO_TEX_H)
+    .setDepth(DEPTH.CARD_ON_TILE + 8)
+    .setTint(PAL.stone3);
+  playV3('e_galeSlump', { volume: 0.85, pan: panAt(x) });
+  const ras = Raster.around(sc, x, floorY, 80, 30, DEPTH.CARD_ON_TILE + 9);
+  await run(sc, 380, (_t, el) => {
+    if (!img.active) return;
+    // the bounce: up a pixel for two frames, then it lies still; a puff of dust either side
+    img.setY(floorY - (el >= 30 && el < 64 ? 1 : 0));
+    if (el >= 200) img.setTint(el < 290 ? PAL.stone2 : PAL.night3);
+    ras.draw((r) => {
+      if (el > 150) return;
+      const k = Math.floor(el / 50);
+      for (const sx of [-1, 1]) {
+        r.px(x + sx * (16 + k * 4), floorY + 1 - k, k === 0 ? PAL.stone4 : PAL.stone3);
+        r.px(x + sx * (13 + k * 3), floorY + 3 - k, PAL.stone3);
+      }
+    });
+  });
+  ras.destroy();
+  img.destroy();
+  const pile = ctx.views.field.pile(owner, 'graveyard');
+  const count = landingCount(pile.count, ctx.after?.players?.[owner]?.graveyard?.length);
+  pile.set(count, ID);
+  pile.bump();
+  ctx.views.hud.setCounts(owner, { grave: count });
 }
 
 /** Büyü Mührü answered: the gale dies on its card — the leaves wither and drop, the card sags and goes. */
@@ -1033,7 +1204,9 @@ registerCardHook(ID, 'toGraveyard', async (ctx) => {
     });
   });
   ras.destroy();
-  await waitingCardLeaves(ctx as unknown as AnyCtx, h, ctx.index);
+  const g = ctx.events[ctx.index] as Extract<GameEvent, { type: 'toGraveyard' }>;
+  if (card && card.active) await dieOnFloor(ctx as unknown as AnyCtx, card, g?.owner ?? h.owner);
+  else await waitingCardLeaves(ctx as unknown as AnyCtx, h, ctx.index);
 });
 
 // ================================================================ the wipe
@@ -1119,6 +1292,9 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
   const monY = zoneXY(victim, 'monster', 0).y;
   const monY2 = zoneXY(victim, 'monster', 4).y;
   const bandDepth = victim === 1 ? unitDepth(Math.min(monY, monY2)) - 0.5 : DEPTH.FX + 2;
+  // a lifted far-row card and the blade's leading edge: one band in front of the victim's monsters
+  const riderFront = unitDepth(Math.max(monY, monY2)) + 0.5;
+  const blade = victim === 1 ? new Raster(sc, 0, 0, 640, 360, riderFront) : null;
   const air = new Raster(sc, 0, 0, 640, 360, bandDepth);
   const top = new Raster(sc, 0, 0, 640, 360, DEPTH.FX + 6);
   const floor = new Raster(sc, 0, 0, 640, 360, DEPTH.TILE_FX + 2);
@@ -1134,6 +1310,15 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
   // the field card is the last to go: it holds (rattling) until its flame is out — the snuff reads first (puff,
   // ember, the smoke rising) — then the last gust takes it
   if (fieldCard) fieldCard.t0 = ft.tOut + T.fieldAfter;
+  // a real volcano arena: its lava gutters in our own overlay (the same crack field the board paints)
+  const volcano = fieldId === 'volcano_arena' && ctx.views.board.theme === 'volcano';
+  const cracks = volcano && flame ? buildCrackField({ col: BOARD_MID_COL, row: 2 }) : null;
+  let lavaRas: Raster | null = cracks ? new Raster(sc, SLAB_RECT.x, SLAB_RECT.y, SLAB_RECT.w, SLAB_RECT.h, DEPTH.TILE + 3.5) : null;
+  let lavaStep = -1;
+  let lavaGone = !cracks;
+  let swapped = false;
+  let dark: Phaser.GameObjects.Rectangle | null = null;
+  let darkT0 = -1;
   let envPool: LightHandle | null = null;
   let envSpill: LightHandle | null = null;
   let fieldJob: Promise<void> | null = null;
@@ -1216,7 +1401,8 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
         envSpill.setIntensity(1.6, 220);
       });
       // while it gutters, the environment's light over the half dims in three steps with it
-      for (let k = 0; k < 3; k++) once(`dim${k}`, el, ft.tClear + (k * T.gutter) / 3, () => (envSpill as LightHandle | null)?.setIntensity([0.85, 0.55, 0.32][k], 30));
+      // (stepped, with one re-flare on the third step: a candle fighting for its last breath)
+      for (let k = 0; k < 4; k++) once(`dim${k}`, el, ft.tClear + (k * T.gutter) / 4, () => (envSpill as LightHandle | null)?.setIntensity([0.8, 0.4, 0.72, 0.2][k], 20));
       once('snuff', el, ft.tOut, () => {
         flame.out = true;
         playV3('e_galeSnuff', { volume: 1, pan: panAt(flame.at.x) });
@@ -1225,6 +1411,9 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
         (envPool as LightHandle | null)?.setIntensity(0, 20);
         (envSpill as LightHandle | null)?.setIntensity(0, 20);
         bg(lightDimFor(sc, 0.55, 170, 20, 380));
+        // the breath of darkness over the whole room (a night veil): the theme changes under it, then it lifts in steps
+        dark = sc.add.rectangle(0, 0, 640, 360, PAL.night0, DARK.alpha(volcano)).setOrigin(0, 0).setDepth(DEPTH.FX + 5);
+        darkT0 = el;
         bg(wait(sc, 100).then(() => {
           (envPool as LightHandle | null)?.destroy();
           (envSpill as LightHandle | null)?.destroy();
@@ -1238,12 +1427,6 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
         }
         if (fieldIdx >= 0 && !ctx.isConsumed(fieldIdx)) {
           fieldJob = ctx.play(fieldIdx);
-          if (fieldId === 'volcano_arena') {
-            // a volcano arena goes out WITH its flame: once its own cooling has begun (the next frames), the lava
-            // is cut at once instead of cooling over a second
-            const board = ctx.views.board;
-            bg(wait(sc, 45).then(() => (board.theme === 'volcano' ? undefined : board.setTheme('normal', false))));
-          }
         }
         // the last gust: leaves burst off the snuffed wick in the wind's direction
         for (let k = 0; k < 6; k++) topBits.add({ kind: 'leaf', x: flame.at.x - wind * 8, y: flame.at.y - 10 - k * 2, vx: wind * (120 + rng() * 120), vy: -30 - rng() * 50, g: 80, life: 420 + rng() * 200, ph: rng(), c: k % 2 ? PAL.leaf4 : PAL.leaf3 });
@@ -1302,6 +1485,43 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
       flameRas!.draw((r) => drawFlame(r, flame, el));
     }
 
+    // ================================ the environment gutters out (a volcano's lava: its own overlay) + the dark
+    if (cracks && lavaRas && flame) {
+      const g = el - ft.tClear;
+      const third = T.gutter / 3;
+      let step = -1;
+      if (flame.out) step = 3;
+      else if (g >= 2 * third) step = 2;
+      else if (g >= third + 14 && g < third + 34) step = 4; // the re-flare
+      else if (g >= third) step = 1;
+      else if (g >= 0) step = 0;
+      if (step !== lavaStep && !lavaGone) {
+        lavaStep = step;
+        drawLavaGutter(lavaRas, cracks, step);
+      }
+    }
+    if (dark && darkT0 >= 0) {
+      const dT = el - darkT0;
+      const board = ctx.views.board;
+      // a volcano arena goes out WITH its flame: once its own cooling has begun (under the dark), the lava is cut
+      // at once instead of cooling over a second
+      if (volcano && !swapped && dT >= 40 && board.theme !== 'volcano') {
+        swapped = true;
+        void board.setTheme('normal', false);
+      }
+      const hold = DARK.hold(volcano);
+      if (dT >= hold && lavaRas && !lavaGone && (swapped || dT >= hold + 3 * DARK.step)) {
+        lavaGone = true;
+        lavaRas.destroy();
+        lavaRas = null;
+      }
+      const k = dT < hold ? 0 : Math.floor((dT - hold) / DARK.step) + 1;
+      if (k >= 3) {
+        dark.destroy();
+        dark = null;
+      } else dark.setAlpha(DARK.alpha(volcano) * (1 - k / 3));
+    }
+
     // ================================ the cards
     for (const [i, c] of cards.entries()) {
       // the rattle: 1-px hops, faster as the head nears (the field card rattles hard while its flame fights)
@@ -1352,43 +1572,60 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
       const ax: [number, number, number] = [c.along[0], c.along[1], 0];
       const qq = qMul(qAxis(ax, roll), qMul(qAxis([0, 0, 1], yaw), restQuat(c.victim, 'up', !c.faceDown)));
       const below = f.z < 0;
-      const light = below ? -Math.min(0.9, Math.floor(-f.z / 18) * 0.15) : 0;
+      const tE = tauEdges.get(c) ?? 9999;
+      // past the edge it RECEDES into the void: the mip shrinks in steps (1 → ¾ → ½), the tones step down (stone,
+      // then night) and it is cut off at the platform's lower lip, never reaching the hall floor
+      const drop = f.past ? tau - tE : -1;
+      const scale = drop < FALL.shrink1 ? 1 : drop < FALL.shrink2 ? 0.75 : 0.5;
+      const recede: 0 | 1 | 2 = drop < FALL.tone1 ? 0 : drop < FALL.tone2 ? 1 : 2;
+      const light = below && recede === 0 ? -Math.min(0.45, Math.floor(-f.z / 12) * 0.15) : 0;
       const outside = !insideSlab({ col: f.g[0], row: f.g[1] });
       const mask = c.back && outside && below;
       // a white frame when it tears off; a face-down card flashes white on the frame its face first turns up
       let tintAmt = tau < 17 ? 0.7 : 0;
-      // past a back edge it is BEHIND the slab, its trim and the units on it (in front of the backdrop only)
-      const depth = outside && c.back ? DEPTH.PLATFORM - 0.5 : Math.max(unitDepth(ground.y) + 0.5, below && !c.back ? DEPTH.FX + 1 : 0);
-      const front = fc.draw(at, qq, { light, tint: PAL.white, tintAmt, mask, depth });
+      // a far-row rider flies one band IN FRONT of its own row's monsters while it is up in the air (it never
+      // tumbles hidden behind a golem); past a back edge it is BEHIND the slab
+      const airFront = c.ride && !below && f.z > 6 ? riderFront : 0;
+      const depth = outside && c.back ? DEPTH.PLATFORM - 0.5 : Math.max(unitDepth(ground.y) + 0.5, airFront, below && !c.back ? DEPTH.FX + 1 : 0);
+      const lip = f.past ? c.lip : null;
+      const front = fc.draw(at, qq, { light, tint: PAL.white, tintAmt, mask, depth, scale, recede, lip });
       if (c.faceDown && front && !c.sawFace && tau > 40) {
         c.sawFace = true;
         tintAmt = 1;
-        fc.draw(at, qq, { light, tint: PAL.white, tintAmt, mask, depth });
+        fc.draw(at, qq, { light, tint: PAL.white, tintAmt, mask, depth, scale, recede, lip });
         playV3('e_galeGlimpse', { volume: 0.8, pan: panAt(at.x) });
       }
       if (f.past && !c.fell) {
         c.fell = true;
         // each card's whistle starts a step lower (a descending pentatonic run: the cascade is a little tune), the
-        // later ones a touch quieter so the overlaps stay distinct
+        // later ones a touch quieter so the overlaps stay distinct; the whistle's bend runs with the shrink
         const n = fallN++;
-        playV3('e_galeFall', { volume: 0.78 * Math.pow(0.9, Math.min(4, n)), pan: panAt(at.x), pitch: Math.pow(2, -FALL_STEPS[Math.min(FALL_STEPS.length - 1, n)] / 12) });
+        lastFallPan = panAt(at.x);
+        lastFallStep = FALL_STEPS[Math.min(FALL_STEPS.length - 1, n)];
+        playV3('e_galeFall', { volume: 0.78 * Math.pow(0.9, Math.min(4, n)), pan: lastFallPan, pitch: Math.pow(2, -lastFallStep / 12) });
       }
+      // a thin falling streak above it for the first frames of the drop (the speed of the fall)
+      if (drop >= 0 && drop < FALL.streak) streaks.push({ x: R(at.x), y: R(at.y - 14 * scale), n: drop < FALL.streak / 2 ? 12 : 7 });
       // the floor shadow while it is over the platform (dithered, shrinking with the height)
       if (!outside && f.z > 0) floorShadows.push({ x: R(ground.x), y: R(ground.y), k: Math.max(0.3, 1 - f.z / 50) });
       // trailing air ticks behind a tumbling card
       if (tau > 60 && !below && Math.floor(el / 40) % 2 === 0) topBits.add({ kind: 'mote', x: at.x - wind * 8, y: at.y + (i % 3) - 1, vx: -wind * 10, life: 140, c: PAL.leaf4 });
-      const hidden = c.back ? f.z < -46 : at.y > 372 || f.z < -92;
-      if (hidden || tau >= (tauEdges.get(c) ?? 0) + 560) {
-        c.gone = true;
-        fc.hide();
-        // its leaves set off for the pile at once (overlapped with the others, a little apart)
+      const hidden = c.back ? f.z < -46 : (f.past && drop > 30 && fc.shown === 0) || at.y > 372;
+      const goneNow = hidden || drop >= FALL.gone;
+      // its leaves set off for the pile while it is still receding (the delivery overlaps the fall)
+      if ((drop >= FALL.carry || goneNow) && !c.sent) {
+        c.sent = true;
         const t0 = Math.max(el, lastCarry + T.carryGap);
         lastCarry = t0;
         const edgeG: G = [c.home[0] + c.along[0] * 0.9 + c.out[0] * (c.edge + 0.1), c.home[1] + c.along[1] * 0.9 + c.out[1] * (c.edge + 0.1)];
         const e = scr(edgeG);
-        const from = { x: Math.max(8, Math.min(632, R(e.x))), y: Math.max(8, Math.min(352, R(c.back ? e.y - 4 : Math.min(at.y, 350)))) };
+        const from = { x: Math.max(8, Math.min(632, R(e.x))), y: Math.max(8, Math.min(352, R(e.y + 6))) };
         const to = field.pile(c.owner, 'graveyard').topXY();
         carriers.push({ c, from, to: { x: R(to.x), y: R(to.y) }, t0, ph: rng() * 6, landed: false });
+      }
+      if (goneNow) {
+        c.gone = true;
+        fc.hide();
       }
     }
 
@@ -1404,8 +1641,11 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
       if (k >= 1 + T.dropMs / T.carryMs) {
         cr.landed = true;
         const pile = field.pile(cr.c.owner, 'graveyard');
-        pile.set(landingCount(pile.count, ctx.after?.players?.[cr.c.owner]?.graveyard?.length), cr.c.cardId);
+        const count = landingCount(pile.count, ctx.after?.players?.[cr.c.owner]?.graveyard?.length);
+        pile.set(count, cr.c.cardId);
         pile.bump();
+        // the HUD's graveyard counter counts up with each delivery (the state sync after the batch then agrees)
+        ctx.views.hud.setCounts(cr.c.owner, { grave: count });
         playV3('e_galePile', { volume: 0.75, pan: panAt(cr.to.x) });
         for (let j = 0; j < 4; j++) bits.add({ kind: 'mote', x: cr.to.x + (j - 1.5) * 3, y: cr.to.y - 2, vx: (j - 1.5) * 18, vy: -24, g: 90, life: 240, c: j % 2 ? PAL.leaf4 : PAL.leaf3 });
       }
@@ -1442,13 +1682,23 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
     floorShadows.length = 0;
     air.draw((r) => {
       if (el < T.stroke + 150) drawWhirl(r, whirlFloor, el, wind);
-      if (el >= T.stroke - 20 && el < T.stroke + T.strokeMs * 1.15) drawBroom(r, path, sHead, el);
+      if (el >= T.stroke - 20 && el < T.stroke + T.strokeMs * 1.15) drawBroom(r, path, sHead, el, blade ? 'bristles' : 'all');
+    });
+    blade?.draw((r) => {
+      if (el >= T.stroke - 20 && el < T.stroke + T.strokeMs * 1.15) drawBroom(r, path, sHead, el, 'blade');
     });
     top.draw((r) => {
+      for (const st of streaks)
+        for (let k = 0; k < st.n; k++) {
+          const c = k < 3 ? PAL.mist : k < 7 ? PAL.leaf3 : PAL.leaf2;
+          if (k % 4 !== 3) r.px(st.x - 2, st.y - k, c);
+          if (k < st.n - 3 && k % 3 !== 1) r.px(st.x + 3, st.y - 2 - k, c);
+        }
       if (gustT0 >= 0 && fieldScr && outScr && el - gustT0 < 330) drawLastGust(r, fieldScr, outScr, (el - gustT0) / 330, el);
       topBits.draw(r);
       for (const cr of carriers) if (!cr.landed) drawCarrier(r, cr, el);
     });
+    streaks.length = 0;
 
     // ================================ spawn leaves / paper at the head
     if (el >= T.stroke && el < T.stroke + T.strokeMs * 0.95 && rng() < dt / 22) {
@@ -1475,7 +1725,7 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
     const carrying = carriers.some((cr) => !cr.landed);
     // (the smoke thread finishes on its own after the scene: see below)
     const smoking = !!flame && (!flame.out || flame.since < 260);
-    return el < minEnd || flying || carrying || smoking;
+    return el < minEnd || flying || carrying || smoking || !!dark;
   });
 
   // ================================ the rest: a tail of falling leaves, the field's own event
@@ -1494,7 +1744,11 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
     floor.draw((r) => bits.draw(r));
     air.draw(() => undefined);
   });
+  (dark as Phaser.GameObjects.Rectangle | null)?.destroy();
+  (lavaRas as Raster | null)?.destroy();
+  if (volcano && !swapped && ctx.views.board.theme !== 'volcano') void ctx.views.board.setTheme('normal', false);
   air.destroy();
+  blade?.destroy();
   top.destroy();
   floor.destroy();
   if (flame && flameRas) {
@@ -1551,8 +1805,50 @@ function drawLastGust(r: Raster, at: XY, dir: XY, k: number, el: number): void {
   }
 }
 
+/** The breath of darkness after the snuff: its veil (night0), held, then lifted in three steps. */
+const DARK = {
+  alpha: (volcano: boolean) => (volcano ? 0.45 : 0.3),
+  hold: (volcano: boolean) => (volcano ? 70 : 50),
+  step: 40,
+} as const;
+
+/** Crack tones per gutter step (by the crack's own variation: [dim, bright]); 3 = dead (under the dark). */
+const LAVA_GUTTER: Record<number, readonly [number, number]> = {
+  0: [PAL.fire2, PAL.fire3],
+  1: [PAL.crim1, PAL.fire2],
+  4: [PAL.fire2, PAL.fire3],
+  2: [PAL.crim1, PAL.crim2],
+  3: [PAL.stone1, PAL.stone1],
+};
+
+/** The volcano's lava guttering out: the board's own crack pixels, repainted in stepped dying tones. */
+function drawLavaGutter(r: Raster, f: ReturnType<typeof buildCrackField>, step: number): void {
+  r.draw((rr) => {
+    if (step < 0) return;
+    const tones = LAVA_GUTTER[step];
+    const W = SLAB_RECT.w;
+    for (let k = 0; k < f.core.length; k++) {
+      const i = f.core[k];
+      const x = (i % W) + SLAB_RECT.x;
+      const y = Math.floor(i / W) + SLAB_RECT.y;
+      const v = f.coreTone[k] >> 1;
+      let c: number = tones[v];
+      // the re-flare catches only some of the seams; the last step goes out in patches
+      if (step === 4 && (x + y) % 3 === 0) c = PAL.crim1;
+      if (step === 2 && Math.floor((x + 2 * y) / 9) % 3 === 0) c = PAL.stone1;
+      rr.px(x, y, c);
+    }
+  });
+}
+
 /** Semitones below the first whistle for each falling card in turn (a descending minor-pentatonic run). */
 const FALL_STEPS = [0, 3, 5, 7, 10, 12, 15] as const;
+
+/** Falling streaks of this frame (filled by the card loop, drawn by the top raster). */
+const streaks: { x: number; y: number; n: number }[] = [];
+/** The last falling card's whistle (its pan / step): the tail's echo answers it. */
+let lastFallPan = 0;
+let lastFallStep = 0;
 
 /** Floor shadow stamps of this frame (filled by the card loop, drawn by the floor raster). */
 const floorShadows: { x: number; y: number; k: number }[] = [];
@@ -1561,7 +1857,7 @@ const floorShadows: { x: number; y: number; k: number }[] = [];
  * A carrier: four leaves on a gust streak from the void edge to the pile (an arc), then a mini card silhouette (the
  * fallen card, 5×7: ink outline, mist face) drops onto the pile in steps.
  */
-function drawCarrier(r: Raster, cr: Carrier, el: number): void {
+function drawCarrier(r: Raster, cr: Pick<Carrier, 'from' | 'to' | 't0' | 'ph'>, el: number): void {
   const k = (el - cr.t0) / T.carryMs;
   if (k < 0) return;
   const ctrl = { x: (cr.from.x + cr.to.x) / 2, y: Math.min(cr.from.y, cr.to.y) - 34 };
@@ -1682,11 +1978,11 @@ const LEAD = 26;
  * The broom stroke: a filled crescent BLADE of wind at the head (white leading edge, leaf4 / teal4 bands, a leaf3
  * body) and 13 bristle streaks trailing behind it, tails broken and converging like a broom's bristles.
  */
-function drawBroom(r: Raster, path: Path, sHead: number, el: number): void {
+function drawBroom(r: Raster, path: Path, sHead: number, el: number, part: 'all' | 'bristles' | 'blade'): void {
   const fade = seg(el, T.stroke + T.strokeMs * 0.8, T.strokeMs * 0.32);
   const born = seg(el, T.stroke - 20, 110);
   // ---- the bristles (drawn first: the blade covers their roots)
-  for (const [o, , len0, lag0] of BRISTLES) {
+  for (const [o, , len0, lag0] of part === 'blade' ? [] : BRISTLES) {
     const lag = LEAD * o * o + 10;
     const len = len0 * (0.3 + 0.7 * born) * (1 - fade);
     if (len < 3) continue;
@@ -1716,7 +2012,7 @@ function drawBroom(r: Raster, path: Path, sHead: number, el: number): void {
     }
   }
   // ---- the blade: a crescent moon of wind (front edge s = head − LEAD·o², thickness tapering to the tips)
-  if (fade >= 0.95) return;
+  if (fade >= 0.95 || part === 'bristles') return;
   const thick = (o: number) => (20 - 12 * o * o) * (0.5 + 0.5 * born) * (1 - fade);
   const half = 1 - 0.5 * fade;
   for (let oi = -48; oi <= 48; oi++) {

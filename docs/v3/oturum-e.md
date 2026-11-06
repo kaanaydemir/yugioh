@@ -53,6 +53,22 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
   set.png, p2.png, one.png, art/, sfx/, measure.json).
 - Ölçüm (oyun ms): eVoidQuick/One/Charm 5,53 sn, eVoidSet 5,52 sn (pay 5,57 sn); kamera 0.
   Sahibin kararı: sabit süre sınırı yok.
+- Eleştiri turu 3 düzeltmeleri: gece örtüsü artık ALFA DEĞİL — tam opak mürekkep damgası, 2×2 Bayer çeyrek
+  adımları (¼ → ½; dönüşte ½ → ¼ → 0), TILE_FX altında; ışık damgada açılan DELİK (gözün duvardaki parıltısı,
+  bakışın sahadaki havuzu, damlanın düştüğü yer) — palcheck Δmax +0,91 puan (önce +70,6) PASS. Göz gökyüzünde
+  daha yüksek (merkez y 58, EH 40: 75×81 px), kapaklar hacimli (parlak dudak, deri, gölgeli kıvrım, dış kat, mürekkep),
+  çevresinde birimlerin ARKASINDA gece bulutu lopları (parlak üst, mor alt); yarık gözün alt ucunda durur. Göz
+  yaşar: kapak dudağı 1 px titrer, gözbebeği 1 px nefes alır, iris kalabalık tarafa eğilip gezinir, yıldızlar 90 ms'de
+  bir parlar, gözbebeğine sarmal zerre akar. Yükseliş hiç park etmez: kavisli yol, %42'den sonra taç gözbebeğine
+  doğru hızlanarak daralır (kasılmada yarı yolda), gövde başına 3 yavaş dönüş + kendi ritminde 1 px salınım.
+  Kasılma: gövdeler 1 kare KENDİ pikselleriyle beyaz dış hatta; çekişte önce kendi pikselleri + leylak kenar, sonra
+  void1, void0 silüet (karanlığa batar). "KORUNDU" mürekkep plakada, kurtarılan karonun önünde sabit y'de. Kapak
+  ease-in 7 adım (ses tepesi ve ıslak "p" son adımlarda); e_voidLid 0,48 sn. e_voidSwell yalnız sinüs, kademeli
+  başlangıç (dağınık faz) + iki kısmi <0,1 Hz kayık, ~5 dB kısık (LUFS-M −17,8; gulp −16,7). Son kuyruk 140 ms
+  kısaldı. Resim: bulutlar bir ton açık, kapaklarda dudak + kıvrım + mürekkep, 2 tonlu silüetler (kurt, kanatlı
+  ejder, gözbebeğine doğru uzayıp yutulan boynuzlu iblis).
+- Kanıt (tur 3): `shots/e/void_eye/r6/` (quick_full.png, eye_zoom.png, quick_rise2.png, quick_pull2.png, p2_full.png,
+  set_full.png, frames/ + palcheck, art/, sfx/, measure.json).
 
 ### S5 Harman Eleği (`winnow_sieve`)
 - Resim: `src/art/cardart-v3/winnow_sieve.ts` (88×68 + elle 44×34, 4 kare yaşayan resim: gün ışığında — sıcak gök

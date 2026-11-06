@@ -76,10 +76,12 @@ export const RECIPES = {
     verb: 0.4,
     play(v) {
       // "şııııp": white noise through a band that opens slowly upward (narrow → wider), a long rise, a fast cut —
-      // a slower, lower band than the gulp's falling suction, and no sub: the two read as opposite gestures
-      const d = 0.55;
+      // a slower, lower band than the gulp's falling suction, and no sub: the two read as opposite gestures.
+      // Synced to the scene's ease-in lid (7 steps over 486 ms game time): the slit widens slowly while the band
+      // whispers, the lids part fast as it peaks (0.45 s), the wet "p" lands on the last step (0.47 s ≈ 360 scene ms × 1.35)
+      const d = 0.48;
       const bp = v.filt('bandpass', [[0, 480], [d, 2400, 'e']], [[0, 9], [d, 2.4, 'e']]);
-      v.noise('white', { g: [[0, 0], [d * 0.85, 0.42], [d, 0.12], [d + 0.06, 0.0001, 'e']], to: bp });
+      v.noise('white', { g: [[0, 0], [d * 0.55, 0.12], [d * 0.93, 0.42], [d, 0.14], [d + 0.06, 0.0001, 'e']], to: bp });
       const bp2 = v.filt('bandpass', [[0, 1400], [d, 5200, 'e']], 6);
       v.noise('white', { g: [[0, 0], [d * 0.9, 0.09], [d + 0.04, 0.0001, 'e']], to: bp2 });
       // the wet parting of the lids at the end ("p")
@@ -123,20 +125,33 @@ export const RECIPES = {
       // amplitude and an opening lowpass. It climbs for 1.5 s (the scene starts it on the gaze; the contraction
       // falls 1.5 s later and the scene stops it 30 ms before the tick). Its AUDIBLE body is 112 / 168 / 224 / 336 Hz
       // (laptop / phone speakers imply the 28 Hz fundamental from them); 28 / 56 Hz stay underneath, lower.
+      // SINES only, each partial starting a few ms after the last (an irregular stagger = scattered start phases),
+      // so the partials never line up into a sharp 28 Hz pulse train (no motor buzz, no flutter); about 4 dB under
+      // the first take, so the tick and the gulp — the climax — stay louder than the build-up
       const d = 1.6;
-      const env = (g: number): [number, number, ('e' | 'l')?][] => [[0, 0], [0.4, g * 0.25], [1.5, g, 'e'], [d, 0.0001, 'e']];
-      v.tone('sine', 28, { g: env(0.12) });
-      v.tone('sine', 56, { g: env(0.08) });
-      v.tone('sine', 84, { g: env(0.06) });
+      const G = 0.42;
+      const env = (g: number): [number, number, ('e' | 'l')?][] => [[0, 0], [0.4, g * G * 0.25], [1.5, g * G, 'e'], [d, 0.0001, 'e']];
       const lp = v.filt('lowpass', [[0, 260], [1.5, 1400, 'e'], [d, 300, 'e']], 0.8);
-      v.tone('triangle', 112, { g: env(0.2), to: lp });
-      v.tone('triangle', 168, { g: env(0.13), to: lp });
-      v.tone('triangle', 224, { g: env(0.07), to: lp });
-      v.tone('sawtooth', 56, { g: env(0.08), to: lp });
-      // a glass surface on top (still 28 Hz harmonics: 12× and 16×)
-      v.tone('sine', 336, { g: env(0.05) });
-      v.tone('sine', 448, { g: env(0.028) });
-      v.tone('sine', 672, { g: env(0.012) });
+      const parts: [number, number, number, boolean][] = [
+        // [harmonic of 28 Hz, gain, start offset s, through the opening lowpass]
+        [1, 0.12, 0, false],
+        [2, 0.09, 0.0071, false],
+        [3, 0.06, 0.0163, false],
+        [4, 0.2, 0.0029, true],
+        [5, 0.05, 0.0217, true],
+        [6, 0.13, 0.0113, true],
+        [8, 0.08, 0.0191, true],
+        [10, 0.03, 0.0053, true],
+        [12, 0.05, 0.0137, false],
+        [16, 0.028, 0.0241, false],
+        [24, 0.012, 0.0089, false],
+      ];
+      for (const [h, g, t, filtered] of parts) {
+        const e = env(g).map(([tt, gg, c]) => [Math.max(0, tt - t), gg, c] as [number, number, ('e' | 'l')?]);
+        // two of the body partials drift < 0.1 Hz off (1.2 / −0.8 cents): the wave's shape keeps slowly changing
+        const detune = h === 4 ? 1.2 : h === 6 ? -0.8 : 0;
+        v.tone('sine', 28 * h, filtered ? { t, g: e, to: lp, detune } : { t, g: e, detune });
+      }
     },
   },
   e_voidRise: {
