@@ -28,6 +28,12 @@ const bolt = (p: PlayerId, target: ZoneRef): Step => (D) => ({
   target: { kind: 'monster', ref: target },
 });
 const mon = (player: PlayerId, index: number): ZoneRef => ({ player, zone: 'monster', index });
+const steal = (p: PlayerId, target: ZoneRef): Step => (D) => ({
+  type: 'activateSpell',
+  player: p,
+  uid: D.uid('puppet_string', p),
+  target: { kind: 'monster', ref: target },
+});
 
 /** A side for the 5-zone summon: two hawks (WIND) at the board's ends, her lane (2) and BOTH neighbours (1, 3) empty. */
 // round 2 #4: the neighbouring lanes in front of and behind her stay empty, so her wings have floor around them from
@@ -178,6 +184,27 @@ const scenarios: Record<string, Scenario> = {
     desc: 'The revive, player 2',
     stage: { active: 1, p0: { monsters: [null, 'shade_assassin'] }, p1: { hand: ['soul_recall'], graveyard: ['wing_lady'], monsters: ['storm_hawk'] } },
     steps: [recall(1, 'wing_lady', 1, 1)],
+  },
+  // ---- round 3: adjacency (the most common real-game case) and control change (design §8 khSteal)
+  khSummonNear: {
+    desc: 'Kanat Hanımı summoned into zone 1 between two hawks (zones 0 and 2): both neighbours are blessed in front of her wings',
+    stage: { zones: 5, p0: { hand: ['wing_lady'], monsters: ['storm_hawk', null, 'storm_hawk'] }, p1: { monsters: [null, 'shade_assassin'] } },
+    steps: [summon('wing_lady', 1)],
+  },
+  khSummonNearP2: {
+    desc: 'Kanat Hanımı, player 2, into zone 1 between two hawks: the glide rises over the neighbour',
+    stage: { zones: 5, active: 1, p0: { monsters: [null, 'shade_assassin'] }, p1: { hand: ['wing_lady'], monsters: ['storm_hawk', null, 'storm_hawk'] } },
+    steps: [summon('wing_lady', 1, [], 1)],
+  },
+  khSteal: {
+    desc: 'Kukla İpi takes Kanat Hanımı: the old side’s hawk loses +300 (Kanatlar Döner), the new side’s hawk gains it (Kanat Selamı)',
+    stage: { p0: { hand: ['puppet_string'], monsters: ['storm_hawk'] }, p1: { monsters: ['storm_hawk', 'wing_lady'] } },
+    steps: [steal(0, mon(1, 1))],
+  },
+  khStealP2: {
+    desc: 'The steal, player 2 takes her',
+    stage: { active: 1, p0: { monsters: ['storm_hawk', 'wing_lady'] }, p1: { hand: ['puppet_string'], monsters: ['storm_hawk'] } },
+    steps: [steal(1, mon(0, 1))],
   },
   // ---- the persistent aura at rest (both sides)
   khBoard5: {

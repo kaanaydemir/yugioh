@@ -73,3 +73,41 @@ export function blockStart(events: readonly GameEvent[], i: number): number {
   return j + 1;
 }
 
+
+/**
+ * Round 3 #1: a tribute group that takes a face-up lady away. `i` is a `tribute` event; the group is every tribute
+ * for the same `forUid` that follows it (with their toGraveyard / destroy moves), then the summon / set of `forUid`.
+ * Returns the ladies in the group and the indices of the aura-LOSS statChanges the engine emits after that summon
+ * (empty when no lady is tributed or nothing is lost), so the cinematic can play the loss as her card leaves instead
+ * of after the new monster's whole entrance.
+ */
+export function tributeAuraLoss(events: readonly GameEvent[], stateAt: (i: number) => GameState, i: number): { ladies: Uid[]; losses: number[] } {
+  const e = events[i];
+  if (!e || e.type !== 'tribute') return { ladies: [], losses: [] };
+  const s0 = stateAt(i);
+  const group: Uid[] = [];
+  let k = i;
+  for (; k < events.length; k++) {
+    const x = events[k];
+    if (x.type === 'tribute' && x.forUid === e.forUid) group.push(x.uid);
+    else if (x.type === 'toGraveyard' || x.type === 'destroy') continue;
+    else break;
+  }
+  const ladies = group.filter((u) => {
+    const at = slotOf(s0, u);
+    return !!at && at.faceUp && monDef(s0, u)?.effect === 'windAura300';
+  });
+  if (!ladies.length) return { ladies, losses: [] };
+  // the destination (summon / set of forUid), then the statChange run right after it
+  for (; k < events.length; k++) {
+    const x = events[k];
+    if ((x.type === 'summon' || x.type === 'setMonster') && x.uid === e.forUid) {
+      k++;
+      break;
+    }
+    if (x.type !== 'toGraveyard' && x.type !== 'destroy') return { ladies, losses: [] };
+  }
+  const losses: number[] = [];
+  for (; k < events.length && events[k].type === 'statChange'; k++) if (auraDelta(events, stateAt, k) < 0) losses.push(k);
+  return { ladies, losses };
+}

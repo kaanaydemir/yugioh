@@ -44,7 +44,7 @@ import { pixelText } from '../../ui/text';
 import { registerCardHook, registerEvent, registerObserver, registerStrike } from '../api';
 import type { CinematicContext, StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
-import { atFrame, fade, hitSoundFor, hush, panAt, play, start, takeCharge } from '../_v3/sound';
+import { atFrame, fade, hitSoundFor, hush, panAt, play, quietCombat, start, takeCharge } from '../_v3/sound';
 import { setCombatSfx } from '../../vfx/combat';
 import type { SfxName } from '../../audio/sfx';
 import { behindBodies, cardLeaves } from '../_v3/card';
@@ -55,7 +55,7 @@ import { runSummon, type Stage } from '../summon-a/_kit';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { contactFeet, layer } from '../strikes-a/_kit';
 import { AURA_KEY, FLOOR_DEPTH, LADY, STEP_MS, auraOf, crestAnchor, paintFloorLight, wingAura } from './wing_lady-aura';
-import { auraDelta, bonusIn, slotOf } from './wing_lady-rules';
+import { auraDelta, bonusIn, slotOf, tributeAuraLoss } from './wing_lady-rules';
 
 const ID = LADY;
 type EvOf<T extends GameEvent['type']> = Extract<GameEvent, { type: T }>;
@@ -331,6 +331,18 @@ async function blessBeat(ctx: AnyCtx, ladyUid: Uid | null, ladyHome: XY, allies:
   const pan = panAt(ladyHome.x);
   let anim: Promise<void> = Promise.resolve();
   let root: { stop(ms?: number): void } | null = null;
+  // round 3 #3: an ally in the NEIGHBOURING lane stands half behind her wings (her V, the lifted special wings): for
+  // the beat it is drawn in front of her, so the current, the lift and the crest land on a body the eye can see
+  const raised: { s: Phaser.GameObjects.Sprite; d: number; to: number }[] = [];
+  if (ladyOk && lady) {
+    for (const a of list) {
+      const s = a.unit!.sprite;
+      if (s.active && s.depth <= lady.sprite.depth && Math.abs(a.unit!.home.x - lady.home.x) < 72) {
+        raised.push({ s, d: s.depth, to: lady.sprite.depth + 0.3 });
+        s.setDepth(lady.sprite.depth + 0.3);
+      }
+    }
+  }
   try {
     // ---- the charge: her wings lift, the blade rises, the jewel steps up
     if (ladyOk && lady && mode !== 'compact') {
@@ -398,6 +410,11 @@ async function blessBeat(ctx: AnyCtx, ladyUid: Uid | null, ladyHome: XY, allies:
     root?.stop(900);
     if (lady) lady.posed = false;
     for (const a of allies) BUSY.delete(a.uid);
+    // the raised neighbour steps back to its own depth once her wings have come down (unless something moved it)
+    if (raised.length)
+      void sleep(sc, 260).then(() => {
+        for (const r of raised) if (r.s.active && Math.abs(r.s.depth - r.to) < 0.01) r.s.setDepth(r.d);
+      });
   }
 }
 
@@ -550,8 +567,14 @@ if (LOOK_V3)
       }
       const run = [{ i: ctx.index, ev: ctx.ev, d: d0 }, ...takeAuraRun(ctx as unknown as AnyCtx, ctx.index + 1, 0)];
       // her own summon / flip just before: the salute already charged it (critique 7)
-      const prev = ctx.events[blockStartOf(ctx as unknown as AnyCtx, ctx.index)];
-      const after = prev && (prev.type === 'summon' || prev.type === 'flip') && ctx.cardId((prev as { uid: Uid }).uid) === ID;
+      // round 3 #4: also a special summon inside a spell's block (soul_recall's revive: activate → summon → run): the
+      // revive's rise and land already were the charge — the downstroke goes at once, the currents leave on the land
+      const b0 = blockStartOf(ctx as unknown as AnyCtx, ctx.index);
+      let after = false;
+      for (let i = b0; i < ctx.index; i++) {
+        const e = ctx.events[i];
+        if ((e.type === 'summon' || e.type === 'flip') && ctx.cardId(e.uid) === ID) after = true;
+      }
       await playRun(ctx as unknown as AnyCtx, run, after ? 'afterSummon' : 'full');
     },
     { priority: 25, name: `kart-f:${ID}:aura` },
@@ -622,6 +645,64 @@ if (LOOK_V3)
       await arrivalBless(ctx as unknown as AnyCtx, uid, end);
     },
     { priority: 30, name: `kart-f:${ID}:flip` },
+  );
+
+// ================================================================ tributed away (round 3 #1: the loss leaves WITH her)
+
+/**
+ * A face-up lady among a tribute group: the engine emits the allies' −300 only after the new monster's summon (its
+ * whole entrance, a cut-in included), which read as the newcomer's doing. The loss run is taken here and "Kanatlar
+ * Döner" plays as her body leaves the field: the lights fold toward her graveyard pile while her card flies there,
+ * and the badges roll down BEFORE the summon starts (the later sync is a no-op).
+ */
+if (LOOK_V3)
+  registerEvent(
+    'tribute',
+    async (ctx: Ctx<'tribute'>) => {
+      const actx = ctx as unknown as AnyCtx;
+      const { ladies, losses } = tributeAuraLoss(ctx.events, ctx.stateAt, ctx.index);
+      const free = losses.filter((i) => !ctx.isConsumed(i));
+      if (!ladies.length || !free.length) return ctx.base();
+      for (const i of free) ctx.consumeAt(i);
+      const allies: Ally[] = free.map((i) => {
+        const ev = ctx.events[i] as StatEv;
+        return { uid: ev.uid, ev, unit: ctx.unit(ev.uid) };
+      });
+      // the auras are ours from now on (the observer would otherwise fold them in place on the next event)
+      for (const a of allies) BUSY.add(a.uid);
+      const sc = ctx.scene;
+      const lady = ladies[0];
+      const lu = ctx.unit(lady);
+      const owner = ctx.owner(lady);
+      let pile: XY | null = null;
+      try {
+        pile = ctx.views.field.pile(owner, 'graveyard').topXY();
+      } catch {
+        pile = null;
+      }
+      const beat = (async () => {
+        // her body streams away (the shared tribute flow): the fold starts as it goes, toward the pile her card
+        // flies to — never later than 700 ms
+        await new Promise<void>((res) => {
+          onFrame(sc, (_dt, el) => {
+            const gone = !lu || lu.retired || !lu.sprite.active || !lu.sprite.visible || lu.sprite.alpha < 0.5;
+            if (gone || el > 700) {
+              res();
+              return false;
+            }
+            return true;
+          });
+        });
+        await unblessBeat(actx, pile ?? (lu ? { ...lu.home } : null), allies);
+      })().catch((e) => console.error('[wing_lady] tribute unbless', e));
+      try {
+        await ctx.base();
+      } finally {
+        await beat;
+        for (const a of allies) BUSY.delete(a.uid);
+      }
+    },
+    { priority: 25, name: `kart-f:${ID}:tributed` },
   );
 
 // ================================================================ the declaration flare (a buffed ally attacks)
@@ -735,10 +816,33 @@ async function glideIn(S: Stage, rush0: { stop(ms?: number): void } | null): Pro
   const streams = layer(sc, DEPTH.FX - 5);
   let prev = { ...p0, y: p0.y - lift0 };
   const GLIDE = 360;
+  // round 3 #3: a body standing in a lane she glides over — she rises over its head (feet ≥ 4 px clear of its top)
+  // instead of sliding through its sprite; the hump eases in and out over ±40 px around it
+  const humps: { x: number; extra: number }[] = [];
+  for (const o of S.ctx.views.field.units()) {
+    if (o === u || o.player !== S.player || o.retired || !o.sprite.active || !o.sprite.visible) continue;
+    const lo = Math.min(p0.x, home.x);
+    const hi = Math.max(p0.x, home.x);
+    if (o.home.x < lo - 8 || o.home.x > hi + 8 || Math.abs(o.home.x - home.x) < 24) continue;
+    const kx = Math.abs(home.x - p0.x) > 1 ? (o.home.x - p0.x) / (home.x - p0.x) : 0;
+    const flY = p0.y + (home.y - p0.y) * kx;
+    const liftAt = lift0 + (hoverY - lift0) * kx;
+    const top = o.worldPoint('top').y;
+    const extra = Math.ceil(flY - liftAt - (top - 4));
+    if (extra > 0) humps.push({ x: o.home.x, extra });
+  }
+  const humpAt = (x: number): number => {
+    let h = 0;
+    for (const m of humps) {
+      const d = Math.abs(x - m.x);
+      if (d < 40) h = Math.max(h, m.extra * 0.5 * (1 + Math.cos((Math.PI * d) / 40)));
+    }
+    return h;
+  };
   await animate(sc, GLIDE, (t) => {
     const k = Math.sin((t * Math.PI) / 2);
     const fl = { x: p0.x + (home.x - p0.x) * k, y: p0.y + (home.y - p0.y) * k };
-    const lift = lift0 + (hoverY - lift0) * k;
+    const lift = lift0 + (hoverY - lift0) * k + humpAt(fl.x);
     const at = { x: fl.x, y: fl.y - lift };
     setFeet(u, at, fl, DEPTH.FX - 6);
     if (t > 0.5 && u.frameInfo().frame < 1) u.pose('summon', 1);
@@ -888,6 +992,55 @@ function beatArcs(sc: Phaser.Scene, u: MonsterUnit): void {
   void sleep(sc, STEP_MS).then(() => px.g.destroy());
 }
 
+/**
+ * Round 3 #2: the battle's hex-plate clang (vfx blockClang: graphics at DEPTH.FX + 0.1 / + 0.2) is the vocabulary of
+ * a guard that holds; on her losing clap it is hidden for its whole life (the 'defend' hook does the same on her guard).
+ */
+function hideClang(sc: Phaser.Scene, before: Set<unknown>): void {
+  onFrame(sc, (_dt, el) => {
+    for (const o of sc.children.list) {
+      if (before.has(o) || o.type !== 'Graphics') continue;
+      const g = o as Phaser.GameObjects.Graphics;
+      if (Math.abs(g.depth - (DEPTH.FX + 0.1)) < 1e-6 || Math.abs(g.depth - (DEPTH.FX + 0.2)) < 1e-6) g.setVisible(false);
+    }
+    return el < 600;
+  });
+}
+
+/**
+ * Round 3 #2: she lost — the battle claims her sprite on the contact frame (its lethal reaction pose, then her death
+ * hook). A stand-in of her own frames carries the beat instead of a one-frame pop from the airborne stoop to an
+ * upright body: the clap holds, the brackets spring open (open), the wings sweep level as her feet come down to the
+ * floor (sweep), and only then is the claimed sprite shown — grounded and upright, where the falling
+ * cape starts. Done ≤ 130 ms after contact (the death hook joins at 150 ms and needs the sprite visible).
+ */
+async function loseSettle(u: MonsterUnit, conF: number, F: { open: number; sweep: number }, target: MonsterUnit | null): Promise<void> {
+  const sc = u.scene;
+  const spr = u.sprite;
+  if (!spr.active) return;
+  const f6 = feetOf(u);
+  const dep = target && target.sprite.active ? Math.max(spr.depth, target.sprite.depth + 1) : spr.depth;
+  const img = sc.add.image(spr.x, spr.y, spr.texture.key, `attack:${conF}`).setOrigin(spr.originX, spr.originY).setFlipX(spr.flipX).setDepth(dep);
+  spr.setVisible(false);
+  const show = (f: number, p: XY) => {
+    if (img.active) img.setFrame(`attack:${f}`).setPosition(Math.round(p.x), Math.round(p.y - u.art.hover));
+  };
+  try {
+    await sleep(sc, 50);
+    show(F.open, f6);
+    await sleep(sc, 34);
+    // the sweep: the wings level as the body unrolls upright over its feet (the battle pins the claimed sprite at the
+    // contact point, so the stand-in ends exactly there: one frame 2 px up, then down on the floor)
+    show(F.sweep, { x: f6.x, y: f6.y - 2 });
+    await sleep(sc, 17);
+    show(F.sweep, f6);
+    await sleep(sc, 17);
+  } finally {
+    img.destroy();
+    if (spr.active) spr.setVisible(true);
+  }
+}
+
 async function kestrel(s: StrikeArgs): Promise<void> {
   const u = s.attacker;
   const sc = s.scene;
@@ -962,26 +1115,32 @@ async function kestrel(s: StrikeArgs): Promise<void> {
     // with its own material still answers, re-played ~7 dB under her accent (the reed_heron precedent)
     const tgt = s.target && !s.direct && s.target.sprite.active ? s.target : null;
     const mats = tgt ? [hitSoundFor(tgt, { kind: 'physical', heavy: true }), hitSoundFor(tgt, { kind: 'physical', heavy: false })].filter((x): x is SfxName => !!x) : [];
-    const generic: SfxName[] = ['impactHeavy', 'impactLight', ...(s.blocked ? (['shieldBlock'] as SfxName[]) : []), ...mats];
-    hush(generic, () => s.impact(tipNow));
-    const struck = tgt ? hitSoundFor(tgt, { kind: 'physical', heavy: !s.blocked }) : null;
-    if (struck) play(struck, { volume: s.blocked ? 0.5 : 0.45, pan: panAt(tipNow.x) });
+    // round 3 #2: a LOSING strike is not a blocked one — her clap closes and bites (khClap, the brackets close) and the
+    // stronger body throws her off; only a guard that holds (bounced) gets the skid and the outward-bent brackets
+    const bounced = s.blocked && !loses;
+    const generic: SfxName[] = ['impactHeavy', 'impactLight', ...(s.blocked || loses ? (['shieldBlock'] as SfxName[]) : []), ...mats];
+    const before = loses ? new Set(sc.children.list) : null;
+    hush(generic, () => (loses ? quietCombat(() => s.impact(tipNow)) : s.impact(tipNow)));
+    if (loses) queueMicrotask(() => fade(['shieldBlock', 'impactLight', 'impactHeavy'], 12));
+    const struck = tgt ? hitSoundFor(tgt, { kind: 'physical', heavy: !bounced }) : null;
+    if (struck) play(struck, { volume: bounced ? 0.5 : 0.45, pan: panAt(tipNow.x) });
     const tgtH = s.target && !s.direct ? Math.max(14, Math.min(30, Math.abs(s.target.worldPoint('top').y - s.target.home.y) * 0.6)) : 10;
     const centre = s.target && !s.direct ? s.target.core() : { x: tipNow.x, y: tipNow.y };
-    void clapFx(sc, rint(centre), s.direct ? 10 : tgtH, dir, s.blocked);
-    if (s.blocked) play('khSkid', { volume: 0.95, pan: panAt(tipNow.x) });
+    void clapFx(sc, rint(centre), s.direct ? 10 : tgtH, dir, bounced);
+    if (bounced) play('khSkid', { volume: 0.95, pan: panAt(tipNow.x) });
     else if (s.direct) play('khDirectCry', { volume: 0.95, pan: panAt(tipNow.x) });
-    else play('khClap', { volume: 1, pan: panAt(tipNow.x) });
+    else play('khClap', { volume: loses ? 0.9 : 1, pan: panAt(tipNow.x) });
     void lightFlash(sc, centre.x, centre.y, PAL.gold3, 18, 160, { floorY: s.target?.home.y ?? s.toGround.y, air: 1, intensity: 0.6 });
     if (loses) {
-      await sleep(sc, 34);
+      if (before) hideClang(sc, before);
+      await loseSettle(u, conF, F, s.target);
       return;
     }
     // blocked: the battle claims her animation on this frame for its generic recoil (battle.ts recoilAfterStop);
     // the perch is HER answer, so a stand-in image of her own frames carries it from the contact frame on while
     // the claimed sprite plays the recoil hidden underneath (kite_fencer's blocked bow does the same)
     const spr = u.sprite;
-    const stand = s.blocked && s.target && s.target.sprite.active
+    const stand = bounced && s.target && s.target.sprite.active
       ? sc.add.image(spr.x, spr.y, spr.texture.key, `attack:${conF}`).setOrigin(spr.originX, spr.originY).setFlipX(spr.flipX).setDepth(s.target.sprite.depth + 1)
       : null;
     if (stand) spr.setVisible(false);
@@ -1396,7 +1555,10 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
       fl.dot(j.x, j.y, PAL.leaf3);
       void sleep(sc, 2 * 17).then(() => fl.g.destroy());
     });
-    await capped(sc, untilShown(u, 'death', n - 1, 1600), 1600);
+    // round 3 #5: the prone hold is one breath, not a pause — the bird lifts 60 ms after the jewel's last flicker
+    // (f8) instead of waiting out the last frame (thud → lift ≈ 190 ms, was ≈ 250 + the f9 hold)
+    await capped(sc, untilShown(u, 'death', Math.min(8, n - 1), 1600), 1600);
+    await sleep(sc, 60);
     // ---- lift-off: the cape on her back rises as a gold-rimmed bird WHILE the body under it darkens into the floor
     // (three palette steps night2 → night1 → night0, then gone); the card is born once the bird is off her
     const spr = u.sprite;
