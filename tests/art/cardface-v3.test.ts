@@ -165,10 +165,16 @@ describe('A5-B v3 card face (B-1: frame + overlays)', () => {
       const b = off.cards.cardFaceCanvas(id).data;
       let n = 0;
       let d = 0;
+      const N0 = on.pal.PAL.night0;
+      const rgb = (c: Uint8ClampedArray, i: number) => (c[i] << 16) | (c[i + 1] << 8) | c[i + 2];
       for (let y = 1; y < 67; y++)
         for (let x = 1; x < 47; x++) {
           if (inWindow(x, y)) continue;
           const i = (y * 48 + x) * 4;
+          // The name plate and the text box are night0 in both faces by design; how much of that fill the
+          // greeked name / rules text leaves bare depends on the card's text length (scrap_raiders' long name
+          // fell to 0.692 that way), so the shared night0 fill is not "frame" and is not counted.
+          if (rgb(a, i) === N0 && rgb(b, i) === N0) continue;
           n++;
           if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2] || a[i + 3] !== b[i + 3]) d++;
         }
