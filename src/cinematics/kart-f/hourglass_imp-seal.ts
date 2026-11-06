@@ -71,7 +71,18 @@ export function headOf(u: MonsterUnit): { x: number; top: number } {
   // Round 3 #8: over the BACK of the skull, not in front of the face — the head point moved 3 px toward the body
   // (frame space faces right, so −x; framePoint mirrors it for a flipped unit), and the top of the silhouette over
   // that column ±4 px (a head point lower than that is kept as the floor)
-  if (hp || b.w >= b.h) hx = Math.max(b.x + 2, hx - 3);
+  if (hp || b.w >= b.h) {
+    // a head point at the very face (a crouched, snout-forward body: shade_assassin) can sit in front of the skull:
+    // walk back toward the body until the head band (±6 rows round the head) is solid, then 3 px further in
+    const hy = hp ? Math.round(hp.y) : b.y + 4;
+    const solidAt = (x: number) => {
+      for (let y = hy - 6; y <= hy + 6; y++) if (pc.isOpaque(x, y)) return true;
+      return false;
+    };
+    let x = hx;
+    while (x > b.x + 2 && !solidAt(x)) x--;
+    hx = Math.max(b.x + 2, x - 3);
+  }
   let top = hp ? Math.round(hp.y) : Infinity;
   for (let y = 0; y < pc.h; y++) {
     let hit = false;
