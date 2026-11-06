@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COLLECTIBLE_CARDS, isMonster } from '../../src/data/cards';
+import { ALL_CARDS, COLLECTIBLE_CARDS, isMonster } from '../../src/data/cards';
 import { ELEMENTS, gridMove, matches, sortPool, visibleIds } from '../../src/scenes/deck/pool';
 
 describe('pool filter / sort', () => {
@@ -34,5 +34,10 @@ describe('pool filter / sort', () => {
     expect(gridMove(6, 1, 0, 3, 7)).toBe(6);
     expect(gridMove(-1, 0, 0, 3, 7)).toBe(0);
     expect(gridMove(0, 0, 0, 3, 0)).toBe(-1);
+  });
+  it("'new' sorts newest card batches first (reverse ALL_CARDS order)", () => {
+    const ids = sortPool(COLLECTIBLE_CARDS, 'new').map((c) => c.id);
+    const order = ALL_CARDS.map((c) => c.id).filter((id) => ids.includes(id)).reverse();
+    expect(ids).toEqual(order);
   });
 });
