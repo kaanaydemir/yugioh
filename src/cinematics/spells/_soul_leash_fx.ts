@@ -111,6 +111,8 @@ export interface CollarLook {
   ghost?: boolean;
   /** The lit leather row in this colour (the Draw Phase gift arriving: leaf4). */
   tint?: number;
+  /** The whole band flashes (gold4: the weave closing; white: the lock). */
+  bandFlash?: number;
 }
 
 /**
@@ -156,7 +158,9 @@ export class Collar {
         const n = Math.max(40, R((rx + ry) * 10));
         const lim = (shown / steps) * n;
         const glintAt = L.glint >= 0 ? R(L.glint * n) : -99;
-        const lit = L.tint ?? PAL.void4;
+        // while it is still being woven its top edge is a gold2 rim, so the wrap reads against a purple body
+        const lit = L.tint ?? (L.prog < 1 ? PAL.gold2 : PAL.void4);
+        const bf = L.bandFlash;
         for (let i = 0; i <= lim; i++) {
           const a = Math.PI / 2 + (i / n) * TAU;
           const x = R(c.x + Math.cos(a) * rx);
@@ -165,6 +169,15 @@ export class Collar {
           const g = Math.abs(i - glintAt) <= 1;
           if (L.ghost) {
             if (frontSide && i % 2 === 0) f.px(x, y, PAL.void3);
+            continue;
+          }
+          if (bf !== undefined && fall <= 0) {
+            const t = frontSide ? f : b;
+            t.px(x, y - 2, PAL.ink);
+            t.px(x, y - 1, bf === PAL.white ? PAL.white : PAL.gold4);
+            t.px(x, y, bf);
+            t.px(x, y + 1, bf === PAL.white ? PAL.gold4 : PAL.gold3);
+            t.px(x, y + 2, PAL.ink);
             continue;
           }
           if (frontSide) {
@@ -196,6 +209,12 @@ export class Collar {
           tgt.px(x, y - 2, PAL.gold4);
           tgt.px(x + (Math.cos(a) > 0 ? 1 : -1), y - 1, PAL.gold4);
           tgt.px(x + (Math.cos(a) > 0 ? 1 : -1), y, PAL.gold3);
+          // the needle: one gold3 pixel a step ahead of the band, pulling it round
+          const a2 = Math.PI / 2 + ((lim + 5) / n) * TAU;
+          const x2 = R(c.x + Math.cos(a2) * (rx + 1));
+          const y2 = R(c.y + Math.sin(a2) * (ry + 1));
+          (Math.sin(a2) >= -0.15 ? f : b).px(x2, y2 - 1, PAL.gold3);
+          (Math.sin(a2) >= -0.15 ? f : b).px(x2, y2 - 2, PAL.white);
         }
         // the buckle: 5×4 brass in an ink frame at the front centre; the leash ring hangs under it
         if (L.buckle !== 'none' && shown >= steps) {
