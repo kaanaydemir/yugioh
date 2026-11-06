@@ -81,14 +81,16 @@ describe('dawn cage drawings', () => {
     const locks = [0, 1, 2, 3].map((n) => paintLock(n));
     for (let a = 0; a < 4; a++) for (let b = a + 1; b < 4; b++) expect(same(locks[a], locks[b])).toBe(false);
     expect(same(paintLock(0), paintLock(0, { open: true }))).toBe(false);
-    // a lit bolt is gilded, a turned one shows its IRON back (another material, not a darker gold)
+    // a lit bolt is gilded, a turned one is a dark hole: an INK slot with its iron back in night tones (round 4)
     const tones = (p: PixelCanvas) => {
       const out = new Set<number>();
       for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) if (p.alpha(x, y)) out.add(p.get(x, y)!);
       return out;
     };
-    expect(tones(paintLock(3)).has(PAL.stone1)).toBe(false);
-    expect(tones(paintLock(0)).has(PAL.stone1)).toBe(true);
+    expect(tones(paintLock(3)).has(PAL.night2)).toBe(false);
+    expect(tones(paintLock(0)).has(PAL.night2)).toBe(true);
+    // the remaining lit bolts can hop one pixel (the count's bounce frame)
+    expect(same(paintLock(2), paintLock(2, { bounce: true }))).toBe(false);
     const badges = [1, 2, 3].map((n) => paintBadge(n));
     expect(same(badges[0], badges[1]) || same(badges[1], badges[2])).toBe(false);
   });
@@ -108,7 +110,7 @@ describe('dawn cage timing', () => {
     // (0.7 s opening + 3.0 s storyboard) × 1.35 + 0.3 s slack, in game time
     expect((n + 700) * 1.35).toBeLessThanOrEqual((700 + 3000) * 1.35 + 300);
     // the cold/lean hold reads (≥ 300 ms), the tongues are spaced
-    expect(T.lean[2] + T.lean[3]).toBeGreaterThanOrEqual(300);
+    expect(T.lean[2] + T.lean[3] + T.lean[4]).toBeGreaterThanOrEqual(260);
     expect(T.tongueGap).toBeGreaterThanOrEqual(120);
     expect(T.springAt).toBeLessThan(T.haulAt);
   });

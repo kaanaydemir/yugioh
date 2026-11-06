@@ -141,6 +141,17 @@ const S: Record<string, Scenario> = {
     },
     steps: [summon('steppe_spiralhorn', 2, 1), respond('auger_lance', 0), choose(0, 1, 'spellTrap', 2)],
   },
+  // ---- the CPU answers (film with &mode=vsBot WITHOUT --fresh: P2 is the bot and must answer by itself)
+  eAugerCpu: {
+    desc: 'Bilgisayar (P2) yanıtı: P1 Ejder Kılıçlı Baltacı ile saldırır, bot kapalı Burgu Mızrağı ile kılıcı deler (&mode=vsBot)',
+    stage: {
+      zones: 5,
+      phase: 'battle',
+      p0: { monsters: five(N, 'crag_axeman'), spellTraps: fiveST(N, { id: 'dragon_blade', equippedTo: 1 }) },
+      p1: { monsters: five(N, golemDef), spellTraps: fiveST(N, N, N, 'auger_lance') },
+    },
+    steps: [{ type: 'attack', player: 0, attackerZone: 1, targetZone: 1 }],
+  },
   // ---- a reveal only (the target is still to be chosen: for filming the HIZLI BÜYÜ! reveal on its own)
   eAugerReveal: {
     desc: 'Hızlı büyü açılışı: P1 saldırır, P2 kapalı Burgu Mızrağı’nı açar (hedef seçimi bekler)',

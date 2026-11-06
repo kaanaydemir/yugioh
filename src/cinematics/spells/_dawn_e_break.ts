@@ -34,6 +34,9 @@ export interface Stick {
   sword?: 'top' | 'tip';
   /** Start delay (ms) — a piece hangs a moment before it lets go. */
   delay?: number;
+  /** Round 4: the screen-x range the piece must stay inside (both ends) — the debris stays on the cage's own row. */
+  xMin?: number;
+  xMax?: number;
 }
 
 interface Live extends Stick {
@@ -163,6 +166,16 @@ export function debris(
         s.x += s.vx * dt;
         s.y += s.vy * dt;
         s.a += s.va * dt;
+        // the cage's own row: the piece's ends never leave [xMin, xMax] (it knocks back off the edge, slowed)
+        const hx = Math.abs(Math.cos(s.a)) * s.len * 0.5;
+        if (s.xMin !== undefined && s.x - hx < s.xMin) {
+          s.x = s.xMin + hx;
+          s.vx = Math.abs(s.vx) * 0.3;
+        }
+        if (s.xMax !== undefined && s.x + hx > s.xMax) {
+          s.x = s.xMax - hx;
+          s.vx = -Math.abs(s.vx) * 0.3;
+        }
         // the lowest end against the floor
         const hy = Math.abs(Math.sin(s.a)) * s.len * 0.5;
         if (s.y + hy >= s.floor && s.vy > 0) {

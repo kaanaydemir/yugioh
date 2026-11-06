@@ -7,6 +7,7 @@
 import type { Scenario, Step } from '../scenarios';
 import type { Action, PlayerId } from '../../engine/types';
 import type { StageSpec } from '../scenario';
+import type { CardId } from '../../data/cards';
 
 function stage(p: PlayerId): StageSpec {
   const me = { hand: ['ember_wolf', 'abyss_magus', 'judgment_bolt', 'crystal_wyrm'] as const, monsters: ['stone_sentinel', null, null] as const };
@@ -14,6 +15,13 @@ function stage(p: PlayerId): StageSpec {
   return p === 0
     ? { p0: { ...me, hand: [...me.hand], monsters: [...me.monsters] }, p1: { monsters: [...them.monsters] } }
     : { active: 1, p1: { ...me, hand: [...me.hand], monsters: [...me.monsters] }, p0: { monsters: [...them.monsters] } };
+}
+
+/** The uniqueness check: the magus beside the other DARK spellcaster (dusk_sorcerer) in one hand. */
+function vsDusk(p: PlayerId): StageSpec {
+  const me = { hand: ['abyss_magus', 'dusk_sorcerer', 'abyss_magus', 'dusk_sorcerer'] as CardId[], monsters: [null, null, null] };
+  const them = { monsters: [null, 'tide_golem', null] as (CardId | null)[] };
+  return p === 0 ? { p0: me, p1: them } : { active: 1, p1: me, p0: them };
 }
 
 const summon =
@@ -30,6 +38,8 @@ const inspect: Step[] = [
 const PACK: Record<string, Scenario> = {
   eMagusHand: { desc: 'Uçurum Büyücüsü (P1): elde v3 kart resmi', stage: stage(0), steps: [] },
   eMagusHandP2: { desc: 'Uçurum Büyücüsü (P2): elde v3 kart resmi — aynalı', stage: stage(1), steps: [] },
+  eMagusVsDusk: { desc: 'Uçurum Büyücüsü ve Alacakaranlık yan yana (P1): iki KARANLIK büyücü elde ayırt edilmeli', stage: vsDusk(0), steps: [] },
+  eMagusVsDuskP2: { desc: 'Uçurum Büyücüsü ve Alacakaranlık yan yana (P2)', stage: vsDusk(1), steps: [] },
   eMagusInspect: { desc: 'Uçurum Büyücüsü (P1): elde üzerine gelince inceleme paneli (2× kart)', stage: stage(0), steps: inspect },
   eMagusInspectP2: { desc: 'Uçurum Büyücüsü (P2): inceleme paneli — aynalı', stage: stage(1), steps: inspect },
   eMagusSummon: { desc: 'Uçurum Büyücüsü (P1): kurbanla çağrı — kart yüzü uçuşta', stage: stage(0), steps: [summon(0)] },

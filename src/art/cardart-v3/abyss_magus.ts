@@ -9,15 +9,17 @@
 // magus summoning the abyss. Drawn by the sprite's own rig (drawMagus), so card and board show the same character.
 //
 // Value plan (the 1× read; KART_RESIMLERI §3 / §4 "canavar ışığın önünde durur"): the full DARK eclipse rings the HEAD
-// tight — night0 disc behind the helm, a 3-px void3 ring, void2 and void1 steps outside it — and cardLight() relights
-// the sprite for the card: the horns go one step DOWN their void ramp, so the horned silhouette cuts dark across the
-// lit ring; the helm's steel / mist planes stay the lightest broad shape and stand on the night0 disc; the face under
-// the visor drops to night0 / ink, so the white visor and the pink eye (the focus) are the hottest pixels. The cloak sail
-// and the robe go one step down (the head wins the value order), the pauldron keeps one mist glint (the one cool,
-// non-violet accent besides the eye). The void3 rim is lit only where the helm stands in front of the corona.
-// The signature (what says "Uçurum"): an abyss rift opening in the floor at the magus' feet — ink chasm, void1 far wall,
-// void2 lips, flat bands (recipe tones only) — in both sizes, the ground cue the two pictures share.
-//
+// tight — a small night0 disc behind the helm's dome, a void3 ring, void2 and void1 steps outside it (the void1 step
+// wide enough to light the sky right of the staff) — and cardLight() relights the sprite for the card. The head is
+// redrawn as a horned war-helm (HEAD_ROWS: the sprite's swept blade under a slanted peak read as a pointed hat at 1×):
+// a round dome one step dimmer than the sprite's, and two horns that CURVE UP, dark (night1, a 1-px void2 crest),
+// cutting across the lit void3 ring — at 1× the head reads "horns + orb". The face cavity under the visor drops to
+// night0 so the white visor and the pink eye (the focus) are the hottest pixels; the chest gem is dimmed (the eye is the
+// only pink). The cloak sail and the robe go one step down (the head wins the value order); the big's cloak gets one
+// lit fold and a void2 hem. The void3 rim is lit only where the helm stands in front of the corona.
+// The signature (what says "Uçurum"): an abyss rift opening in the floor at the staff's foot — an ink hole between a
+// void2 far lip and a lit near wall (void3 crest, void2 face), monotone stairs widening to the corner — in both sizes
+// (the small's floor comes up to row 26 so the rift fills 8 rows), with abyss motes rising out of it.
 // big (88×68)   the figure from the horn tips to the knees (1:1 — the sprite is never enlarged, §5), the eclipse ringing
 //               the horned helm, the void flame (asymmetric, a split tongue) on the raised palm at the left and the caged
 //               orb at the right; ink floor with the void1 horizon and the rift running out of the bottom-right corner.
@@ -25,9 +27,10 @@
 //               the pauldrons, the top of the tabard and the caged orb (2 px of sky above and right of the cage); the
 //               horizon and the rift's near end come up behind the bust as the ground cue. Hand corrections at 1× / ×6
 //               (shots/e/abyss_magus/r3/): despeckle(), the hand-made fleck map HAND_FIX (patch), unchecker().
-// Light layer (never outlined): the void flame (big), the orb's heart, three motes (big), the eye's mag glint (small).
+// Light layer (never outlined): the void flame (big), the orb's heart, the orb motes (three big / two small), the abyss
+// motes rising from the rift (both), the eye's mag glint (small).
 // Living (6 frames × 140 ms, A5_PLAN §3.7.6): palette swaps and ≤ 2 px moves — the flame licks, the orb's heart beats,
-// the motes spiral in, the eye glints. Frame 0 (the still every in-game face shows today) has the orb's heart at its peak.
+// the motes spiral in, the abyss motes rise, the eye glints (small: 5–9 px change a frame). Frame 0 (the still every in-game face shows today) has the orb's heart at its peak.
 // Colours only from PAL (the rig and the kit).
 
 import { PAL } from '../palette';
@@ -75,8 +78,8 @@ const FOCUS_SMALL = sub(EYE, SMALL_CROP);
  * (the sprite is 1:1 in both sizes, so the ring hugs the same head): disc, void3, void2, void1 outer edges.
  */
 const ECLIPSE_C: V = [EYE[0], EYE[1] - 3];
-const RADII_BIG = [12, 15, 18, 21] as const;
-const RADII_SMALL = [12, 15, 17, 19] as const;
+const RADII_BIG = [10, 14, 17, 21] as const;
+const RADII_SMALL = [9, 12, 15, 21] as const;
 
 /**
  * The hand pass of the 44×34 picture (KART_RESIMLERI §1 route 3: the subject dumped as an ASCII map at ×6 and
@@ -122,18 +125,18 @@ const KEEP: readonly number[] = [PAL.void4, PAL.white, PAL.mist, PAL.mag1, PAL.m
 // ================================================================ the light layer
 
 /**
- * The void flame on the raised palm: an asymmetric 7×10 tongue — a round mist-hearted belly, the body leaning back
+ * The void flame on the raised palm: an asymmetric 7×12 tongue (a second light against the dark sky) — a round mist-hearted belly, the body leaning back
  * (left, away from the corona) into a licking tip, and a split tongue peeling off on the right. Tops and bellies
  * alternate per frame (≤ 2 px moves). a void3 skin, b void4 body, c mist heart (it burns one step hotter than the
  * corona's rings beside it; white stays the visor's).
  */
 const FLAME_TOP: readonly (readonly string[])[] = [
-  ['a......', 'aa...a.', '.a..aa.', '.ab.a..'],
-  ['.a.....', 'aa....a', '.a...a.', '.abaa..'],
-  ['.......', 'a....a.', 'aa..aa.', '.ab.a..'],
-  ['a......', 'aa..a..', '.a..a..', '.abaa..'],
-  ['.a.....', '.a...a.', 'aa...a.', '.abaa..'],
-  ['.......', 'aa...a.', '.a..aa.', '.ab.a..'],
+  ['.a.....', 'a......', 'a......', 'aa...a.', '.a..aa.', '.ab.a..'],
+  ['.......', 'a......', '.a.....', 'aa....a', '.a...a.', '.abaa..'],
+  ['.......', '.......', '.a.....', 'a....a.', 'aa..aa.', '.ab.a..'],
+  ['a......', '.a.....', 'a......', 'aa..a..', '.a..a..', '.abaa..'],
+  ['.......', 'a......', '.a.....', '.a...a.', 'aa...a.', '.abaa..'],
+  ['.......', '.......', 'a......', 'aa...a.', '.a..aa.', '.ab.a..'],
 ];
 const FLAME_BELLY: readonly (readonly string[])[] = [
   ['.abba..', 'abcba..', 'abccba.', 'abccba.', '.abba..', '..aa...'],
@@ -249,21 +252,17 @@ function luma(c: number): number {
 /**
  * The card's value plan (KART_RESIMLERI §3 / §4), palette steps only, on the sprite before the crop (sprite frame px).
  * The sprite is lit for the arena, where every part sits in the same light; on the card:
- *   - the horns go one step DOWN their void ramp: a dark horned silhouette that cuts across the lit void3 ring;
- *   - the helm's slate planes go one step up (night3 → night4 → steel; its mist plane stays): the lightest broad shape;
- *   - the face under the visor drops to night0, the cheek guards one step: the visor and the eye pop;
+ *   - the helm is redrawn (HEAD_ROWS): a dimmed round dome and two up-curving dark horns that cut across the lit ring;
+ *   - the face cavity under the visor drops to night0 (the neck guard keeps its lit planes): the visor and eye pop;
+ *   - the chest gem one step down (dark magenta): the eye is the only pink;
  *   - the cloak sail and the robe go one step down (they never compete with the head), the tabard's sigil keeps
  *     one void3 cross (its white centre drops to void4); the breastplate's steel one step down;
  *   - white is the visor's alone: every other glint takes mist (the pauldron's steel glint: the cool accent) or void4.
  */
-const HORN_DOWN: Readonly<Record<number, number>> = {
-  [PAL.void0]: PAL.night0,
-  [PAL.void1]: PAL.night0,
-  [PAL.void2]: PAL.night1,
-};
-const HELM_UP: Readonly<Record<number, number>> = {
-  [PAL.night3]: PAL.night4,
-  [PAL.night4]: PAL.steel,
+/** The helm's dome one step DOWN (steel → night4, mist → steel): the horns, not the crown's peak, are the head's shape. */
+const HELM_DIM: Readonly<Record<number, number>> = {
+  [PAL.steel]: PAL.night4,
+  [PAL.mist]: PAL.steel,
 };
 const FACE_DOWN: Readonly<Record<number, number>> = {
   [PAL.night1]: PAL.night0,
@@ -283,6 +282,13 @@ const VOID_DOWN: Readonly<Record<number, number>> = {
   [PAL.void2]: PAL.void1,
   [PAL.void3]: PAL.void2,
 };
+const GEM_DOWN: Readonly<Record<number, number>> = {
+  [PAL.mag4]: PAL.mag2,
+  [PAL.mag3]: PAL.mag1,
+  [PAL.mag2]: PAL.mag1,
+  [PAL.mist]: PAL.void3,
+  [PAL.white]: PAL.void3,
+};
 const BREAST_DOWN: Readonly<Record<number, number>> = {
   [PAL.steel]: PAL.night4,
   [PAL.mist]: PAL.steel,
@@ -293,20 +299,53 @@ function cardLight(spr: PixelCanvas): void {
   const grip = gripPoint(POSE)[0];
   const staff = (x: number) => Math.abs(x - grip) <= 3;
   const headBox = (x: number, y: number) => y >= ey - 16 && y < ey && x >= ex - 24 && x <= ex + 8 && x < grip - 3;
-  // the horns (every void tone of the head box) down, the helm's slate up
-  recolor(spr, HORN_DOWN, headBox);
-  recolor(spr, HELM_UP, (x, y) => headBox(x, y) && x >= ex - 6);
-  // the face under the visor and the cheek guards beside it
-  recolor(spr, FACE_DOWN, (x, y) => y >= ey && y <= ey + 7 && x >= ex - 9 && x <= ex + 5);
+  // the helm's dome one step down; the horns are redrawn by hand (curved, dark, a void2 crest) — see horns()
+  recolor(spr, HELM_DIM, (x, y) => headBox(x, y) && x >= ex - 6);
+  horns(spr);
+  // the face cavity under the visor only (the neck guard and cheek plate keep their lit planes: the head's contour)
+  recolor(spr, FACE_DOWN, (x, y) => y >= ey && y <= ey + 4 && x >= ex - 4 && x <= ex + 5);
   // the cloak sail (left of the robe) and the robe below the pauldrons, except the staff and its fist
   recolor(spr, CLOTH_DOWN, (x, y) => !staff(x) && ((y >= ey + 14 && x <= ex - 7) || y >= ey + 21));
   // the sleeves and the robe's lit panel between the pauldrons and the belt: their void one step down too
   recolor(spr, VOID_DOWN, (x, y) => !staff(x) && y >= ey + 9 && y < ey + 21 && !(y >= ey + 14 && x <= ex - 7));
   // the breastplate under the pauldrons: its steel plane and glint one step down (the chest is not a second focus)
   recolor(spr, BREAST_DOWN, (x, y) => y >= ey + 13 && y < ey + 21 && x > ex - 7 && x < grip - 3);
+  // the chest gem one step down (dark magenta, a void3 glint): the eye stays the picture's only pink
+  recolor(spr, GEM_DOWN, (x, y) => y >= ey + 9 && y <= ey + 15 && x >= ex - 6 && x <= ex + 1);
   // white is the visor's alone
   recolor(spr, { [PAL.white]: PAL.mist }, (x, y) => (y < ey - 1 || y > ey + 1) && x <= grip - 3);
   recolor(spr, { [PAL.white]: PAL.void4 }, (x, y) => (y < ey - 1 || y > ey + 1) && x > grip - 3);
+}
+
+/**
+ * The horned war-helm, redrawn for the card (sprite px, placed by the small's own px via SMALL_CROP so both sizes
+ * carry it): the sprite's swept-back blade under a slanted peak reads as a hat brim at 1×, so on the card the dome is a
+ * round skull-cap (night3, a night4 crown band, one steel glint at the lit back) and both horns CURVE UP — the near horn
+ * a thick crescent from the side of the helm round to a tip at the top-left, the far horn a hook rising behind the dome.
+ * Horns dark (night1 body, a 1-px void2 crest on the lit edge), inked all round: they cut dark across the lit void3
+ * ring and keep their crest where they cross the night0 disc. Keys as HAND_KEY; '_' erases, '.' leaves.
+ */
+// prettier-ignore
+const HEAD_ROWS: readonly string[] = [
+  '__kkk__k2kk_____________', // 0
+  '_kk2k__k26kk____________', // 1
+  '_k26k__k266kk___________', // 2
+  '_k26kk_kk266kk__________', // 3
+  '_k266k__kk266kk_________', // 4
+  '_k266kk__kk266kk________', // 5
+  '_k2666kk__kkkkkkkk______', // 6
+  '_kk2666kk__k9s9998k_____', // 7
+  '__k22666kkk99999888k____', // 8
+  '__kk226666k998888888k___', // 9
+  '___kk2226666888888888k__', // 10
+  '____kkk222668888888888k_', // 11
+  '______kkk2266888888888k_', // 12
+  '________kk666777777777k_', // 13
+  '______kkk7777kk333333k__', // 14
+];
+
+function horns(spr: PixelCanvas): void {
+  patch(spr, HEAD_ROWS, HAND_KEY, SMALL_CROP[0], SMALL_CROP[1]);
 }
 
 // ================================================================ the backdrop (both sizes)
@@ -321,48 +360,34 @@ function eclipse(p: PixelCanvas, c: V, radii: readonly number[]): void {
 }
 
 /**
- * The abyss rift (the card's signature): the floor splits open at the staff's foot and the chasm widens out of the
- * picture's bottom-right corner toward the viewer. Rows as [y, x0, x1] (picture px, hand-set stairs, the far side
- * notched). The wall that faces the viewer (the right side of a crack running away up-left) is lit by the glow below:
- * a 2-px void1 band under its void2 lip; the near side is a void2 lip; between them the ink depth.
+ * The abyss rift (the card's signature): where the staff meets the floor, the floor splits open and the chasm widens
+ * toward the picture's bottom-right corner (toward the viewer). Rows as [y, x0, x1, wall] (picture px): both edges are
+ * monotone stairs (the far edge creeps right 1 px every 3 rows, the near edge runs out 1-1-2), never stepping back.
+ * One flat ink depth (the hole) between a 1-px void2 lip on the far (upper-left) edge and the near wall's lit face
+ * (`wall` px, about a third of the width: a void2 crest, then void1 down to the near edge), lit by the glow below;
+ * the first rows are all lip (the mouth at the staff). Abyss motes rise out of it (the light layer, riftMotes()).
  */
-const RIFT_BIG: readonly (readonly [number, number, number])[] = [
-  [49, 64, 65],
-  [50, 64, 67],
-  [51, 64, 68],
-  [52, 65, 67],
-  [53, 65, 70],
-  [54, 66, 72],
-  [55, 66, 71],
-  [56, 67, 74],
-  [57, 66, 76],
-  [58, 67, 75],
-  [59, 68, 77],
-  [60, 68, 80],
-  [61, 69, 79],
-  [62, 70, 82],
-  [63, 69, 84],
-  [64, 70, 83],
-  [65, 71, 85],
-  [66, 72, 87],
-  [67, 71, 87],
+type RiftRow = readonly [number, number, number, number];
+const RIFT_BIG: readonly RiftRow[] = [
+  [49, 63, 64, 0], [50, 63, 65, 0], [51, 63, 66, 2], [52, 64, 68, 2],
+  [53, 64, 69, 2], [54, 64, 70, 2], [55, 65, 72, 2], [56, 65, 73, 3],
+  [57, 65, 74, 3], [58, 66, 76, 3], [59, 66, 77, 4], [60, 66, 78, 4],
+  [61, 67, 80, 4], [62, 67, 81, 5], [63, 67, 82, 5], [64, 68, 84, 5],
+  [65, 68, 85, 6], [66, 68, 86, 6], [67, 69, 87, 6],
 ];
-const RIFT_SMALL: readonly (readonly [number, number, number])[] = [
-  [30, 34, 36],
-  [31, 34, 39],
-  [32, 35, 41],
-  [33, 35, 43],
+const RIFT_SMALL: readonly RiftRow[] = [
+  [26, 34, 35, 0], [27, 34, 36, 1], [28, 35, 38, 1], [29, 35, 39, 2],
+  [30, 36, 40, 2], [31, 36, 41, 2], [32, 37, 42, 2], [33, 37, 43, 2],
 ];
 
-function rift(p: PixelCanvas, rows: readonly (readonly [number, number, number])[]): void {
-  for (const [y, x0, x1] of rows)
-    for (let x = x0; x <= x1; x++) p.set(x, y, x === x0 || x === x1 ? PAL.void2 : x >= x1 - 2 ? PAL.void1 : PAL.void0);
-  // the far lip: the crack's first row is lip all along
+function rift(p: PixelCanvas, rows: readonly RiftRow[]): void {
+  for (const [y, x0, x1, wall] of rows)
+    for (let x = x0; x <= x1; x++) p.set(x, y, x === x0 ? PAL.void2 : wall > 0 && x === x1 - wall + 1 ? PAL.void3 : x > x1 - wall ? PAL.void2 : PAL.ink);
   const [y, x0, x1] = rows[0];
   p.hline(x0, x1, y, PAL.void2);
 }
 
-function backdrop(p: PixelCanvas, horizon: number, c: V, radii: readonly number[], rows: readonly (readonly [number, number, number])[]): void {
+function backdrop(p: PixelCanvas, horizon: number, c: V, radii: readonly number[], rows: readonly RiftRow[]): void {
   paintBackdrop(p, DARK, { shape: false, horizon });
   eclipse(p, c, radii);
   // the floor and the horizon come back over the eclipse's lower steps (the light stands behind the ground)
@@ -385,6 +410,7 @@ function big(l: ArtLayers, f: number): void {
   const spr = sprite();
   l.subject.blit(spr.crop(BIG_CROP[0], BIG_CROP[1], 88, 68), 0, 0);
   despeckle(l.subject);
+  cloakForm(l.subject);
   rim(l.subject, PAL.void3, { skip: KEEP, only: helmRim(c, FOCUS[0] - 2, FOCUS[1] + 2) });
   const [ox, oy] = sub(orbCenter(POSE), BIG_CROP);
   // the raised free hand: the flame stands on its palm (the sprite's own 3-px flame is under it)
@@ -392,11 +418,59 @@ function big(l: ArtLayers, f: number): void {
   flame(l.light, hand[0], hand[1], f);
   orbHeart(l.light, ox, oy, f);
   motes(l.light, l.subject, ox, oy, f, 3);
+  riftMotes(l.light, l.subject, RIFT_MOTES_BIG, f);
+}
+
+/**
+ * The cloak sail's form (big only — the small crops above it): one lit fold (a 2-px night3 band, a night1 shadow
+ * under it) running parallel to the flung edge across the flat night2 plane, and a 1-px void2 hem where the lining
+ * turns out under it. Palette steps on the subject, picture px.
+ */
+function cloakForm(s: PixelCanvas): void {
+  for (let y = 43; y <= 59; y++) {
+    let e = -1;
+    for (let x = 0; x < 34; x++)
+      if (s.get(x, y) === PAL.night4) {
+        e = x;
+        break;
+      }
+    if (e < 0) continue;
+    for (const [dx, from, to] of [
+      [12, PAL.night2, PAL.night3],
+      [13, PAL.night2, PAL.night3],
+      [14, PAL.night2, PAL.night1],
+    ] as const)
+      if (s.get(e + dx, y) === from) s.set(e + dx, y, to);
+  }
+  for (let y = 56; y < s.h; y++)
+    for (let x = 0; x < 32; x++) if (s.get(x, y) === PAL.void1 && s.get(x, y - 1) === PAL.night2) s.set(x, y, PAL.void2);
+}
+
+/**
+ * Motes rising out of the rift (the abyss breathes): paths in picture px, one step (≤ 2 px) a frame, void3 in the hole
+ * and void2 once they rise above the floor line. Never over the subject.
+ */
+const RIFT_MOTES_BIG: readonly (readonly V[])[] = [
+  [[73, 64], [73, 62], [72, 60], [72, 58], [71, 56], [71, 54]],
+  [[77, 60], [78, 58], [78, 56], [79, 54], [79, 52], [80, 50]],
+];
+const RIFT_MOTES_SMALL: readonly (readonly V[])[] = [
+  [[38, 31], [38, 30], [37, 29], [37, 28], [37, 27], [36, 25]],
+  [[40, 28], [41, 27], [41, 25], [42, 24], [42, 23], [41, 32]],
+];
+
+function riftMotes(p: PixelCanvas, subject: PixelCanvas, paths: readonly (readonly V[])[], f: number): void {
+  const floor = paths === RIFT_MOTES_BIG ? ART_HORIZON_BIG : 26;
+  for (let m = 0; m < paths.length; m++) {
+    const [x, y] = paths[m][(f + m * 3) % paths[m].length];
+    if (subject.get(x, y) !== null) continue;
+    p.set(x, y, y > floor ? PAL.void3 : PAL.void2);
+  }
 }
 
 const ART_HORIZON_BIG = 48;
-/** The small's horizon (big px: small row 30): a closer crop of the same ground, cheated up behind the bust. */
-const ART_HORIZON_SMALL = 60;
+/** The small's horizon (big px: small row 26): a closer crop of the same ground, cheated up behind the bust. */
+const ART_HORIZON_SMALL = 52;
 
 function small(l: ArtLayers, f: number): void {
   const c = sub(ECLIPSE_C, SMALL_CROP);
@@ -408,7 +482,9 @@ function small(l: ArtLayers, f: number): void {
   handFix(l.subject);
   const [ox, oy] = sub(orbCenter(POSE), SMALL_CROP);
   orbHeart(l.light, ox, oy, f);
+  motes(l.light, l.subject, ox, oy, f, 2);
   eyeGlint(l.light, FOCUS_SMALL, f);
+  riftMotes(l.light, l.subject, RIFT_MOTES_SMALL, f);
   unchecker(l);
 }
 

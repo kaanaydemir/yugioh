@@ -8,32 +8,38 @@
 // Sounds: src/audio/v3/e/dawn_swords.ts (e_dawn*).
 //
 // BEAT LIST (scene ms at 1×; game time ×1.35 with the v3 tempo). t = 0 is the frame the card lies flat on its zone.
-// Round 3 (critic fixes): a real birdcage DOME over the middle lane, steel sword bars vs gilded rods, a one-column
-// DOOR set piece, a big padlock with three tongue BOLTS on its face, a quicker flow (≈ 5.0 s game time with flips).
+// Round 4 (critic fixes): a thinner camera-side plane (swords only a quarter column either side of each lane's centre,
+// no front rods, a 1-px dark ridge, the back plane a tone darker), the reveal flips finish INSIDE the dawn and the
+// slam stands alone (quiet + wind-up), a 30-px dawn burst and a bright band down every blade, the cold as a flat
+// tone-band recolour (./_dawn_e_cold.ts), an 8-px lean, an ink-hole padlock count, short contained break pieces.
 // ACTIVATE (hook 'activate', after the common v3 spell opening ≈ 0.55 s and landV3):
-//   0      OMEN: the cage's shadow falls on the opponent's row (stepped, 3 levels); the pulley ratchet — e_dawnChain
+//   0      OMEN: the cage's shadow (2 flat night bands) grows on the opponent's row in 3 drawings — e_dawnChain
 //   0–270  THE DESCENT: the gilded cage drops from 170 px above (inQuad) on its chain, its swords DULL, the door
 //          hanging WIDE OPEN toward the camera (100°), swinging 90 ↔ 100° as it falls
 //   270    LAND: a pale-gold frame on the whole cage, hit-stop 50 ms, 2-px shake, dust, gold sparks at the posts, a
 //          floor ring + flash — e_dawnLand (the low gong of the gilded bars); the bounce rocks the open door
-//   450    THE DAWN: the sun finial on the dome ignites, its ray fan RISES in three drawings — e_dawnSun;
-//   570    … the DAWN WAVE runs down every steel blade (480 ms per blade, staggered left → right over 180 ms), a
-//          light beam from the sun, a gold floor light; as it touches a lane, that lane's FACE-DOWN monster flips
-//          face-up (the engine's own flip, cause 'reveal')
-//   ~1300  +80 hold → THE DOOR swings shut (100 → 0°, 150 ms, accelerating — e_dawnSwing) … SLAM: the door's white
-//          frame, hit-stop 50 ms, a white ring and sparks off the latch — e_dawnSlam (a bright brass latch KLAK);
-//          the OVERSHOOT frame (−8°) and back, the bars rattle. The reveal flips run on under the door.
-//   +100   CAGED (after the flips): every monster goes COLD (an edge light drains down it, cold pools, breath mist —
-//          e_dawnCold) and LEANS on the bars one after another (60 ms apart, 5 px, a one-frame squash on contact,
-//          the touched bar flashes, a frost puff) and eases back. An EMPTY row skips this beat.
-//   +300   THE PADLOCK drops 14 px onto the latch (while they ease back), shackle open, SNAPS shut with a pop —
-//          e_dawnShackle; +160 the three TONGUE BOLTS turn their gilded faces out (140 ms apart) — e_dawnTongue ×3
-//   +170   the small padlock badge pops onto the lying spell card (its left corner) — e_dawnBadge; +150 the end
+//   450    THE DAWN: the sun finial BURSTS (3 drawings × 50 ms: a white flash, twelve rays reaching 30 px, the rays
+//          breaking off) while its own ray fan rises under it, a big warm light — e_dawnSun; a white flare frame
+//   650    … the DAWN WAVE: a 4-row white band (+ a gold4 trailing step) runs down every sword, the door's two too
+//          (300 ms per blade, staggered left → right over 150 ms ≈ 450 ms); each LANE pulses (a warm floor light +
+//          a ring) as the wave reaches it and its FACE-DOWN monster flips face-up there (the engine's own flip)
+//   flips  THE DOOR waits for the flips, then 150 ms of quiet, the WIND-UP (it hangs at 108° for 70 ms), the snap
+//          shut (110 ms, inCubic — e_dawnSwing) … SLAM: the door's white frame, hit-stop 50 ms, a white ring and
+//          sparks off the latch — e_dawnSlam (an iron door body under a brass latch KLAK, the bars ring on); the
+//          OVERSHOOT frame (−8°) and back, the bars rattle
+//   +60    CAGED: every monster goes COLD — a flat cold recolour sweeps down its body (4 × 50 ms) — and LEANS on the
+//          bars (3 / 6 / 8 px, a 2-frame squash on contact, the touched sword flashes white, a frost puff — e_dawnLean)
+//          one after another (60 ms apart), eases back as the recolour lifts to the lasting cold — e_dawnCold.
+//          An EMPTY row skips this beat.
+//   +430   THE PADLOCK drops 14 px onto the latch, shackle open, SNAPS shut with a pop — e_dawnShackle; +120 the
+//          three TONGUE BOLTS turn their gilded faces out (140 ms apart) — e_dawnTongue ×3
+//   +120   the small padlock badge pops onto the lying spell card (its left corner) — e_dawnBadge; +100 the end
 // IDLE (as long as the card is on the field): the sun's rays twinkle (long ↔ short), a glint runs down one sword now
 //   and then, a light climbs the chain, cold breath rises inside, a gold mote drifts down; the caged units' frost.
-// COUNTER (each end of the opponent's turn; 'counter' event) ≈ 0.65 s: the whole padlock flashes white and POPS (a
+// COUNTER (each end of the opponent's turn; 'counter' event) ≈ 0.7 s: the whole padlock flashes white and POPS (a
 //   gold halo); the right-most lit BOLT TURNS (4 drawings, 45 ms: narrowing → edge-on, its slot framed white, a spark
-//   burst and a small ring → its IRON back) — the bell
+//   burst and a small ring → an INK hole with its iron back in night tones); the bolts still lit hop 1 px for a
+//   frame (the count reads at 1×) — the bell
 //   tolls (e_dawnTick: three ratchet ticks + the church bell G4): the lock swings ±2 px three times, a gold ring
 //   spreads, a light pulse climbs from the lock up the latch post and the vault to the sun, the sun flares and a gold
 //   ripple runs out along every sword from the middle; the badge's pip turns too.
@@ -43,8 +49,8 @@
 //   (inCubic, 420 ms) — e_dawnHaul (a rising chain-and-ratchet line).
 // EARLY DESTRUCTION ('destroyed' while the counter is still > 0: Arınma Dalgası …) ≈ 0.95 s: its own BREAK — two
 //   pale-gold frames; the chain SNAPS and whips up (a visible link segment flicking); every sword SNAPS: its upper
-//   half flies off spinning, drawn as a SWORD (steel blade, guard, pommel); the frame sags, splits at the door and
-//   COLLAPSES into FEW, THICK (3-px) pieces that tumble, bounce and lie FLAT along the rail (the vault / dome / back
+//   half hops off spinning, drawn as a SWORD (steel blade, guard, pommel); the frame sags, splits at the door and
+//   COLLAPSES into FEW, SHORT (≤ 20 px), THICK (3-px) pieces clamped to the cage's own row that tumble, bounce and lie FLAT along the rail (the vault / dome / back
 //   pieces in the back layer, behind the caged monsters), then cool gold → stone (steel → night) as light motes
 //   rise off them; the padlock and the sun fall and bounce — e_dawnBreak (a falling bell arpeggio of the bars + clatter).
 // STAGED / RESTORED boards: the cage is built with the board, before the first event (no pop-in); a late restore
@@ -60,7 +66,7 @@ import type { Motif } from '../../art/spellmotifs-v3';
 import { DEPTH, TILE_W, LANE_COLS, unitDepth, zoneXY, type XY } from '../../view/layout';
 import { TEX, shake, wait } from '../../vfx/core';
 import { E, Raster, Sparks, floorRing, freeze, lerp, onFrame, rnd, rr, run } from '../../vfx/setpieces';
-import { fxCount, motifTexture, rimClimb, silhouetteOf } from '../_v3/spellfx';
+import { fxCount, motifTexture } from '../_v3/spellfx';
 import { panAt, play as playV3 } from '../_v3/sound';
 import { cardLeaves } from '../_v3/card';
 import { fx, type CinematicContext } from '../api';
@@ -71,6 +77,13 @@ import { dawnCasting, resolutionParts } from './_dawn_v3';
 import {
   BADGE_H,
   BADGE_W,
+  BURST_C,
+  BURST_STEPS,
+  BURST_W,
+  DOOR_SWORDS,
+  doorBlade,
+  doorSwordFoot,
+  paintSunBurst,
   CHAIN_W,
   DOOR_ANGLES,
   LOCK_AX,
@@ -103,6 +116,7 @@ import {
   type CageGeo,
 } from './_dawn_e_paint';
 import { debris, stickOf, type Stick } from './_dawn_e_break';
+import { ColdSkin } from './_dawn_e_cold';
 
 type AnyCtx = CinematicContext<GameEvent>;
 type ActCtx = CinematicContext<Extract<GameEvent, { type: 'activate' }>>;
@@ -123,27 +137,30 @@ export const CAGE_T = Object.freeze({
   landStop: 50,
   bounce: [-3, 0, -1, 0] as readonly number[],
   bounceStep: 34,
-  /** The sun ignites (after the land frame); its ray fan rises in SUN_RISE drawings. */
+  /** The sun ignites (after the land frame); the white flare frame after the burst. */
   sunAt: 110,
   sunStep: 40,
-  /** The dawn wave: per blade, and the left → right stagger of the whole row. */
-  waveMs: 460,
-  waveSpread: 180,
-  /** After the wave: a hold, then the door swings and slams (the reveal flips overlap it), its overshoot frame. */
-  doorHold: 80,
-  swing: 150,
+  /** The dawn burst: its three drawings. */
+  burstStep: 50,
+  /** The dawn wave: per blade, and the left → right stagger of the whole row (≈ 450 ms in all). */
+  waveMs: 300,
+  waveSpread: 150,
+  /** After the wave AND the reveal flips: a beat of quiet, the wind-up (108°), the snap shut, the overshoot frame. */
+  doorHold: 150,
+  windUp: 70,
+  swing: 110,
   slamStop: 50,
   overshoot: 34,
   /** After the slam: the hold, the cold (and lean; skipped on an empty row), the padlock, the tongues, the badge. */
-  slamHold: 100,
-  lean: [50, 50, 34, 280, 60, 60] as readonly number[],
+  slamHold: 60,
+  lean: [40, 40, 34, 34, 200, 50, 50] as readonly number[],
   leanStagger: 60,
-  lockAfterCold: 300,
+  lockAfterCold: 430,
   lockDrop: 100,
-  tongue0: 160,
+  tongue0: 120,
   tongueGap: 140,
-  badgeAfter: 170,
-  endAfter: 150,
+  badgeAfter: 120,
+  endAfter: 100,
   /** A counter, the last counter and the haul. */
   tickMs: 650,
   springAt: 300,
@@ -158,8 +175,8 @@ export const CAGE_T = Object.freeze({
 export function castLength(): number {
   const T = CAGE_T;
   const land = T.drop + T.landStop + 17;
-  const wave = T.sunAt + SUN_RISE * T.sunStep + T.waveMs + T.waveSpread;
-  const slam = T.doorHold + T.swing + T.slamStop + T.overshoot;
+  const wave = T.sunAt + BURST_STEPS * T.burstStep + T.sunStep + T.waveMs + T.waveSpread;
+  const slam = T.doorHold + T.windUp + T.swing + T.slamStop + T.overshoot;
   const after = T.slamHold + T.lockAfterCold + T.lockDrop + 170 + T.tongue0 + 2 * T.tongueGap + T.badgeAfter + T.endAfter;
   return land + wave + slam + after;
 }
@@ -196,7 +213,7 @@ export function allCages(scene: Phaser.Scene): DawnCage[] {
 const motif = (px: () => import('../../art/pixel').PixelCanvas, ax = 0, ay = 0) => (): Motif => ({ px: px(), ax, ay });
 
 function geoKey(g: CageGeo): string {
-  return `dawnE3:${g.target}:${TILE_W}:${LANE_COLS.join('')}`;
+  return `dawnE4:${g.target}:${TILE_W}:${LANE_COLS.join('')}`;
 }
 
 /** The front layer with its swords dull (`lit` false) or bright; `white` = the land frame; `snapped` = the break. */
@@ -226,19 +243,23 @@ function doorTex(sc: Phaser.Scene, g: CageGeo, deg: number, lit: boolean, white:
   })).key;
 }
 
-type LockLook = { turning?: number; step?: number; open?: boolean; white?: boolean; pop?: boolean };
+type LockLook = { turning?: number; step?: number; open?: boolean; white?: boolean; pop?: boolean; bounce?: boolean };
 
 function lockTex(sc: Phaser.Scene, lit: number, o: LockLook = {}): { key: string; ox: number; oy: number } {
-  const t = motifTexture(sc, `dawnE3:lock:${lit}:${o.turning ?? -1}:${o.step ?? -1}:${o.open ? 1 : 0}:${o.white ? 1 : 0}:${o.pop ? 1 : 0}`, motif(() => paintLock(lit, o), LOCK_AX, LOCK_AY));
+  const t = motifTexture(sc, `dawnE4:lock:${lit}:${o.turning ?? -1}:${o.step ?? -1}:${o.open ? 1 : 0}:${o.white ? 1 : 0}:${o.pop ? 1 : 0}:${o.bounce ? 1 : 0}`, motif(() => paintLock(lit, o), LOCK_AX, LOCK_AY));
   return { key: t.key, ox: t.ax / t.w, oy: t.ay / t.h };
 }
 
 function badgeTex(sc: Phaser.Scene, lit: number, o: { turning?: number; white?: boolean } = {}): string {
-  return motifTexture(sc, `dawnE:badge:${lit}:${o.turning ?? -1}:${o.white ? 1 : 0}`, motif(() => paintBadge(lit, o), 6, 7)).key;
+  return motifTexture(sc, `dawnE4:badge:${lit}:${o.turning ?? -1}:${o.white ? 1 : 0}`, motif(() => paintBadge(lit, o), 6, 7)).key;
 }
 
 function sunTex(sc: Phaser.Scene, lit: number, phase: number, white = false): string {
   return motifTexture(sc, `dawnE3:sun:${lit}:${phase}:${white ? 1 : 0}`, motif(() => paintSun(lit, phase, white), SUN_C, SUN_CY)).key;
+}
+
+function burstTex(sc: Phaser.Scene, step: number): string {
+  return motifTexture(sc, `dawnE4:burst:${step}`, motif(() => paintSunBurst(step), BURST_C, BURST_C)).key;
 }
 
 function chainTex(sc: Phaser.Scene, len: number): string {
@@ -251,66 +272,35 @@ const CHAIN_DY = -7;
 // ================================================================ the frost on the caged units
 
 /**
- * The caged units' lasting COLD while the cage stands: a frost band on the lower body (the body's own contour
- * pixels, recoloured: water3 at the feet, water2 above, a water4 frost glint on every 5th) and a breath puff off the
- * head every ~1.4 s. Follows each sprite's animation (the mask is the frame on screen). Never tints the body.
+ * The caged units' lasting COLD while the cage stands (round 4): a flat tone-band recolour of each sprite's own
+ * pixels (./_dawn_e_cold.ts — its darkest band goes night3, a few frost pixels on its lowest row; no speckle on the
+ * body) and a breath puff off the head every ~1.4 s. The cold SWEEP of the beat is driven through `skin`.
  */
 class Frost {
-  private ras = new Map<Sprite, Raster>();
+  readonly skin: ColdSkin;
   private mist: Sparks;
   private stop: () => void;
   private nextPuff = new Map<Sprite, number>();
   private gone = false;
 
   constructor(
-    private readonly scene: Phaser.Scene,
+    scene: Phaser.Scene,
     private readonly units: () => Sprite[],
     depth: number,
   ) {
+    this.skin = new ColdSkin(scene, units);
     this.mist = new Sparks(scene, depth);
     this.stop = onFrame(scene, (_dt, el) => {
       if (this.gone) return false;
-      const live = new Set(this.units().filter((s) => s.active && s.visible));
-      for (const [s, r] of [...this.ras]) {
-        if (!live.has(s)) {
-          r.destroy();
-          this.ras.delete(s);
-        }
-      }
-      for (const s of live) {
-        const sil = silhouetteOf(s);
-        if (!sil) continue;
-        const W = sil.right - sil.left + 6;
-        const H = sil.bottom - sil.top + 6;
-        let r = this.ras.get(s);
-        if (!r || r.w < W || r.h < H) {
-          r?.destroy();
-          r = new Raster(this.scene, sil.left - 3, sil.top - 3, W + 8, H + 8, s.depth + 0.01);
-          this.ras.set(s, r);
-        }
-        r.moveTo(sil.left - 3, sil.top - 3);
-        r.img.setDepth(s.depth + 0.01);
-        const h = sil.bottom - sil.top;
-        const band = sil.bottom - Math.max(6, R(h * 0.42));
-        const feet = sil.bottom - Math.max(3, R(h * 0.18));
-        r.draw((rr2) => {
-          let n = 0;
-          for (const q of sil.contour()) {
-            if (q.y < band) continue;
-            n++;
-            rr2.px(q.x, q.y, q.y >= feet ? PAL.water3 : PAL.water2);
-            if ((q.x * 3 + q.y * 5) % 11 === 0) rr2.px(q.x, q.y, PAL.water4);
-          }
-          // the frost crust on the floor line under the feet
-          for (const q of sil.outside()) if (q.y >= sil.bottom - 1 && (q.x & 1) === 0) rr2.px(q.x, q.y, PAL.water4);
-          void n;
-        });
-        // a breath puff off the head now and then
+      if (!this.skin.lasting) return true;
+      for (const s of this.units()) {
+        if (!s.active || !s.visible) continue;
         const nx = this.nextPuff.get(s);
         if (nx === undefined) this.nextPuff.set(s, el + 300 + rnd() * 900);
         else if (el >= nx) {
           this.nextPuff.set(s, el + 1200 + rnd() * 600);
-          const top = { x: (sil.left + sil.right) / 2, y: sil.top + 3 };
+          const b = s.getBounds();
+          const top = { x: (b.left + b.right) / 2, y: b.top + 3 };
           for (let i = 0; i < fxCount(3); i++) {
             this.mist.add({ x: R(top.x + rr(-5, 5)), y: R(top.y + rr(0, 4)), vx: rr(-8, 8), vy: -rr(6, 14), drag: 1.5, life: rr(420, 620), delay: i * 40, ramp: [PAL.water4, PAL.water3, PAL.water2], wobble: 4, wobbleHz: 1, fade: 0.5 });
           }
@@ -324,8 +314,7 @@ class Frost {
     if (this.gone) return;
     this.gone = true;
     this.stop();
-    for (const r of this.ras.values()) r.destroy();
-    this.ras.clear();
+    this.skin.destroy();
     this.mist.close();
   }
 }
@@ -505,9 +494,10 @@ export class DawnCage {
   }
 
   /** The caged units' lasting frost (on while the cage stands). */
-  private frostOn(): void {
-    if (this.frost || this.dead) return;
-    this.frost = new Frost(this.scene, () => this.unitsFn(), this.depthFront + 0.07);
+  private frostOn(lasting = true): void {
+    if (this.dead) return;
+    if (!this.frost) this.frost = new Frost(this.scene, () => this.unitsFn(), this.depthFront + 0.07);
+    if (lasting) this.frost.skin.lasting = true;
   }
 
   private frostOff(): void {
@@ -640,9 +630,14 @@ export class DawnCage {
       playV3('e_dawnChain', { volume: 0.8, pan: panAt(mid.x) });
       const shadow = new Raster(sc, g.ox, g.oy, g.w, g.h, DEPTH.SHADOW + 1);
       const fp = footprint(g);
-      const drawShadow = (lvl: number) =>
+      // round 4: no dither — the omen is 2 FLAT bands (a night1 rim, a night0 core) that GROW in three drawings
+      const fc = { x: (fp[0].x + fp[2].x) / 2, y: (fp[0].y + fp[2].y) / 2 };
+      const scaled = (k: number) => fp.map((q) => ({ x: R(fc.x + (q.x - fc.x) * k), y: R(fc.y + (q.y - fc.y) * k) }));
+      const drawShadow = (step: number) =>
         shadow.draw((r) => {
-          r.poly(fp, PAL.night0, lvl);
+          const outer = [0.5, 0.78, 1][step];
+          r.poly(scaled(outer), PAL.night1, 1);
+          r.poly(scaled(outer * 0.62), PAL.night0, 1);
         });
       await run(sc, T.drop, (t) => {
         const k = E.inQuad(t);
@@ -650,7 +645,7 @@ export class DawnCage {
         // the door hangs WIDE OPEN toward the camera and swings as the cage falls (the viewer waits for it)
         this.setDoor(t < 0.6 ? (Math.floor(t * 10) % 2 ? 90 : 100) : 100);
         this.place();
-        drawShadow(t < 0.4 ? 0.25 : t < 0.8 ? 0.5 : 0.75);
+        drawShadow(t < 0.4 ? 0 : t < 0.8 ? 1 : 2);
       });
       // ---- LAND
       this.dy = 0;
@@ -684,41 +679,40 @@ export class DawnCage {
         }
       })());
       await wait(sc, T.sunAt);
-      // ---- THE DAWN: the sun ignites, its ray fan rises
+      // ---- THE DAWN: the sun BURSTS (three drawings, its rays reaching 30 px), then its own ray fan rises under it
       playV3('e_dawnSun', { volume: 0.9, pan: panAt(mid.x) });
-      this.setSun(1, true);
       this.lightsOnSun();
-      for (let k = 1; k <= SUN_RISE; k++) {
-        if (k > 1) this.setSun(k, k === SUN_RISE);
-        await wait(sc, T.sunStep);
-        if (k === 1) this.setSun(1);
-      }
-      this.setSun(SUN_RISE);
-      // … and the dawn wave runs down every sword (the reveal flips start as it reaches their lanes)
+      await this.burst();
+      // … and the DAWN WAVE runs down every sword (≈ 450 ms for the whole row); the face-down monsters flip face-up
+      // as it reaches their lanes, and the flips play out INSIDE the dawn (before the door moves)
       const flips: Promise<unknown>[] = [];
       await this.dawnWave((z) => {
         const p = o.onReach?.(z);
         if (p) flips.push(p);
       });
+      await Promise.all(flips);
+      // ---- THE DOOR: a beat of QUIET, the wind-up (it hangs at 108° for three frames) … the snap shut … SLAM
       await wait(sc, T.doorHold);
-      // ---- THE DOOR swings shut … SLAM (the flips run on under it)
+      if (this.dead) return;
+      this.setDoor(108);
+      this.place();
+      await wait(sc, T.windUp);
       playV3('e_dawnSwing', { volume: 0.7, pan: panAt(lockAt(g).x) });
       const d0 = this.doorDeg;
       await run(sc, T.swing, (t) => {
-        this.setDoor(d0 * (1 - E.inQuad(t)));
+        this.setDoor(d0 * (1 - E.inCubic(t)));
         this.place();
       });
       this.setDoor(0, true);
       playV3('e_dawnSlam', { volume: 1, pan: panAt(lockAt(g).x) });
       this.slamSparks();
-      bg(shake(sc, 100, 1));
+      bg(shake(sc, 110, 2));
       await freeze(sc, T.slamStop);
       // the overshoot: the door bangs past the frame (−8°) and back
       this.setDoor(-8);
       await wait(sc, T.overshoot);
       this.setDoor(0);
       bg(this.rattle(3));
-      await Promise.all(flips);
       await wait(sc, T.slamHold);
       // ---- CAGED: the cold and the lean (the frost stays); an empty row goes straight to the padlock
       if (this.dead) return;
@@ -784,69 +778,112 @@ export class DawnCage {
   }
 
   /**
-   * THE DAWN WAVE: a 4-row white-gold band runs DOWN every sword at once (the blades staggered left → right), each
-   * blade turning bright behind it; the guards flare as it starts; a light beam sweeps from the sun to the touchdown
-   * point; a gold floor light walks with the touchdowns; `onReach(zone)` fires as the wave touches the floor in a lane.
+   * THE DAWN BURST (round 4): over the sun finial a 12-ray burst in three drawings (a white flash, the rays at full
+   * reach 30 px, the rays breaking off), while the sun's own ray fan rises under it (1 → 2 → 3); a big warm light in
+   * the air; then one white flare frame of the sun.
+   */
+  private async burst(): Promise<void> {
+    const sc = this.scene;
+    const g = this.g;
+    const s = sunAt(g);
+    const img = sc.add.image(s.x, s.y + R(this.dy), burstTex(sc, 0)).setOrigin(BURST_C / BURST_W, BURST_C / BURST_W).setDepth(this.depthFront + 0.055);
+    void lightFlash(sc, s.x, s.y, PAL.gold4, 56, 420, { floorY: cp(g.cm, g.rm, 0).y, intensity: 1, air: 0.9 });
+    const sp = new Sparks(sc, this.depthFront + 0.3);
+    for (let i = 0; i < fxCount(10); i++) {
+      const a = -Math.PI * (0.05 + 0.9 * (i / 9));
+      const v = rr(70, 110);
+      sp.add({ x: s.x, y: s.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, drag: 3, life: rr(220, 340), ramp: [PAL.white, PAL.gold4, PAL.gold3], fade: 0.4 });
+    }
+    sp.close();
+    for (let k = 0; k < BURST_STEPS; k++) {
+      img.setTexture(burstTex(sc, k));
+      this.setSun(k + 1, k === 0);
+      await wait(sc, CAGE_T.burstStep);
+      if (this.dead) break;
+    }
+    img.destroy();
+    this.setSun(SUN_RISE, true);
+    await wait(sc, CAGE_T.sunStep);
+    this.setSun(SUN_RISE);
+  }
+
+  /**
+   * THE DAWN WAVE (round 4: it must read at 1×): a bright BAND runs DOWN every sword (the front swords and the door's
+   * two, staggered left → right, ≈ 450 ms for the row): 4 white rows as wide as the blade with a gold4 glow pixel each
+   * side, then a 3-row gold4 trailing step, and behind it the blade LIT (white edge, mist core, steel back); the guard
+   * flares as it starts; a white glint and sparks where the tip meets the floor. A warm floor pool walks with the
+   * touchdowns, a light beam from the sun follows it, and every LANE pulses (a warm floor light + a ring) as the wave
+   * reaches it — `onReach(zone)` fires there (the reveal flips).
    */
   private async dawnWave(onReach?: (zone: number) => void): Promise<void> {
     const sc = this.scene;
     const g = this.g;
     const T = CAGE_T;
     const bs = bladeSpan(g);
-    const ks = swordKs(g);
-    const x0 = frontFoot(g, ks[0]).x;
-    const x1 = frontFoot(g, ks[ks.length - 1]).x;
-    const delayOf = (k: number) => R(((frontFoot(g, k).x - x0) / Math.max(1, x1 - x0)) * T.waveSpread);
+    const db = doorBlade(g);
+    type Blade = { f: XY; tip: number; guard: number };
+    const blades: Blade[] = [
+      ...swordKs(g).map((k) => ({ f: this.bladeAt(k, 0), tip: bs.tip, guard: bs.guard })),
+      ...DOOR_SWORDS.map((q) => {
+        const f = doorSwordFoot(g, q, this.doorDeg);
+        return { f: { x: f.x + this.dx, y: f.y + R(this.dy) }, tip: db.tip, guard: db.guard };
+      }),
+    ].sort((a, b) => a.f.x - b.f.x);
+    const x0 = blades[0].f.x;
+    const x1 = blades[blades.length - 1].f.x;
+    const delayOf = (b: Blade) => R(((b.f.x - x0) / Math.max(1, x1 - x0)) * T.waveSpread);
     const total = T.waveSpread + T.waveMs;
-    const ras = new Raster(sc, g.ox - 2, g.oy - 6, g.w + 4, g.h + 8, this.depthFront + 0.03);
+    const ras = new Raster(sc, g.ox - 2, g.oy - 6, g.w + 4, g.h + 8, this.depthFront + 0.15);
     const reached = new Set<number>();
-    const touched = new Set<number>();
+    const touched = new Set<Blade>();
     const footL = cp(g.c0, g.rB, 0);
-    const floor = lightPool(sc, footL.x, footL.y - 6, { color: PAL.gold4, radius: 24, floorY: footL.y, air: 0.3, intensity: 0, fadeIn: 0 });
-    floor.setIntensity(0.9, 120);
+    const floor = lightPool(sc, footL.x, footL.y - 6, { color: PAL.gold4, radius: 26, floorY: footL.y, air: 0.35, intensity: 0, fadeIn: 0 });
+    floor.setIntensity(1, 90);
     const s = sunAt(g);
-    const beam = lightBeam(sc, { x: s.x, y: s.y }, footL, PAL.gold4, 0, { width: 12, intensity: 0.6, floor: { from: footL, to: footL }, floorWidth: 10 });
-    const sp = new Sparks(sc, this.depthFront + 0.08);
+    const beam = lightBeam(sc, { x: s.x, y: s.y }, footL, PAL.gold4, 0, { width: 14, intensity: 0.7, floor: { from: footL, to: footL }, floorWidth: 12 });
+    const sp = new Sparks(sc, this.depthFront + 0.16);
     playV3('e_dawnWave', { volume: 0.75, pan: panAt(cp(g.cm, g.rB, 0).x) });
     await run(sc, total, (_t, el) => {
-      // the touchdown front: the right-most blade whose wave has reached the floor
       let frontX = footL.x;
       let frontY = footL.y;
       ras.draw((r) => {
-        for (const k of ks) {
-          const u = (el - delayOf(k)) / T.waveMs;
+        for (const b of blades) {
+          const u = (el - delayOf(b)) / T.waveMs;
           if (u < 0) continue;
-          const f = this.bladeAt(k, 0);
-          const top = bs.guard - 1;
-          const head = u >= 1 ? bs.tip - 1 : R(top - (top - bs.tip) * E.inOutSine(Math.min(1, u)));
-          // the guard flares at the start
-          if (u < 0.12) for (let x = -3; x <= 3; x++) r.px(f.x + x, f.y - (bs.guard + 1), PAL.white);
-          if (u < 0.08) r.px(f.x, f.y - (g.H + 3), PAL.white);
-          // the lit blade behind the head (guard → head)
-          for (let h = Math.max(bs.tip, head); h <= top; h++) {
-            const d = h - bs.tip;
-            r.px(f.x, f.y - h, d < 2 ? PAL.white : h > bs.guard - 12 && h < bs.guard - 2 ? PAL.gold3 : PAL.gold4);
-            if (d >= 2) r.px(f.x - 1, f.y - h, PAL.white);
-            if (d >= 4) r.px(f.x + 1, f.y - h, PAL.gold3);
-          }
-          if (u < 1) {
-            // the wave head: 2 white rows 5 wide, then 2 gold4 rows 3 wide (a band of light, not a dot)
-            for (let row = 0; row < 4; row++) {
-              const h = head - row;
-              if (h < bs.tip) continue;
-              const w = row < 2 ? 2 : 1;
-              for (let x = -w; x <= w; x++) r.px(f.x + x, f.y - h, row < 2 ? (Math.abs(x) === 2 ? PAL.gold4 : PAL.white) : PAL.gold4);
+          const f = b.f;
+          const top = b.guard - 1;
+          const head = u >= 1 ? b.tip - 8 : R(top - (top - b.tip) * E.inQuad(Math.min(1, u)));
+          // the guard flares as the light enters the blade
+          if (u < 0.18) for (let x = -4; x <= 4; x++) r.px(f.x + x, f.y - (b.guard + 1), Math.abs(x) > 3 ? PAL.gold4 : PAL.white);
+          for (let h = b.tip; h <= top; h++) {
+            const d = h - b.tip;
+            const xs = d < 2 ? [0] : d < 4 ? [-1, 0] : [-1, 0, 1];
+            const rel = h - head;
+            if (rel < 0) continue;
+            for (const x of xs) {
+              let c: number;
+              if (rel < 4) c = PAL.white;
+              else if (rel < 7) c = PAL.gold4;
+              else c = x === -1 || d < 2 ? PAL.white : x === 0 ? PAL.mist : PAL.steel;
+              r.px(f.x + x, f.y - h, c);
             }
-          } else if (!touched.has(k)) {
-            touched.add(k);
-            // the tip meets the floor: a spark and a white floor glint
-            for (let i = 0; i < fxCount(3); i++) sp.add({ x: f.x, y: f.y - 1, vx: rr(-30, 30), vy: -rr(20, 50), ay: 160, life: rr(180, 300), ramp: [PAL.white, PAL.gold4, PAL.gold3], fade: 0.5 });
+            // the band's glow: a gold4 pixel either side of the white rows
+            if (rel < 4 && u < 1) {
+              r.px(f.x + xs[0] - 1, f.y - h, PAL.gold4);
+              r.px(f.x + xs[xs.length - 1] + 1, f.y - h, PAL.gold4);
+            }
+          }
+          if (u >= 1 && !touched.has(b)) {
+            touched.add(b);
+            for (let i = 0; i < fxCount(4); i++) sp.add({ x: f.x, y: f.y - 1, vx: rr(-40, 40), vy: -rr(30, 70), ay: 200, life: rr(180, 300), ramp: [PAL.white, PAL.gold4, PAL.gold3], fade: 0.5 });
+            sp.add({ x: f.x, y: f.y - 1, life: 100, ramp: [PAL.white, PAL.gold4], tex: TEX.plus, fade: 0.5 });
           }
           if (u >= 1 && f.x > frontX) {
             frontX = f.x;
             frontY = f.y;
           }
-          if (u >= 1 && u < 1.35) for (let x = -3; x <= 3; x++) r.px(f.x + x, f.y + 1 + (Math.abs(x) > 1 ? 0 : 0), Math.abs(x) <= 1 ? PAL.white : PAL.gold4);
+          // the floor glint where the tip met the floor
+          if (u >= 1 && u < 1.4) for (let x = -4; x <= 4; x++) r.px(f.x + x, f.y + 1, Math.abs(x) <= 1 ? PAL.white : PAL.gold4);
         }
       });
       const fl = { x: frontX, y: frontY };
@@ -854,21 +891,33 @@ export class DawnCage {
       beam.setEnds({ x: s.x, y: s.y + R(this.dy) }, { x: fl.x, y: fl.y - 10 }, { from: { x: footL.x, y: footL.y }, to: fl });
       LANE_COLS.forEach((_c, i) => {
         const z = zoneXY(this.target, 'monster', i);
-        // the lane is reached when the touchdown front, on the front rail, passes its x (P2's zones run right → left)
+        // the lane is reached when the touchdown front passes its x (P2's zones run right → left)
         if (!reached.has(i) && touched.size > 0 && fl.x >= z.x - 6) {
           reached.add(i);
-          bg(floorRing(sc, z.x, z.y, { r0: 4, r1: 22, ms: 240, ramp: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], depth: DEPTH.TILE_FX + 2 }));
+          this.lanePulse(z);
           onReach?.(i);
         }
       });
     });
     this.bladesLit = true;
     this.front.setTexture(frontTex(sc, g, true));
+    this.setDoor(this.doorDeg);
     ras.destroy();
     sp.close();
-    void floor.fadeOut(260);
-    void beam.fadeOut(220);
-    for (let i = 0; i < LANE_COLS.length; i++) if (!reached.has(i)) onReach?.(i);
+    void floor.fadeOut(240);
+    void beam.fadeOut(200);
+    for (let i = 0; i < LANE_COLS.length; i++) {
+      if (reached.has(i)) continue;
+      this.lanePulse(zoneXY(this.target, 'monster', i));
+      onReach?.(i);
+    }
+  }
+
+  /** A lane takes the dawn: a warm floor light swells and settles, a white-gold ring runs out on the floor. */
+  private lanePulse(z: XY): void {
+    const sc = this.scene;
+    void lightFlash(sc, z.x, z.y - 4, PAL.gold4, 30, 320, { floorY: z.y, intensity: 0.95, air: 0.4 });
+    bg(floorRing(sc, z.x, z.y, { r0: 4, r1: 24, ms: 260, ramp: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], depth: DEPTH.TILE_FX + 2 }));
   }
 
   /** The slam: sparks burst from the latch, a white ring spreads off the latch post, a white flare. */
@@ -962,59 +1011,75 @@ export class DawnCage {
     sp.close();
   }
 
-  /** The caged monsters go cold (an edge light drains down them), lean on the front bars and ease back. */
+  /**
+   * The caged monsters go COLD and LEAN on the bars (round 4: readable at 1×). The cold is a flat tone-band recolour
+   * of each body that SWEEPS DOWN it (head → feet, 4 drawings, 50 ms) and holds while it leans; as it eases back the
+   * full recolour lifts in steps and only the lasting cold stays (its darkest band, frost at the feet). The lean:
+   * 8 px toward the bars in three steps, a 2-frame SQUASH on contact, the touched sword flashes white (the whole
+   * blade, a gold4 rim) with a frost puff, a hold, then back — one monster after another (60 ms apart).
+   */
   private async cold(units: Sprite[]): Promise<void> {
     const sc = this.scene;
     const g = this.g;
     playV3('e_dawnCold', { volume: 0.8, pan: panAt(cp(g.cm, g.rm, 0).x) });
     this.coldOn(220);
-    bg(wait(sc, 220).then(() => this.frostOn()));
+    this.frostOn(false);
+    const skin = this.frost?.skin;
     const leans: Promise<void>[] = [];
     let j = 0;
     for (const s of units) {
       if (!s.active || !s.visible) continue;
       const order = j++;
-      bg(rimClimb(sc, s, { ramp: [PAL.water2, PAL.water3, PAL.water4], from: 'head', stepMs: 60, holdMs: 260, fadeMs: 180 }));
       // a cold breath: mist puffs off the top of the body
       const top = { x: s.x, y: s.getBounds().top + 4 };
       const mist = new Sparks(sc, this.depthFront + 0.07);
-      for (let i = 0; i < fxCount(7); i++) {
-        mist.add({ x: R(top.x + rr(-8, 8)), y: R(top.y + rr(0, 8)), vx: rr(-14, 14), vy: -rr(8, 22), drag: 1.5, life: rr(380, 620), delay: 60 + i * 25, ramp: [PAL.white, PAL.water4, PAL.water3, PAL.water2], wobble: 6, wobbleHz: 1, fade: 0.45 });
+      for (let i = 0; i < fxCount(6); i++) {
+        mist.add({ x: R(top.x + rr(-8, 8)), y: R(top.y + rr(0, 8)), vx: rr(-14, 14), vy: -rr(8, 22), drag: 1.5, life: rr(380, 620), delay: 120 + i * 25, ramp: [PAL.white, PAL.water4, PAL.water3, PAL.water2], wobble: 6, wobbleHz: 1, fade: 0.45 });
       }
       mist.close();
       const rest = { x: s.x, y: s.y };
       const sx = s.scaleX;
       const sy = s.scaleY;
-      // LEAN toward the camera side (+row: screen (−x, +y)) — 5 px, a one-frame squash on contact, held, then back;
-      // the monsters go one after another (a wave along the row)
       leans.push(
         (async () => {
+          await wait(sc, order * CAGE_T.leanStagger);
+          // the sweep: head → feet
+          for (const f of [0.25, 0.5, 0.75, 1]) {
+            if (!s.active) return;
+            skin?.setSweep(s, f);
+            await wait(sc, 50);
+          }
+          // LEAN toward the camera side (+row: screen (−x, +y)): 3, 6, 8 px, contact (2-frame squash), hold, back
           const steps: [number, number][] = [
-            [-2, 1],
-            [-4, 2],
-            [-5, 2],
-            [-5, 2],
             [-3, 1],
+            [-6, 3],
+            [-8, 4],
+            [-8, 4],
+            [-7, 3],
+            [-4, 2],
             [-1, 0],
           ];
-          await wait(sc, 100 + order * CAGE_T.leanStagger);
           for (let k = 0; k < steps.length; k++) {
             if (!s.active) return;
             const [x, y] = steps[k];
             s.setPosition(R(rest.x + x), R(rest.y + y));
             if (k === 2) {
-              // contact: squash for a frame, the bar flashes, frost puffs off it
-              s.setScale(sx * 1.06, sy * 0.94);
-              const bx = this.barFlash(s.x - 4);
+              s.setScale(sx * 1.1, sy * 0.9);
+              const bx = this.barFlash(s.x - 2);
               this.frostPuff(bx.x, bx.y);
-              playV3('e_dawnLean', { volume: 0.4, pan: panAt(s.x) });
-            } else if (k === 3) s.setScale(sx, sy);
+              playV3('e_dawnLean', { volume: 0.45, pan: panAt(s.x) });
+            } else if (k === 3) s.setScale(sx * 1.05, sy * 0.95);
+            else if (k === 4) s.setScale(sx, sy);
+            if (k === 5) skin?.setSweep(s, 0.5);
+            if (k === 6) skin?.setSweep(s, 0.25);
             await wait(sc, CAGE_T.lean[k]);
           }
+          skin?.setSweep(s, 0);
           if (s.active) s.setPosition(rest.x, rest.y).setScale(sx, sy);
         })(),
       );
     }
+    bg(wait(sc, 300).then(() => this.frostOn(true)));
     await Promise.all(leans);
   }
 
@@ -1029,22 +1094,33 @@ export class DawnCage {
     sp.close();
   }
 
-  /** The front bar nearest screen x flashes white for three frames (a monster leans on it). */
+  /** The front SWORD nearest screen x flashes (the whole blade white, a gold4 rim, a white star at the contact). */
   private barFlash(x: number): XY {
     const g = this.g;
-    let best = 1;
-    for (let k = 1; k < g.bars.length - 1; k++) if (Math.abs(frontFoot(g, k).x - x) < Math.abs(frontFoot(g, best).x - x)) best = k;
-    const f = frontFoot(g, best);
-    const ras = new Raster(this.scene, f.x - 2, f.y - g.H, 5, g.H, this.depthFront + 0.03);
-    ras.draw((r) => {
-      for (let h = Math.round(g.H * 0.25); h < Math.round(g.H * 0.7); h++) {
-        r.px(f.x, f.y - h, PAL.white);
-        r.px(f.x - 1, f.y - h, PAL.white);
-        r.px(f.x + 1, f.y - h, PAL.gold4);
-      }
-    });
-    bg(wait(this.scene, 100).then(() => ras.destroy()));
-    return { x: f.x, y: f.y - Math.round(g.H * 0.5) };
+    const bs = bladeSpan(g);
+    const ks = swordKs(g);
+    const feet: XY[] = [...ks.map((k) => frontFoot(g, k)), ...DOOR_SWORDS.map((q) => doorSwordFoot(g, q, 0))];
+    let f = feet[0];
+    for (const q of feet) if (Math.abs(q.x - x) < Math.abs(f.x - x)) f = q;
+    const ras = new Raster(this.scene, f.x - 4, f.y - g.H - 2, 9, g.H + 4, this.depthFront + 0.15);
+    const paint = (bright: boolean) =>
+      ras.draw((r) => {
+        for (let h = bs.tip + 1; h < bs.guard; h++) {
+          for (const dx of [-1, 0, 1]) r.px(f.x + dx, f.y - h, bright ? PAL.white : dx === -1 ? PAL.white : PAL.gold4);
+          if (bright) {
+            r.px(f.x - 2, f.y - h, PAL.gold4);
+            r.px(f.x + 2, f.y - h, PAL.gold4);
+          }
+        }
+      });
+    paint(true);
+    bg(wait(this.scene, 68).then(() => ras.alive && paint(false)));
+    bg(wait(this.scene, 136).then(() => ras.destroy()));
+    const c = { x: f.x, y: f.y - R(g.H * 0.5) };
+    const sp = new Sparks(this.scene, this.depthFront + 0.3);
+    sp.add({ x: c.x, y: c.y, life: 120, ramp: [PAL.white, PAL.gold4], tex: TEX.plus, fade: 0.5 });
+    sp.close();
+    return c;
   }
 
   // ---------------------------------------------------------------- restore
@@ -1112,6 +1188,11 @@ export class DawnCage {
           bg(this.airRing(tx, ty + 1, 2, 9, 150));
         }
         await wait(sc, 45);
+      }
+      // round 4: the bolts still lit hop one pixel for a frame ("two left") — the count reads at 1×
+      if (from - 1 > 0) {
+        this.setLock(from - 1, { bounce: true });
+        await wait(sc, 50);
       }
       this.setLock(from - 1);
       this.lit = from - 1;
@@ -1321,14 +1402,24 @@ export class DawnCage {
       const snapH = bs.tip + R((bs.guard - bs.tip) * 0.42);
       this.front.setTexture(frontTex(sc, g, true, false, true));
       const shards: Stick[] = [];
+      const lim = this.rowX();
       for (const k of swordKs(g)) {
         const f = this.bladeAt(k, 0);
         const a = { x: f.x, y: f.y - snapH - 1 };
         const b = { x: f.x, y: f.y - (g.H + 4) };
         const side = f.x < cp(g.cm, g.rB, 0).x ? -1 : 1;
+        // round 4: a short hop, not a fling — the halves land on the cage's own front rail
         shards.push({
-          ...stickOf(a, b, { vx: side * rr(30, 70), vy: -rr(110, 170), va: side * rr(9, 15), floor: f.y + rr(4, 10), lit: PAL.white, shade: PAL.mist, w: 3, guardAt: (bs.guard - snapH) / (g.H + 4 - snapH), sword: 'top' }),
+          ...stickOf(a, b, { vx: side * rr(10, 26), vy: -rr(80, 110), va: side * rr(8, 12), floor: f.y + rr(1, 4), lit: PAL.white, shade: PAL.mist, w: 3, guardAt: (bs.guard - snapH) / (g.H + 4 - snapH), sword: 'top', ...lim }),
         });
+      }
+      // the door's two swords come off whole (the door is gone at the split)
+      const dbl = doorBlade(g);
+      for (const q of DOOR_SWORDS) {
+        const f = doorSwordFoot(g, q, 0);
+        const a = { x: f.x, y: f.y - dbl.tip };
+        const b = { x: f.x, y: f.y - (g.H - 5) };
+        shards.push({ ...stickOf(a, b, { vx: (q < 0.5 ? -1 : 1) * rr(6, 16), vy: -rr(60, 90), va: (q < 0.5 ? -1 : 1) * rr(6, 10), floor: f.y + rr(1, 4), lit: PAL.white, shade: PAL.mist, w: 3, guardAt: (dbl.guard - dbl.tip) / (g.H - 5 - dbl.tip), sword: 'top', delay: 140, ...lim }) });
       }
       const box = { x: g.ox - 60, y: g.oy - 80, w: g.w + 120, h: g.h + 110 };
       bg(debris(sc, shards, { depth: this.depthFront + 0.3, box, gravity: 820, holdMs: 100, maxMs: 600, onBounce: (x, y, first) => first && this.clink(x, y) }));
@@ -1466,112 +1557,69 @@ export class DawnCage {
   }
 
   /**
-   * The cage as its pieces at the collapse (the sag offset `dy`, swords already snapped at `snapH`): sticks with
-   * their kicks — the bars (rods and the sword stubs) topple outward from the door, the top rails break into
-   * segments that drop, the hoops and the ridge fall from the top, the posts lean and fall.
+   * The cage as its pieces at the collapse (round 4, critic: "spaghetti"): FEW, SHORT, THICK chunks (≤ 20 px, 3 px
+   * wide, flat tone bands) that stay on the cage's own row and lie flat along its rails — front: the two front
+   * corner posts and the two door posts (their lower 20 px), the top rail broken into one short segment per lane,
+   * the door's sun boss rail; back (behind the caged monsters): two dome ribs, a ridge piece, the back corner post.
+   * The sword halves are separate (./shatter). Every piece is clamped to the row's x range.
    */
   private pieces(dy: number, snapH: number): { front: Stick[]; back: Stick[] } {
-    // round 3: FEWER, THICKER pieces (3-px bars, swords drawn as swords); anything whose floor is behind the front
-    // rail (the vault, the dome, the ridge, the back side) falls in the BACK layer, behind the caged monsters
     const g = this.g;
     const front: Stick[] = [];
     const back: Stick[] = [];
-    const n = g.bars.length - 1;
     const midX = cp(g.cm, g.rB, 0).x;
     const at = (c: number, r: number, h: number): XY => {
       const p = cp(c, r, h);
       return { x: p.x, y: p.y + dy };
     };
+    const lim = this.rowX();
     const kick = (x: number, up = 1) => {
       const side = x < midX ? -1 : 1;
-      return { vx: side * rr(15, 55), vy: -rr(20, 70) * up, va: side * rr(2, 7) };
+      return { vx: side * rr(8, 22), vy: -rr(30, 60) * up, va: side * rr(3, 7), ...lim };
     };
-    const floorF = (c: number) => cp(c, g.rB, 0).y + rr(2, 6);
-    const floorB = (c: number, r: number) => cp(c, r, 0).y - rr(1, 3);
-    // the front bars: every second rod (whole), the sword stubs (tip … snap, drawn as blades)
-    rodKs(g).forEach((k, i) => {
-      if (i % 2) return;
-      const a = at(g.bars[k], g.rB, 2);
-      const b = at(g.bars[k], g.rB, g.H - 2);
-      front.push(stickOf(a, b, { ...kick(a.x), floor: floorF(g.bars[k]), lit: PAL.gold3, shade: PAL.gold2, w: 3 }));
-    });
+    const floorF = (c: number) => cp(c, g.rB, 0).y + rr(1, 4);
+    const floorB = (c: number) => cp(c, g.rm, 0).y - rr(0, 2);
+    const SEG = 20;
+    // the planted sword stubs (tip … snap) topple over flat along the front rail
     for (const k of swordKs(g)) {
       const a = at(g.bars[k], g.rB, 1);
       const b = at(g.bars[k], g.rB, snapH);
-      front.push(stickOf(a, b, { ...kick(a.x, 0.5), floor: floorF(g.bars[k]), lit: PAL.white, shade: PAL.mist, w: 3, sword: 'tip', delay: R(rr(0, 60)) }));
+      front.push(stickOf(a, b, { ...kick(a.x, 0.4), floor: floorF(g.bars[k]), lit: PAL.white, shade: PAL.mist, w: 3, sword: 'tip', delay: R(rr(0, 60)) }));
     }
-    // the door (its latch stile and its middle rail), the door posts and the corner posts
-    for (const k of [g.kh, g.kl]) {
-      const a = at(g.bars[k], g.rB, 0);
-      const b = at(g.bars[k], g.rB, g.H + 1);
-      front.push(stickOf(a, b, { ...kick(a.x, 0.6), floor: floorF(g.bars[k]), lit: PAL.gold4, shade: PAL.gold2, w: 3 }));
+    // the posts: their lower 20 px
+    for (const c of [g.c0, g.bars[g.kh], g.bars[g.kl], g.c1]) {
+      const a = at(c, g.rB, 2);
+      const b = at(c, g.rB, 2 + SEG);
+      front.push(stickOf(a, b, { ...kick(a.x, 0.7), floor: floorF(c), lit: PAL.gold4, shade: PAL.gold2, w: 3, delay: R(rr(0, 40)) }));
     }
-    front.push(stickOf(at(g.bars[g.kh], g.rB, R(g.H * 0.5)), at(g.bars[g.kl], g.rB, R(g.H * 0.5)), { vx: rr(-10, 10), vy: -rr(40, 70), va: rr(-4, 4), floor: floorF(g.cm), lit: PAL.gold4, shade: PAL.gold2, w: 3 }));
-    for (const [c, r] of [[g.c0, g.rB], [g.c1, g.rB], [g.c1, g.rA]] as const) {
-      const a = at(c, r, 0);
-      const b = at(c, r, g.H + 2);
-      const s = { ...kick(a.x, 0.4), va: (a.x < midX ? -1 : 1) * rr(3, 6), lit: PAL.gold4, shade: PAL.gold2, w: 3 as const };
-      if (r === g.rB) front.push(stickOf(a, b, { ...s, floor: floorF(c) }));
-      else back.push(stickOf(a, b, { ...s, floor: floorB(c, r) }));
+    // the top rail: one short segment per lane (centred on the lane, ≤ 20 px)
+    for (const c of LANE_COLS) {
+      const p0 = at(c - 0.25, g.rB, g.H - 1);
+      const p1 = at(c + 0.25, g.rB, g.H - 1);
+      front.push(stickOf(p0, p1, { ...kick(p0.x, 0.4), va: rr(-2, 2), floor: floorF(c), lit: PAL.gold4, shade: PAL.gold2, w: 3, delay: R(rr(20, 70)) }));
     }
-    // the top rail (lintel) in long segments, the foot rail in longer ones
-    for (let k = 0; k < n; k += 4) {
-      const a = at(g.bars[k], g.rB, g.H - 1);
-      const b = at(g.bars[Math.min(n, k + 4)], g.rB, g.H - 1);
-      front.push(stickOf(a, b, { ...kick(a.x, 0.3), floor: floorF(g.bars[k]), lit: PAL.gold4, shade: PAL.gold2, w: 3, delay: R(rr(0, 50)) }));
-    }
-    for (let k = 0; k < n; k += 6) {
-      const a = at(g.bars[k], g.rB, 0);
-      const b = at(g.bars[Math.min(n, k + 6)], g.rB, 0);
-      front.push(stickOf(a, b, { vx: rr(-10, 10), vy: -rr(30, 60), va: rr(-1, 1), floor: cp(g.bars[k], g.rB, 0).y + 3, lit: PAL.gold3, shade: PAL.gold1, w: 3 }));
-    }
-    // the right side: one rod and its top rail
-    {
-      const a = at(g.c1, g.rm, 2);
-      const b = at(g.c1, g.rm, g.H - 2);
-      back.push(stickOf(a, b, { vx: rr(20, 50), vy: -rr(20, 50), va: rr(2, 6), floor: floorB(g.c1, g.rm), lit: PAL.gold3, shade: PAL.gold1, w: 3 }));
-      back.push(stickOf(at(g.c1, g.rA, g.H - 1), at(g.c1, g.rB, g.H - 1), { vx: rr(20, 40), vy: -rr(20, 40), va: rr(-3, 3), floor: floorB(g.c1, g.rm), lit: PAL.gold3, shade: PAL.gold1, w: 3 }));
-    }
-    // the vault: every fourth front hoop half as one arc piece (behind: it lands inside the cage), the DOME as its
-    // three big ribs, the ridge in three pieces
-    for (let k = 0; k <= n; k += 4) {
-      const c = g.bars[k];
-      if (Math.abs(c - g.cm) < g.DW) continue;
-      const vr = vrAt(g, c);
-      back.push(stickOf(at(c, g.rB, g.H), at(c, g.rm, g.H + vr), { ...kick(cp(c, g.rB, 0).x, 0.6), floor: floorB(c, g.rm), lit: PAL.gold3, shade: PAL.gold1, w: 2, delay: R(rr(0, 40)) }));
-    }
-    for (const d of [-g.DW * 0.6, 0, g.DW * 0.6]) {
+    // the door's sun-boss rail
+    front.push(stickOf(at(g.cm - 0.2, g.rB, g.H - 6), at(g.cm + 0.2, g.rB, g.H - 6), { vx: rr(-8, 8), vy: -rr(40, 60), va: rr(-3, 3), floor: floorF(g.cm), lit: PAL.gold4, shade: PAL.gold3, w: 3, ...lim }));
+    // back: two dome ribs, the ridge piece over the middle, the back corner post
+    for (const d of [-g.DW * 0.55, g.DW * 0.55]) {
       const c = g.cm + d;
-      const vr = vrAt(g, c);
-      const a = at(c, g.rB, g.H);
-      const b = at(c, g.rm, g.H + vr);
-      back.push(stickOf(a, b, { vx: (d === 0 ? rr(-10, 10) : Math.sign(d) * rr(20, 40)), vy: -rr(30, 60), va: rr(-5, 5), floor: floorB(c, g.rm), lit: PAL.gold4, shade: PAL.gold2, w: 3 }));
+      const a = at(c, g.rB, g.H + 2);
+      const b = at(c, g.rm, g.H + R(vrAt(g, c)));
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      const k = Math.min(1, SEG / Math.max(1, len));
+      const b2 = { x: R(a.x + (b.x - a.x) * k), y: R(a.y + (b.y - a.y) * k) };
+      back.push(stickOf(a, b2, { vx: Math.sign(d) * rr(8, 20), vy: -rr(20, 50), va: rr(-5, 5), floor: floorB(c), lit: PAL.gold3, shade: PAL.gold1, w: 3, ...lim }));
     }
-    for (let i = 0; i < 3; i++) {
-      const c0 = g.c0 + ((g.c1 - g.c0) * i) / 3;
-      const c1 = g.c0 + ((g.c1 - g.c0) * (i + 1)) / 3;
-      const a = at(c0, g.rm, g.H + R(vrAt(g, c0)));
-      const b = at(c1, g.rm, g.H + R(vrAt(g, c1)));
-      back.push(stickOf(a, b, { vx: rr(-20, 20), vy: -rr(10, 40), va: rr(-2, 2), floor: floorB((c0 + c1) / 2, g.rm), lit: PAL.gold4, shade: PAL.gold2, w: 3 }));
-    }
-    // the back side: every fourth rod, the back top rail in long segments, the left side
-    for (let k = 2; k < n; k += 4) {
-      const a = at(g.bars[k], g.rA, 2);
-      const b = at(g.bars[k], g.rA, g.H - 2);
-      back.push(stickOf(a, b, { vx: rr(-20, 20), vy: -rr(10, 40), va: rr(-5, 5), floor: floorB(g.bars[k], g.rA), lit: PAL.gold2, shade: PAL.gold1, w: 3 }));
-    }
-    for (let k = 0; k < n; k += 6) {
-      const a = at(g.bars[k], g.rA, g.H - 1);
-      const b = at(g.bars[Math.min(n, k + 6)], g.rA, g.H - 1);
-      back.push(stickOf(a, b, { vx: rr(-10, 10), vy: -rr(10, 30), va: rr(-2, 2), floor: floorB(g.bars[k + 3] ?? g.bars[k], g.rA), lit: PAL.gold3, shade: PAL.gold1, w: 3 }));
-    }
-    {
-      const a = at(g.c0, g.rm, 2);
-      const b = at(g.c0, g.rm, g.H - 2);
-      back.push(stickOf(a, b, { vx: -rr(20, 50), vy: -rr(20, 50), va: -rr(2, 6), floor: floorB(g.c0, g.rm), lit: PAL.gold2, shade: PAL.gold1, w: 3 }));
-    }
-    back.push(stickOf(at(g.c0, g.rA, 0), at(g.c0, g.rA, g.H + 1), { vx: -rr(10, 30), vy: -rr(10, 30), va: -rr(2, 5), floor: floorB(g.c0, g.rA), lit: PAL.gold3, shade: PAL.gold1, w: 3 }));
+    back.push(stickOf(at(g.cm - 0.3, g.rm, g.H + R(vrAt(g, g.cm - 0.3))), at(g.cm + 0.3, g.rm, g.H + R(vrAt(g, g.cm + 0.3))), { vx: rr(-8, 8), vy: -rr(10, 30), va: rr(-2, 2), floor: floorB(g.cm), lit: PAL.gold3, shade: PAL.gold1, w: 3, ...lim }));
+    back.push(stickOf(at(g.c1, g.rA, 2), at(g.c1, g.rA, 2 + SEG), { vx: rr(4, 14), vy: -rr(10, 30), va: rr(2, 5), floor: cp(g.c1, g.rA, 0).y + rr(2, 5), lit: PAL.gold3, shade: PAL.gold1, w: 3, ...lim }));
     return { front, back };
+  }
+
+  /** The screen-x range of the cage's own row (the debris stays inside it). */
+  private rowX(): { xMin: number; xMax: number } {
+    const g = this.g;
+    const xs = footprint(g).map((p) => p.x);
+    return { xMin: Math.min(...xs) + 4, xMax: Math.max(...xs) - 4 };
   }
 
   destroy(): void {

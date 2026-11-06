@@ -139,21 +139,40 @@ describe('abyss_magus card picture', () => {
         if (a === b) same++;
       }
     expect(same / n).toBeGreaterThan(0.9);
-    // the rift: the floor splits under the magus — void2 lips and void0 depth below the horizon, in both sizes
+    // the rift: the floor splits at the staff's foot — a void2 far lip, an ink hole, a lit near wall (void3 crest) — in
+    // both sizes; both lips run as monotone stairs (no back-steps: a clean crack, not a hatched stripe)
     for (const [l, hz] of [
       [r.big, 48],
-      [r.small, 30],
+      [r.small, 26],
     ] as const) {
-      let lip = 0;
+      let lit = 0;
       let depth = 0;
-      for (let y = hz + 1; y < l.backdrop.h; y++)
-        for (let x = 0; x < l.backdrop.w; x++) {
-          const c = l.backdrop.get(x, y);
-          if (c === PAL.void2) lip++;
-          if (c === PAL.void0) depth++;
-        }
-      expect(lip, l.size).toBeGreaterThanOrEqual(l.size === 'big' ? 30 : 6);
-      expect(depth, l.size).toBeGreaterThanOrEqual(l.size === 'big' ? 40 : 4);
+      let rows = 0;
+      let prevL = -1;
+      let prevC = -1;
+      for (let y = hz + 1; y < l.backdrop.h; y++) {
+        let left = -1;
+        let crest = -1;
+        for (let x = l.backdrop.w - 1; x >= 0; x--) if (l.backdrop.get(x, y) === PAL.void3) crest = x;
+        if (crest < 0) continue;
+        for (let x = crest - 1; x >= 0; x--)
+          if (l.backdrop.get(x, y) === PAL.void2) {
+            left = x;
+            break;
+          }
+        expect(left, `${l.size} rift row ${y}`).toBeGreaterThanOrEqual(0);
+        rows++;
+        for (let x = left + 1; x < crest; x++) if (l.backdrop.get(x, y) === PAL.ink) depth++;
+        for (let x = crest; x < l.backdrop.w; x++) if (([PAL.void2, PAL.void3] as number[]).includes(l.backdrop.get(x, y) ?? -1)) lit++;
+        expect(left, `${l.size} far lip ${y}`).toBeGreaterThanOrEqual(prevL);
+        expect(crest, `${l.size} near crest ${y}`).toBeGreaterThanOrEqual(prevC);
+        prevL = left;
+        prevC = crest;
+      }
+      // the small's rift fills ≥ 6 rows of the visible window (the abyss cue reads at 1×)
+      expect(rows, l.size).toBeGreaterThanOrEqual(l.size === 'big' ? 15 : 6);
+      expect(depth, l.size).toBeGreaterThanOrEqual(l.size === 'big' ? 40 : 6);
+      expect(lit, l.size).toBeGreaterThanOrEqual(l.size === 'big' ? 40 : 8);
     }
   });
 
@@ -167,7 +186,7 @@ describe('abyss_magus card picture', () => {
       const r = renderArt(card, f);
       for (const [p, q, max] of [
         [a.bigPx, r.bigPx, 40],
-        [a.smallPx, r.smallPx, 12],
+        [a.smallPx, r.smallPx, 15],
       ] as const) {
         let d = 0;
         for (let i = 0; i < p.data.length; i += 4) if (p.data[i] !== q.data[i] || p.data[i + 1] !== q.data[i + 1] || p.data[i + 2] !== q.data[i + 2]) d++;
@@ -177,6 +196,22 @@ describe('abyss_magus card picture', () => {
       expect([...r.big.subject.data]).toEqual([...a.big.subject.data]);
     }
     expect(changed).toBeGreaterThan(0);
+  });
+
+  it('the small lives too (a visible loop: orb motes, abyss motes, the eye glint) and the eye is its only pink', () => {
+    const fr = Array.from({ length: card.frames! }, (_, f) => renderArt(card, f).smallPx);
+    for (let f = 0; f < fr.length; f++) {
+      const p = fr[f];
+      const q = fr[(f + 1) % fr.length];
+      let d = 0;
+      for (let i = 0; i < p.data.length; i += 4) if (p.data[i] !== q.data[i] || p.data[i + 1] !== q.data[i + 1] || p.data[i + 2] !== q.data[i + 2]) d++;
+      expect(d, `small f${f}→f${(f + 1) % fr.length}`).toBeGreaterThanOrEqual(4);
+    }
+    // the hot pinks (mag3 / mag4) sit on the eye row only: the chest gem is dimmed
+    const p = fr[0];
+    for (let y = 0; y < p.h; y++)
+      for (let x = 0; x < p.w; x++)
+        if (([PAL.mag3, PAL.mag4] as number[]).includes(p.get(x, y) ?? -1)) expect(Math.abs(y - card.focusSmall![1]), `pink ${x},${y}`).toBeLessThanOrEqual(1);
   });
 
   it('is wired: the v3 face registry paints the hand picture', () => {

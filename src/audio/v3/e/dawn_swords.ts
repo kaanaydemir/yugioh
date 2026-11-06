@@ -20,7 +20,7 @@
 //   e_dawnChain    the cage is lowered: the pulley ratchet in front, heavy slow low links under it (≈ 0.46 s)
 //   e_dawnLand     the cage's foot rail hits the floor: an iron gong (clank 2.3), a floor thud, all the bars ringing
 //   e_dawnSun      the dawn sun on the cage's crown ignites and its light runs down the sword bars (G-major rise)
-//   e_dawnSlam     the door slams shut: a sharp bright brass latch KLAK (no low gong: the land owns that), a high rattle
+//   e_dawnSlam     the door slams shut: a short iron door body (≈ 120 Hz) under a brass latch KLAK, the gilded bars ring on
 //   e_dawnShackle  the padlock's shackle snaps into the body: "çı-KLAK"
 //   e_dawnTongue   one tongue of the padlock lights (×3, pitch up the ladder): a tick + a tiny bell
 //   e_dawnCold     the caged monsters go cold and lean on the bars: a low cold hum, two bars ringing softly
@@ -168,15 +168,22 @@ export const RECIPES = {
     verb: 0.34,
     duck: 0.4,
     play(v) {
-      // round 3: a different event from the land (which owns the low gong): a sharp, bright brass LATCH "KLAK" —
-      // a 2–3 kHz crack, the latch's brass body (≈ 1.4 kHz, short), the door's frame ringing high, a short high
-      // rattle of the bars; no low body
-      crack(v, 0, 0.55, { hp: 2200, n: 2, gap: 0.008 });
-      lockTick(v, 0, 1.1, 2000);
-      clank(v, 1380, 0.002, 0.36, 0.16, { ratio: 2.3, index: 2.2, click: 2.2 });
-      clank(v, 2150, 0.004, 0.1, 0.1, { ratio: 1.6, index: 1.4, click: 0 });
-      v.bell(midiHz(G.b5), { t: 0.006, g: 0.05, dec: 0.32, ratio: 2.3, index: 0.9 });
-      v.bell(midiHz(G.d6), { t: 0.012, g: 0.04, dec: 0.28, ratio: 2.3, index: 0.9 });
+      // round 4 (critic: "a latch click, no weight"): the brass latch KLAK stays on top, but the DOOR now lands with a
+      // short iron BODY under it (≈ 120 → 85 Hz thump + a 140 Hz gilded clank, 60–90 ms) and the gilded bars ring
+      // on after it — an inharmonic two-partial tail (≈ 610 / 1530 Hz, 250 ms): the "yaldızlı demir" of the cage.
+      // The land owns the long low gong; the slam's body is short and dry, a door, not a bell.
+      thump(v, 0, 125, 82, 0.62, 0.085, { drive: 1.6, att: 0.001 });
+      clank(v, 138, 0.001, 0.34, 0.075, { ratio: 2.3, index: 1.8, click: 0 });
+      puff(v, 0.002, 0.22, 0.06, 700, { kind: 'brown', att: 0.001 });
+      crack(v, 0, 0.5, { hp: 2200, n: 2, gap: 0.008 });
+      lockTick(v, 0, 1.0, 2000);
+      clank(v, 1380, 0.002, 0.3, 0.14, { ratio: 2.3, index: 2.2, click: 2.0 });
+      // the ring tail of the gilded bars (inharmonic: 612 / 1534 / 2290 Hz, slightly detuned pairs → a slow beat)
+      v.tone('sine', 612, { t: 0.01, g: perc(0.16, 0.25, 0.002) });
+      v.tone('sine', 615.5, { t: 0.01, g: perc(0.08, 0.22, 0.002) });
+      v.tone('sine', 1534, { t: 0.008, g: perc(0.09, 0.2, 0.002) });
+      v.tone('sine', 2290, { t: 0.006, g: perc(0.035, 0.12, 0.002) });
+      v.bell(midiHz(G.b5), { t: 0.006, g: 0.035, dec: 0.3, ratio: 2.3, index: 0.9 });
       // the rattle: the bars shiver in their rails — small high clinks, fast and short
       for (let i = 0; i < 6; i++) {
         const t = 0.045 + i * 0.024 + v.r(0, 0.005);

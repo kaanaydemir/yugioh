@@ -121,7 +121,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
   rüzgarda kırıntı olarak dökülür). `target` kancası: 2 px altın saman çizgisi saldıranı "kancalar", saldıranın
   başı döner, eski ok kaybolur, korkuluğa yeni ok + altın kilit (AttackHold yeni işaretlerle yeniden saklanır).
 - SFX: `src/audio/v3/e/straw_decoys.ts` (`e_straw*`): yeni alçak/geniş tarla rüzgarı (e_strawGust, LSD
-  e_sieveGust'a 33,5 dB), toprağa giren kazık "tok" (e_dieTak'a 14–16 dB), e_strawWrap/WrapR (yönlü),
+  e_sieveGust'a 33,5 dB), toprağa giren kazık "tok" (e_dieTak'a ≥ 12 dB, tur 3 ölçümü), e_strawWrap/WrapR (yönlü),
   e_strawHand, e_strawPerch, e_strawWake, e_strawHook.
 - Senaryolar: `src/duel/scenarios/e_straw_decoys.ts` (eStrawAttack, eStrawAttackP2, eStrawAttackWait, eStrawAttack3,
   eStrawOwn, eStrawOwnP2, eStrawSet, eStrawSetP2, eStrawOne, eStrawSummon); test `tests/e/straw_decoys.test.ts`.
@@ -136,8 +136,26 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
   eStrawAttack 4,78 s → handoff 285 / morphFrame 30 ile ≈ 4,74 s; eStrawOwn 4,32 s, eStrawSummon 4,45 s.
 - Kanıt: `shots/e/straw_decoys/r4/` (own_hero2.png, crow_perch3.png, ownP2_morph2.png, attack.png, lure.png,
   measure.json), `art4/`, `sfx3/`.
-- Açık: jeton sprite'ı D lane'inin; şimdiki yer tutucuda ceket/şapka yok, dönüşüm bunu kırıntıyla dürüstçe
-  gösterir; D'nin §7 jetonu şapkalı olacak.
+- Kritik turu 3 düzeltmeleri: karga yeniden çizildi (`src/cinematics/spells/_straw_decoys_paint.ts`, saf
+  PixelCanvas çizicileri): mürekkep gövde + stone1/stone2 tüy bantları, üst kenarda mist kenar ışığı, 4 kanat pozu
+  (up/mid/down/flare); süzülüş her şapkanın ≥ 4 px üstünden geçer, şapkanın yanında asılı kalıp kolun UÇ
+  piksellerine dikey iner (gözleri hiç örtmez); her gak: önce çömelme, baş 2 px yukarı-ileri, gövde 1 px iner, gaga
+  2 px açılır, gırtlak tüyleri kabarır, gagadan 1 px "ses tıkı" çizgileri yayılır (e_strawCrow / e_strawCrow2
+  işaretlerinde). El değiştirme: ceket/şapka artık UÇMAZ; korkuluk giyinik kalır ve tabandan tırmanan saman kenarı
+  ceketin/şapkanın ton bantlarını altına (gold) dönüştürerek jetona sarar; karga, saman kırıntıları ve ışık
+  havuzları kanca bitmeden yok olur (hepsi beklenir). Saplanma: tek beyaz kare, sonra toprağın karesi — koyu
+  krater (earth0 delik, earth3/earth4 ışıklı kabarık kenar, 3 durum), 5 toprak topağı 6–10 px yay, kazık 2 px
+  ezilir ve 2 kare ±2 px titrer, karo kartı 2 kare SONRA yerleşir. Çuval kafa: arka dikiş bandı, mürekkep büzgü
+  ipi + düğüm ucu, altında saman püskülü, çapraz dikişli ağız. Başka kartın boşta sesi (heronDrop vb.) imza
+  boyunca anında söndürülür (`fade`). Ses: gak = sert gırtlak tıkı + sürülmüş testere, ~105 Hz kaba FM
+  (indeks ≈ 0,4·f) + ~100 Hz hırıltı kıyması, formantlardan geçen geniş bant gürültü + 2–4 kHz grit, high-shelf
+  −12 dB (tarakta çizgi değil gürültülü bant); tok = 160→90 Hz toprak gümlemesi + boğuk ahşap (360/425/500 Hz,
+  4. kazık 290 Hz e_strawTok4) + toprak çıtırtısı; LSD e_dieTak'a 13,0 / 12,5 / 12,1 / 13,8 dB. Resim: karga sol
+  korkuluğun dış koluna konmuş el yerleşimli silüet (büyük 6×4, küçük 4×2), tarla sıraları earth1, arka plan 6 ton.
+- Kanıt: `shots/e/straw_decoys/r6/` (own_crow2.png, own_perch.png, own_morph.png, own_end.png, stab.png,
+  attack_perch.png, ownP2.png, paint/crow.png, paint/decoy.png, art/, sfx/, measure.json).
+- Açık: jeton sprite'ı D lane'inin; yer tutucuda ceket/şapka/çuval yok — D jetona aynı ceket + çuval kafa +
+  şapkayı giydirirse dönüşüm otomatik olarak yalnız farklı pikselleri değiştirir (jeton pikselleri sanattan okunur).
 
 ## Kontrol noktası (WIP, 2026-10-31 ~20:00 UTC)
 Orkestratörün isteğiyle ara kayıt (kullanım sınırı yaklaşıyor). İş akışı (`lane-e-cards`, kart başına

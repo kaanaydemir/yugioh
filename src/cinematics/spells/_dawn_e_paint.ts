@@ -116,16 +116,23 @@ export function inDoor(g: CageGeo, k: number): boolean {
   return k >= g.kh && k <= g.kl;
 }
 
-/** The front bars that are DAWN SWORDS (every second one, not the door's posts) and the plain rods between them. */
+/**
+ * The front bars that are DAWN SWORDS. Round 4 (readability): the swords stand a quarter column either side of every
+ * lane's centre (the odd bar slots), so each caged monster's middle column stays CLEAR of bars; nothing stands on a
+ * lane's centre, and there are no plain front rods any more (the camera-side layer is thin: swords, posts, rails).
+ */
 export function swordKs(g: CageGeo): number[] {
   const out: number[] = [];
-  for (let k = 2; k < g.bars.length - 1; k += 2) if (!inDoor(g, k)) out.push(k);
+  for (let k = 1; k < g.bars.length - 1; k += 2) if (!inDoor(g, k)) out.push(k);
   return out;
 }
-export function rodKs(g: CageGeo): number[] {
-  const out: number[] = [];
-  for (let k = 1; k < g.bars.length - 1; k++) if (k % 2 === 1 && !inDoor(g, k)) out.push(k);
-  return out;
+/** Plain gilded front rods (none since round 4; kept for the API). */
+export function rodKs(_g: CageGeo): number[] {
+  return [];
+}
+/** True for a bar slot on a lane's centre (kept clear on the back side too). */
+function laneCentre(g: CageGeo, k: number): boolean {
+  return LANE_COLS.some((c) => Math.abs(g.bars[k] - c) < 0.01);
 }
 /** The blade's span on a front sword bar (heights above the floor): tip … guard. */
 export function bladeSpan(g: CageGeo): { tip: number; guard: number } {
@@ -280,10 +287,10 @@ export function hoop(g: CageGeo, col: number, from: number, to: number): XY[] {
   return pts;
 }
 
-/** The bar indices that carry a hoop: every second bar, every bar under the dome. */
+/** The bar indices that carry a hoop: every fourth bar (the lane edges), every second bar under the dome. */
 export function hoopKs(g: CageGeo): number[] {
   const out: number[] = [];
-  for (let k = 0; k < g.bars.length; k++) if (k % 2 === 0 || inDome(g, g.bars[k])) out.push(k);
+  for (let k = 0; k < g.bars.length; k++) if (k % 4 === 0 || (inDome(g, g.bars[k]) && k % 2 === 0)) out.push(k);
   return out;
 }
 
@@ -326,15 +333,16 @@ export function paintBack(g: CageGeo): PixelCanvas {
   const p = new PixelCanvas(g.w, g.h);
   const n = g.bars.length - 1;
   // hoops: back halves
-  for (const k of hoopKs(g)) vaultLine(p, g, hoop(g, g.bars[k], Math.PI / 2, Math.PI), PAL.gold2, PAL.gold1);
-  // rods of the back side
-  for (let k = 1; k < n; k++) rod(p, g, cp(g.bars[k], g.rA, 0), 3, g.H - 2, PAL.gold2, PAL.gold1);
+  // round 4: the back plane is one tone darker than the front (gold1 / gold0 rods, gold2 rails): the front reads first
+  for (const k of hoopKs(g)) vaultLine(p, g, hoop(g, g.bars[k], Math.PI / 2, Math.PI), PAL.gold1, PAL.gold0);
+  // rods of the back side (none behind a lane's centre)
+  for (let k = 1; k < n; k++) if (!laneCentre(g, k)) rod(p, g, cp(g.bars[k], g.rA, 0), 3, g.H - 2, PAL.gold1, PAL.gold0);
   // rods of the left side
-  for (let j = 1; j < g.sideRows.length - 1; j++) rod(p, g, cp(g.c0, g.sideRows[j], 0), 3, g.H - 2, PAL.gold2, PAL.gold1);
+  for (let j = 1; j < g.sideRows.length - 1; j++) rod(p, g, cp(g.c0, g.sideRows[j], 0), 3, g.H - 2, PAL.gold1, PAL.gold0);
   // rails
   for (const h of [0, g.H - 1]) {
-    rail(p, g, cp(g.c0, g.rA, h), cp(g.c1, g.rA, h), PAL.gold3, PAL.gold1);
-    rail(p, g, cp(g.c0, g.rA, h), cp(g.c0, g.rB, h), PAL.gold3, PAL.gold1);
+    rail(p, g, cp(g.c0, g.rA, h), cp(g.c1, g.rA, h), PAL.gold2, PAL.gold0);
+    rail(p, g, cp(g.c0, g.rA, h), cp(g.c0, g.rB, h), PAL.gold2, PAL.gold0);
   }
   post(p, g, cp(g.c0, g.rA, 0), g.H + 1, true);
   return p;
@@ -349,13 +357,13 @@ export function paintFront(g: CageGeo, o: { lit?: boolean; snapped?: boolean } =
   const p = new PixelCanvas(g.w, g.h);
   const n = g.bars.length - 1;
   // the vault: front halves of the hoops, the ridge
-  for (const k of hoopKs(g)) vaultLine(p, g, hoop(g, g.bars[k], 0, Math.PI / 2), inDome(g, g.bars[k]) ? PAL.gold4 : PAL.gold3, inDome(g, g.bars[k]) ? PAL.gold2 : PAL.gold1);
-  railPath(p, g, ridge(g), PAL.gold4, PAL.gold2);
+  for (const k of hoopKs(g)) vaultLine(p, g, hoop(g, g.bars[k], 0, Math.PI / 2), inDome(g, g.bars[k]) ? PAL.gold3 : PAL.gold2, inDome(g, g.bars[k]) ? PAL.gold1 : PAL.gold0);
+  // round 4: the ridge (the "middle diagonal rail") is a thin 1-px line one band darker: three bright parallel rails
+  // no longer stack over the caged monsters' heads
+  vaultLine(p, g, ridge(g), PAL.gold2, PAL.gold0);
 
   // right side rods
-  for (let j = 1; j < g.sideRows.length - 1; j++) rod(p, g, cp(g.c1, g.sideRows[j], 0), 3, g.H - 2, PAL.gold3, PAL.gold1);
-  // the plain rods between the swords
-  for (const k of rodKs(g)) rod(p, g, cp(g.bars[k], g.rB, 0), 3, g.H - 2, o.lit ? PAL.gold3 : PAL.gold2, PAL.gold1);
+  for (let j = 1; j < g.sideRows.length - 1; j++) rod(p, g, cp(g.c1, g.sideRows[j], 0), 3, g.H - 2, PAL.gold2, PAL.gold1);
   // rails (the blades pass behind the foot rail, the grips through the top rail)
   for (const h of [0, g.H - 1]) {
     rail(p, g, cp(g.c0, g.rB, h), cp(g.c1, g.rB, h), h === 0 ? PAL.gold3 : PAL.gold4, h === 0 ? PAL.gold1 : PAL.gold2);
@@ -373,8 +381,8 @@ export function paintFront(g: CageGeo, o: { lit?: boolean; snapped?: boolean } =
 }
 
 /** The door's angles (degrees) — its drawings: 0 = shut, −8 = the slam's overshoot (into the cage), 100 = hanging
- *  wide open toward the camera. */
-export const DOOR_ANGLES = [-8, 0, 15, 30, 45, 60, 75, 90, 100] as const;
+ *  wide open toward the camera, 108 = the wind-up before the slam (round 4: the anticipation). */
+export const DOOR_ANGLES = [-8, 0, 15, 30, 45, 60, 75, 90, 100, 108] as const;
 
 /** A heavy door rail: three tones (lit / mid / shade) between ink lines. */
 function heavyRail(p: Pc, g: CageGeo, a: XY, b: XY): void {
@@ -396,6 +404,17 @@ function stile(p: Pc, g: CageGeo, f: XY, h0: number, h1: number): void {
   }
 }
 
+/** The door's sword bars (fractions of its width from the hinge) and their blade span (heights). */
+export const DOOR_SWORDS = [0.25, 0.75] as const;
+export function doorBlade(g: CageGeo): { tip: number; guard: number } {
+  return { tip: 5, guard: g.H - 11 };
+}
+/** The floor point of the door's sword s (a DOOR_SWORDS fraction) at `deg` degrees open. */
+export function doorSwordFoot(g: CageGeo, s: number, deg: number): XY {
+  const th = (deg * Math.PI) / 180;
+  return cp(g.bars[g.kh] + s * g.dw * Math.cos(th), g.rB + s * g.dw * Math.sin(th), 0);
+}
+
 /**
  * The DOOR at `deg` degrees open (it swings out toward the camera round its hinge post): a real set piece one
  * column wide — two heavy stiles (a white edge), three heavy rails, two gilded rods and a steel dawn sword between
@@ -410,12 +429,11 @@ export function paintDoor(g: CageGeo, deg: number, white = false, o: { lit?: boo
   const lo = 4;
   const hi = g.H - 6;
   const mid = R(g.H * 0.5);
-  // the inner bars: two gilded rods and the steel sword in the middle
-  for (const s of [0.27, 0.73]) rod(p, g, at(s, 0), lo + 2, hi - 2, PAL.gold3, PAL.gold1);
-  sword(p, g, at(0.5, 0), { tip: lo + 1, guard: hi - 5, top: hi + 1, lit: o.lit });
-  // the rails
+  // round 4: two steel dawn swords a quarter either side of the middle (the row's sword rhythm runs on through the
+  // door) and NOTHING on the middle: the caged middle monster's centre column stays clear; no middle rail
+  for (const s of DOOR_SWORDS) sword(p, g, at(s, 0), { tip: lo + 1, guard: hi - 5, top: hi + 1, lit: o.lit });
+  // the rails (foot and head)
   heavyRail(p, g, at(0.06, lo), at(0.95, lo));
-  heavyRail(p, g, at(0.06, mid), at(0.95, mid));
   heavyRail(p, g, at(0.06, hi), at(0.95, hi));
   // the stiles (hinge and latch)
   stile(p, g, at(0.06, 0), 1, hi + 2);
@@ -423,7 +441,8 @@ export function paintDoor(g: CageGeo, deg: number, white = false, o: { lit?: boo
   // the SUN BOSS: an ellipse as wide as the door is face-on (screen x of the door's direction)
   const face = Math.abs(Math.cos(th) - Math.sin(th));
   const rx = Math.max(1, Math.min(5, R(5 * face)));
-  const c = at(0.5, mid);
+  void mid;
+  const c = at(0.5, hi);
   const ry = 5;
   for (let dy = -ry - 1; dy <= ry + 1; dy++) {
     const hw = Math.round((rx + 0.5) * Math.sqrt(Math.max(0, 1 - (dy / (ry + 0.6)) ** 2)));
@@ -477,7 +496,7 @@ export const TURN_STEPS = 4;
  * in white), its back coming round (2 px iron), turned. `open`: the shackle sprung up. `white`: a white frame.
  * `pop`: a gold4 halo one pixel outside the ink (the tick's "pop" — the eye goes to the lock).
  */
-export function paintLock(lit: number, o: { turning?: number; step?: number; open?: boolean; white?: boolean; pop?: boolean } = {}): PixelCanvas {
+export function paintLock(lit: number, o: { turning?: number; step?: number; open?: boolean; white?: boolean; pop?: boolean; bounce?: boolean } = {}): PixelCanvas {
   const p = new PixelCanvas(LOCK_W, LOCK_H);
   const up = o.open ? 3 : 0;
   // the shackle: an arch 11 wide, legs 2 px (lit outer, shade inner)
@@ -508,19 +527,24 @@ export function paintLock(lit: number, o: { turning?: number; step?: number; ope
     const x = TONGUE_X[i];
     const y = TONGUE_Y;
     const H = TONGUE_H;
-    p.rect(x - 1, y - 1, 5, H + 2, PAL.gold0);
+    // round 4 (legibility at 1×): a lit bolt sits in a gold0 slot, a turned one in a full INK slot — the count reads
+    // as "bright plates vs dark holes" at a glance
+    const turned = o.turning !== i && i >= lit;
+    p.rect(x - 1, y - 1, 5, H + 2, turned ? PAL.ink : PAL.gold0);
     const litBolt = () => {
-      p.vline(x, y, y + H - 1, PAL.white);
-      p.vline(x + 1, y, y + H - 1, PAL.gold4);
-      p.vline(x + 2, y, y + H - 1, PAL.gold3);
-      p.hline(x, x + 2, y, PAL.white);
-      p.set(x + 1, y + H - 1, PAL.gold3).set(x + 2, y + H - 1, PAL.gold2);
+      // `bounce`: the remaining lit bolts hop one pixel (one frame after a turn — "still 2 left")
+      const yb = o.bounce ? y - 1 : y;
+      p.vline(x, yb, yb + H - 1, PAL.white);
+      p.vline(x + 1, yb, yb + H - 1, PAL.gold4);
+      p.vline(x + 2, yb, yb + H - 1, PAL.gold3);
+      p.hline(x, x + 2, yb, PAL.white);
+      p.set(x + 1, yb + H - 1, PAL.gold3).set(x + 2, yb + H - 1, PAL.gold2);
     };
     const ironBolt = () => {
-      p.vline(x, y, y + H - 1, PAL.stone2);
-      p.vline(x + 1, y, y + H - 1, PAL.stone1);
-      p.vline(x + 2, y, y + H - 1, PAL.stone0);
-      p.set(x, y, PAL.stone3).set(x + 1, y + 2, PAL.stone0).set(x + 1, y + 3, PAL.stone0);
+      // the iron back in NIGHT tones, narrower (2 px) in its ink slot: a dark hole, not a grey plate
+      p.vline(x, y + 1, y + H - 2, PAL.night3);
+      p.vline(x + 1, y + 1, y + H - 2, PAL.night2);
+      p.set(x, y + 1, PAL.night4);
     };
     if (o.turning === i) {
       const st = Math.max(0, Math.min(TURN_STEPS - 1, o.step ?? 1));
@@ -532,8 +556,12 @@ export function paintLock(lit: number, o: { turning?: number; step?: number; ope
         p.rect(x, y, 3, H, PAL.gold0);
         p.vline(x + 1, y - 1, y + H, PAL.white);
       } else if (st === 2) {
-        p.vline(x + 1, y, y + H - 1, PAL.stone2).vline(x + 2, y, y + H - 1, PAL.stone0);
-      } else ironBolt();
+        p.rect(x - 1, y - 1, 5, H + 2, PAL.ink);
+        p.vline(x + 1, y, y + H - 1, PAL.night4).vline(x + 2, y, y + H - 1, PAL.night2);
+      } else {
+        p.rect(x - 1, y - 1, 5, H + 2, PAL.ink);
+        ironBolt();
+      }
     } else if (i < lit) litBolt();
     else ironBolt();
   }
@@ -553,12 +581,16 @@ export function paintBadge(lit: number, o: { white?: boolean; turning?: number }
   p.rect(1, 5, 11, 8, PAL.gold2);
   p.hline(1, 11, 5, PAL.gold3);
   p.hline(1, 11, 12, PAL.gold1);
+  // round 4: 2-px pips — lit = white top + gold4, turned = an ink hole (readable on the card at 1×)
   for (let i = 0; i < 3; i++) {
-    const x = 3 + i * 3;
-    p.rect(x, 7, 1, 4, PAL.gold0);
-    if (o.turning === i) p.set(x, 8, PAL.white).set(x, 9, PAL.gold3);
-    else if (i < lit) p.vline(x, 7, 10, PAL.gold4).set(x, 7, PAL.white);
-    else p.set(x, 9, PAL.gold1);
+    const x = 2 + i * 3;
+    if (o.turning === i) {
+      p.rect(x, 7, 2, 4, PAL.white);
+    } else if (i < lit) {
+      p.rect(x, 7, 2, 4, PAL.gold4);
+      p.hline(x, x + 1, 7, PAL.white);
+      p.set(x + 1, 10, PAL.gold3);
+    } else p.rect(x, 7, 2, 4, PAL.ink);
   }
   p.outline(PAL.ink, { corners: false });
   if (o.white) p.map((c) => (c === PAL.ink ? c : PAL.white));
@@ -642,5 +674,57 @@ export function paintChain(len: number): PixelCanvas {
   // the ring that carries the cage
   p.stamp(['.aa.', 'a..c', '.cc.'], { a: PAL.gold4, c: PAL.gold2 }, 2, len - 3);
   p.outline(PAL.ink, { corners: false });
+  return p;
+}
+
+// ================================================================ the dawn burst (round 4)
+
+export const BURST_W = 65;
+export const BURST_C = 32;
+/** The burst's drawings (the dawn ignites): 0 = the flash, 1 = the rays at full reach, 2 = the rays breaking up. */
+export const BURST_STEPS = 3;
+
+/**
+ * THE DAWN BURST over the sun finial (round 4: "the dawn must read at 1×"): twelve rays in three drawings — 0: a white
+ * disc (r 8) with short white rays (14 px); 1: the rays at full reach, long 30 / short 22 px, 2 px wide (a white core
+ * with a gold4 side), the disc white-gold; 2: the rays broken off the disc (a gap at 9 … 13 px), gold4 with gold3
+ * tips, shorter (26 / 18). Light, so no ink outline; whole pixels; the fan is fuller upward (a sunrise).
+ */
+export function paintSunBurst(step: number): PixelCanvas {
+  const p = new PixelCanvas(BURST_W, BURST_W);
+  const c = BURST_C;
+  const st = Math.max(0, Math.min(BURST_STEPS - 1, step));
+  for (let i = 0; i < 12; i++) {
+    const a = (Math.PI * 2 * i) / 12 - Math.PI / 2;
+    const up = Math.sin(a) <= 0.01;
+    const long = i % 2 === 0;
+    const reach = st === 0 ? 14 : st === 1 ? (long ? 30 : 22) : long ? 26 : 18;
+    const len = up ? reach : R(reach * 0.6);
+    const r0 = st === 2 ? 13 : 7;
+    const x0 = R(c + Math.cos(a) * r0);
+    const y0 = R(c + Math.sin(a) * r0);
+    const x1 = R(c + Math.cos(a) * len);
+    const y1 = R(c + Math.sin(a) * len);
+    if (st === 0) {
+      p.line(x0, y0, x1, y1, PAL.white);
+      continue;
+    }
+    if (st === 1) {
+      // the 2-px ray: a gold4 side line one pixel off (across the ray's minor axis), the white core on top
+      const steep = Math.abs(y1 - y0) > Math.abs(x1 - x0);
+      p.line(x0 + (steep ? 1 : 0), y0 + (steep ? 0 : 1), x1 + (steep ? 1 : 0), y1 + (steep ? 0 : 1), PAL.gold4);
+      p.line(x0, y0, x1, y1, PAL.white);
+      continue;
+    }
+    const xm = R(c + Math.cos(a) * (len - 4));
+    const ym = R(c + Math.sin(a) * (len - 4));
+    p.line(x0, y0, xm, ym, PAL.gold4);
+    p.line(xm, ym, x1, y1, PAL.gold3);
+  }
+  if (st === 0) p.disc(c, c, 8, PAL.white);
+  else if (st === 1) {
+    p.disc(c, c, 8, PAL.gold4);
+    p.disc(c - 1, c - 1, 6, PAL.white);
+  }
   return p;
 }
