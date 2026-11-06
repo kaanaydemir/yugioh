@@ -141,11 +141,13 @@ export function toGuardPose(f: number): Pose {
 const TG_HOLDS = [60, 60, 70, 60, 60, 60];
 
 export function fromGuardPose(f: number): Pose {
-  // f0 the crew pops up (the guard opens), f1 the wrench goes up, f2 everybody back in place, f3 a yell, f4 settle, f5 idle f0
+  // f0 the guard opens while the crew are still ducked (eyes wide, the sling lets go, the club lifts off the ram —
+  // the guard break's bridge frame, so a death from the rested guard never pops the crew up first), f1 they pop up
+  // and the wrench goes up, f2 everybody back in place, f3 a yell, f4 settle, f5 idle f0
   if (f >= 5) return home();
   const keys: Partial<Pose>[] = [
-    { ...RG, pHy: 1, wHy: 0, wY: 1, sY: 1, sPull: 0, wAy: -5, wAng: -0.9, pE: 0, sE: 0, wE: 0 },
-    { pHy: 0, wY: 0, sY: 0, wAy: -8, wAng: -1.8, wM: 1, pM: 1, bob: 1, door: 1.3 },
+    { ...RG, sPull: 0, wAy: -4, wAng: -0.6, pE: 3, sE: 3, wE: 3, pM: 1 },
+    { pHy: 1, wY: 1, sY: 1, wAy: -8, wAng: -1.8, wM: 1, pM: 1, bob: 1, door: 1.3 },
     { wAy: -8, wAng: -1.7, wM: 2, pM: 2, sM: 1, door: 1.5 },
     { wAy: -7, wAng: -1.5, wM: 1, pM: 1, door: 1.3 },
     { wAy: -6, wAng: -1.35 },

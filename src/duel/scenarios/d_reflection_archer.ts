@@ -57,6 +57,11 @@ const scenarios: Record<string, Scenario> = {
     stage: { zones: 5, phase: 'battle', p0: { monsters: five(N, N, 'magma_titan') }, p1: { monsters: five(N, N, { id: 'reflection_archer', position: 'attack' }) } },
     steps: [attack(2, 2)],
   },
+  raKillLight: {
+    desc: 'Yansıyan Okçu hafif bir saldırganla yok edilir (Gölge Suikastçı, 1900): cam patlaması kendi sesiyle duyulsun',
+    stage: { zones: 5, phase: 'battle', p0: { monsters: five(N, N, 'shade_assassin') }, p1: { monsters: five(N, N, { id: 'reflection_archer', position: 'attack' }) } },
+    steps: [attack(2, 2)],
+  },
   raKillP2: {
     desc: 'Yansıyan Okçu (oyuncu 1) savaşta yok edilir',
     stage: { zones: 5, phase: 'battle', active: 1, p0: { monsters: five(N, N, { id: 'reflection_archer', position: 'attack' }) }, p1: { monsters: five(N, N, 'magma_titan') } },

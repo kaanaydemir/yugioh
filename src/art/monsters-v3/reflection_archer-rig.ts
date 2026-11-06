@@ -29,13 +29,38 @@ export const W = 76;
 export const H = 92;
 export const RX = 30;
 export const GY = 64;
-/** The reflection's vertical foreshortening (mirror at the ground line). */
+/** The floor-mirror foreshortening of the cinematic twins (the arrow under the floor, the motes, the panes). */
 export const KR = 0.45;
-/** The puddle: a flat iso 2:1 ellipse round the feet, inside the tile's footprint (≤ 40×16), see-through. */
-export const PCX = RX + 1;
-export const PCY = GY + 4;
-export const PRX = 19;
-export const PRY = 8;
+/**
+ * The puddle and the reflection in it (board readability, crit r2): the ATK/DEF badge covers the tile's whole
+ * front half (tile centre + 7 … + 15 px), so the puddle lies on the tile's back/side half — a flat iso 2:1
+ * ellipse from the feet toward the tile's RIGHT corner on screen (the P1 sheet: in front of the archer; the P2
+ * relight sheet is mirrored by flipX, so there it lies behind the archer's back and still lands on screen right,
+ * clear of the up-left neighbour's badge). The inverted reflection hangs from the puddle's far water line
+ * (`my`), offset by `rdx` beside the archer, foreshortened by `kr`, ending just above the badge.
+ */
+export interface PuddleGeo {
+  /** ellipse centre and radii (frame px) */
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  /** the reflection's x offset and its mirror line (its feet), its foreshortening */
+  rdx: number;
+  my: number;
+  kr: number;
+}
+const GEO_L: PuddleGeo = { cx: RX + 8, cy: GY - 2, rx: 17, ry: 8, rdx: 12, my: GY - 9, kr: 0.23 };
+const GEO_R: PuddleGeo = { cx: RX - 9, cy: GY - 2, rx: 17, ry: 8, rdx: -14, my: GY - 9, kr: 0.23 };
+/** The puddle geometry of a sheet ('left' = the P1 sheet, 'right' = the P2 relight sheet, shown flipped). */
+export const puddleGeo = (lightFrom: 'left' | 'right'): PuddleGeo => (lightFrom === 'right' ? GEO_R : GEO_L);
+/** The geometry of the sheet being drawn (set by drawArcher; drawing is synchronous). */
+let G: PuddleGeo = GEO_L;
+/** The P1 sheet's puddle (kept for older callers). */
+export const PCX = GEO_L.cx;
+export const PCY = GEO_L.cy;
+export const PRX = GEO_L.rx;
+export const PRY = GEO_L.ry;
 
 export const enum Part {
   none = 0,
@@ -253,8 +278,8 @@ interface View {
 function mainView(k: number): View {
   return { T: (p) => [p[0], GY - (GY - p[1]) * k], hk: k, refl: false };
 }
-function reflView(kr = KR): View {
-  return { T: (p) => [p[0], GY + (GY - p[1]) * kr], hk: -Math.max(0.55, kr * 1.4), refl: true };
+function reflView(kr = G.kr, dx = G.rdx, my = G.my): View {
+  return { T: (p) => [p[0] + dx, my + (GY - p[1]) * kr], hk: -Math.max(0.55, kr * 1.4), refl: true };
 }
 
 interface Ctx {
@@ -480,10 +505,14 @@ function drawFigure(p: PixelCanvas, o: Pose, light: Light, v: View): Comp {
  *  normalised distance (≤ 1 inside; the rim ≈ 0.8…1). */
 function inPuddle(x: number, y: number, s: number): number {
   if (s <= 0) return 99;
-  const ax = (x + 0.5 - PCX) / (PRX * s);
-  const ay = (y + 0.5 - PCY) / (PRY * s);
+  const k = Math.min(1, s);
+  const ax = (x + 0.5 - pcx(k)) / (G.rx * s);
+  const ay = (y + 0.5 - pcy(k)) / (G.ry * s);
   return ax * ax + ay * ay;
 }
+/** The puddle's centre while it spreads (s < 1): it opens out of the feet toward its own centre. */
+const pcx = (s: number): number => RX + (G.cx - RX) * s;
+const pcy = (s: number): number => GY + (G.cy - GY) * s;
 
 
 /** The puddle rim's 1-px ring at scale s (d ≤ 1 with an outside 4-neighbour). */
@@ -492,9 +521,9 @@ const onRim = (x: number, y: number, s: number): boolean =>
 
 /** The reflection's tone for a figure tone (dark blue: night / water darks, YENI_KARTLAR §C4). */
 export const REFL_MAP = new Map<number, number>([
-  [PAL.white, PAL.water4], [PAL.mist, PAL.water3], [PAL.steel, PAL.water2], [GLASS, PAL.water2],
-  [PAL.night4, PAL.water1], [PAL.night3, PAL.water1], [PAL.night2, PAL.night2], [PAL.night1, PAL.night1],
-  [PAL.gold4, PAL.water4], [PAL.gold3, PAL.water3], [PAL.gold2, PAL.water2], [PAL.gold1, PAL.water1],
+  [PAL.white, PAL.water2], [PAL.mist, PAL.water2], [PAL.steel, PAL.water1], [GLASS, PAL.water3],
+  [PAL.night4, PAL.night3], [PAL.night3, PAL.night2], [PAL.night2, PAL.night1], [PAL.night1, PAL.night0],
+  [PAL.gold4, PAL.water3], [PAL.gold3, PAL.water2], [PAL.gold2, PAL.water1], [PAL.gold1, PAL.night2],
 ]);
 /** The reflection's value ladder (dark → light) for its light ramp. */
 const REFL_LADDER: number[] = [PAL.night0, PAL.night1, PAL.night2, PAL.water1, PAL.water2, PAL.water3, PAL.water4];
@@ -508,7 +537,7 @@ const REFL_MAP_DEEP = new Map<number, number>([
 /** The mirror sheen: a 1-px iso-diagonal line of light drifting across the surface (x + 2·dy = c). */
 function sheenAt(o: Pose, s: number): number {
   const ph = (((o.t * 2) % 1) + 1) % 1;
-  return PCX - PRX * s - 6 + ph * (2 * PRX * s + 12);
+  return pcx(s) - G.rx * s - 6 + ph * (2 * G.rx * s + 12);
 }
 
 /** The puddle surface: see-through (the tile shows through a sparse 2×2 haze), a 1-px specular rim (lit on the
@@ -516,16 +545,16 @@ function sheenAt(o: Pose, s: number): number {
 function drawPuddle(p: PixelCanvas, o: Pose, light: Light): void {
   if (o.pud <= 0) return;
   const s = clamp(o.pud, 0, 1);
-  const ys = Math.max(1, rnd(PCY - PRY * s - 1));
-  const ye = Math.min(H - 2, rnd(PCY + PRY * s + 1));
+  const ys = Math.max(1, rnd(pcy(s) - G.ry * s - 1));
+  const ye = Math.min(H - 2, rnd(pcy(s) + G.ry * s + 1));
   const ls = light.side;
   const glow = o.pudG >= 1.6;
   for (let y = ys; y <= ye; y++)
     for (let x = 1; x < W - 1; x++) {
       const d = inPuddle(x, y, s);
       if (d > 1) continue;
-      const back = y + 0.5 < PCY;
-      const lit = (x + 0.5 - PCX) * ls > 0;
+      const back = y + 0.5 < pcy(s);
+      const lit = (x + 0.5 - pcx(s)) * ls > 0;
       if (onRim(x, y, s)) {
         // the specular rim: the far (back) lip catches the key light, the near lip is a dimmer water line
         p.set(x, y, back ? (lit ? PAL.white : PAL.mist) : lit ? PAL.steel : PAL.night4);
@@ -544,8 +573,8 @@ function drawPuddle(p: PixelCanvas, o: Pose, light: Light): void {
       for (let i = 0; i < n; i++) {
         const a = (i / n) * TAU;
         if (Math.sin(a) < -0.3 && ph < 0.3) continue;
-        const x = rnd(PCX - 0.5 + Math.cos(a) * PRX * r);
-        const y = rnd(PCY - 0.5 + Math.sin(a) * PRY * r);
+        const x = rnd(G.cx - 0.5 + Math.cos(a) * G.rx * r);
+        const y = rnd(G.cy - 0.5 + Math.sin(a) * G.ry * r);
         if (inPuddle(x, y, 1) > 0.75) continue;
         p.set(x, y, ph < 0.55 ? PAL.mist : PAL.steel);
       }
@@ -557,40 +586,33 @@ function sheenPass(p: PixelCanvas, o: Pose): void {
   if (o.pud < 0.4 || o.crack > 0) return;
   const s = clamp(o.pud, 0, 1);
   const c = sheenAt(o, s);
-  for (let y = rnd(PCY - PRY * s); y <= rnd(PCY + PRY * s); y++)
+  for (let y = rnd(pcy(s) - G.ry * s); y <= rnd(pcy(s) + G.ry * s); y++)
     for (let w = 0; w < 2; w++) {
-      const x = rnd(c - 2 * (y - PCY)) + w;
+      const x = rnd(c - 2 * (y - pcy(s))) + w;
       const d = inPuddle(x, y, s);
       if (d > 0.72) continue;
       p.set(x, y, w === 0 && d < 0.35 ? PAL.white : PAL.mist);
     }
 }
 
-/** The ghost lane past the puddle: half width, and the row of its far water line (the reflection's end). */
-const GHOST_HW = 9;
-const GHOST_Y = GY + 25;
-
-/** Does the reflection show at (x, y)? Whole in the middle of the mirror; toward the rim and where it reaches past
- *  the puddle toward the viewer it breaks into water lines (every other row, the classic broken reflection), so
- *  the tile, the cards in front and the floor show through; far past the rim only every fourth row. `rv` (the
- *  summon's surfacing) thins it the same way. Row lines wobble a px with the ripple phase. */
+/** Does the reflection show at (x, y)? Only inside the puddle (the tile's back half, clear of the stat badge):
+ *  whole in its middle, broken into water lines (every other row, the classic broken reflection) toward the rim.
+ *  `rv` (the summon's surfacing) thins it the same way. */
 function reflShows(x: number, y: number, rv: number): boolean {
   const d = inPuddle(x, y, 1);
-  let a: number;
-  if (d <= 1) a = d < 0.85 ? 1 : 0.5;
-  else {
-    if (y + 0.5 < PCY) return false;
-    const ux = (x + 0.5 - PCX) / PRX;
-    const rimY = Math.abs(ux) < 1 ? PCY + PRY * Math.sqrt(1 - ux * ux) : PCY;
-    // past the rim the reflection is a narrow ghost lane that ends at the far water line (GHOST_Y)
-    if (Math.abs(x + 0.5 - PCX) > GHOST_HW || y >= GHOST_Y) return false;
-    a = y + 0.5 - rimY <= 9 ? 0.5 : 0.25;
-  }
-  a *= rv;
+  if (d > 1) return false;
+  const a = (d < 0.8 ? 1 : 0.5) * rv;
   if (a >= 0.99) return true;
   if (a >= 0.49) return (y & 1) === 0;
   if (a >= 0.24) return (y & 3) === 0;
   return false;
+}
+
+/** The last opaque x of the run through (x, y) going `d` (−1 left, +1 right). */
+function rowEdge(q: PixelCanvas, x: number, y: number, d: -1 | 1): number {
+  let e = x;
+  while (e + d >= 0 && e + d < W && q.get(e + d, y) !== null) e += d;
+  return e;
 }
 
 function drawReflection(p: PixelCanvas, o: Pose, light: Light): void {
@@ -615,26 +637,32 @@ function drawReflection(p: PixelCanvas, o: Pose, light: Light): void {
     for (let x = b.x0; x <= b.x1; x++) {
       const c = q.get(x, y);
       if (c === null) continue;
-      const side = (x + 0.5 - PCX) * ls;
       const i = REFL_LADDER.indexOf(c);
       if (i < 0) continue;
-      const st = side > 4 ? 2 : side > 0 ? 1 : side < -6 ? -2 : side < -2 ? -1 : 0;
+      // per row: the key light's side of the twin reads 2 steps lighter (3 px in from its edge), the far side 2
+      // steps deeper — the mirror keeps the scene's light direction, and the 14-px twin keeps its volume
+      const fromLit = ls < 0 ? x - rowEdge(q, x, y, -1) : rowEdge(q, x, y, 1) - x;
+      const fromDark = ls < 0 ? rowEdge(q, x, y, 1) - x : x - rowEdge(q, x, y, -1);
+      const st = fromLit <= 3 ? 2 : fromDark <= 3 ? -2 : 0;
       if (st) q.set(x, y, REFL_LADDER[clamp(i + st, 0, REFL_LADDER.length - 1)]);
     }
-  q.outline(PAL.night0);
+  // no outline: the reflection is floor (a 1-px dark ring would turn the 14-px twin into a blob)
   // the reflection surfaces: its coverage rises with rv (it fades up through the dither, never a hard panel)
   const rv = clamp(o.rv, 0, 1);
   // ripple distortion: rows crossed by a ring shift a px sideways
   const shiftOf = (y: number): number => {
     if (o.rip < 0) return 0;
     const ph = o.rip % 1;
-    const ry = PCY + PRY * (0.3 + ph * 0.62) * 0.6;
-    return Math.abs(y - ry) < 1 ? (fl(ph * 8) % 2 ? 1 : -1) : 0;
+    const ry = G.cy + G.ry * (0.3 + ph * 0.62) * 0.6;
+    if (Math.abs(y - ry) < 1) return fl(ph * 8) % 2 ? 1 : -1;
+    // the water's own shimmer: a band of three rows, stepping down the twin frame by frame, sits a px aside
+    const band = ((fl(o.t * 40) * 2 + 15) % 17 + 17) % 17;
+    return Math.abs(y - (rnd(G.my) + band)) <= 2 ? -1 : 0;
   };
   // the reflection's face is the focal point (its eyes look at the viewer): its hood stays whole once surfaced
   const [fhx, fhy] = reflView().T(skeleton(r).head);
   const face = (x: number, y: number): boolean => rv >= 0.9 && o.rbreak <= 0 && Math.abs(x + 0.5 - fhx) <= 4.5 && Math.abs(y + 0.5 - fhy) <= 3.5;
-  for (let y = GY; y < H - 1; y++) {
+  for (let y = Math.max(1, rnd(G.cy - G.ry)); y < H - 1; y++) {
     const sh = shiftOf(y);
     for (let x = 1; x < W - 1; x++) {
       const c = q.get(x - sh, y);
@@ -644,9 +672,12 @@ function drawReflection(p: PixelCanvas, o: Pose, light: Light): void {
       p.set(x, y, c);
     }
   }
-  // the far water line where the reflection's ghost ends (dashed, the floor shows between the dashes)
-  if (rv >= 0.45 && o.rbreak < 0.85)
-    for (let x = rnd(PCX - GHOST_HW); x < rnd(PCX + GHOST_HW); x++) if (((x + 1) & 1) === 0 || Math.abs(x + 0.5 - PCX) < 4) p.set(x, GHOST_Y, Math.abs(x + 0.5 - PCX) < 4 ? PAL.water2 : PAL.water1);
+  // the far water line the reflection hangs from: a 1-px glass line under its feet, lit where it touches them
+  if (rv >= 0.45 && o.rbreak < 0.85) {
+    const [fx0] = reflView().T(skeleton(r).an2);
+    const [fx1] = reflView().T(skeleton(r).an1);
+    for (let x = rnd(fx0) - 2; x <= rnd(fx1) + 2; x++) if (inPuddle(x, G.my - 1, 1) < 0.95 && !p.isOpaque(x, G.my - 1)) p.set(x, G.my - 1, x >= rnd(fx0) && x <= rnd(fx1) ? PAL.water3 : PAL.water1);
+  }
   // eyes of the reflection (its own light: water4; turned to the viewer = two white eyes) — always whole
   if (r.eye > 0.05 && r.lid < 2 && o.rbreak < 0.4 && rv >= 0.45) {
     const sk = skeleton(r);
@@ -675,8 +706,8 @@ function crackPass(p: PixelCanvas, o: Pose): void {
     for (let j = 0; j <= n * len; j++) {
       const u = j / n;
       const jog = (hash2(i, fl(u * 6), 9) - 0.5) * 2;
-      const x = rnd(PCX - 0.5 + dx * PRX * u + jog * 0.6);
-      const y = rnd(PCY - 0.5 + dy * PRY * u);
+      const x = rnd(G.cx - 0.5 + dx * G.rx * u + jog * 0.6);
+      const y = rnd(G.cy - 0.5 + dy * G.ry * u);
       if (inPuddle(x, y, 1) > 0.95) continue;
       p.set(x, y, u < 0.3 ? PAL.white : PAL.mist);
     }
@@ -685,8 +716,8 @@ function crackPass(p: PixelCanvas, o: Pose): void {
   if (o.crack > 1) {
     const u = clamp(o.crack - 1, 0, 1);
     for (const [i, [dx, dy]] of [[1, rays[1]], [4, rays[4]]] as const) {
-      const x = rnd(PCX - 0.5 + dx * PRX * (0.35 + u * 0.55));
-      const y = rnd(PCY - 0.5 + dy * PRY * (0.35 + u * 0.55));
+      const x = rnd(G.cx - 0.5 + dx * G.rx * (0.35 + u * 0.55));
+      const y = rnd(G.cy - 0.5 + dy * G.ry * (0.35 + u * 0.55));
       p.set(x, y, PAL.white);
       void i;
     }
@@ -694,12 +725,13 @@ function crackPass(p: PixelCanvas, o: Pose): void {
   if (o.rbreak > 0) {
     // the reflection's shards: its pixels jump in 3×2 cells along the cracks, then sink out of the surface
     const src = p.clone();
-    for (let y = GY; y < H - 1; y++)
+    for (let y = Math.max(1, rnd(G.cy - G.ry)); y < H - 1; y++)
       for (let x = 1; x < W - 1; x++) {
+        if (inPuddle(x, y, 1) > 1) continue;
         const c = src.get(x, y);
         if (c !== PAL.night0 && c !== PAL.night1 && c !== PAL.night2 && c !== PAL.water1 && c !== PAL.water2 && c !== PAL.water3 && c !== PAL.water4) continue;
-        const cx = fl((x - PCX) / 3);
-        const cy = fl((y - GY) / 2);
+        const cx = fl((x - G.cx) / 3);
+        const cy = fl((y - G.my) / 2);
         const h = hash2(cx, cy, 31);
         if (h < o.rbreak * 0.9) {
           p.erase(x, y);
@@ -818,8 +850,8 @@ function motePass(p: PixelCanvas, o: Pose): void {
   if (o.mote < 0 || o.pud < 0.95) return;
   for (let i = 0; i < 3; i++) {
     const u = (o.mote + i / 3) % 1;
-    const bx = PCX + [-13, 11, -5][i] + rnd(Math.sin((u + i) * TAU) * 1.4);
-    const y = rnd(PCY - 2 - u * 22);
+    const bx = G.cx + [-11, 9, -3][i] + rnd(Math.sin((u + i) * TAU) * 1.4);
+    const y = rnd(G.cy - 2 - u * 22);
     const x = rnd(bx);
     if (x < 1 || y < 1 || x >= W - 1 || p.isOpaque(x, y)) continue;
     p.set(x, y, u < 0.5 ? PAL.gold4 : u < 0.8 ? PAL.mist : PAL.steel);
@@ -843,7 +875,7 @@ function sparkPass(p: PixelCanvas, o: Pose, at: Pt): void {
 /** Summon: the falling light drop, its streak, and the splash crown when it lands. */
 function dropPass(p: PixelCanvas, o: Pose): void {
   if (o.drop >= 0) {
-    const x = PCX - 1;
+    const x = RX;
     const y = rnd(GY - o.drop);
     for (let i = 1; i < 10; i++) if (y - i - 2 > 1) p.set(x, y - i - 2, i < 4 ? PAL.gold4 : i < 7 ? PAL.mist : PAL.steel);
     p.rect(x - 1, y - 2, 3, 3, PAL.gold4);
@@ -856,7 +888,7 @@ function dropPass(p: PixelCanvas, o: Pose): void {
       const a = (i / n) * TAU;
       const r = 3 + k * 9;
       const h = Math.sin(k * Math.PI) * (4 + (i % 2) * 3);
-      const x = rnd(PCX - 0.5 + Math.cos(a) * r);
+      const x = rnd(RX + 0.5 + Math.cos(a) * r);
       const y = rnd(GY - 0.5 + Math.sin(a) * r * 0.48 - h);
       if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) continue;
       p.rect(x, y, 2, 1, k < 0.5 ? PAL.white : PAL.gold4);
@@ -965,8 +997,11 @@ function shatterPass(p: PixelCanvas, o: Pose, sk: Skel): void {
       if (c === null) continue;
       const i = paneOf(x, y);
       if (hash2(i, 7, 67) < (o.diss ?? 0)) continue;
-      // the cut lines open into a 1-px gap from the first break frame
-      if (onCut(x, y) && c !== PAL.ink) continue;
+      // the cut lines: a 1-px dark crack on the first break frame, then an open gap
+      if (onCut(x, y) && c !== PAL.ink) {
+        if (k < 0.25) p.set(x, y, PAL.ink);
+        continue;
+      }
       const a = (cuts[i] + cuts[(i + 1) % PANES] + (i === PANES - 1 ? TAU : 0)) / 2;
       const spread = 2 + hash2(i, 3, 71) * 4;
       const ox = rnd(Math.cos(a) * spread * k * 2.2);
@@ -979,7 +1014,7 @@ function shatterPass(p: PixelCanvas, o: Pose, sk: Skel): void {
       const glassy = c === PAL.mist || c === PAL.white || c === PAL.steel || c === GLASS;
       // first break frame: real pixels; then the panes cool to glass (mist / water4), their ink edges thin to steel
       let col = c;
-      if (k > 0.2) col = c === PAL.ink ? PAL.night2 : glassy ? (k > 0.55 ? PAL.water4 : PAL.mist) : c;
+      if (k > 0.6) col = c === PAL.ink ? PAL.night2 : glassy ? (k > 0.8 ? PAL.water4 : PAL.mist) : c;
       p.set(nx, ny, col);
     }
   // glints: one bright pixel (two on alternate panes) on each pane's broken edge, sliding along it as it falls
@@ -1003,6 +1038,7 @@ function shatterPass(p: PixelCanvas, o: Pose, sk: Skel): void {
 
 export function drawArcher(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right'): void {
   const light = lightOf(lightFrom);
+  G = puddleGeo(lightFrom);
   const v = mainView(o.k);
   const sk = skeleton(o);
 
@@ -1045,8 +1081,8 @@ export function drawArcher(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right')
 /** The reflection's arrow, running UNDER the floor: a dark-bright streak inside the puddle toward the foe. */
 function underPass(p: PixelCanvas, o: Pose): void {
   const u = clamp(o.under, 0, 1);
-  const y = GY + 6;
-  const x1 = rnd(PCX - 6 + (PRX + 6) * u);
+  const y = G.cy + 2;
+  const x1 = rnd(G.cx - G.rx * 0.6 + G.rx * 1.6 * u);
   for (let x = x1 - 9; x <= x1; x++) {
     if (x < 1 || x >= W - 1) continue;
     const inside = inPuddle(x, y, 1) <= 0.85;
@@ -1074,7 +1110,7 @@ function dissolvePass(fig: PixelCanvas, o: Pose): void {
 export function drawMirrorFigure(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right', kr: number): void {
   const light = lightOf(lightFrom);
   const q = layer();
-  const v = reflView(kr);
+  const v = reflView(kr, 0, GY);
   drawFigure(q, { ...o, k: 1 }, light, v);
   const b = boxOf(q);
   if (!b) return;

@@ -206,14 +206,14 @@ export const V3_POLAR_COIL_RECIPES = {
       // the flight: a low magnetic whirr at the coil's pitch (D3) carries the three spikes across the board — a
       // chopped triangle + a noise band swelling and gliding up as they close in, handing over to polarCoilOrbit
       // (which starts ≈ 0.3 s after the fling and swallows the tail)
-      const F0 = 0.07;
+      const F0 = 0.03;
       const F1 = 0.46;
       const fl = v.panner([[0, -0.2], [F0, -0.2], [F1, 0.35]]);
       const chopT = v.ring([[0, 9], [F0, 9], [F1, 15, 'e']], { d: F1 + 0.02, mix: 0.7, to: fl });
-      v.tone('triangle', [[0, D3], [F0, D3], [F1, D3 * 1.5, 'e']], { g: [[0, 0], [F0, 0], [0.14, 0.07], [0.32, 0.085], [F1, 0.0001, 'e']], to: chopT });
-      v.tone('sine', [[0, D3 * 0.5], [F0, D3 * 0.5], [F1, D3 * 0.75, 'e']], { g: [[0, 0], [F0, 0], [0.16, 0.06], [0.3, 0.06], [F1, 0.0001, 'e']], to: fl });
+      v.tone('triangle', [[0, D3], [F0, D3], [F1, D3 * 1.5, 'e']], { g: [[0, 0], [F0, 0], [0.08, 0.16], [0.32, 0.19], [F1, 0.0001, 'e']], to: chopT });
+      v.tone('sine', [[0, D3 * 0.5], [F0, D3 * 0.5], [F1, D3 * 0.75, 'e']], { g: [[0, 0], [F0, 0], [0.08, 0.13], [0.3, 0.13], [F1, 0.0001, 'e']], to: fl });
       const bpF = v.filt('bandpass', [[0, 700], [F0, 700], [F1, 1500, 'e']], 3, { to: chopT });
-      v.noise('white', { g: [[0, 0], [F0, 0], [0.16, 0.05], [0.3, 0.07], [F1, 0.0001, 'e']], to: bpF });
+      v.noise('white', { g: [[0, 0], [F0, 0], [0.08, 0.12], [0.3, 0.16], [F1, 0.0001, 'e']], to: bpF });
     },
   },
   /** The spikes orbit the target: a circling three-voice whirr, faster and higher (stopped on the converge). */

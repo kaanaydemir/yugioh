@@ -30,8 +30,9 @@ import { DEPTH, type XY } from '../../view/layout';
 import { lightPool } from '../../view/light';
 import { Raster } from '../../vfx/setpieces';
 import { Sparks, animate, onFrame } from '../../vfx/combat';
-import { GY, KR, PCX, PCY, PRX, W as ART_W, skeleton } from '../../art/monsters-v3/reflection_archer-rig';
+import { GY, H as ART_H, KR, W as ART_W, drawArcher, puddleGeo, skeleton } from '../../art/monsters-v3/reflection_archer-rig';
 import { framePose } from '../../art/monsters-v3/reflection_archer-anims';
+import { PixelCanvas } from '../../art/pixel';
 
 export const TAU = Math.PI * 2;
 /** Floor marks just above the cards on the tiles (under every body). */
@@ -68,11 +69,20 @@ function ring(g: Raster, cx: number, cy: number, rx0: number, ry0: number, c: nu
 
 // ================================================================ the archer's points
 
+/** The puddle geometry of the sheet a unit shows (P2: the relight sheet, shown flipped). */
+const sheetGeo = (u: MonsterUnit) => puddleGeo(u.flipX ? 'right' : 'left');
+/** The puddle in world px: centre and radii (iso, flat; the art's own ellipse). */
+export function puddleWorld(u: MonsterUnit): { c: XY; rx: number; ry: number } | null {
+  if (!u.sprite.active || u.cardId !== 'reflection_archer') return null;
+  const G = sheetGeo(u);
+  return { c: rx(u.framePoint(G.cx + 0.5, G.cy + 0.5)), rx: G.rx, ry: G.ry };
+}
+
 /**
  * A point of the archer on a frame (default: the frame on screen), in world px: 'tip' the arrow's point (the
  * art's muzzle), 'puddle' the puddle's front edge (where the reflection's arrow leaves it), 'gem' the chest gem.
  */
-export function archerPoint(u: MonsterUnit, which: 'tip' | 'puddle' | 'gem' | 'streak', anim?: AnyMonsterAnim, frame?: number): XY | null {
+export function archerPoint(u: MonsterUnit, which: 'tip' | 'puddle' | 'pool' | 'gem' | 'streak', anim?: AnyMonsterAnim, frame?: number): XY | null {
   if (!u.sprite.active || u.cardId !== 'reflection_archer') return null;
   if (which === 'streak') {
     // the head of the release streak the art draws on the attack's release frame (shot × the run to the frame edge)
@@ -83,7 +93,9 @@ export function archerPoint(u: MonsterUnit, which: 'tip' | 'puddle' | 'gem' | 's
     const y = Math.round(GY - (GY - (g[1] - 0.5)) * Math.max(0.05, P.k));
     return rx(u.framePoint(x0 + len + 0.5, y + 0.5));
   }
-  if (which === 'puddle') return rx(u.framePoint(PCX + PRX - 3 + 0.5, PCY + 0.5));
+  const G = sheetGeo(u);
+  if (which === 'puddle') return rx(u.framePoint(G.cx + G.rx - 3 + 0.5, G.cy + 0.5));
+  if (which === 'pool') return rx(u.framePoint(G.cx + 0.5, G.cy + 0.5));
   const fi = u.frameInfo();
   const pts = u.art.points?.(anim ?? fi.anim ?? 'idle', frame ?? fi.frame);
   const p = which === 'tip' ? pts?.muzzle : pts?.core;
@@ -464,8 +476,8 @@ export interface Cracks {
  * Death f1: cracks of light run out of the puddle over the marble — jagged iso lines from its centre (white
  * heads, water bodies), held until the burst.
  */
-export function puddleCracks(sc: Phaser.Scene, ground: XY, dir: 1 | -1): Cracks {
-  const c: XY = { x: ground.x + dir, y: ground.y + 5 };
+export function puddleCracks(sc: Phaser.Scene, ground: XY, dir: 1 | -1, centre?: XY): Cracks {
+  const c: XY = centre ?? { x: ground.x + dir, y: ground.y + 5 };
   const ras = Raster.around(sc, c.x, c.y, 96, 52, FLOOR_DEPTH + 0.5);
   const arms: XY[][] = [];
   const N = 7;
@@ -518,14 +530,15 @@ export function puddleCracks(sc: Phaser.Scene, ground: XY, dir: 1 | -1): Cracks 
 }
 
 /** Death f2: the reflection breaks — dark-blue shards slide out over the floor from under the archer's feet. */
-export function reflectionShards(sc: Phaser.Scene, ground: XY, dir: 1 | -1, depth: number): void {
+export function reflectionShards(sc: Phaser.Scene, ground: XY, dir: 1 | -1, depth: number, centre?: XY): void {
   const sp = new Sparks(sc, depth);
+  const c: XY = centre ?? { x: ground.x + dir, y: ground.y + 6 };
   for (let i = 0; i < 14; i++) {
     const a = RR(0, TAU);
     const v = RR(30, 80);
     sp.add({
-      x: ground.x + dir * Math.round(RR(-6, 8)),
-      y: ground.y + Math.round(RR(3, 12)),
+      x: c.x + Math.round(RR(-9, 9)),
+      y: c.y + Math.round(RR(-4, 4)),
       vx: Math.cos(a) * v,
       vy: Math.abs(Math.sin(a)) * v * 0.45,
       drag: 4,
@@ -539,105 +552,182 @@ export function reflectionShards(sc: Phaser.Scene, ground: XY, dir: 1 | -1, dept
   sp.release();
 }
 
-/** Glass sliver masks (cells, top-left first): thin flat shards 2–4 px long, never single pixels. */
-const SLIVERS: readonly (readonly [number, number][])[] = [
-  [[0, 0], [0, 1], [1, 2]],
-  [[0, 0], [1, 0], [1, 1], [2, 2]],
-  [[1, 0], [0, 1], [0, 2]],
-  [[0, 0], [1, 1], [2, 1]],
-  [[0, 0], [0, 1], [0, 2], [1, 3]],
-  [[1, 0], [1, 1], [0, 2]],
-];
-
-/** One sliver at (x, y): a 1-px outline, the first cell lit (a glint on its top edge), the body in `body`. Its
- *  mirrored twin (flip: cells upside down) uses the reflection's tones. */
-function sliver(g: Raster, x: number, y: number, m: readonly [number, number][], flip: boolean, out: number, lit: number, body: number): void {
-  const cells = flip ? m.map(([dx, dy]) => [dx, -dy] as const) : m;
-  for (const [dx, dy] of cells) for (const [ox, oy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) g.px(x + dx + ox, y + dy + oy, out);
-  cells.forEach(([dx, dy], k) => g.px(x + dx, y + dy, k === 0 ? lit : body));
+/** A glass pane cut from the body: its real pixels (relative to its top-left), where it starts, how it flies. */
+interface Pane {
+  px: { x: number; y: number; c: number }[];
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  /** its lowest pixel row (relative), the floor row it lands on, the glint pixel (relative, on its broken edge) */
+  bot: number;
+  floor: number;
+  gx: number;
+  gy: number;
+  /** the glint's one flicker (ms into the fall), landed at (ms, -1 airborne) */
+  flick: number;
+  landed: number;
 }
 
 /**
- * Death burst (§5.2 "yansıma kırılır, okçu cam kırıklarına"): the archer's glass falls as flat white / mist
- * slivers (1-px ink outline, whole-px steps); under the floor line each sliver's dark-blue mirrored twin rises to
- * meet it; where they meet on the floor line they vanish together in a short horizontal mirror glint. The puddle
- * (both lobes) drains to nothing. No crystal heap, no teal: this replaces the generic material break.
+ * The body's glass panes, cut from the REAL pixels of the break frame (EF-12): the art's death frame `f` is drawn
+ * (figure only, no floor) and its pixels are split into angular pieces — sectors round the chest gem, each cut
+ * once more across — so every pane is a hard-edged shard of the archer with its own planes and ink edge.
+ */
+function cutPanes(u: MonsterUnit, f: number): Pane[] {
+  // the break frame as the art shows it (its panes and cracks), without the floor
+  const P = { ...framePose('death', f), pud: 0, rv: 0, crack: 0, rbreak: 0, mote: -1, spark: 0, R: null };
+  const cv = new PixelCanvas(ART_W, ART_H);
+  drawArcher(cv, P, u.flipX ? 'right' : 'left');
+  const body: { x: number; y: number }[] = [];
+  for (let y = 0; y < GY; y++) for (let x = 0; x < ART_W; x++) if (cv.get(x, y) !== null && cv.get(x, y) !== PAL.ink) body.push({ x, y });
+  if (!body.length) return [];
+  const flip = u.flipX;
+  const sk = skeleton(P);
+  const cx = sk.C[0];
+  const panes: Pane[] = [];
+  const used = new Set<number>();
+  const N = 9;
+  for (let n = 0; n < N * 4 && panes.length < N; n++) {
+    // a seed on the body, spread top to bottom (the k-th pane takes the k-th height band)
+    const band = panes.length / N;
+    const cand = body.filter((q) => q.y >= GY - 62 + band * 56 && q.y < GY - 62 + (band + 1 / N) * 56 + 4);
+    const sd = (cand.length ? cand : body)[Math.floor(rnd() * (cand.length || body.length))];
+    // a hard-edged triangle 5–8 px round it
+    const r = RR(3, 4.5);
+    const a0 = RR(0, TAU);
+    const V = [0, 1, 2].map((i) => ({ x: sd.x + Math.cos(a0 + (i * TAU) / 3 + RR(-0.35, 0.35)) * r * RR(0.9, 1.25), y: sd.y + Math.sin(a0 + (i * TAU) / 3 + RR(-0.35, 0.35)) * r * RR(0.9, 1.25) }));
+    const side = (p: { x: number; y: number }, A: { x: number; y: number }, B: { x: number; y: number }) => (B.x - A.x) * (p.y - A.y) - (B.y - A.y) * (p.x - A.x);
+    const inside = (x: number, y: number): boolean => {
+      const q = { x: x + 0.5, y: y + 0.5 };
+      const d0 = side(q, V[0], V[1]);
+      const d1 = side(q, V[1], V[2]);
+      const d2 = side(q, V[2], V[0]);
+      return (d0 >= 0 && d1 >= 0 && d2 >= 0) || (d0 <= 0 && d1 <= 0 && d2 <= 0);
+    };
+    const pts: { x: number; y: number; c: number }[] = [];
+    let x0 = 1e9, y0 = 1e9, y1 = -1e9;
+    for (let y = Math.floor(sd.y - 7); y <= sd.y + 7; y++)
+      for (let x = Math.floor(sd.x - 7); x <= sd.x + 7; x++) {
+        const c = cv.get(x, y);
+        if (c === null || used.has(y * ART_W + x) || !inside(x, y)) continue;
+        pts.push({ x, y, c });
+        x0 = Math.min(x0, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+      }
+    if (pts.length < 10) continue;
+    for (const q of pts) used.add(q.y * ART_W + q.x);
+    // its broken edges: a 1-px dark rim on the triangle's lower edges, its lit top edge a step lighter
+    const edge = (q: { x: number; y: number }) => !pts.some((o) => o.x === q.x && o.y === q.y + 1) || !pts.some((o) => o.x === q.x + 1 && o.y === q.y) || !pts.some((o) => o.x === q.x - 1 && o.y === q.y);
+    const top = (q: { x: number; y: number }) => !pts.some((o) => o.x === q.x && o.y === q.y - 1);
+    const rel = pts.map((q) => ({
+      x: flip ? x0 - q.x : q.x - x0,
+      y: q.y - y0,
+      c: top(q) ? (q.c === PAL.ink ? PAL.steel : q.c === PAL.mist || q.c === PAL.steel ? PAL.white : q.c) : edge(q) ? PAL.night0 : q.c,
+    }));
+    const tops = rel.filter((q) => q.c === PAL.white);
+    const g = tops.length ? tops[Math.floor(tops.length / 2)] : rel[0];
+    const w = u.framePoint(x0, y0);
+    const out = Math.sign(sd.x - cx) || (panes.length % 2 ? 1 : -1);
+    panes.push({
+      px: rel,
+      x: Math.round(w.x),
+      y: Math.round(w.y),
+      vx: (flip ? -out : out) * RR(12, 34),
+      vy: RR(0, 22),
+      bot: y1 - y0,
+      floor: 0,
+      gx: g.x,
+      gy: g.y,
+      flick: RR(70, 240),
+      landed: -1,
+    });
+  }
+  return panes;
+}
+
+/**
+ * Death burst (§5.2 "yansıma kırılır, okçu cam kırıklarına"): the archer's break frame is cut into hard-edged
+ * glass panes of its REAL pixels (EF-12); they part a pixel or two, then FALL (gravity, whole-px steps) and land on
+ * the floor line, each catching the light once on its way down (a 1-px white glint that flickers once), the
+ * cold glass tones taking over as they cool. Under the floor line each pane's reflection rises to meet it — a
+ * sparse dithered water3 ghost, no outline (a reflection, not debris); where they meet the floor a short
+ * horizontal mirror glint. The puddle drains inside its own flat ellipse toward the feet (Bayer steps).
  */
 export function glassFall(sc: Phaser.Scene, u: MonsterUnit, ground: XY, dir: 1 | -1): Promise<void> {
   const gy = Math.round(ground.y);
-  const top = gy - 64;
-  const ras = new Raster(sc, ground.x - 50, top - 10, 100, gy - top + 80, DEPTH.FX - 2);
-  const floor = Raster.around(sc, ground.x + dir, gy + 18, 64, 56, FLOOR_DEPTH);
-  interface Shard { x: number; y: number; vx: number; vy: number; m: number; lit: number; body: number; done: number; meet: number }
-  const shards: Shard[] = [];
-  for (let i = 0; i < 16; i++) {
-    const hy = RR(8, 52);
-    shards.push({
-      x: ground.x + dir * RR(-9, 12),
-      y: gy - hy,
-      vx: dir * RR(-12, 34) + RR(-14, 14),
-      vy: RR(-70, -10),
-      m: i % SLIVERS.length,
-      lit: i % 3 === 0 ? PAL.white : PAL.mist,
-      body: i % 3 === 2 ? PAL.steel : PAL.mist,
-      done: -1,
-      // each lands on its own row of the floor (iso depth), so the meetings ripple across the puddle
-      meet: gy + Math.round(RR(-2, 4)),
-    });
-  }
-  const pud: XY = { x: ground.x + dir, y: gy + 5 };
-  const MS = 640;
-  void u;
+  const top = gy - 70;
+  const ras = new Raster(sc, ground.x - 60, top, 120, gy - top + 30, DEPTH.FX - 2);
+  const pw = puddleWorld(u);
+  const pud = pw?.c ?? { x: ground.x + dir * 8, y: gy - 2 };
+  const PRX0 = pw?.rx ?? 17;
+  const PRY0 = pw?.ry ?? 8;
+  const floor = Raster.around(sc, pud.x, pud.y, 2 * PRX0 + 8, 2 * PRY0 + 8, FLOOR_DEPTH);
+  const panes = cutPanes(u, Math.max(0, u.frameCount('death') - 2));
+  // the rest of the body is gone with the art's last frame: only these panes fall
+  for (const p of panes) p.floor = gy + Math.round(RR(-3, 3));
+  const MS = 760;
   return animate(sc, MS, (t, el, dt) => {
     const s = dt / 1000;
     floor.draw((g) => {
-      // the puddle drains (both lobes shrink toward the feet, stepped tones), under every body
-      const pk = Math.round((1 - t) * 6) / 6;
-      if (pk > 0.05) {
-        const fill = pk > 0.6 ? PAL.night4 : PAL.night3;
-        const rim = pk > 0.6 ? PAL.steel : PAL.night4;
-        const by = pud.y + Math.round(21 * pk);
-        g.ell(pud.x, pud.y, Math.round(25 * pk), Math.max(1, Math.round(12 * pk)), rim);
-        g.ell(pud.x, by, Math.round(17 * pk), Math.max(1, Math.round(15 * pk)), rim);
-        g.ell(pud.x, pud.y, Math.round(25 * pk) - 2, Math.max(1, Math.round(12 * pk) - 1), fill);
-        g.ell(pud.x, by, Math.max(1, Math.round(17 * pk) - 2), Math.max(1, Math.round(15 * pk) - 1), fill);
+      // the puddle drains inside its own iso ellipse, shrinking toward the feet: the rim and a few water lines,
+      // stepped (Bayer) — the tile shows through, never an opaque fill
+      const pk = clamp(1 - t * 1.25, 0, 1);
+      if (pk <= 0.04) return;
+      const k = Math.round(pk * 6) / 6;
+      const cx = ground.x + (pud.x - ground.x) * k;
+      const cy = gy + (pud.y - gy) * k;
+      const lv = k > 0.6 ? 1 : k > 0.3 ? 0.6 : 0.3;
+      ring(g, cx, cy, PRX0 * k, PRY0 * k, k > 0.5 ? PAL.mist : PAL.steel, lv);
+      for (let y = Math.round(cy - PRY0 * k) + 1; y < cy + PRY0 * k; y++) {
+        if ((y & 3) !== 0) continue;
+        const half = PRX0 * k * Math.sqrt(Math.max(0, 1 - ((y - cy) / (PRY0 * k)) ** 2)) - 2;
+        for (let x = Math.round(cx - half); x <= Math.round(cx + half); x++) g.dpx(x, y, PAL.night4, lv * 0.7);
       }
     });
     ras.draw((g) => {
-      for (const sh of shards) {
-        if (sh.done >= 0) {
-          // the sliver and its twin met: a horizontal mirror glint on the floor line, two steps, then gone
-          const k = el - sh.done;
-          const x = Math.round(sh.x);
-          if (k < 60) {
-            g.px(x - 1, sh.meet, PAL.white);
-            g.px(x, sh.meet, PAL.white);
-            g.px(x + 1, sh.meet, PAL.white);
-            g.px(x - 2, sh.meet, PAL.water4);
-            g.px(x + 2, sh.meet, PAL.water4);
-          } else if (k < 130) {
-            g.px(x, sh.meet, PAL.water4);
-            g.px(x - 1, sh.meet, PAL.water3);
-            g.px(x + 1, sh.meet, PAL.water3);
+      for (const p of panes) {
+        if (p.landed < 0 && el > 40) {
+          p.vy += 520 * s;
+          p.vx *= 1 - 2.2 * s;
+          p.x += p.vx * s;
+          p.y += p.vy * s;
+          if (p.y + p.bot >= p.floor) {
+            p.y = p.floor - p.bot;
+            p.landed = el;
           }
-          continue;
         }
-        if (el < 30) continue;
-        sh.vy += 440 * s;
-        sh.vx *= 1 - 1.4 * s;
-        sh.x += sh.vx * s;
-        sh.y += sh.vy * s;
-        if (sh.y >= sh.meet - 1) {
-          sh.y = sh.meet;
-          sh.done = el;
-          continue;
+        const X = Math.round(p.x);
+        const Y = Math.round(p.y);
+        const since = p.landed < 0 ? 0 : el - p.landed;
+        // a landed pane lies flat: its rows squash onto the floor line (2 steps), then it goes out in steps
+        const flat = p.landed < 0 ? 1 : since < 50 ? 0.5 : 0.25;
+        const lvl = since < 120 ? 1 : since < 200 ? 0.6 : since < 280 ? 0.3 : 0;
+        if (lvl <= 0) continue;
+        // the pane cools from its real planes to glass after its first ~140 ms
+        const cool = el > 140;
+        for (const q of p.px) {
+          const y = p.landed < 0 ? Y + q.y : p.floor - Math.round((p.bot - q.y) * flat);
+          let c = q.c;
+          if (cool) c = c === PAL.ink ? PAL.night2 : c === PAL.white || c === PAL.mist || c === PAL.steel ? (el > 320 ? PAL.water4 : PAL.mist) : c;
+          g.dpx(X + q.x, y, c, lvl);
         }
-        const x = Math.round(sh.x);
-        const y = Math.round(sh.y);
-        const m = SLIVERS[sh.m];
-        sliver(g, x, y, m, false, PAL.ink, sh.lit, sh.body);
-        // its twin under the floor line, rising as the sliver falls
-        sliver(g, x, mirrorY(y, sh.meet), m, true, PAL.night0, PAL.water3, PAL.water2);
+        // the glint: one white pixel on the broken edge that flickers ONCE mid-fall (two frames)
+        if (p.landed < 0 && el >= p.flick && el < p.flick + 50) {
+          g.px(X + p.gx, Y + p.gy, PAL.white);
+          g.px(X + p.gx + 1, Y + p.gy, PAL.gold4);
+        }
+        // its reflection under the floor line, rising to meet it: sparse water3, no outline
+        if (p.landed < 0) {
+          for (const q of p.px) {
+            if (((q.x + q.y) & 1) === 1) continue;
+            const my = mirrorY(Y + q.y, p.floor);
+            if (my - p.floor > 14) continue;
+            g.dpx(X + q.x, my, PAL.water3, 0.5);
+          }
+        } else if (since < 70) {
+          // they meet: a horizontal mirror glint along the floor under the pane
+          for (let x = -2; x <= 4; x++) g.px(X + x, p.floor + 1, Math.abs(x - 1) < 2 ? PAL.white : PAL.water4);
+        }
       }
     });
   }).then(() => {

@@ -35,7 +35,7 @@ import type { StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
 import { deathV3 } from '../_v3/death';
 import { summonPose } from '../_v3/summon';
-import { atFrame, atMark, panAt, play, start, takeCharge } from '../_v3/sound';
+import { atFrame, atMark, fade, hush, panAt, play, start, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { runSummon, type Stage } from '../summon-a/_kit';
 import { capped } from '../summon-b/_kit';
@@ -338,7 +338,10 @@ registerStrike(
     await twinArrows(sc, { from, fromUnder, ground, to, toGround, ms, dir });
     flight.stop(30);
     // ---- contact: top and bottom meet
-    s.impact(to);
+    // the mirror strike scores this contact frame alone (crit r2: the generic body blow blurred archerImpact):
+    // the shared impactHeavy / impactLight are skipped; a struck body's own material (hitSoundFor) still rings
+    hush(['impactHeavy', 'impactLight'], () => s.impact(to));
+    queueMicrotask(() => fade(['impactHeavy', 'impactLight'], 12));
     // the card's own stop (YENI_KARTLAR §C4: 90 ms): merged with the class's stop, the longer one wins
     void stopTime(sc, 90);
     play(s.blocked ? 'archerDeflect' : 'archerImpact', { volume: 0.95, pan: panAt(to.x) });
@@ -377,20 +380,26 @@ registerCardHook(
     const feet = u.worldPoint('feet');
     const ground: XY = { x: Math.round(feet.x), y: Math.round(feet.y) };
     const dir: 1 | -1 = u.flipX ? -1 : 1;
+    // the puddle lies on the tile's back half beside the feet (the art's PuddleGeo): the cracks run out of it
+    const pool = archerPoint(u, 'pool') ?? undefined;
     let cracks: ReturnType<typeof puddleCracks> | null = null;
     // f1: the puddle cracks — cracks of light run out over the marble (the voice's deathStart scores it)
     atFrame(u, 'death', 1, () => {
       // the death kit's own deathStart cue is lost when the reaction already started the pose: score it here
-      play('archerCrack', { volume: 0.95, pan: panAt(ground.x) });
-      cracks = puddleCracks(sc, ground, dir);
+      // (when the kit's own deathStart DID fire on this same frame, it is faded under ours: one crack, never two)
+      queueMicrotask(() => {
+        fade(['archerCrack'], 8);
+        play('archerCrack', { volume: 0.95, pan: panAt(ground.x) });
+      });
+      cracks = puddleCracks(sc, ground, dir, pool);
       void lightFlash(sc, ground.x, ground.y + 4, PAL.water4, 18, 200, { floorY: ground.y, intensity: 0.7 });
     }, { maxMs: 3000 });
     // f2: the reflection breaks — its shards slide out over the floor
     atFrame(u, 'death', 2, () => {
-      reflectionShards(sc, ground, dir, u.sprite.depth + 0.2);
+      reflectionShards(sc, ground, dir, u.sprite.depth + 0.2, pool);
       void shake(sc, 70, 1);
     }, { maxMs: 3000 });
-    // f8: it shatters into glass — the card's own burst (slivers falling, their mirrored twins rising to meet
+    // f8→f9: it shatters into glass — the card's own burst (panes cut from the body fall, their mirrored twins rise to meet
     // them at the floor line); one short frame of glass dust in the art
     const n = u.frameCount('death');
     let fell = false;
@@ -400,7 +409,7 @@ registerCardHook(
       play('archerShatter', { volume: 0.95, pan: panAt(ground.x) });
       void glassFall(sc, u, ground, dir);
     };
-    atFrame(u, 'death', n - 2, fall, { maxMs: 3000 });
+    // (on the last frame: the break frame f8 shows its panes first, then the fx panes cut from it take over)
     // the last frame: the body is gone and the glass burst owns the floor — hide the sprite so the death kit
     // skips the generic material break (no crystal heap, no generic shatter sound), the card is born on the burst
     atFrame(u, 'death', n - 1, () => {

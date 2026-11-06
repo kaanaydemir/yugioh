@@ -57,7 +57,7 @@ const I = {
   // the tabard hem swings after the chest
   cloth: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, -1, -1, -1],
   lid: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 0],
-  bowG: [1, 1, 1, 1, 1, 1, 1, 1.5, 1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  bowG: [1, 1, 1, 1, 1.5, 1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 };
 /** The archer's own idle (no reflection pose). */
 function idleMain(f: number): Pose {
@@ -326,8 +326,9 @@ export function deathPose(f: number): Pose {
     // (src/cinematics/d/_reflection_archer-fx.ts glassFall), never the generic material break
     { py: 1, eye: 0, crack: 1.5, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.12 },
     { py: 1, eye: 0, crack: 1.75, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.26 },
-    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.42 },
-    { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.76 },
+    // the break frames keep the body's real planes (EF-12): the flat beat ends as the glass catches the light again
+    { py: 1, eye: 0, crack: 1, rv: 0, flat: 0, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.42 },
+    { py: 1, eye: 0, crack: 1, rv: 0, flat: 0, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 0.56 },
     { py: 1, eye: 0, crack: 1, rv: 0, flat: 1, crownG: 0, bowG: 0, gem: 0, hairK: 0, shatter: 1, diss: 1, pudG: 0.5 },
   ];
   const base = { ...hh0, lid: 0, shake: 0, rip: -1, mote: -1, t: f / (D_N - 1), hair: 0.2 };

@@ -758,23 +758,25 @@ function panelFlash(sc: Phaser.Scene, p: PlayerId, first: boolean): void {
 }
 
 /**
- * jesterFold, spaced: folds that land together (two bodies closing at once) are staggered by at least FOLD_GAP ms —
- * the recipe's own gap would drop the second — and each one in a run steps the pitch up a little ("tak-tak-tak").
+ * The wipe's per-card sounds (jesterFold, jesterCardWhirl), spaced: two that land together (two bodies closing at
+ * once, two cards leaving at once) are staggered by at least SPACED_GAP ms — the recipe's own gap would drop the
+ * second — and each one in a run steps the pitch up a little ("tak-tak-tak").
  */
-const FOLD_GAP = 75;
-let foldLast = -1e9;
-let foldRun = 0;
-function playFold(sc: Phaser.Scene, o: { volume: number; pan: number; pitch?: number }): void {
+const SPACED_GAP = 75;
+const spacedLast = new Map<string, { at: number; run: number }>();
+function playSpaced(sc: Phaser.Scene, name: 'jesterFold' | 'jesterCardWhirl', o: { volume: number; pan: number; pitch?: number }): void {
   const now = sc.time.now;
+  let st = spacedLast.get(name);
   // a new scene's clock starts over: forget the last one's
-  if (foldLast > now + 500) foldLast = -1e9;
-  const at = Math.max(now, foldLast + FOLD_GAP);
-  foldRun = at - foldLast < 220 ? Math.min(3, foldRun + 1) : 0;
-  foldLast = at;
-  const opts = { ...o, pitch: (o.pitch ?? 1) * (1 + foldRun * 0.06) };
-  if (at <= now) play('jesterFold', opts);
-  else void sleep(sc, at - now).then(() => play('jesterFold', opts));
+  if (!st || st.at > now + 500) st = { at: -1e9, run: 0 };
+  const at = Math.max(now, st.at + SPACED_GAP);
+  const run = at - st.at < 220 ? Math.min(3, st.run + 1) : 0;
+  spacedLast.set(name, { at, run });
+  const opts = { ...o, pitch: (o.pitch ?? 1) * (1 + run * 0.06) };
+  if (at <= now) play(name, opts);
+  else void sleep(sc, at - now).then(() => play(name, opts));
 }
+const playFold = (sc: Phaser.Scene, o: { volume: number; pan: number; pitch?: number }): void => playSpaced(sc, 'jesterFold', o);
 
 /** The card's fold round a rewound body (foldRect): its whole length and the part where it stands up out of the tile. */
 const FOLD_MS = 300;
@@ -825,12 +827,18 @@ async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay
     const fold = foldStart.then(() => foldRect(sc, box, home, FOLD_MS, body.sprite.depth + 0.6));
     if (total) {
       let k = 0;
+      const t0 = sc.time.now;
       for (const st of steps) {
         for (let f = body.frameCount(st.anim) - 1; f >= 0; f--) {
           if (!body.sprite.active) break;
           body.pose(st.anim, f);
-          if (k++ % 3 === 1) afterimage(sc, body.sprite, PAL.gold2, { alpha: 0.3, ms: 100, depth: body.sprite.depth - 0.2 });
-          if ((total - k) * step <= FOLD_RISE) foldGo();
+          // the time left, at the pace the frames are REALLY shown (a sleep ends on a display frame, so a 20-ms step
+          // can take 33 ms): the card starts to rise FOLD_RISE before the last frame ends
+          const pace = k > 0 ? Math.max(step, (sc.time.now - t0) / k) : step;
+          if ((total - k) * pace <= FOLD_RISE + pace * 0.5) foldGo();
+          // gold echoes peel off while it plays back — none once the card is closing round it (an echo would outlive
+          // the body and hang over the card)
+          if (k++ % 3 === 1 && foldAt < 0) afterimage(sc, body.sprite, PAL.gold2, { alpha: 0.3, ms: 100, depth: body.sprite.depth - 0.2 });
           await sleep(sc, step);
         }
       }
@@ -859,7 +867,7 @@ async function rewindOne(ctx: Ctx<'massDestroy'>, s: Show, d: Doomed, o: { delay
     await tile.flipUp(140);
   }
   void lightFlash(sc, home.x, home.y, PAL.gold4, 18, 160, { floorY: home.y, intensity: 0.6 });
-  play('jesterCardWhirl', { volume: 0.75, pan });
+  playSpaced(sc, 'jesterCardWhirl', { volume: 0.75, pan });
   o.onFolded();
   o.onFlight();
   if (o.win) {

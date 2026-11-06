@@ -6,7 +6,8 @@
 //               side runs down-right at the viewer, the ram comes at us), all three goblins yelling, the stove
 //               spitting flame out of the pipe, the rear tyre throwing sparks; the ram strikes its KLANG — the one
 //               brightest point. FIRE backdrop, the light pool behind the ram.
-// small (44×34) the SAME picture, closer: a 1:1 crop of it — the yelling crew, the wrench and the spiked ram.
+// small (44×34) the SAME picture, closer: a 1:1 crop of it — the wrench goblin and the slinger yelling over the rim
+//               and the spiked ram striking its KLANG (at 1× it reads as a charging ram, not only goblin heads).
 // Living (4 frames, 150 ms): wheels turn, sparks fly, smoke and flag move, the fire ball breathes.
 // Colours only from PAL (the sprite and the kit), folded to the card's tone budget.
 
@@ -26,10 +27,10 @@ const SHEAR_X0 = 20;
 /** where the sheared sprite sits in the big picture (sprite px → picture px 1:1), and the small crop of it */
 const BIG_DX = -12;
 const BIG_DY = -15;
-const SMALL_CROP = [24, 14, 44, 34] as const;
+const SMALL_CROP = [36, 27, 44, 34] as const;
 /** the ram's KLANG (big px) — the one brightest point — and the wrench goblin's yell (small px) */
 const FOCUS = [60, 42] as const;
-const FOCUS_SMALL = [20, 11] as const;
+const FOCUS_SMALL = [17, 9] as const;
 
 function cardPose(f: number) {
   const ph = (f % 4) / 4;
@@ -87,7 +88,8 @@ function big(l: ArtLayers, f: number): void {
 }
 
 function small(l: ArtLayers, f: number): void {
-  paintBackdrop(l.backdrop, 'FIRE', { focus: [FOCUS_SMALL[0] + 14, 16], horizon: 22 });
+  // the big backdrop's sun and horizon, seen through the crop (big px − (SMALL_CROP + BIG_D) = big px − (24, 12))
+  paintBackdrop(l.backdrop, 'FIRE', { focus: [FOCUS[0] - 24, FOCUS[1] - 8 - 12], horizon: 44 - 12 });
   l.subject.blit(sprite(f).crop(SMALL_CROP[0], SMALL_CROP[1], SMALL_CROP[2], SMALL_CROP[3]), 0, 0);
 }
 
