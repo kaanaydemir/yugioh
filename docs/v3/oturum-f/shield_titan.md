@@ -1062,3 +1062,18 @@ Following HANDBOOK-lane-B §9 ("re-base on the placeholder cinematics"), `shots/
 was measured over kd* + m1Shield + m1Board5. It uses the current tree with this card's registrations off (generic
 cinematics), so it holds today's rigs and none of this card's presentation. The old bases are kept unchanged, so the
 history of the drift stays visible. The gate of the current run (cinematics on) against it is in 18.4.
+
+### 18.4 Gates after the gate fix
+
+| gate | result | evidence |
+|---|---|---|
+| typecheck | clean | — |
+| `npx vitest run` (full) | 8 failed, 1476 passed. **a6-flow B4 now passes.** All the failures are on the known-ignore list (arena-nt-platform ×2, board-nt-layout, cardface-v3 G1 scrap_raiders, dusk_ashen, crag_axeman 'struck') or are load timeouts that pass alone: ashen_drake passes in a 4-file rerun, cloud_hatchling 9/9 alone. None of them is shield_titan's | — |
+| a6-flow + shield_titan tests together | 80 / 80 | — |
+| measure (21 kd* + m1Shield + m1Board5, cinematics on) | 0 errors, zoom 1, number = contact | `gatefix/measure.json` |
+| camera gate vs `camera-base-v2.json` | **23 ok, 0 NOBASE, 0 FAIL** | `gatefix/camera-gate-v2.txt` |
+| camera gate vs the old bases | m1Shield (lane base) and kdWallWeak (card base) still FAIL against the pre-rig bases. Fully explained in 18.2 | — |
+
+Process note: the orchestrator's WIP checkpoint 9468d4e was committed during the A/B window. It caught the temporary
+`&stAB=off` guard on the registration block, which is query-gated and inert without that query. The working tree
+has the guard removed again (`if (LOOK_V3) {`), so the next commit drops it.

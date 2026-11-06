@@ -50,7 +50,7 @@ export const DEATH_PRESETS: Record<MonsterId, DeathPreset> = {
   seal_leg_r: { material: 'shadow', accent: 'crystal' },
   seal_leg_l: { material: 'shadow', accent: 'crystal' },
   hourglass_imp: { material: 'light', accent: 'light' },
-  windmane_knight: { material: 'light', accent: 'stone' },
+  windmane_knight: { material: 'light', accent: 'light' },
   shield_titan: { material: 'light', accent: 'light' },
   wing_lady: { material: 'light', accent: 'light' },
   // batch 2 (docs/v3/YENI_KARTLAR.md; placeholder flavours until each monster gets its own)

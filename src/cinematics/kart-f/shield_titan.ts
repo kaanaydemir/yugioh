@@ -1579,7 +1579,7 @@ function positionLayer(ctx: Ctx<'positionChange'>): Promise<void> {
 
 // ================================================================ registrations (v3 only)
 
-if (LOOK_V3 && !(typeof location !== "undefined" && location.search.includes("stAB=off"))) { // TEMP A/B (gate fix), reverted
+if (LOOK_V3) {
   registerCardHook(
     ID,
     'summon',
