@@ -144,3 +144,5 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   hedef-gorunum-3'e göre kalın sahne, gömük karolar (boş yuva yok), kürsüler, tuğla duvar/sancak/meşale, mangallar,
   katmanlı sis; eski 3 arena testi yeni şekle göre yazıldı. Bilinen test hataları artık 4 (G1, dusk_ashen, hourglass_imp,
   shield_titan). Açık: P2 kürsüsü küçük/sönük, saha üstü hedeften soğuk, öndeki sis HUD altında. Test sürümü 18.
+- 2026-11-06: ŞERİT B BİTTİ (mudgrasp_spirit, 28e8c7d; grim_warden, wisp_imp, hollow_ogre önceden). Kapılar temiz
+  (vitest bilinen 4; v1 17/17 + a6v1 26/26). Açık notlar docs/v3/oturum-b.md'de. Test sürümü 19.

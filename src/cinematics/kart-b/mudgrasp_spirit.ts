@@ -2,13 +2,15 @@
 // Every registration below is gated on LOOK_V3: the v1 look keeps today's paths byte for byte (KK-9).
 //
 // Summon — "the climb" (one of the two climb entrances, §5):
-//   0     the tile softens into a turning mud vortex (mgVortex, sustained; a violet pit glows in it, bubbles pop)
-//   f2    two hands BURST up out of the mud (mgBurst: the 600 Hz şlop) — clods fly, a violet flash from below
-//   f3    the palms SLAP down and grip the tile's edges (mgSlap: el şaplağı) — mud splats on the floor, a 2-px shake
-//   f4–6  the body is hauled up between the gripping hands (mgHaul: a long wet drag, a strained grunt); the mask surfaces
-//   f7    land: out of the mud (mgLand), the vortex closes in steps, a ripple ring, the finale (badge pop)
-//   f8    the mask seats with a click and the violet eyes ignite (a light flash on the face)
-//   f9    shake-off: wet clods thrown off the body
+//   0     the tile softens into a glossy turning vortex (4 spiral arms, a violet pit + its light; mgVortex sustained)
+//   f2    two hands BURST up out of the mud (mgBurst: the 600 Hz şlop), the forearms leaning OUT from the centre —
+//         clods fly, a violet flash from below; f3 they REACH out toward the tile's outer corners
+//   f4    the palms SLAP onto the tile's rim and the fingers hook over its lip (gripMarks, mgSlap), smears stay
+//   f5–9  the haul (mgHaul): a strain (elbows bend, only the hood breaks the surface), haul 1 (mask sunk), a strain
+//         PAUSE (it trembles half out, mud oozes between the fingers), haul 2 (mask up), haul 3 — seven sink steps
+//   f10   land: out of the mud (mgLand), the grips let go, the vortex closes in steps, wet ripple rings (no white ring)
+//   f11   the mask seats with a click and the violet eyes ignite (a light flash on the face) — the plate pops here
+//   f12   shake-off: wet clods thrown off the body
 // Strike — "Çamur Atışı":
 //   the hand digs a fistful out of the mound (mgCharge, from the declaration), cocks it behind the hood, swings and
 //   RELEASES (mgRelease: suction pull-off + throw) — a sticky lump with a violet ember lobs over in a high arc with its
@@ -38,7 +40,7 @@ import { PAL, RAMPS } from '../../art/palette';
 import type { AnyMonsterAnim } from '../../art/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { GameEvent, Uid } from '../../engine/types';
-import { DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
+import { DEPTH, LOOK_V3, TILE_H, TILE_W, type XY, zoneXY } from '../../view/layout';
 import { lightFlash, lightPool } from '../../view/light';
 import { Sparks, animate, onFrame, sleep } from '../../vfx/combat';
 import { Raster, qbez } from '../../vfx/setpieces';
@@ -52,7 +54,7 @@ import { deathStartFrom, takePlannedEntry } from '../_v3/posematch';
 import { planGuardBreak, runGuardBreak, showsGuard } from '../_v3/guardbreak';
 import { contactFlash } from '../_v3/flash';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
-import { MUD, MudMask, cracks, drawBall, floorStain, gooDecal, mudCrawl, mudPinAura, mudVortex, pinGrab, rng, splatStar } from './mudgrasp_spirit-fx';
+import { MudMask, WET_DROPS, WET_HAND, cracks, drawBall, floorStain, gooDecal, gripMarks, mudCrawl, mudPinAura, mudSplat, mudVortex, pinGrab, plateLockOf, rng, seepAt, violetSeams, wetHand } from './mudgrasp_spirit-fx';
 
 type Ev<T extends GameEvent['type']> = Extract<GameEvent, { type: T }>;
 type Ctx<T extends GameEvent['type']> = CinematicContext<Ev<T>>;
@@ -64,7 +66,7 @@ const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 const rint = (p: XY): XY => ({ x: Math.round(p.x), y: Math.round(p.y) });
 const live = (u: MonsterUnit | null | undefined): MonsterUnit | null => (u && !u.retired && u.sprite.active ? u : null);
-const MUD_DROPS = [MUD[2], MUD[1], MUD[1], MUD[0]] as const;
+const MUD_DROPS = WET_DROPS;
 
 /** A named point of one frame of the mud's art, in world space. */
 function pointOf(u: MonsterUnit, anim: AnyMonsterAnim, f: number, name: 'muzzle' | 'hand' | 'claw' | 'head' | 'core'): XY {
@@ -121,19 +123,76 @@ function violetMotes(sc: Phaser.Scene, at: XY, n: number, R: Rng, depth = DEPTH.
   sp.release();
 }
 
-/** A stepped ripple ring on the floor (two tones, whole px, out over `ms`). */
+/** A wet ripple ring on the floor: a dark wet band, its lit far lip and one violet glint running round (whole px). */
 function ripple(sc: Phaser.Scene, at: XY, rx: number, ms: number): void {
-  const r = Raster.around(sc, at.x, at.y, rx * 2 + 8, rx + 8, DEPTH.SHADOW + 0.4);
+  const r = Raster.around(sc, at.x, at.y, rx * 2 + 10, rx + 10, DEPTH.SHADOW + 0.4);
   void animate(sc, ms, (t) => {
     const q = Math.round(rx * (0.45 + 0.55 * t));
+    const qy = Math.max(1, Math.round(q / 2));
     r.draw((g) => {
-      g.ring(at.x, at.y, q, Math.max(1, Math.round(q / 2)), t < 0.5 ? MUD[2] : MUD[1]);
-      if (t < 0.6) g.ring(at.x, at.y, Math.max(2, q - 4), Math.max(1, Math.round((q - 4) / 2)), MUD[0]);
+      g.ring(at.x, at.y, q, qy, t < 0.6 ? PAL.earth1 : PAL.earth0);
+      if (t < 0.75) g.ring(at.x, at.y, q, Math.max(1, qy - 1), t < 0.4 ? PAL.earth3 : PAL.earth2, 1, Math.PI * 1.1, Math.PI * 1.7);
+      if (t < 0.5) g.ring(at.x, at.y, Math.max(2, q - 4), Math.max(1, Math.round((q - 4) / 2)), PAL.earth0);
+      if (t < 0.6) {
+        const a = Math.PI * (0.3 + 1.4 * t);
+        g.px(Math.round(at.x + Math.cos(a) * q), Math.round(at.y + Math.sin(a) * qy), PAL.void3);
+      }
     });
   }).then(() => r.destroy());
 }
 
 // ================================================================ summon: the climb out of the vortex
+
+/**
+ * Two fat wet hands bursting up out of the vortex (drawn over the sprite's thinner arms). FIX r3 (critic: "two
+ * posts"): each forearm LEANS out from near the vortex's centre (its elbow bowed), the fingers splay and claw, then
+ * over the second half the hands REACH out and down toward the tile's outer corners (the summon f3 wrists), ready to
+ * slap onto the rim. No upright column.
+ */
+function burstHands(sc: Phaser.Scene, u: MonsterUnit, surfaceY: number, ms: number, seed: number): Promise<void> {
+  const R = rng(seed);
+  const W = 120;
+  const H = 64;
+  const hx = Math.round(u.home.x);
+  const r = new Raster(sc, hx - W / 2, surfaceY - 52, W, H, u.sprite.depth + 0.2);
+  const mk = new MudMask(r.x, r.y, r.w, r.h);
+  const ph = [R(), R()];
+  const up2 = [rint(pointOf(u, 'summon', 2, 'hand')), rearWrist(u, -20, -15)];
+  const out3 = [rint(pointOf(u, 'summon', 3, 'hand')), rearWrist(u, -27, -8)];
+  return animate(sc, ms, (t, el) => {
+    const up = t < 0.2 ? Math.round((t / 0.2) * 3) / 3 : 1;
+    const reach = t < 0.5 ? 0 : Math.round(clamp((t - 0.5) / 0.4, 0, 1) * 3) / 3;
+    r.begin();
+    mk.clear();
+    const bases: XY[] = [];
+    [0, 1].forEach((i) => {
+      const w = { x: lerp(up2[i].x, out3[i].x, reach), y: lerp(up2[i].y, out3[i].y, reach) };
+      const side = Math.sign(w.x - hx) || (i === 0 ? 1 : -1);
+      // the arm leaves the mud nearer the centre than its wrist: it leans out
+      const base = { x: Math.round(hx + (w.x - hx) * 0.45), y: surfaceY };
+      bases.push(base);
+      const flex = Math.sin(el / 45 + ph[i] * 6);
+      const tip = { x: Math.round(lerp(base.x, w.x + flex * 0.6, up)), y: Math.round(lerp(base.y, w.y + 2, up)) };
+      // fingers splay and claw at the air, opening wide on the reach; a drip forming under each palm
+      wetHand(mk, base, tip, { w: 2.8, open: reach > 0 ? 1 : 0.85 + 0.15 * flex, cup: side, drip: (el / 260 + ph[i]) % 1, bend: side * (2 + 2 * reach), collar: 1.5 });
+    });
+    mk.wet(r, { tones: WET_HAND, seepY: surfaceY + 1, phase: Math.floor(el / 60) });
+    for (const b of bases) seepAt(r, b, 2.6, el / 1000);
+    r.end();
+  }).then(() => r.destroy());
+}
+
+/** The rear arm's wrist (no named point: the summon pose's rear wrist offset from the anchor, mirrored for P2). */
+function rearWrist(u: MonsterUnit, dx: number, dy: number): XY {
+  return rint(u.framePoint(u.art.anchorX + dx, u.art.anchorY + dy));
+}
+
+/** The tile's front edge under a world x on its tile (iso diamond): the lip the climbing hands hook over. */
+function tileLip(home: XY, x: number): XY {
+  const hw = TILE_W / 2;
+  const dx = clamp(Math.abs(x - home.x), 0, hw - 7); // kept inside its own tile (never over the neighbour)
+  return { x: Math.round(home.x + Math.sign(x - home.x) * dx), y: Math.round(home.y + (TILE_H / 2) * (1 - dx / hw)) };
+}
 
 async function climbV3(S: Stage): Promise<void> {
   const sc = S.scene;
@@ -143,71 +202,92 @@ async function climbV3(S: Stage): Promise<void> {
   fadeSnd(['summonCharge'], 160);
   if (!u.has('summon')) return;
   const n = u.frameCount('summon');
-  const LAND = u.markFrame('summon', 'land', 7);
-  // ---- the tile softens: the vortex opens under the sprite's own puddle, the pit glows violet
-  const vortex = S.own(mudVortex(sc, { x: home.x, y: home.y + 1 }, 26, DEPTH.SHADOW + 0.5, S.ev.uid * 5 + 1));
+  const LAND = u.markFrame('summon', 'land', 10);
+  // ---- the tile softens: a glossy whirlpool opens under the sprite's own puddle, its violet pit lights the floor
+  const vortex = S.own(mudVortex(sc, { x: home.x, y: home.y + 1 }, 30, DEPTH.SHADOW + 0.5, S.ev.uid * 5 + 1));
   vortex.speed = 3;
-  const pit = S.glow({ color: PAL.void3, spill: PAL.void2, radius: 16, intensity: 0, anim: 'breathe', fadeIn: 0, at: { x: home.x, y: home.y } });
-  pit.setIntensity(0.7, 300);
   const whirl = start('mgVortex', { volume: 0.85, pan });
   u.pose('summon', 0);
   u.showSprite();
   const done = u.playRange('summon', 0, undefined, { hold: false });
-  // the vortex opens (stepped) and spins up until the hands come
+  // the vortex opens (stepped) and spins up until the hands come; bubbles pop, violet motes leak up
+  // it is fully open by mid-way and HELD open (turning) for a beat before the hands come
   void animate(sc, u.rangeMs('summon', 0, 2), (t) => {
-    vortex.open = Math.round(t * 4) / 4;
-    vortex.speed = 3 + 5 * t;
+    vortex.open = Math.max(0.25, Math.min(1, Math.round(t * 2 * 4) / 4));
+    vortex.speed = 3 + 6 * t;
     vortex.pit = t;
   });
   vortex.ripple();
-  // f2: two hands BURST up out of the mud
+  violetMotes(sc, home, 3, R, DEPTH.FX);
+  // f2: two fat hands BURST up out of the mud and claw at the air (held: the hook of the climb)
   atFrame(u, 'summon', 2, () => {
     play('mgBurst', { volume: 0.95, pan });
+    void burstHands(sc, u, home.y - 1, Math.max(160, u.rangeMs('summon', 2, 4) - 10), S.ev.uid * 3 + 5);
     const a = rint(pointOf(u, 'summon', 2, 'hand'));
     const b = rint(pointOf(u, 'summon', 2, 'claw'));
-    clods(sc, { x: a.x, y: home.y - 1 }, home.y, 7, R, { up: 1.2, spread: 0.6 });
-    clods(sc, { x: b.x, y: home.y - 1 }, home.y, 7, R, { up: 1.2, spread: 0.6 });
-    violetMotes(sc, home, 6, R);
-    void lightFlash(sc, home.x, home.y - 4, PAL.void3, 34, 260, { floorY: home.y, air: 0.6, intensity: 0.9 });
+    clods(sc, { x: a.x, y: home.y - 1 }, home.y, 7, R, { up: 1.3, spread: 0.6 });
+    clods(sc, { x: b.x, y: home.y - 1 }, home.y, 7, R, { up: 1.3, spread: 0.6 });
+    violetMotes(sc, home, 7, R);
+    void lightFlash(sc, home.x, home.y - 4, PAL.void3, 40, 300, { floorY: home.y, air: 0.7, intensity: 1 });
     vortex.ripple();
   }, { late: false });
-  // f3: the palms SLAP down and grip the tile's edges
-  atFrame(u, 'summon', 3, () => {
-    play('mgSlap', { volume: 1, pan });
-    void shake(sc, 120, 2);
-    for (const k of ['hand', 'claw'] as const) {
-      const p = rint(pointOf(u, 'summon', 3, k));
-      const g = { x: p.x, y: Math.min(home.y + 6, p.y + 1) };
-      floorStain(sc, g, 6, DEPTH.SHADOW + 0.6, 900);
-      clods(sc, g, home.y + 2, 5, R, { up: 0.7, spread: 1.2 });
-    }
-    void lightFlash(sc, home.x, home.y, PAL.earth3, 40, 240, { floorY: home.y, ring: true, intensity: 0.6 });
-  }, { late: false });
-  // f4: the haul — the mask surfaces and the body is dragged up between the hands
+  // f4 (after the f3 reach): the palms SLAM onto the tile's edges and the fingers hook over its lip
+  let grips: ReturnType<typeof gripMarks> | null = null;
   atFrame(u, 'summon', 4, () => {
+    play('mgSlap', { volume: 1, pan });
+    void shake(sc, 130, 2);
+    // the near front hand and the rear hand: one on each side edge of the tile
+    const pts = [rint(pointOf(u, 'summon', 4, 'hand')), rearWrist(u, -28, -1)].map((p) => ({ at: tileLip(home, p.x + Math.sign(p.x - home.x) * 5), side: Math.sign(p.x - home.x) || 1 }));
+    grips = gripMarks(sc, pts, u.sprite.depth + 0.15);
+    void animate(sc, 90, (t) => {
+      if (grips) grips.grip = Math.round(t * 3) / 3;
+    });
+    for (const p of pts) {
+      floorStain(sc, { x: p.at.x - p.side * 5, y: p.at.y - 2 }, 7, DEPTH.SHADOW + 0.6, 1300);
+      clods(sc, p.at, home.y + 4, 6, R, { up: 0.7, spread: 1.2 });
+      void lightFlash(sc, p.at.x, p.at.y, PAL.void3, 18, 220, { floorY: p.at.y, intensity: 0.7 });
+    }
+    vortex.pit = 1;
+  }, { late: false });
+  // f5: the strain — the elbows bend, the hood's crown breaks the surface; the haul's long wet drag starts here
+  atFrame(u, 'summon', 5, () => {
     play('mgHaul', { volume: 0.9, pan });
-    vortex.speed = 9;
+    vortex.speed = 10;
+    vortex.ripple();
+    void shake(sc, 110, 1);
+  }, { late: false });
+  // f7: the strain PAUSE (it trembles half out): the grips squeeze the rim, mud oozes out between the fingers
+  atFrame(u, 'summon', 7, () => {
+    for (const p of [rint(pointOf(u, 'summon', 7, 'hand')), rearWrist(u, -28, -1)]) clods(sc, { x: p.x, y: home.y }, home.y + 2, 3, R, { up: 0.5, spread: 1 });
+    void shake(sc, 140, 1);
     vortex.ripple();
   }, { late: false });
-  atFrame(u, 'summon', 5, () => clods(sc, rint(pointOf(u, 'summon', 5, 'core')), home.y, 5, R, { up: 0.8, spread: 1.4 }), { late: false });
-  // land: out of the mud — the vortex closes in steps, ripple, the finale
+  atFrame(u, 'summon', 8, () => {
+    clods(sc, rint(pointOf(u, 'summon', 8, 'core')), home.y, 5, R, { up: 0.8, spread: 1.4 });
+    vortex.ripple();
+  }, { late: false });
+  // land: out of the mud — the hands let go of the edges, the vortex closes in steps, a wet ripple ring
   atFrame(u, 'summon', LAND, () => {
     whirl.stop(90);
     play('mgLand', { volume: 0.95, pan });
-    ripple(sc, home, 34, 420);
-    clods(sc, home, home.y + 1, 8, R, { up: 0.6, spread: 1.6 });
-    pit.fadeOut(260);
-    void animate(sc, 240, (t) => {
+    grips?.destroy();
+    ripple(sc, home, 38, 460);
+    ripple(sc, home, 26, 360);
+    clods(sc, home, home.y + 1, 9, R, { up: 0.7, spread: 1.6 });
+    void shake(sc, 170, 2);
+    void lightFlash(sc, home.x, home.y, PAL.earth3, 34, 360, { floorY: home.y, ring: true, intensity: 0.7 });
+    void animate(sc, 260, (t) => {
       vortex.open = t < 0.34 ? 0.7 : t < 0.67 ? 0.4 : 0.15;
-      vortex.speed = 9 * (1 - t);
+      vortex.speed = 10 * (1 - t);
+      vortex.pit = 1 - t;
     }).then(() => vortex.destroy());
-    S.finale({ ring: 40, ramp: RAMPS.earth, shake: 2, sfx: null });
   }, { late: false });
-  // the mask seats (a click down) and the eyes ignite
+  // the mask seats (a click down) and the eyes ignite — the plate pops on this beat (it is whole now)
   atFrame(u, 'summon', Math.min(n - 1, LAND + 1), () => {
     const h = rint(pointOf(u, 'summon', LAND + 1, 'head'));
-    void lightFlash(sc, h.x, h.y, PAL.void4, 24, 320, { floorY: home.y, air: 1, intensity: 1 });
-    violetMotes(sc, { x: h.x, y: h.y + 2 }, 4, R, u.sprite.depth + 0.5);
+    void lightFlash(sc, h.x, h.y, PAL.void4, 26, 340, { floorY: home.y, air: 1, intensity: 1 });
+    violetMotes(sc, { x: h.x, y: h.y + 2 }, 5, R, u.sprite.depth + 0.5);
+    void u.badge.pop();
   }, { late: false });
   // shake-off: wet clods thrown off the body, a drip or two
   atFrame(u, 'summon', Math.min(n - 1, LAND + 2), () => {
@@ -220,6 +300,7 @@ async function climbV3(S: Stage): Promise<void> {
     await done;
   } finally {
     whirl.stop(60);
+    (grips as ReturnType<typeof gripMarks> | null)?.destroy();
   }
 }
 
@@ -267,12 +348,12 @@ async function lobV3(s: StrikeArgs): Promise<void> {
   if (f0 <= 2)
     atFrame(u, 'attack', 2, () => {
       const h = rint(pointOf(u, 'attack', 2, 'hand'));
-      clods(sc, h, u.home.y, 5, R, { up: 0.6, spread: 1 });
+      clods(sc, h, u.home.y, 6, R, { up: 0.6, spread: 1 });
     }, { late: false });
   atFrame(u, 'attack', REL, rel, { late: false });
-  // play to the release frame and hold it (the arm stays out while the lump flies)
+  // play through the release into the follow-through (the arm keeps moving while the lump flies), hold there
   const toRel = Math.max(60, u.rangeMs('attack', f0, REL));
-  void u.playRange('attack', f0, REL, { hold: true });
+  const swing = u.playRange('attack', f0, CON, { hold: true });
   await sleep(sc, toRel);
   rel();
   // ---- release: the lump leaves the palm of the release frame
@@ -281,34 +362,52 @@ async function lobV3(s: StrikeArgs): Promise<void> {
   const g0 = u.home.y;
   const g1 = s.target ? s.target.home.y : s.toGround.y;
   const dist = Math.hypot(to.x - from.x, to.y - from.y);
-  const flight = clamp(Math.round(170 + dist * 0.75), 230, 340);
-  const arc = clamp(Math.round(dist * 0.3), 18, 40);
-  const ctrl = { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - arc * 2 };
-  const x0 = Math.floor(Math.min(from.x, to.x) - 24);
-  const y0 = Math.floor(Math.min(from.y, to.y) - arc - 20);
-  const r = new Raster(sc, x0, y0, Math.ceil(Math.abs(to.x - from.x) + 48), Math.ceil(Math.max(g0, g1) - y0 + 12), DEPTH.FX);
+  // FIX r3 (critic: "it hovers beside the target's head"): short throws are QUICK (≈190–220 ms) and always keep a
+  // visible toss arc (apex ≥ 18 px over the chord); long throws grow to ≈380 ms with a higher arc
+  const flight = clamp(Math.round(120 + dist * 0.9), 175, 380);
+  // the arc scales with the HORIZONTAL distance; the apex is ≈ arc px over the chord's midpoint (the bezier
+  // control sits at 2 × arc)
+  const hdx = Math.abs(to.x - from.x);
+  const arc = clamp(Math.round(hdx * 0.26 + 12), 22, 42);
+  const ctrl = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 - arc * 2 };
+  const x0 = Math.floor(Math.min(from.x, to.x) - 28);
+  const y0 = Math.floor(Math.min(from.y, to.y) - arc * 1.5 - 24);
+  const r = new Raster(sc, x0, y0, Math.ceil(Math.abs(to.x - from.x) + 56), Math.ceil(Math.max(g0, g1) - y0 + 14), DEPTH.FX);
   const shadow = new Raster(sc, x0, y0, r.w, r.h, DEPTH.SHADOW + 0.5);
   const mk = new MudMask(r.x, r.y, r.w, r.h);
-  const ember = lightPool(sc, from.x, from.y, { color: PAL.void3, spill: null, radius: 10, floorY: g0, air: 0.9, intensity: 0.45, anim: 'breathe', fadeIn: 0 });
+  const ember = lightPool(sc, from.x, from.y, { color: PAL.void3, spill: PAL.void2, radius: 14, floorY: g0, air: 0.9, intensity: 0.7, anim: 'breathe', fadeIn: 0 });
   const drops = new Sparks(sc, DEPTH.FX - 0.5);
   let lastDrop = 0;
-  void lightFlash(sc, from.x, from.y, PAL.earth3, 18, 160, { floorY: g0, air: 0.8, intensity: 0.5 });
-  await animate(sc, flight, (t, el) => {
+  let prev = from;
+  void lightFlash(sc, from.x, from.y, PAL.void3, 20, 180, { floorY: g0, air: 0.8, intensity: 0.6 });
+  // the lump tumbling through the air: a wet lumpy whoosh under the whole arc (no silent flight)
+  play('mgLob', { volume: 0.85, pan: panAt((from.x + to.x) / 2) });
+  // the follow-through wobble: the mud body jiggles a pixel while the lump is in the air (never a frozen frame)
+  const sx0 = u.sprite.x;
+  const sy0 = u.sprite.y;
+  await animate(sc, flight, (t, el, dt) => {
     const p = rint(qbez(from, ctrl, to, t));
+    const vx = dt > 0 ? ((p.x - prev.x) * 1000) / dt : 0;
+    const vy = dt > 0 ? ((p.y - prev.y) * 1000) / dt : 0;
+    prev = p;
     const fy = Math.round(lerp(g0, g1, t));
     const fx = Math.round(lerp(from.x, to.x, t));
     ember.setPosition(p.x, p.y, fy);
-    r.draw((g) => drawBall(g, mk, p, Math.floor(el / 55), true));
+    r.draw((g) => drawBall(g, mk, p, Math.floor(el / 50), t < 0.12 ? vx * 2 : vx, vy));
     // its shadow on the floor (shrinks while the lump is high)
     const h = fy - p.y;
-    const sr = h > 30 ? 2 : h > 14 ? 3 : 4;
-    shadow.draw((g) => g.ell(fx, fy, sr, 1, PAL.ink));
-    // it sheds drops on the way
-    if (el - lastDrop > 75 && t < 0.85) {
+    const sr = h > 34 ? 2 : h > 16 ? 3 : 5;
+    shadow.draw((g) => g.ell(fx, fy, sr, sr > 3 ? 2 : 1, PAL.ink));
+    if (u.sprite.active && u.frameInfo().frame >= CON) u.sprite.setPosition(sx0, sy0 + ((Math.floor(el / 70) & 1) === 0 ? 0 : 1));
+    // it sheds glossy drops on the way
+    // drops are shed as SEPARATE pixels from the clod's trailing rim (never a tail attached to it)
+    if (el - lastDrop > 40 && t > 0.08 && t < 0.9) {
       lastDrop = el;
-      drops.add({ x: p.x - 2, y: p.y + 3, vx: (R() - 0.5) * 10, vy: 10, ay: 420, floor: fy, bounce: 0, life: 420, colors: MUD_DROPS, shape: 'px', size: 1, fadeAt: 1 });
+      const L = Math.hypot(vx, vy) || 1;
+      drops.add({ x: Math.round(p.x - (vx / L) * 7), y: Math.round(p.y - (vy / L) * 6 + 1), vx: vx * 0.25 + (R() - 0.5) * 14, vy: vy * 0.2 + 10, ay: 520, floor: fy, bounce: 0, life: 420, colors: MUD_DROPS, shape: R() < 0.5 ? 'sq' : 'px', size: 2, fadeAt: 1 });
     }
   });
+  if (u.sprite.active) u.sprite.setPosition(sx0, sy0);
   r.destroy();
   shadow.destroy();
   drops.release();
@@ -317,26 +416,31 @@ async function lobV3(s: StrikeArgs): Promise<void> {
   s.impact(to);
   play('mgImpact', { volume: s.blocked ? 0.8 : 1, pan: panAt(to.x) });
   const victim = s.target && !s.direct && s.target.sprite.active && s.target.sprite.visible ? s.target : null;
-  void splatStar(sc, to, g1, victim ? victim.sprite.depth + 0.6 : DEPTH.FX + 1, s.blocked, u.uid * 7 + 1);
-  void lightFlash(sc, to.x, to.y, PAL.earth3, s.blocked ? 26 : 34, 300, { floorY: g1, air: 0.7, intensity: 0.85 });
-  violetMotes(sc, to, 4, R);
+  // drawn over the shared contact flash (FX+2..4.5) so the splat itself is the contact frame's picture
+  void mudSplat(sc, to, g1, DEPTH.FX + 4.6, s.blocked, u.uid * 7 + 1);
+  void lightFlash(sc, to.x, to.y, PAL.void3, s.blocked ? 26 : 36, 320, { floorY: g1, air: 0.7, intensity: 0.95 });
+  violetMotes(sc, to, 5, R);
   if (victim) {
     gooDecal(sc, victim, to, victim.sprite.depth + 0.3, u.uid * 11 + 3);
-    floorStain(sc, { x: victim.home.x + (from.x < to.x ? -3 : 3), y: victim.home.y + 1 }, s.blocked ? 7 : 10, DEPTH.SHADOW + 0.6, 1100);
+    floorStain(sc, { x: victim.home.x + (from.x < to.x ? -3 : 3), y: victim.home.y + 1 }, s.blocked ? 8 : 11, DEPTH.SHADOW + 0.6, 1300);
   } else {
-    floorStain(sc, rint(s.toGround), 12, DEPTH.SHADOW + 0.6, 1300);
+    floorStain(sc, rint(s.toGround), 13, DEPTH.SHADOW + 0.6, 1500);
     clods(sc, rint(s.toGround), s.toGround.y, 10, R, { up: 0.8, spread: 1.6 });
   }
+  await swing;
   if (loses) return;
-  // ---- the hand slaps into the ground and sinks (f7 → f8), then it is pulled back out (recover)
+  // ŞLAP … a beat (the hit-stop and the splat breathe) … then the hand sinks
+  await sleep(sc, 70);
+  // ---- the hand slaps into the ground and sinks (f8), then it is pulled back out (recover)
   atFrame(u, 'attack', Math.min(n - 1, CON + 1), () => {
     play('mgSink', { volume: 0.8, pan });
     const h = rint(pointOf(u, 'attack', CON + 1, 'hand'));
     const g = { x: h.x, y: Math.min(u.home.y + 4, h.y) };
-    floorStain(sc, g, 6, DEPTH.SHADOW + 0.6, 700);
+    floorStain(sc, g, 7, DEPTH.SHADOW + 0.6, 800);
     clods(sc, g, u.home.y + 2, 6, R, { up: 0.6, spread: 1.2 });
+    ripple(sc, g, 12, 300);
   }, { late: false });
-  await u.playRange('attack', CON, undefined, { hold: false });
+  await u.playRange('attack', CON + 1, undefined, { hold: false });
 }
 
 if (LOOK_V3) registerStrike(ID, (s) => lobV3(s), { priority: 20, name: 'kart-b:mudgrasp_spirit:strike' });
@@ -353,9 +457,24 @@ if (LOOK_V3)
     for (const uid of [...pinned]) {
       const loc = ctx.locate(uid, 'next');
       const slot = loc && loc.zone === 'monster' ? ctx.stateNext.players[loc.player].monsters[loc.index] : null;
-      if (ev.type === 'gameOver' || !slot || slot.lockPositionTurn === undefined || ctx.stateNext.turn > slot.lockPositionTurn) {
+      if (ev.type === 'gameOver' || !slot) {
         ctx.unit(uid)?.setAura('mudPin', null);
         pinned.delete(uid);
+      } else if (slot.lockPositionTurn === undefined || ctx.stateNext.turn > slot.lockPositionTurn) {
+        // the lock is over: the ring drains itself on the tick the plate's padlock goes (mudPinAura watches it);
+        // a safety net clears it if the padlock never updates
+        pinned.delete(uid);
+        const u = ctx.unit(uid);
+        if (u) {
+          onFrame(ctx.scene, (_dt, el) => {
+            if (!u.hasAura('mudPin')) return false;
+            if (el > 1600 || (el > 400 && !plateLockOf(u))) {
+              u.setAura('mudPin', null);
+              return false;
+            }
+            return true;
+          });
+        }
       }
     }
   });
@@ -404,8 +523,9 @@ async function pinV3(ctx: Ctx<'activate'>): Promise<void> {
   const s = a.sprite;
   const feet = { x: Math.round(a.home.x), y: Math.round(a.home.y) };
   const grab = pinGrab(sc, a, ev.uid * 17 + a.uid);
-  const pool = lightPool(sc, feet.x, feet.y, { color: PAL.void3, spill: PAL.void2, radius: 22, floorY: feet.y, intensity: 0, anim: 'breathe', fadeIn: 0 });
-  pool.setIntensity(0.55, 300);
+  // the pit's violet light: it rises with the seep, flares on the burst, settles into the aura's own light
+  const pool = lightPool(sc, feet.x, feet.y, { color: PAL.void3, spill: null, radius: 24, floorY: feet.y, intensity: 0, anim: 'breathe', fadeIn: 0 });
+  pool.setIntensity(0.45, 200);
   a.posed = true;
   const y0 = s.y;
   const x0 = s.x;
@@ -419,9 +539,10 @@ async function pinV3(ctx: Ctx<'activate'>): Promise<void> {
   });
   let mudDone: Promise<void> = Promise.resolve();
   try {
-    // ---- 1. the ground under the attacker grumbles and seeps; the spirit rears (or its spilled mud crawls over)
+    // ---- 1. the floor under the attacker answers: it darkens, swells, leaks violet from three seams, boils, and
+    //         the feet start to go down; meanwhile the spirit rears (or its spilled mud crawls over from its tile)
     play('mgGrumble', { volume: 0.9, pan: aPan });
-    void shake(sc, 260, 1);
+    void shake(sc, 300, 1);
     let plunge: number;
     if (mudAlive && mud) {
       mud.posed = true;
@@ -432,10 +553,13 @@ async function pinV3(ctx: Ctx<'activate'>): Promise<void> {
       atFrame(mud, 'special', SP_REL, () => {
         play('mgSink', { volume: 0.75, pan: mpan });
         const h = rint(pointOf(mud, 'special', SP_REL, 'hand'));
-        clods(sc, { x: h.x, y: Math.min(mud.home.y + 3, h.y) }, mud.home.y + 2, 8, R, { up: 0.9, spread: 1.2 });
-        void lightFlash(sc, mud.home.x, mud.home.y, PAL.void3, 30, 260, { floorY: mud.home.y, intensity: 0.8 });
+        clods(sc, { x: h.x, y: Math.min(mud.home.y + 3, h.y) }, mud.home.y + 2, 9, R, { up: 0.9, spread: 1.2 });
+        ripple(sc, { x: h.x, y: mud.home.y }, 16, 320);
+        void lightFlash(sc, mud.home.x, mud.home.y, PAL.void3, 32, 280, { floorY: mud.home.y, intensity: 0.9 });
       }, { late: false });
-      atFrame(mud, 'special', Math.min(HOLD, SP_REL + 1), () => play('mgRoar', { volume: 0.6, pan: mpan }), { late: false });
+      // the moan (the card's owned slow growl) starts as it REARS, in its own window: it swells under the seep and
+      // crests before the burst / grab / clamp transients (it is not buried under the clamp any more)
+      atFrame(mud, 'special', 2, () => play('mgRoar', { volume: 1, pan: mpan }), { late: true });
       mudDone = (async () => {
         await mud.playRange('special', 1, HOLD, { hold: true });
         // the pull is held while the clamp turns the attacker, then the arms come back out and it closes its wall again
@@ -445,71 +569,83 @@ async function pinV3(ctx: Ctx<'activate'>): Promise<void> {
         if (live(mud) && mud.position === 'defense' && mud.has('toGuard')) await mud.playRange('toGuard', 0, undefined, { hold: true });
       })();
     } else {
-      plunge = 280;
+      plunge = 420;
       if (mudSpot) {
-        void lightFlash(sc, mudSpot.x, mudSpot.y, PAL.void3, 26, 260, { floorY: mudSpot.y, intensity: 0.7 });
-        violetMotes(sc, mudSpot, 5, R);
+        // the dead spirit's tile cracks open violet, and its spilled mud crawls over the floor to the attacker
+        void violetSeams(sc, { x: Math.round(mudSpot.x), y: Math.round(mudSpot.y) }, 26, 420, DEPTH.SHADOW + 0.7, ev.uid * 5 + 9);
+        void lightFlash(sc, mudSpot.x, mudSpot.y, PAL.void3, 18, 260, { floorY: mudSpot.y, intensity: 0.55 });
+        violetMotes(sc, mudSpot, 6, R);
         void mudCrawl(sc, { x: mudSpot.x, y: mudSpot.y + 1 }, { x: feet.x, y: feet.y + 1 }, plunge, DEPTH.SHADOW + 0.6, ev.uid * 3 + 2);
         play('mgDrip', { volume: 0.5, pan: panAt(mudSpot.x) });
+        // the dead spirit still moans from under its old tile: lower, quieter, far away
+        play('mgRoar', { volume: 0.55, pitch: 0.82, pan: panAt(mudSpot.x) });
       }
     }
     let rings = 0;
     await animate(sc, plunge, (t, el) => {
-      grab.seep = Math.round(t * 0.8 * 6) / 6;
-      // the floor answers: ripple rings run out from under the feet, the attacker starts to sense it
-      if (el >= rings * 150 && t < 0.9) {
+      grab.seep = Math.round(Math.min(1, 0.25 + t * 0.8) * 6) / 6;
+      grab.stir = Math.round(clamp((t - 0.15) / 0.6, 0, 1) * 4) / 4;
+      // the floor answers: ripple rings run out from under the feet, the feet start to go down a pixel
+      if (el >= rings * 130 && t < 0.92) {
         rings++;
-        ripple(sc, feet, 18 + rings * 2, 300);
-        if (rings % 2 === 0) clods(sc, { x: feet.x + Math.round((R() - 0.5) * 16), y: feet.y }, feet.y + 1, 2, R, { up: 0.4 });
+        ripple(sc, feet, 20 + rings * 2, 320);
+        if (rings % 2 === 0) clods(sc, { x: feet.x + Math.round((R() - 0.5) * 18), y: feet.y }, feet.y + 1, 2, R, { up: 0.45 });
       }
+      pool.setIntensity(0.45 + 0.4 * t, 0);
+      sinkPx = t > 0.55 ? 1 : 0;
       tremble = t > 0.6;
     });
+    // cause, then effect: the spirit's hands go into ITS mud (mgSink) … and 120 ms later they come up under the foe
+    await sleep(sc, 120);
     tremble = false;
-    // ---- 2. the hands BURST up under the attacker
+    // ---- 2. the hands BURST up beside the attacker's feet
     play('mgBurst', { volume: 1, pan: aPan });
-    clods(sc, { x: feet.x, y: feet.y - 1 }, feet.y + 2, 12, R, { up: 1.1, spread: 1.6 });
-    violetMotes(sc, feet, 6, R);
-    void lightFlash(sc, feet.x, feet.y - 4, PAL.void3, 34, 280, { floorY: feet.y, air: 0.6, intensity: 1 });
-    pool.setIntensity(0.9, 80);
-    await animate(sc, 110, (t) => {
-      grab.seep = 0.7 + 0.3 * t;
+    clods(sc, { x: feet.x, y: feet.y - 1 }, feet.y + 2, 14, R, { up: 1.15, spread: 1.6 });
+    violetMotes(sc, feet, 8, R);
+    void lightFlash(sc, feet.x, feet.y - 4, PAL.void3, 40, 300, { floorY: feet.y, air: 0.7, intensity: 1 });
+    pool.setIntensity(1.1, 60);
+    await animate(sc, 150, (t) => {
+      grab.seep = 1;
       grab.burst = Math.round(t * 4) / 4;
     });
-    // ---- 3. they seize the feet and yank it down into the mud
+    // ---- 3. they wrap the feet and yank them down into the mud
     play('mgGrab', { volume: 0.95, pan: aPan });
     tremble = true;
-    await animate(sc, 170, (t) => {
+    await animate(sc, 200, (t) => {
       grab.grab = Math.round(t * 5) / 5;
-      sinkPx = t < 0.5 ? 1 : 2;
+      grab.collar = t < 0.5 ? 1 : 2;
+      sinkPx = t < 0.4 ? 2 : 3;
     });
-    // ---- 4. the clamp forces the guard; the pool contracts into the 6-px ring
-    play('mgClamp', { volume: 0.95, pan: aPan });
-    void shake(sc, 140, 2);
+    // ---- 4. the clamp forces the guard; the pool contracts into the 6-px ring around a violet pit
+    play('mgClamp', { volume: 0.7, pan: aPan });
+    void shake(sc, 150, 2);
     clods(sc, feet, feet.y + 2, 6, R, { up: 0.5, spread: 1.8 });
     const guard = pi >= 0 ? forceGuard(ctx, a) : Promise.resolve();
     void sleep(sc, 120).then(() => play('mgRing', { volume: 0.85, pan: aPan }));
-    await animate(sc, 300, (t) => {
+    await animate(sc, 320, (t) => {
       grab.ring = Math.round(t * 4) / 4;
+      grab.stir = t < 0.5 ? 0.5 : 0;
       if (t > 0.6) tremble = false;
-      sinkPx = t < 0.7 ? 2 : 1;
     });
     await guard;
-    // ---- 5. the hands sink into the ring; the persistent status takes over on the same pixels
+    // ---- 5. the hands sink into the ring, the feet settle in it; the persistent status takes over the same pixels
     tremble = false;
-    sinkPx = 0;
     if (pi >= 0) {
       a.setAura('mudPin', mudPinAura(sc, a, a.uid * 13 + ev.uid));
       pinned.add(a.uid);
     }
-    await animate(sc, 150, (t) => {
+    await animate(sc, 180, (t) => {
       grab.sink = Math.round(t * 3) / 3;
+      sinkPx = t < 0.34 ? 3 : t < 0.67 ? 2 : 1;
     });
-    void pool.fadeOut(220);
+    sinkPx = 0;
+    void pool.fadeOut(240);
   } catch (e) {
     console.error('[mudgrasp pin] failed', e);
   } finally {
     stopTremble();
     grab.destroy();
+    if (pool.alive) void pool.fadeOut(120);
     if (s.active) s.setPosition(x0, y0);
     a.posed = false;
     if (live(a)) {
@@ -569,7 +705,8 @@ async function liquidDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
   };
   ctx.scene.events.emit('v3:dying', u);
   const pan = panAt(home.x);
-  const cr = cracks(sc, { x: home.x, y: home.y + 1 }, 40, DEPTH.SHADOW + 0.55, ev.uid * 7 + 3);
+  const cr = cracks(sc, { x: home.x, y: home.y + 1 }, 40, DEPTH.SHADOW + 0.55, ev.uid * 7 + 3, DEPTH.TILE_FX + 1);
+  cr.spin = -7;
   const glow = lightPool(sc, home.x, home.y, { color: PAL.void3, spill: PAL.void2, radius: 18, floorY: home.y, intensity: 0, anim: 'breathe', fadeIn: 0 });
   let drain: ReturnType<typeof start> | null = null;
   try {
@@ -590,12 +727,14 @@ async function liquidDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
       u.asClaimant(() => void u.playRange('death', start0, undefined, { hold: true }));
     }
     const DIS = u.markFrame('death', 'dissolve', 4);
-    // f1: the clay mask slips on the melting face; wet clods spray off
+    // the entry beat (whatever death frame the battle entered on — usually past f0/f1): the clay mask slips on the
+    // melting face — its ceramic scrape always sounds (it was skipped when the entry jumped past f1)
+    play('mgMaskSlip', { volume: 1, pan });
+    // f1 (or the first frame after it): wet clods spray off
     atFrame(u, 'death', 1, () => {
-      play('mgMaskSlip', { volume: 0.9, pan });
       const c = rint(pointOf(u, 'death', 1, 'core'));
       clods(sc, c, home.y, 8, R, { up: 0.7, spread: 1.6 });
-    }, { late: false });
+    }, { late: true });
     // f2: the tile cracks open under the slumping body
     atFrame(u, 'death', 2, () => {
       glow.setIntensity(0.6, 200);
@@ -603,37 +742,55 @@ async function liquidDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
         cr.grow = Math.round(t * 6) / 6;
       });
     }, { late: false });
-    // dissolve: the body runs out along the cracks (the drain) and down into them
+    // dissolve: the body runs out along the seams as glossy tongues, then is sucked back down into them
     atFrame(u, 'death', DIS, () => {
       drain = start('mgDrain', { volume: 0.9, pan });
       cr.grow = 1;
-      const span = Math.max(200, u.rangeMs('death', DIS, n - 1));
+      // the pool and its reversed whirl centre under the MASK: the mask sinks into the whirl's eye, not at its edge
+      const mh = rint(pointOf(u, 'death', Math.max(DIS, n - 3), 'head'));
+      cr.pc = { x: Math.round(lerp(home.x, mh.x, 0.85)), y: home.y + 1 };
+      const span = Math.max(240, u.rangeMs('death', DIS, n - 1));
       void animate(sc, span, (t) => {
-        cr.flow = Math.min(1, t * 1.6);
-        cr.drain = clamp((t - 0.35) / 0.65, 0, 1);
+        cr.flow = Math.min(1, Math.round(t * 2.2 * 8) / 8);
+        cr.drain = clamp(Math.round(((t - 0.45) / 0.55) * 6) / 6, 0, 1);
+        // the pool shrinks as the tongues run off into the seams
+        cr.puddle = t < 0.25 ? 0 : Math.round(lerp(28, 14, (t - 0.25) / 0.75));
       });
-      violetMotes(sc, home, 4, R, DEPTH.FX);
+      violetMotes(sc, home, 5, R, DEPTH.FX);
     }, { late: false });
-    // the mask lies in the puddle and sinks last: the final glk
+    // the mask lies in the puddle and sinks last: bubbles ring it, the final glk
+    atFrame(u, 'death', Math.max(DIS + 1, n - 3), () => {
+      const h = rint(pointOf(u, 'death', n - 3, 'head'));
+      ripple(sc, { x: h.x, y: home.y }, 12, 360);
+    }, { late: false });
     atFrame(u, 'death', Math.max(DIS + 1, n - 2), () => {
       (drain as ReturnType<typeof start> | null)?.stop(140);
       play('mgGlk', { volume: 0.9, pan });
       const h = rint(pointOf(u, 'death', n - 2, 'head'));
-      void lightFlash(sc, h.x, h.y, PAL.void3, 18, 240, { floorY: home.y, air: 0.6, intensity: 0.7 });
-      ripple(sc, { x: h.x, y: home.y }, 14, 300);
+      void lightFlash(sc, h.x, home.y - 2, PAL.void3, 20, 280, { floorY: home.y, air: 0.4, intensity: 0.8 });
+      ripple(sc, { x: h.x, y: home.y }, 16, 340);
+      violetMotes(sc, { x: h.x, y: home.y - 1 }, 3, R, DEPTH.FX);
     }, { late: false });
     await until(sc, () => !u.sprite.active || (inDeath() && u.frameInfo().frame >= n - 1), u.animMs('death') + 300);
     if (u.sprite.active) await sleep(sc, u.frameMs('death', n - 1));
-    // the last 150 ms: the puddle is drunk into the centre and the cracks close in three steps; the card is born
-    burst();
+    // the last beat: the puddle is drunk into the centre (its spiral turning backwards), the seams close in three
+    // steps — and only then is the card born on the clean tile (nothing drawn over it)
     if (u.sprite.active) u.sprite.setVisible(false);
     cr.flow = 0;
-    void glow.fadeOut(150);
-    await animate(sc, 150, (t) => {
-      const step = Math.min(3, Math.floor(t * 4));
-      cr.puddle = [22, 14, 7, 0][step];
-      cr.close = step;
+    cr.spin = -9;
+    void glow.fadeOut(200);
+    play('mgSeal', { volume: 0.85, pan });
+    await animate(sc, 220, (t) => {
+      const step = Math.min(4, Math.floor(t * 5));
+      cr.puddle = [14, 10, 7, 3, 0][step];
+      cr.close = Math.min(3, Math.max(0, step - 1));
     });
+    cr.close = 3;
+    cr.puddle = 0;
+    // the floor is clean BEFORE the card is born: the seams' rasters go, one frame passes, then the card
+    cr.destroy();
+    await sleep(sc, 34);
+    burst();
   } catch (e) {
     console.error('[mudgrasp death] failed', e);
   } finally {
