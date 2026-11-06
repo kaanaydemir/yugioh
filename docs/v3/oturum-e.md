@@ -26,6 +26,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
 | puppet_string (Kukla İpi) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı piksel, 4 kare | tamam: haç, 5 ip, 3 sarsak sıçrama, End Phase'de ipler kopar ve dönüş; alma 5,22 sn (≤5,3), dönüş ~2,0 sn (≤2,19); CPU senaryosu ePuppetBot | tamam: 14 e_puppet tarifi, her vuruşun sesi var | 5,5 / 6,5 / 7 | shots/e/puppet_string/ |
 | auger_lance (Burgu Mızrağı) | büyük + elle yeniden kurulmuş küçük; §10 dama sınırı içinde (büyük ≤22/26, küçük ≤3/6), x1/x3/x6 bakıldı | tamam: yarık, mızrak, burgu; elden 3566 ms / set 3366 ms (≤3675); set kartı mızrak çıkınca yatırılır; CPU senaryosu eAugerCpu | tamam: 14 e_* tarifi, her vuruşta ses, kırpma yok (tepe ≤ -1,9 dB) | 6 / 7,5 / 7 | shots/e/auger_lance/ |
 | well_pail (Kuyu Kovası) | büyük + elle yapılmış küçük (daha sıkı kırpım); 0 palet dışı, mürekkep çizgisi 1,00, ton 19/20 | tamam: kova, makara cırcırı, iki kart çekme; el ~4,9 sn, bot 4,73 sn; kamera sabit; HP plakası parlama hatası düzeltildi; CPU senaryosu eWellPailCpu | tamam: 15 e_well tarifi, her vuruşta ses, 330 Hz cırcır imzası | 5,5 / 7 / 7,5 | shots/e/well_pail/ |
+| void_eye (Boşluk Gözü) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı, mürekkep 1,00, dama sınırda | tamam: gece örtüsü, göz açılışı, toplu yutuş, kapanış; yalnız göz ~5,43 sn (kabul ~5,4); Tılsım kılıcı kurtarmada sessizce kalkar; CPU senaryosu eVoidCpu | tamam: 16 e_void tarifi, hepsi sahnede çalıyor | 6 / 6 / 7 | shots/e/void_eye/ |
 | (doldurulacak) | | | | | |
 
 ### S3 Boşluk Gözü (`void_eye`)
@@ -239,3 +240,10 @@ kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe aç�
 - Kart resmi yumuşak bayraklar: büyük özne doluluğu 0,86 (dawn_swords 0,87), küçük/büyük yerleşim 0,56 (auger_lance da 0,56); küçük ton 20/20 sınırda.
 - Mühür aşamalarında 38 px kamera kayması beş mühür kazanma sekansından, bu karttan değil.
 - `tests/art/cloud_hatchling.test.ts` başarısız: başka kartın işi, ilgisiz.
+
+### void_eye
+- magic_hat sahteleri void_eye ile birlikte sahnelenemez (şapkalar yalnız savaş aşamasında, göz ana aşamada); kod destekliyor, film yok.
+- Büyük resim özne doluluğu 1,00 (hedef 0,60–0,75): göz ve bulutlar kasıtlı taşıyor; diğer ölçüler geçiyor.
+- palcheck sahne sonrası karelerde FAIL (+7 pt): boş sahada görünen arena zemin ışığı, kartın pikseli değil.
+- Uzun --start atlamalı filmde bir kez gri arena görüldü (çekim hatası); adım adım filmler normal.
+- eVoidCpu measure.mjs / --fresh ile çalışmaz (hep hot-seat); vitest testi ve --fresh'siz film ile doğrulandı.
