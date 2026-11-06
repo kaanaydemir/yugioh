@@ -318,3 +318,39 @@ kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe aç�
 - eDawn 5,38 sn, pay 5,30 sn (~0,08 sn fazla; iki kapalı canavarın açılması); süre sınırı yok kararıyla kabul.
 - eDawnExpire / eDawnPurge palcheck FAIL: kafes kalkınca arenanın kendi palet dışı tabanı (~%39) geri geliyor; Purge'deki %91 Arındıran Dalga'nın tam ekran etkisi. Bu kartın pikselleri değil.
 - v1 filmdiff setinde dawn_swords filmi yok; eski görünüm eşitliği kapı incelemesi, dondurulmuş resim hash testi ve dsCast'in v1 görsel kontrolüne dayanıyor.
+
+## SON ÖZET (2026-11-06)
+
+**14/14 kalem bitti, commit'lendi, push edildi.** Her kart: yapım → 3 eleştiri/düzeltme turu → çekişmeli doğrulama → commit.
+
+| Kalem | Commit | Eleştiri puanları (t1/t2/t3) |
+|---|---|---|
+| puppet_string (Kukla İpi) | 770b869 | 5,5 / 6,5 / 7 |
+| auger_lance (Burgu Mızrağı, hızlı) | 5c02d16 | 6 / 7,5 / 7 |
+| well_pail (Kuyu Kovası) | b09ce42 | 5,5 / 7 / 7,5 |
+| void_eye (Boşluk Gözü) | 1267a98 | 6 / 6 / 7 |
+| winnow_sieve (Harman Eleği) | 71b0665 | 5,5 / 6 / 6,5 |
+| sweeping_gale (Süpürge Rüzgarı) | 40eac5e | 6 / 6,5 / 7,2 |
+| soul_leash (Ruh Tasması) | 0257e7c | 6 / 6,5 / 6 |
+| spite_axe (Hınç Baltası) | 529859c | 5 / 6,5 / 6,5 |
+| page_turner (Sayfa Çeviren) | 61316ce | 6 / 6,5 / 7 |
+| lucky_die (Şans Zarı) | ae69dbb | 6 / 7 / 7 |
+| straw_decoys (Saman Kuklalar, hızlı) | 9825504 | 5 / 6 / 7 |
+| dawn_swords (Şafak Kılıçları, imza) | 72e0cce | 6,5 / 6,5 / 7 |
+| crystal_wyrm (yalnız kart resmi) | 39dc3c6 | 6,5 / 6,5 / 7,5 |
+| abyss_magus (yalnız kart resmi) | c3749db | 5 / 5,5 / 6 |
+
+Mekanik yer tutucular (controlChange, massDestroy, diceRoll, spellTrap→deste) `src/cinematics/b2e/dispatch.ts` üzerinden ilgili kartların sinematiklerine bağlandı; hızlı büyü açılışı `src/cinematics/spells/_quick_e.ts` ("HIZLI BÜYÜ!", ses `e_quickReveal`).
+
+**Kapılar (son koşu):**
+- typecheck: temiz (0 hata).
+- vitest: 1554 geçti / 8 kaldı. 7'si bilinen (3 arena geometrisi, cardface-v3 G1, dusk_ashen, hourglass_imp, shield_titan); 8. crag_axeman main'de (6d507fa) de kalıyor, bu şeritten değil.
+- filmdiff v1/a6v1, kamera kapısı, palcheck: sahibin isteğiyle son koşuda atlandı (her kartın doğrulayıcısı kendi koşusunda v1 17/17 IDENTICAL, zoom 1, closeUpCalls 0 buldu). Sorun çıkarsa sahip bildirecek.
+
+**Açık konular (kart başına ayrıntı yukarıdaki ### bölümlerinde):**
+- Son tur puanları 6–7,5: eleştirmenler hâlâ "needs-work" diyor; en zayıflar abyss_magus, soul_leash, winnow_sieve, spite_axe — 4. tur adayı.
+- Ortak açılış: kapalı büyü kartı açılırken arkasındaki canavarı ve stat rozetini ~0,5 sn örtüyor (paylaşılan dosya, düzeltilmedi).
+- 2x inceleme paneli büyük 88×68 resmi değil küçük resmin büyütülmüşünü gösteriyor; `LANE_E_ART_BIG` hazır, bağlanması başka şeridin işi.
+- Bazı kartlar eski süre hesabını 0,1–0,3 sn aşıyor (sahip kararı: sabit sınır yok).
+- CPU senaryoları (`e*Cpu`, `e*Bot`) `--fresh` ile çekilemiyor; `&mode=vsBot` ile `--fresh` olmadan çekilmeli.
+- Saman kukla jetonu ve tokenVanish D şeridinde, hâlâ yer tutucu.
