@@ -50,8 +50,8 @@ export interface PuddleGeo {
   my: number;
   kr: number;
 }
-const GEO_L: PuddleGeo = { cx: RX + 11, cy: GY - 8, rx: 20, ry: 12, rdx: 9, my: GY - 20, kr: 0.38 };
-const GEO_R: PuddleGeo = { cx: RX - 12, cy: GY - 8, rx: 20, ry: 12, rdx: -11, my: GY - 20, kr: 0.38 };
+const GEO_L: PuddleGeo = { cx: RX + 12, cy: GY - 8, rx: 20, ry: 12, rdx: 14, my: GY - 20, kr: 0.38 };
+const GEO_R: PuddleGeo = { cx: RX - 13, cy: GY - 8, rx: 20, ry: 12, rdx: -16, my: GY - 20, kr: 0.38 };
 /** The puddle geometry of a sheet ('left' = the P1 sheet, 'right' = the P2 relight sheet, shown flipped). */
 export const puddleGeo = (lightFrom: 'left' | 'right'): PuddleGeo => (lightFrom === 'right' ? GEO_R : GEO_L);
 /** The geometry of the sheet being drawn (set by drawArcher; drawing is synchronous). */
