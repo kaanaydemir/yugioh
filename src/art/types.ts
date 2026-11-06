@@ -165,6 +165,23 @@ export interface MonsterArt {
    * hip travel, by the hit kit (_v3/blow.ts poseTravelPx, cached per art × recoil anim × frame).
    */
   joints?(anim: AnyMonsterAnim, frame: number): Readonly<Record<string, { x: number; y: number }>>;
+
+  // ---- v3 (lane F follow-ups) optional extensions ----
+
+  /**
+   * The generic hex-shield glint MonsterUnit.guardHit flashes on a guard's struck face (absent / true:
+   * shown, today's look). false: never drawn for this art — its guard is not a hex (Kalkan Devi's is
+   * masonry, its own cinematics draw it); the flash and the knock-back stay.
+   */
+  guardGlint?: boolean;
+  /**
+   * Where battleV3's counter-blow lands on this monster when it ATTACKS in melee and is blocked (or both
+   * die): 'core' (absent = default, today's look) — the generic point a few px from its core toward the
+   * clash; 'clash' — the clash point itself, i.e. the flash lights the part that struck (an art whose
+   * striking part reaches far past its core: Kalkan Devi's slab rim, while core stays on the shield face
+   * where blows on him land — at 'core' the counter's flash became a white blob over the sunstone).
+   */
+  counterAt?: 'core' | 'clash';
 }
 
 /** Card artwork window size (pixels) used by the card renderer and portraits. */

@@ -133,6 +133,15 @@ export class StatBadge {
     await tween(this.scene, { targets: this.image, scale: 1, duration: 160, ease: 'Back.Out' });
   }
 
+  /**
+   * Show (true) or clear (false) the white-digits flash frame — the same frame pop() shows on its
+   * way in — and re-render now. Nothing is tweened; a later roll or pop takes the flash over.
+   */
+  flashDigits(on: boolean): void {
+    this.flashT = on ? 1 : 0;
+    this.render();
+  }
+
   /** Set values; animate = roll the digits (green/red), punch at the end. */
   async set(atk: number, def: number, animate = true): Promise<void> {
     const token = ++this.rollToken;
@@ -253,17 +262,20 @@ export class StatBadge {
   }
 }
 
-/** The 5x7 lock icon at (x, y): an ice-blue hourglass (freeze) or a gold padlock (kneel), ink outlined. Palette only. */
+/** The 5x7 lock icon at (x, y): a sand hourglass (freeze: Kum Saati Cücesi) or a gold padlock (kneel), ink outlined. Palette only. */
 function paintLockIcon(p: PixelCanvas, x: number, y: number, kind: PlateLock): void {
-  const ice = RAMPS.cyan;
   if (kind === 'freeze') {
-    p.rect(x, y, 5, 1, ice[4]); // top cap
-    p.rect(x, y + 6, 5, 1, ice[4]); // bottom cap
-    p.rect(x + 1, y + 1, 3, 1, ice[3]);
-    p.set(x + 2, y + 2, ice[3]);
-    p.set(x + 2, y + 3, PAL.white);
-    p.set(x + 2, y + 4, ice[2]);
-    p.rect(x + 1, y + 5, 3, 1, ice[3]);
+    // Kum Saati Cücesi's sand seal (matches its emblem): brass caps, sand in the top bulb, a grain frozen mid-neck
+    p.rect(x, y, 5, 1, PAL.gold2); // top cap (brass)
+    p.set(x, y, PAL.gold3);
+    p.rect(x, y + 6, 5, 1, PAL.gold2); // bottom cap
+    p.set(x, y + 6, PAL.gold3);
+    p.rect(x + 1, y + 1, 3, 1, PAL.earth4); // top bulb sand
+    p.set(x + 2, y + 2, PAL.gold3);
+    p.set(x + 2, y + 3, PAL.gold4); // the frozen grain
+    p.set(x + 2, y + 4, PAL.night2);
+    p.rect(x + 1, y + 5, 3, 1, PAL.earth3); // the lower heap
+    p.set(x + 2, y + 5, PAL.gold3);
   } else {
     const g = RAMPS.gold;
     p.rect(x + 1, y, 3, 1, g[4]); // shackle

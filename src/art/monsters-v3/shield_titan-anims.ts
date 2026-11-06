@@ -1,402 +1,342 @@
-// Kalkan Devi v3 — the ANIM TABLES: hand-keyed beats and holds over biped v1 poses (A3_MIMARI §3.2).
-// The plan gives words and geometry; the choreography is this file's. Every number is a whole-pixel
-// decision: a plate either moves a pixel or it does not (REHBER IŞ-12). The shield is the actor: it
-// leans, creaks, is heaved, driven forward and slammed down; the giant behind it only shows as the
-// pauldron, the gauntlet on the rim, the boot and the eyes.
+// Kalkan Devi v3 — animations: pose tables, holds, marks, points (docs/v3/oturum-f/shield_titan.md §3–§4, §12).
 //
-// Base (part 1): idle 12 f / 1.98 s · guard 6 f / 1.17 s · attack (Kalkan Darbesi, the shield bash) · roar
-// (the war-cry: the slab heaved up, slammed down, then it RATTLES) · hit.
-// Extras (part 2): summon (the shield heaved up out of the floor, the giant under it), death (the grip
-// fails, the slab cracks, leans and comes apart into its plates, a slumped hulk behind it), revive (the
-// plates fly back), hitHeavy, hitMagic, toGuard, fromGuard, victory.
+// Rhythm: HEAVY and patient. The shield is a wall and moves only by whole pixels; the life is in the old giant behind
+// it (an 8-frame breath with the head and the beard lagging, the finger ripple on the rim, one blink) and in the
+// sunstone's slow pulse. idle 16 · guard 8 (the hero pose "Sur Duruşu": crouched, shoulder in the shield, peering past
+// its back edge, the bottom course lit) · toGuard / fromGuard 6 ("DUNK" plant) · attack 12 ("the gate falls") · roar 10
+// (the shield drum) · hit 6 · hitHeavy 8 · hitMagic 8 (the copper conducts) · summon 14 (the drawbridge rises, the giant
+// hauling from frame 0) · death 11 (the gate closes over its bearer) · revive 12 (he lifts the lid) · special 12 (the
+// rampart ward: five shoves). Every one-shot ends on idle f0 (HA-14).
 
-import { bipedNeutral, bipedRig, restOf, type BipedDelta } from '../bodyplans/biped/v1';
-import type { AnimDef, AnimDefs, Beat, LoopDef } from '../rigkit/anim';
-import type { V } from '../rigkit/geom';
-import { BUILD, FX, type TitanFx } from './shield_titan-build';
-import { REST_RIG, SHIELD_REST, planted, type Pose } from './shield_titan-parts';
+import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
+import { AX, GY, pose, skeleton, slabPoints, type Pose } from './shield_titan-rig';
 
-type D = BipedDelta & { fx?: Partial<TitanFx> };
-const REST = restOf(BUILD);
+const rnd = Math.round;
 
-// ------------------------------------------------------------------ helpers
+const spec = (frames: number, fps: number, loop: boolean, holds: number[], marks?: AnimSpec['marks']): AnimSpec => ({ frames, fps, loop, holds, ...(marks ? { marks } : {}) });
 
-/** A delta over a pose: nested objects merged, tuples and values replaced (PoseDelta semantics). */
-function over<T>(a: T, d: unknown): T {
-  if (d === undefined) return a;
-  if (Array.isArray(d) || typeof d !== 'object' || d === null) return d as T;
-  const o: Record<string, unknown> = { ...(a as Record<string, unknown>) };
-  for (const [k, v] of Object.entries(d as Record<string, unknown>)) o[k] = over((a as Record<string, unknown>)?.[k], v);
-  return o as T;
+// ------------------------------------------------------------------ idle (16 frames, 2240 ms)
+
+const IDLE_N = 16;
+// Every frame change moves ONE thing (HA-17: no frame carries the whole body): the chest (inhale / exhale), then the head
+// a frame later, then the shield settling 1 px into its rut or hefted out of it, then the beard tip catching up — two
+// breaths per loop; the finger ripple, the blink, the strap swing and the sunstone pulse fill the gaps.
+const I = {
+  cy: [0, 0, -1, -1, -1, -1, 0, 0, 0, 0, -1, -1, -1, -1, 0, 0],
+  hy: [0, 0, 1, 0, 0, 0, -1, 0, 0, 0, 1, 0, 0, 0, -1, 0],
+  sink: [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1],
+  by: [0, 0, 0, 1, 1, 0, 0, -1, -1, 0, 0, 1, 1, 0, 0, -1],
+  bx: [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+  cx: [0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+  hx: [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
+  f3: [0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  f2: [0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+  f1: [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+  f0: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+  lid: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0],
+  boss: [1, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1],
+  // the strap swings ONCE per loop (a slow 16-frame pendulum, round 2 #9: the loop's sub-periods differ from ashen_drake's)
+  swing: [0, 1, 1, 2, 2, 2, 1, 0, 0, -1, -1, -2, -2, -2, -1, 0],
+  ripple: [1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0],
+  sheen: [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0],
+  nu: [26, 26, 26, 27, 28, 28, 28, 27, 26, 26, 26, 27, 28, 28, 28, 27],
+};
+export function idlePose(f: number): Pose {
+  const k = ((f % IDLE_N) + IDLE_N) % IDLE_N;
+  const o: Partial<Pose> = {};
+  for (const key of Object.keys(I) as (keyof typeof I)[]) (o as Record<string, number>)[key] = I[key][k];
+  return pose(o);
+}
+const IDLE0 = idlePose(0);
+// 2240 ms: the slowest breath on the board (round 2 #9: the loop no longer shares ashen_drake's 2 s rhythm)
+const IDLE_HOLDS = [170, 130, 110, 150, 160, 110, 140, 170, 130, 110, 150, 120, 170, 120, 110, 190];
+
+const key = (d: Partial<Pose>, base: Pose = IDLE0): Pose => ({ ...base, ...d });
+
+// ------------------------------------------------------------------ guard (8 frames loop)
+
+/** The hero pose: crouched 4 px, the far shoulder jammed in the shield's back, the head peering past its back edge,
+ *  the foot sunk 1 px with a dirt lip, the bottom course lit. */
+const G: Partial<Pose> = { gy: 4, cx: 3, cy: 1, hx: -2, hy: 0, nu: 30, lip: 1, sink: 1, courses: 1, boss: 1, ffx: 0 };
+const GUARD_N = 8;
+const GQ = {
+  cy: [1, 1, 0, 0, 1, 1, 1, 1],
+  by: [0, 0, 0, 1, 1, 0, 0, 0],
+  bx: [0, 0, 0, 0, 0, 0, 1, 1],
+  boss: [1, 1, 1, 1, 2, 2, 1, 1],
+  ripple: [0, 1, 2, 3, 0, 1, 2, 3],
+};
+export function guardPose(f: number): Pose {
+  const k = ((f % GUARD_N) + GUARD_N) % GUARD_N;
+  return pose({ ...G, cy: GQ.cy[k], by: GQ.by[k], bx: GQ.bx[k], boss: GQ.boss[k], ripple: GQ.ripple[k] });
+}
+const GUARD0 = guardPose(0);
+const GUARD_HOLDS = [200, 160, 150, 180, 200, 160, 150, 200];
+
+// ------------------------------------------------------------------ toGuard / fromGuard (6 frames each)
+
+const TG: Partial<Pose>[] = [
+  {},
+  { gy: 1, cx: 1, lift: 2, nu: 27 },
+  { gy: 3, cx: 2, hx: 0, lift: 2, nu: 29 },
+  { gy: 4, cx: 2, hx: -1, sink: 1, lip: 1, nu: 30, boss: 2 },
+  { gy: 4, cx: 3, cy: 1, hx: -2, hy: 0, sink: 1, lip: 1, nu: 30, courses: 1, bx: 1 },
+];
+const toGuardPose = (f: number): Pose => (f >= TG.length ? GUARD0 : key(TG[f]));
+const TG_HOLDS = [50, 60, 70, 60, 60, 80];
+
+const FG: Partial<Pose>[] = [
+  { ...G },
+  { ...G, cx: 2, hx: -1, courses: 0 },
+  { gy: 3, cx: 1, hx: 0, lift: 1, nu: 28 },
+  { gy: 2, cx: 1, nu: 27 },
+  { gy: 1, cy: -1, nu: 26 },
+];
+const fromGuardPose = (f: number): Pose => (f >= FG.length ? IDLE0 : key(FG[f]));
+const FG_HOLDS = [60, 60, 60, 70, 70, 70];
+
+// ------------------------------------------------------------------ attack (12 frames): "Kale Kapısı Düşer"
+
+// Anticipation AWAY from the target: he sinks 5 px into a hunch while the slab rises 7 px and tips BACK; the stride;
+// the slab high over him at full stretch; one smear frame at ~30° (a ghost rim trailing); contact squash (he compresses,
+// the foot bounces). The whole body shifts back in the frame (sx/gx) so the 30° lean stays inside the margin — the
+// cinematic's stride is derived from the contact frame's rim corner, so the reach on screen is unchanged.
+const A: Partial<Pose>[] = [
+  {},
+  { gy: 2, nu: 24, boss: 1, cy: 1, by: -1 },
+  { gy: 3, lift: 3, rot: -2, cx: -1, cy: 1, hy: 1, nu: 24, by: -1 },
+  { gy: 5, lift: 7, rot: -5, cx: -2, cy: 2, hy: 1, nod: 1, by: -2, bx: -1, boss: 2, nu: 23, mouth: 0 }, // charge: hunched, slab up and BACK
+  { gx: 1, gy: 2, nfx: 3, sx: 0, lift: 9, rot: 3, cx: 1, cy: -1, puff: 1, nu: 24, bx: -1 }, // the heavy stride
+  { gx: 1, gy: -1, nfx: 5, ffx: 2, sx: -2, lift: 11, rot: 12, cx: 3, cy: -3, hy: -2, nod: -1, mouth: 1, nu: 26, bx: -2, by: -1 }, // high, full stretch
+  { gx: 1, nfx: 6, ffx: 3, sx: -6, lift: 5, rot: 30, cx: 5, cy: 0, mouth: 1, smear: 9, nu: 26, bx: -2 }, // release: the smear at 30°
+  { gx: 1, gy: 2, nfx: 6, ffx: 3, sx: -5, lift: 0, sy: 1, rot: 26, cx: 5, cy: 2, hy: 1, boss: 3, iris: 1, courses: 3, hot: 1, glint: 1, nu: 26, bx: 1, by: 1 }, // contact: SLAM, squash
+  { gx: 1, gy: 1, nfx: 5, ffx: 2, sx: -4, lift: 2, rot: 18, cx: 4, cy: 1, boss: 2, nu: 26, bx: 2 }, // the slab re-lifted (haul back)
+  { gx: 1, nfx: 3, ffx: 1, sx: -2, lift: 2, rot: 7, cx: 2, boss: 2, bx: 1 }, // recover: steps back
+  { lip: 1, puff: 1, cy: 1, bx: -1 }, // the re-plant
+];
+const attackPose = (f: number): Pose => (f >= A.length ? IDLE0 : key(A[f]));
+const ATTACK_HOLDS = [70, 80, 100, 190, 110, 70, 60, 80, 90, 100, 120, 140];
+
+// ------------------------------------------------------------------ roar (10 frames): "Kalkan Davulu"
+
+const R: Partial<Pose>[] = [
+  {},
+  { nmode: 1, nhx: 20, nhy: 34, cy: -1, hy: -1, nod: -1 },
+  { nmode: 1, nhx: 17, nhy: 27, cy: -1, hy: -2, nod: -1, mouth: 1, by: 1 },
+  { nmode: 1, nhx: 34, nhy: 44, boss: 3, iris: 1, courses: 1, sx: 1, mouth: 1, cx: 2, bx: -1 }, // BANG 1
+  { nmode: 1, nhx: 20, nhy: 40, boss: 2, mouth: 1, cx: 1, bx: 1 },
+  { nmode: 1, nhx: 34, nhy: 42, boss: 3, iris: 2, courses: 2, hot: 1, sx: 1, mouth: 1, cx: 2, bx: -1, glint: 1 }, // BANG 2
+  { nmode: 1, nhx: 28, nhy: 46, boss: 2, courses: 1, cx: 1 },
+  { nu: 27, boss: 2, cy: -1 },
+  { cy: -1, by: 1 },
+];
+const roarPose = (f: number): Pose => (f >= R.length ? IDLE0 : key(R[f]));
+const ROAR_HOLDS = [90, 140, 170, 50, 70, 80, 100, 110, 120, 130];
+
+// ------------------------------------------------------------------ hits
+
+const HT: Partial<Pose>[] = [
+  { hx: -1, lid: 1, boss: 2 },
+  { sx: -2, cx: -2, hx: -2, nod: -1, lid: 1 },
+  { sx: -1, cx: -1, f0: 1, f1: 1, f2: 1, f3: 1, by: 1 },
+  { cx: -1, bx: 1 },
+  { bx: 1 },
+];
+const hitPose = (f: number): Pose => (f >= HT.length ? IDLE0 : key(HT[f]));
+// the copper flexes: the give (f2) held long (≈190 ms) before he recovers late (310 ms) — his weight, not
+// stone_sentinel's timing (round 2 #9; HA-4 keeps f0/f1 snappy and recover ≤ 370 ms)
+const HIT_HOLDS = [50, 70, 190, 140, 120, 130];
+
+// the shield is KNOCKED ASIDE: it swings out one iso step about its foot, away from him (his bare chest and beard
+// exposed for two frames, the rim hand torn off it), his hips stagger 2 px, then he hauls it back in
+const HH: Partial<Pose>[] = [
+  { hx: -1, lid: 1, mouth: 1, boss: 2 },
+  { rot: 9, sx: 3, cx: -2, hx: -2, nod: -1, lid: 1, mouth: 1, fmode: 1, fhx: 40, fhy: 26, bx: 2, by: -1 },
+  { rot: 6, sx: 2, gx: -2, cx: -3, hx: -2, fmode: 1, fhx: 38, fhy: 30, mouth: 1, bx: 1 },
+  { rot: -2, sx: -1, gx: -1, cx: 1, hx: 0, bx: -1 },
+  { sink: 1, lip: 1, puff: 1 },
+  { cy: 1, by: 1 },
+  { by: 1 },
+];
+const hitHeavyPose = (f: number): Pose => (f >= HH.length ? IDLE0 : key(HH[f]));
+// the exposed chest held (f2–f3 ≈ 240 ms), the recovery late (360 ms): the heaviest body on the board (round 2 #9)
+const HH_HOLDS = [50, 70, 110, 130, 140, 120, 130, 140];
+
+// the copper conducts: the rim crackles, the beard bristles out, the braid lifts, he tears his rim hand off the copper
+// and shakes it (±1 px), the body jolts 1 px
+const HM: Partial<Pose>[] = [
+  { zap: 1, boss: 2, lid: 1 },
+  { zap: 2, bristle: 1, fmode: 1, fhx: 38, fhy: 18, cy: -2, gx: 1, mouth: 1, iris: 1, boss: 3, lid: 2, by: -3 },
+  { zap: 3, bristle: 1, fmode: 1, fhx: 39, fhy: 19, cy: -2, gx: -1, lid: 2, boss: 2, by: -2, bx: 1 },
+  { zap: 4, bristle: 0.6, fmode: 1, fhx: 37, fhy: 18, cy: -1, gx: 0, boss: 2, by: -1, mouth: 1 },
+  { bristle: 0.3, nu: 27, by: 1 },
+  { by: 1 },
+  { by: 1, bx: 1 },
+];
+const hitMagicPose = (f: number): Pose => (f >= HM.length ? IDLE0 : key(HM[f]));
+// the shaking frames flicker fast (45 / 50 ms), then a long static hold of the bristled pose (f3) before he lets go
+// of the charge (round 2 #9)
+const HM_HOLDS = [45, 50, 80, 120, 140, 110, 120, 130];
+
+// ------------------------------------------------------------------ summon (14 frames, land @ 8): the drawbridge rises
+
+const CROUCH: Partial<Pose> = { gy: 11, cx: 3, cy: 4, hy: 1, nod: 1, nfx: -2, ffx: -2, haul: 1, nmode: 1, fmode: 1 };
+const SU: Partial<Pose>[] = [
+  { ...CROUCH, aw: 0, boss: 0, nhx: 30, nhy: 60, fhx: 32, fhy: 58 },
+  { ...CROUCH, aw: 25, gy: 10, boss: 0, nhx: 27, nhy: 56, fhx: 29, fhy: 54, cx: 1 },
+  { ...CROUCH, aw: 55, gy: 8, cy: 3, boss: 1, nhx: 24, nhy: 50, fhx: 27, fhy: 48, cx: 0, nod: 0 },
+  { ...CROUCH, aw: 80, gy: 6, cy: 2, boss: 1, nhx: 24, nhy: 44, fhx: 28, fhy: 40, cx: 0, nod: 0 },
+  { aw: 90, gy: 5, cy: 1, nfx: -2, ffx: -2, boss: 1, nu: 30, sx: 1 }, // upright, rocking: the fingers curl over the rim
+  { gy: 4, cy: 1, nfx: -1, ffx: -1, boss: 1, nu: 29 },
+  { gy: 2, cy: 0, nfx: -1, boss: 1, nu: 28, hy: -1, bx: -1 },
+  { gy: 1, lift: 2, cy: -1, boss: 2, nu: 27, by: -1 }, // he lifts it 2 px
+  { gy: 2, cy: 1, sink: 1, sy: 1, lip: 1, boss: 3, courses: 3, hot: 1, puff: 2, bx: 1, by: 2 }, // LAND: the plant (he drops 2 px, the foot 1 px)
+  { gy: -1, cy: -1, sink: 1, lip: 1, boss: 3, courses: 2, bx: 2, by: -1 }, // the rebound
+  { sink: 1, lip: 1, boss: 2, courses: 1, bx: -1 },
+  { cy: -1, hy: -1, boss: 2 },
+  { by: 1 },
+];
+const summonPose = (f: number): Pose => (f >= SU.length ? IDLE0 : key(SU[f]));
+const SU_HOLDS = [70, 70, 70, 80, 90, 70, 80, 70, 60, 80, 90, 100, 110, 130];
+
+// ------------------------------------------------------------------ death (11 frames, dissolve @ 6): the gate closes over him
+
+const FOLD: Partial<Pose> = { gy: 10, cx: 1, cy: 10, hx: -3, hy: 3, nod: 1, lid: 2, fmode: 1, fhx: 34, fhy: 66, nmode: 1, nhx: 32, nhy: 70, nfx: -4, ffx: -4, boss: 1 };
+const LID: Partial<Pose> = { fall: 90, show: 0, peek: 1 };
+const D: Partial<Pose>[] = [
+  { hx: -1, nod: -1, lid: 1, mouth: 1 },
+  { rot: -4, sx: -1, cx: -3, hx: -3, gx: -1, fmode: 1, fhx: 34, fhy: 34, lid: 1, mouth: 1, bx: 2 },
+  { rot: -2, gy: 6, cx: -1, cy: 2, fmode: 1, fhx: 30, fhy: 48, nmode: 1, nhx: 28, nhy: 62, lid: 2, nfx: -2, ffx: -2 },
+  { ...FOLD },
+  { ...FOLD, rot: 3 }, // teeter: it stands alone and rocks forward
+  { ...FOLD, rot: 0 },
+  { ...FOLD, fall: 30, boss: 2 }, // dissolve: it tips backward
+  { ...FOLD, fall: 65, boss: 2 },
+  { ...LID, boss: 3 }, // SLAM
+  { ...LID, sy: -1, boss: 1, tarn: 0.6 },
+  { ...LID, boss: 2, tarn: 1 },
+];
+const deathPose = (f: number): Pose => key(D[Math.min(f, D.length - 1)]);
+const D_HOLDS = [50, 70, 90, 80, 70, 60, 50, 50, 110, 90, 120];
+
+// ------------------------------------------------------------------ revive (12 frames, land @ 7): he lifts the lid
+
+const RV: Partial<Pose>[] = [
+  { ...LID, boss: 2, tarn: 1 },
+  { ...LID, boss: 2, tarn: 0.4 },
+  { ...FOLD, fall: 76, boss: 2, gy: 12, cy: 9 },
+  { gy: 9, cx: 3, cy: 4, hx: 2, hy: 2, nod: 1, fall: 55, boss: 2, nmode: 1, nhx: 22, nhy: 46, fmode: 1, fhx: 26, fhy: 42, nfx: -3, ffx: -3 },
+  { gy: 7, cx: 2, cy: 2, hx: 1, hy: 1, fall: 30, boss: 2, nmode: 1, nhx: 24, nhy: 40, fmode: 1, fhx: 28, fhy: 36, nfx: -2, ffx: -2 },
+  { gy: 4, cx: 1, cy: 1, fall: 10, boss: 2, nmode: 1, nhx: 28, nhy: 44, fmode: 1, fhx: 32, fhy: 32, nfx: -1, ffx: -1 },
+  { gy: 2, boss: 2, nu: 28 },
+  { sink: 1, lip: 1, boss: 3, courses: 2, puff: 2 }, // LAND
+  { cy: -1, hy: -1, by: -1, boss: 2, courses: 1 },
+  { by: 1 },
+  { bx: 1 },
+];
+const revivePose = (f: number): Pose => (f >= RV.length ? IDLE0 : key(RV[f]));
+const RV_HOLDS = [100, 80, 70, 70, 60, 70, 80, 60, 90, 110, 120, 140];
+
+// ------------------------------------------------------------------ special (12 frames): "Sur Kalkanı", the ward
+
+// f5–f9: one shove per ward pulse — the shoulder drives in 2 px and the slab gives 1 px toward the attacker, then eases
+// back while the beard swings after it (overlap: no two consecutive frames are equal); the cinematic adds a 1-px nudge of
+// the whole sprite on each launch, so every pulse has its own shove even on the "ease" frames
+const SP: Partial<Pose>[] = [
+  { gy: 1, boss: 2, puff: 1 },
+  { ...G, cx: 4, boss: 2, bx: 1 },
+  { ...G, cx: 4, cy: 2, gy: 5, boss: 3, iris: 3, bx: 1, by: 1 }, // charge: the sunstone opens, he sinks into it
+  { ...G, cx: 6, sx: 1, boss: 3, iris: 2, courses: 3, hot: 1, bx: -1, mouth: 1 }, // release: the rampart rises
+  { ...G, cx: 4, boss: 2, iris: 1, courses: 3, bx: 1 },
+  { ...G, cx: 6, gx: 1, sx: 1, boss: 3, courses: 3, hot: 1, bx: -1, by: -1, mouth: 1 }, // shove 1
+  { ...G, cx: 4, cy: 2, boss: 2, courses: 3, bx: 2, by: 1 },
+  { ...G, cx: 6, gx: 1, sx: 1, boss: 3, courses: 3, hot: 1, bx: -1, mouth: 1 }, // shove 3
+  { ...G, cx: 4, cy: 2, boss: 2, courses: 2, bx: 1, by: 1 },
+  { ...G, cx: 6, gx: 1, sx: 1, boss: 3, courses: 2, hot: 1, bx: -1, by: -1, mouth: 1 }, // shove 5
+  { ...G }, // = guard f0 (the hook rests here)
+];
+const specialPose = (f: number): Pose => (f >= SP.length ? IDLE0 : key(SP[f]));
+// round 3 #3 (tempo): the wake is ≈ 190 ms (was 360), the five shoves ≈ 95 ms apart (was 140) — the ward ≈ 1.25 s game
+const SP_HOLDS = [45, 55, 90, 50, 60, 95, 95, 95, 95, 95, 110, 150];
+
+// ------------------------------------------------------------------ specs
+
+export const IMPACT = 6;
+export const ANIMS: Record<MonsterAnim, AnimSpec> = {
+  idle: spec(IDLE_N, 8, true, IDLE_HOLDS),
+  guard: spec(GUARD_N, 6, true, GUARD_HOLDS),
+  roar: spec(10, 10, false, ROAR_HOLDS, { charge: 1, release: 3, impact: 3, recover: 6 }),
+  attack: spec(12, 10, false, ATTACK_HOLDS, { charge: 3, release: IMPACT, impact: IMPACT, contact: 7, recover: 9 }),
+  hit: spec(6, 12, false, HIT_HOLDS, { impact: 0, contact: 0, recover: 3 }),
+};
+export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
+  summon: spec(14, 10, false, SU_HOLDS, { land: 8 }),
+  death: spec(11, 12, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 6 }),
+  revive: spec(12, 10, false, RV_HOLDS, { land: 7 }),
+  special: spec(12, 10, false, SP_HOLDS, { charge: 2, release: 3, impact: 3, recover: 10 }),
+  hitHeavy: spec(8, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 4 }),
+  hitMagic: spec(8, 12, false, HM_HOLDS, { impact: 0, contact: 0, recover: 4 }),
+  toGuard: spec(6, 16, false, TG_HOLDS),
+  fromGuard: spec(6, 16, false, FG_HOLDS),
+};
+
+const CACHE = new Map<string, Pose>();
+export function framePose(anim: AnyMonsterAnim, f: number): Pose {
+  const id = `${anim}:${f}`;
+  let p = CACHE.get(id);
+  if (!p) {
+    switch (anim) {
+      case 'idle': p = idlePose(f); break;
+      case 'guard': p = guardPose(f); break;
+      case 'attack': p = attackPose(f); break;
+      case 'roar': p = roarPose(f); break;
+      case 'hit': p = hitPose(f); break;
+      case 'hitHeavy': p = hitHeavyPose(f); break;
+      case 'hitMagic': p = hitMagicPose(f); break;
+      case 'toGuard': p = toGuardPose(f); break;
+      case 'fromGuard': p = fromGuardPose(f); break;
+      case 'summon': p = summonPose(f); break;
+      case 'revive': p = revivePose(f); break;
+      case 'death': p = deathPose(f); break;
+      case 'special': p = specialPose(f); break;
+      default: p = IDLE0;
+    }
+    CACHE.set(id, p);
+  }
+  return p;
 }
 
-/** The hands' places on the slab, relative to its top-left corner (the near hand on the rim, the far one behind). */
-const GRIP_N: V = [REST_RIG.armN.end[0] - SHIELD_REST[0], REST_RIG.armN.end[1] - SHIELD_REST[1]];
-const GRIP_F: V = [REST_RIG.armF.end[0] - SHIELD_REST[0], REST_RIG.armF.end[1] - SHIELD_REST[1]];
+const clampPt = (x: number, y: number) => ({ x: Math.max(1, Math.min(82, rnd(x))), y: Math.min(GY, Math.max(1, rnd(y))) });
 
-/**
- * Both hands ON the slab wherever it stands (the plan carries a hand with its shoulder, so a body leaning
- * back from a slab heaved the other way would leave the hands short of the grips: the hands are solved here
- * from the shoulders this pose puts them at; joints().handN / handF and points().grip then follow the slab).
- */
-function onSlab(p: Pose): Pose {
-  const rig = bipedRig(BUILD, p);
-  const s = rig.props.shield?.at;
-  if (!s) return p;
-  const dyN = p.fx?.fingY ?? 0;
-  const hn: V = [s[0] + GRIP_N[0] - rig.shoulderN[0] - REST.handN[0], s[1] + GRIP_N[1] + dyN * 0 - rig.shoulderN[1] - REST.handN[1]];
-  const hf: V = [s[0] + GRIP_F[0] - rig.shoulderF[0] - REST.handF[0], s[1] + GRIP_F[1] - rig.shoulderF[1] - REST.handF[1]];
-  return over(p, { armN: { hand: hn, bend: 1, grip: 'hold' }, armF: { hand: hf, bend: 1, grip: 'hold' } });
+/** The attack's muzzle is the slab's top-front rim corner (the contact point; the strike derives its stride from it);
+ *  everywhere else it is the sunstone, where the ward leaves from. core = the middle of the face (blows land there). */
+export function framePoints(anim: AnyMonsterAnim, f: number): MonsterPoints {
+  const o = framePose(anim, f);
+  const sk = skeleton(o);
+  const sp = slabPoints(o);
+  const muzzle = anim === 'attack' ? clampPt(sp.rim[0], sp.rim[1]) : clampPt(sp.boss[0], sp.boss[1]);
+  return {
+    muzzle,
+    core: clampPt(sp.face[0], sp.face[1]),
+    head: clampPt(sk.Hc[0] + 5, sk.Hc[1] + o.nod),
+    hand: clampPt(sk.wN[0], sk.wN[1]),
+    grip: clampPt(sk.wF[0], sk.wF[1]),
+    claw: clampPt(sp.rim[0], sp.rim[1]),
+    feet: { x: AX, y: GY },
+  };
 }
-/** A loop's delta with the hands pinned on the slab (the loops are deltas over the neutral pose). */
-const NEUTRAL = { ...bipedNeutral(BUILD), fx: { ...FX } } as unknown as Pose;
-const slab = (d: D): D => {
-  const p = onSlab(over(NEUTRAL, d) as Pose);
-  return { ...d, armN: p.armN, armF: p.armF } as D;
-};
-const key = (d: D) => (base: Pose): Pose => onSlab(over(base, d) as Pose);
-const beat = (ms: number, d: D, name?: Beat<Pose>['name']): Beat<Pose> => ({ ms, key: key(d), ...(name ? { name } : {}) });
-/** a beat for a struck first frame: a plain delta (the struck filter keeps only the struck regions' fields) */
-const struck = (ms: number, d: D, name: Beat<Pose>['name'] = 'struck'): Beat<Pose> => ({ ms, key: d, name });
 
-/** The pauldron / fingers / eye shorthand. */
-const fxd = (f: Partial<TitanFx>): D => ({ fx: f });
+export const MUZZLE = framePoints('attack', IMPACT).muzzle!;
 
-// ------------------------------------------------------------------ idle: the wall breathes against the giant's weight
-//
-// One slow breath behind the slab in 10 frames / 1.98 s, one block at a time (the HA-21 phase: no frame
-// carries the whole body off idle f0): the giant leans in (the slab's top creaks out a pixel and holds,
-// the pauldron and the breastplate rise), then lets go (the slab's top creaks in a pixel, the pauldron
-// sinks, the belt a pixel low); the gauntlet re-grips a frame late; the eyes drift toward the foe, blink
-// once; the crest's tower windows glow up and ebb; a glint crosses the crown on the inhale; the rag
-// sways on its own period, the arrow's tail ticks on the exhale.
-
-// prettier-ignore
-const IDLE: readonly { tilt: number; pad: number; chest: number; belt: number; fing: number; lid: number; eyeX: number; eye: number; sun: number; glint: number; arrow: number }[] = [
-  { tilt: 0, pad: 0, chest: 0, belt: 0, fing: 0, lid: 1, eyeX: 0, eye: 1, sun: 0.5, glint: 0, arrow: 0 },
-  { tilt: 0, pad: -1, chest: 0, belt: 0, fing: 0, lid: 1, eyeX: 0, eye: 1, sun: 0.7, glint: 0, arrow: 0 },
-  { tilt: 1, pad: -1, chest: 1, belt: 0, fing: 0, lid: 1, eyeX: 1, eye: 1.2, sun: 1, glint: 0.28, arrow: 0 },
-  { tilt: 1, pad: -2, chest: 1, belt: 0, fing: 1, lid: 1, eyeX: 1, eye: 1.2, sun: 1, glint: 0.6, arrow: 0 },
-  { tilt: 0, pad: 0, chest: 0, belt: 0, fing: 1, lid: 1, eyeX: 1, eye: 1, sun: 0.8, glint: 0, arrow: 0 },
-  { tilt: 0, pad: 1, chest: 0, belt: 0, fing: 0, lid: 2, eyeX: 0, eye: 0.9, sun: 0.6, glint: 0, arrow: 0 },
-  { tilt: 0, pad: -1, chest: 0, belt: 1, fing: 1, lid: 3, eyeX: 0, eye: 0.8, sun: 0.5, glint: 0, arrow: 0 },
-  { tilt: -1, pad: 0, chest: 0, belt: 1, fing: 1, lid: 2, eyeX: 0, eye: 0.9, sun: 0.5, glint: 0, arrow: 1 },
-  { tilt: -1, pad: 1, chest: 1, belt: 0, fing: 0, lid: 1, eyeX: 0, eye: 1, sun: 0.4, glint: 0, arrow: 0 },
-  { tilt: 0, pad: 1, chest: 0, belt: 0, fing: 0, lid: 1, eyeX: 0, eye: 1, sun: 0.5, glint: 0, arrow: 0 },
-  { tilt: 0, pad: -1, chest: 0, belt: 0, fing: 1, lid: 1, eyeX: 0, eye: 1, sun: 0.5, glint: 0, arrow: 0 },
-  { tilt: 0, pad: 1, chest: 0, belt: 0, fing: 0, lid: 1, eyeX: 0, eye: 1, sun: 0.5, glint: 0, arrow: 0 },
-];
-const IDLE_HOLDS = [200, 150, 130, 170, 190, 140, 160, 200, 150, 180, 150, 160];
-
-const idle: LoopDef<Pose> = {
-  n: IDLE.length,
-  holds: IDLE_HOLDS,
-  at: (f) => {
-    const k = IDLE[f];
-    return {
-      props: { shield: planted() },
-      hip: { x: 0, y: k.belt, tilt: 0 },
-      breath: k.chest,
-      clothPhase: f / IDLE.length,
-      fx: { tilt: k.tilt, padY: k.pad, fingY: k.fing, lid: k.lid, eyeX: k.eyeX, eye: k.eye, sun: k.sun, glint: k.glint, arrow: k.arrow, rag: 1 },
-    } as D;
-  },
-};
-
-// ------------------------------------------------------------------ guard: the wall
-//
-// The slab leans its top out toward the foe and sinks a pixel into the earth, the giant hunkers behind it
-// (hips 3 px down, the pauldron tucked in under the rim), the visor's lid drops to a slit and the crest's
-// tower wakes: its windows burn gold, brightest at the middle of the loop. A slow shallow breath: the
-// pauldron, then the chest, then the fingers on the rim a frame late; one glint crosses the crown.
-
-const GUARD_BASE: D = { hip: { x: 1, y: 3, tilt: 0 }, lean: 0.1, props: { shield: planted([0, 1]) }, fx: { tilt: 2, lid: 2, eye: 1.4, padY: 1 } };
-// prettier-ignore
-const GUARD: readonly { pad: number; chest: number; fing: number; sun: number; tilt: number; glint: number; eye: number }[] = [
-  { pad: 0, chest: 0, fing: 0, sun: 1.2, tilt: 2, glint: 0, eye: 1.4 },
-  { pad: -1, chest: 0, fing: 0, sun: 1.5, tilt: 2, glint: 0.2, eye: 1.5 },
-  { pad: -1, chest: 1, fing: 0, sun: 2, tilt: 2, glint: 0.55, eye: 1.7 },
-  { pad: -1, chest: 1, fing: 1, sun: 1.7, tilt: 2, glint: 0, eye: 1.5 },
-  { pad: 0, chest: 1, fing: 1, sun: 1.3, tilt: 2, glint: 0, eye: 1.4 },
-  { pad: 0, chest: 0, fing: 0, sun: 1.1, tilt: 2, glint: 0, eye: 1.3 },
-];
-const guard: LoopDef<Pose> = {
-  n: GUARD.length,
-  holds: [190, 170, 200, 200, 170, 180],
-  at: (f) => {
-    const k = GUARD[f];
-    return slab(over(GUARD_BASE, { breath: k.chest, clothPhase: f / GUARD.length, fx: { padY: 1 + k.pad, fingY: k.fing, sun: k.sun, tilt: k.tilt, glint: k.glint, eye: k.eye, rag: 0.6, arrow: 0 } }) as D);
-  },
-};
-
-// ------------------------------------------------------------------ hit: the blow lands on the slab
-
-const hit: AnimDef<Pose> = {
-  base: 'idle0',
-  struck: { regions: ['propF', 'head', 'extra'] },
-  beats: [
-    // contact: the slab is driven a pixel back, a fresh dent with a lit lip, steel sparks, the arrow's tail jumps and the lid slams shut
-    struck(50, { fx: { dent: 1, dentAt: 0, spark: 0.12, sparkAt: 0, lid: 3, arrow: -1, bash: 0.6, chips: 0.1, chipsAt: 0 } }),
-    // the recoil: the hips give a pixel, the pauldron jolts, the slab tips its top in
-    beat(60, { props: { shield: planted([-2, 0]) }, hip: { x: -1, y: 0, tilt: 0 }, lean: -0.04, fx: { dent: 1, dentAt: 0, spark: 0.4, sparkAt: 0, tilt: -1, padX: -1, lid: 3, arrow: 1, chips: 0.2, chipsAt: 0 } }),
-    beat(130, { props: { shield: planted([-1, 0]) }, hip: { x: -1, y: 1, tilt: 0 }, lean: -0.05, fx: { dent: 1, dentAt: 0, spark: 0.75, sparkAt: 0, tilt: -1, padY: 1, lid: 2, arrow: -1, chips: 0.55, chipsAt: 0, dust: 0.3, dustAt: 0, fingY: 1 } }),
-    beat(100, { props: { shield: planted() }, hip: { x: 0, y: 0, tilt: 0 }, fx: { dent: 1, dentAt: 0, spark: 0.95, sparkAt: 0, tilt: 1, lid: 1, eye: 1.3, arrow: 0, chips: 0.9, chipsAt: 0, dust: 0.65, dustAt: 0 } }, 'recover'),
-    beat(110, { props: { shield: planted() }, fx: { dent: 1, dentAt: 0, tilt: 0, eye: 1.1, dust: 0.9, dustAt: 0 } }),
-  ],
-  end: 'idle0',
-  endMs: 130,
-};
-
-// ------------------------------------------------------------------ attack: Kalkan Darbesi (the shield bash)
-//
-// A slow wall that comes down on you. The look: the eyes narrow and slide toward the foe. The coil: the
-// giant sinks and leans back, the slab dragged back with it, its top leaning in against the body. The
-// CHARGE: the longest hold, everything gathered — the slab trembling, the eyes burning, the tower awake.
-// Then the whole stack drives forward: the hips lead, the pauldron rolls ahead, the slab leans out and
-// slams 8 px forward (the RELEASE, a smear behind its edge) — the rim flares white, steel sparks off the
-// face and the bronze chips fly; the weight hangs on it (the contact hold); it is hauled back a step at a
-// time, the dust rolling off the planted foot, and settles home. The feet never leave the ground.
-
-const attack: AnimDef<Pose> = {
-  base: 'idle0',
-  beats: [
-    // look: the eyes narrow and slide to the foe, the pauldron rises a pixel
-    beat(60, { fx: { lid: 2, eyeX: 1, eye: 1.3, padY: -1, sun: 1 } }),
-    // the coil: hips down and back, the slab dragged back, its top leaning in
-    beat(80, { hip: { x: -1, y: 1, tilt: 0 }, lean: -0.05, props: { shield: planted([-2, 0]) }, fx: { lid: 2, eyeX: 1, eye: 1.5, padY: -1, tilt: -1, sun: 1.3, dust: 0.15, dustAt: 2 } }),
-    beat(90, { hip: { x: -2, y: 2, tilt: 0 }, lean: -0.1, props: { shield: planted([-3, 1]) }, fx: { lid: 2, eyeX: 1, eye: 1.7, padY: -1, tilt: -2, sun: 1.6, dust: 0.45, dustAt: 2 } }),
-    // CHARGE (the longest hold): all gathered, the slab trembling a pixel, the glint on the crown
-    { ...beat(200, { hip: { x: -3, y: 2, tilt: 0 }, lean: -0.13, props: { shield: planted([-4, 1]) }, fx: { lid: 2, eyeX: 1, eye: 2, padY: -2, tilt: -2, sun: 2, glint: 0.5, dust: 0.7, dustAt: 2, rag: 1.6 } }), name: 'charge' },
-    // the drive: the hips lead, the slab already moving (an in-between), the pauldron rolling ahead
-    beat(50, { hip: { x: 0, y: 1, tilt: 0 }, lean: 0.05, props: { shield: planted([-1, 0]) }, fx: { lid: 1, eyeX: 1, eye: 2, padX: 1, tilt: 0, sun: 2, rag: 1.8, dust: 0.9, dustAt: 2 } }),
-    // RELEASE: the slab slammed 8 px forward, leaning out, the eyes wide
-    { ...beat(60, { hip: { x: 3, y: 1, tilt: 0 }, lean: 0.14, props: { shield: planted([7, -1]) }, fx: { lid: 0, eyeX: 1, eye: 2, padX: 2, padY: 1, tilt: 2, sun: 2, rag: 2, fingY: 0 } }), name: 'release', smear: true },
-    // CONTACT: the slab lands, the rim flares white, sparks and chips off the face, dust off the front foot
-    { ...beat(70, { hip: { x: 4, y: 1, tilt: 0 }, lean: 0.16, props: { shield: planted([8, 0]) }, fx: { lid: 0, eyeX: 1, eye: 2, padX: 2, padY: 1, tilt: 3, bash: 1, dent: 1, dentAt: 1, spark: 0.1, sparkAt: 1, chips: 0.1, chipsAt: 1, dust: 0.15, dustAt: 1, sun: 2, rag: 1.4 } }), name: 'contact' },
-    // the weight hangs on it
-    beat(90, { hip: { x: 4, y: 2, tilt: 0 }, lean: 0.17, props: { shield: planted([8, 0]) }, fx: { lid: 1, eyeX: 1, eye: 1.8, padX: 2, padY: 1, tilt: 3, bash: 0.35, dent: 1, dentAt: 1, spark: 0.4, sparkAt: 1, chips: 0.4, chipsAt: 1, dust: 0.4, dustAt: 1, sun: 1.8 } }),
-    // recover: hauled back a step at a time
-    { ...beat(90, { hip: { x: 3, y: 1, tilt: 0 }, lean: 0.1, props: { shield: planted([5, 0]) }, fx: { lid: 1, eye: 1.5, padX: 1, tilt: 2, dent: 1, dentAt: 1, spark: 0.7, sparkAt: 1, chips: 0.7, chipsAt: 1, dust: 0.65, dustAt: 1, sun: 1.5 } }), name: 'recover' },
-    beat(100, { hip: { x: 2, y: 1, tilt: 0 }, lean: 0.06, props: { shield: planted([3, 0]) }, fx: { eye: 1.3, padX: 1, tilt: 1, spark: 0.95, sparkAt: 1, chips: 0.9, chipsAt: 1, dust: 0.9, dustAt: 1, sun: 1.2 } }),
-    beat(110, { hip: { x: 1, y: 0, tilt: 0 }, lean: 0.03, props: { shield: planted([1, 0]) }, fx: { eye: 1.1, tilt: 1, sun: 0.9 } }),
-  ],
-  end: 'idle0',
-  endMs: 150,
-};
-
-// ------------------------------------------------------------------ roar: the war-cry (the slab rattles)
-//
-// Not the sentinel's single slam and raised fist: the giant heaves the slab up out of the dirt (the grit
-// falls), holds it high with the eyes blazing wide, drops it onto the floor (dust rolls out both ways,
-// steel sparks off the foot, the rim flares), and then, braced behind it, ROARS: the whole slab vibrates,
-// leaning a pixel out and a pixel in on every frame, the tower windows blazing and the rag cracking like
-// a whip, until the sound has gone out of it.
-
-const roar: AnimDef<Pose> = {
-  base: 'idle0',
-  beats: [
-    { ...beat(90, { hip: { x: 0, y: 1, tilt: 0 }, lean: 0.03, fx: { lid: 2, eye: 1.3, padY: 1, sun: 1.2, dust: 0.1, dustAt: 0 } }), name: 'charge' },
-    // heave: the slab up out of the dirt, the body rising under it
-    beat(130, { hip: { x: 0, y: 0, tilt: 0 }, props: { shield: planted([0, -3]) }, fx: { lid: 1, eye: 1.6, padY: -1, tilt: 0, sun: 1.5, dust: 0.3, dustAt: 0, chips: 0.1, chipsAt: 2 } }),
-    // held high: the longest beat, the eyes wide, the rag lifting
-    beat(180, { hip: { x: -1, y: -1, tilt: 0 }, lean: -0.06, props: { shield: planted([0, -6]) }, fx: { lid: 0, eye: 2, padY: -2, tilt: 1, sun: 2, glint: 0.5, rag: 1.8, dust: 0.5, dustAt: 0, chips: 0.4, chipsAt: 2 } }),
-    // the drop begins near the top: 2 px, then the floor (heavy)
-    beat(45, { hip: { x: 0, y: 1, tilt: 0 }, props: { shield: planted([0, -3]) }, fx: { lid: 0, eye: 2, padY: 0, tilt: 0, sun: 2, rag: 1.8, dust: 0.7, dustAt: 0 } }),
-    // IMPACT: planted hard, the rim flares, sparks off the foot, dust both ways
-    { ...beat(60, { hip: { x: 1, y: 2, tilt: 0 }, lean: 0.06, props: { shield: planted([0, 1]) }, fx: { lid: 1, eye: 2, padY: 1, tilt: 0, bash: 1, sun: 2, spark: 0.1, sparkAt: 2, dust: 0.2, dustAt: 0, chips: 0.2, chipsAt: 2, rag: 1 } }), name: 'release' },
-    // the roar: braced behind it, the slab vibrating — out a pixel…
-    beat(75, { hip: { x: 0, y: 0, tilt: 0 }, lean: -0.03, props: { shield: planted() }, fx: { lid: 0, eye: 2, padY: -1, tilt: 1, bash: 0.3, sun: 2, spark: 0.4, sparkAt: 2, dust: 0.4, dustAt: 0, rag: 2, glint: 0.8, arrow: 1 } }),
-    // …in a pixel…
-    beat(75, { hip: { x: 0, y: 0, tilt: 0 }, lean: -0.03, props: { shield: planted() }, fx: { lid: 0, eye: 2, padY: -1, tilt: -1, sun: 2, spark: 0.65, sparkAt: 2, dust: 0.6, dustAt: 0, rag: 2, arrow: -1 } }),
-    beat(75, { hip: { x: 0, y: -1, tilt: 0 }, lean: -0.05, props: { shield: planted() }, fx: { lid: 0, eye: 2, padY: -2, tilt: 1, sun: 2, spark: 0.85, sparkAt: 2, dust: 0.8, dustAt: 0, rag: 1.8, arrow: 1 } }),
-    // …until the sound has gone out of it
-    { ...beat(100, { hip: { x: 0, y: 0, tilt: 0 }, props: { shield: planted() }, fx: { lid: 1, eye: 1.6, padY: -1, tilt: 0, sun: 1.5, spark: 0.97, sparkAt: 2, dust: 0.95, dustAt: 0, rag: 1.4 } }), name: 'recover' },
-    beat(120, { fx: { eye: 1.3, padY: 0, sun: 1, rag: 1 } }),
-    beat(140, { fx: { eye: 1.1, sun: 0.7 } }),
-  ],
-  end: 'idle0',
-  endMs: 150,
-};
-
-// ================================================================== part 2: the extras
-
-/** The heavy struck pose (hitHeavy f0 = death f0, HA-24): the slab driven hard back, the lid slammed, a deep dent. */
-const HEAVY_STRUCK: D = { fx: { dent: 2, dentAt: 0, spark: 0.15, sparkAt: 0, lid: 3, arrow: -1, bash: 1, chips: 0.15, chipsAt: 0 } };
-
-// ------------------------------------------------------------------ hitHeavy: driven back a step
-const hitHeavy: AnimDef<Pose> = {
-  base: 'idle0',
-  struck: { regions: ['propF', 'head', 'extra'] },
-  beats: [
-    struck(50, HEAVY_STRUCK),
-    beat(60, { props: { shield: planted([-3, -1]) }, hip: { x: -2, y: 0, tilt: 0 }, lean: -0.08, fx: { dent: 2, dentAt: 0, spark: 0.4, sparkAt: 0, tilt: -2, padX: -1, lid: 3, arrow: 1, chips: 0.35, chipsAt: 0 } }),
-    beat(80, { props: { shield: planted([-3, 0]) }, footN: { step: [-2, 0], lift: 2 }, hip: { x: -2, y: 0, tilt: 0 }, lean: -0.1, fx: { dent: 2, dentAt: 0, spark: 0.7, sparkAt: 0, tilt: -2, padX: -1, padY: 1, lid: 3, arrow: -1, chips: 0.65, chipsAt: 0, fingY: 1 } }),
-    beat(90, { props: { shield: planted([-2, 0]) }, footN: { step: [-2, 0], lift: 0 }, hip: { x: -2, y: 2, tilt: 0 }, lean: -0.06, fx: { dent: 2, dentAt: 0, spark: 0.95, sparkAt: 0, tilt: -1, padY: 1, lid: 2, chips: 0.9, chipsAt: 0, dust: 0.3, dustAt: 2, fingY: 1 } }),
-    beat(110, { props: { shield: planted([-1, 0]) }, footN: { step: [-2, 0], lift: 0 }, hip: { x: -1, y: 1, tilt: 0 }, lean: 0.02, fx: { dent: 2, dentAt: 0, tilt: 0, lid: 1, eye: 1.2, dust: 0.6, dustAt: 2 } }, 'recover'),
-    beat(110, { props: { shield: planted() }, footN: { step: [-1, 0], lift: 2 }, hip: { x: 0, y: 0, tilt: 0 }, lean: 0.03, fx: { dent: 1, dentAt: 0, dust: 0.85, dustAt: 2 } }),
-    beat(120, { props: { shield: planted() }, hip: { x: 0, y: 1, tilt: 0 }, lean: 0.01, fx: { dent: 1, dentAt: 0, fingY: 1 } }),
-  ],
-  end: 'idle0',
-  endMs: 130,
-};
-
-// ------------------------------------------------------------------ hitMagic: the spell runs through the plate
-const hitMagic: AnimDef<Pose> = {
-  base: 'idle0',
-  struck: { regions: ['head', 'extra'] },
-  beats: [
-    struck(50, { fx: { flare: 1, eye: 2, lid: 0, sun: 2, bash: 0.7, tilt: 1 } }),
-    beat(60, { hip: { x: 0, y: -1, tilt: 0 }, fx: { flare: 0.8, eye: 2, lid: 0, sun: 2, bash: 0.5, tilt: -1, padY: -1, arrow: 1 } }),
-    beat(70, { hip: { x: 0, y: -1, tilt: 0 }, fx: { flare: 0.5, eye: 2, lid: 0, sun: 2, tilt: 1, padY: -1, padX: 1, arrow: -1 } }),
-    beat(70, { hip: { x: 0, y: -1, tilt: 0 }, fx: { flare: 0.4, eye: 1.8, lid: 1, sun: 1.8, tilt: -1, padY: -1, padX: -1, arrow: 1 } }),
-    beat(100, { hip: { x: 0, y: 1, tilt: 0 }, lean: 0.03, fx: { flare: 0, eye: 0.6, lid: 2, sun: 0.7, tilt: 0, padY: 1, arrow: 0, fingY: 1 } }, 'recover'),
-    beat(110, { hip: { x: 0, y: 1, tilt: 0 }, fx: { eye: 0.8, lid: 2, sun: 0.6, padY: 1, fingY: 1 } }),
-    beat(120, { fx: { eye: 0.9, lid: 1, sun: 0.5, padY: 0 } }),
-  ],
-  end: 'idle0',
-  endMs: 130,
-};
-
-// ------------------------------------------------------------------ death: the plates give
-//
-// From the heavy struck pose it reels back; the light leaves the eyes and the tower; cracks run across the
-// face from the crest; the giant's grip fails (the gauntlet slides down the rim, the pauldron droops), the
-// slab leans out under its own weight and then comes apart into its plates, which fall; behind it the
-// giant is a slumped hulk. The last frame is the heap of plates on the floor (the death kit breaks it
-// after the last frame).
-const DEAD: D = { hip: { x: 1, y: 4, tilt: 0 }, lean: 0.1, fx: { eye: 0, lid: 3, sun: 0, rag: 0.4 } };
-const death: AnimDef<Pose> = {
-  base: 'idle0',
-  struck: { regions: ['propF', 'head', 'extra'] },
-  beats: [
-    struck(60, HEAVY_STRUCK),
-    beat(80, { props: { shield: planted([-2, 0]) }, hip: { x: -2, y: 0, tilt: 0 }, lean: -0.08, fx: { dent: 2, dentAt: 0, lid: 3, eye: 0.1, sun: 0.2, tilt: -2, crack: 0.3, spark: 0.5, sparkAt: 0, chips: 0.4, chipsAt: 0, arrow: 1 } }),
-    beat(110, { props: { shield: planted([-1, 0]) }, hip: { x: 0, y: 2, tilt: 0 }, lean: 0.03, fx: { dent: 2, dentAt: 0, lid: 3, eye: 0, sun: 0, tilt: -1, crack: 0.65, padY: 1, limp: 0.2, chips: 0.8, chipsAt: 0, rag: 0.6 } }),
-    beat(80, { props: { shield: planted([0, 0]) }, hip: { x: 0, y: 3, tilt: 0 }, lean: 0.07, fx: { dent: 2, dentAt: 0, lid: 3, eye: 0, sun: 0, tilt: 1, crack: 1, padY: 3, limp: 0.5, chips: 1, chipsAt: 0, rag: 0.4, fingY: 2 } }),
-    // the slab leans out under its own weight (the grip gone)
-    { ...beat(70, { ...DEAD, props: { shield: planted([1, 0]) }, fx: { ...DEAD.fx, dent: 2, dentAt: 0, tilt: 3, crack: 1, padY: 6, limp: 0.8, fingY: 4, plates: 0.08, dust: 0.2, dustAt: 0, dustTone: 1 } }), name: 'dissolve' },
-    beat(60, { ...DEAD, props: { shield: planted([2, 1]) }, fx: { ...DEAD.fx, tilt: 4, crack: 1, padY: 11, limp: 1, fingY: 8, plates: 0.22, dust: 0.35, dustAt: 0, dustTone: 1 } }),
-    beat(60, { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 16, limp: 1, fingY: 12, plates: 0.42, dust: 0.5, dustAt: 0, dustTone: 1 } }),
-    beat(60, { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 21, limp: 1, fingY: 16, plates: 0.64, dust: 0.65, dustAt: 0, dustTone: 1 } }),
-    beat(70, { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 24, limp: 1, fingY: 18, plates: 0.84, dust: 0.8, dustAt: 0, dustTone: 1 } }),
-    beat(110, { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 26, limp: 1, fingY: 20, plates: 1, dust: 0.95, dustAt: 0, dustTone: 1 } }),
-  ],
-  end: 'hold',
-};
-
-// ------------------------------------------------------------------ summon: the slab heaved up out of the floor
-//
-// The tile cracks open and the slab is heaved up out of it, plain and dark — the giant rising under it, only
-// the crown and the rag showing first — until it stands clear on the pit's lip; it drops the last pixels onto
-// the floor (the dust rolls out, the rim flares); the pauldron and the gauntlet clamp on, a pixel at a
-// time; the eyes light in the slot, left then right, and the tower's windows last.
-const summon: AnimDef<Pose> = {
-  base: 'idle0',
-  beats: [
-    beat(60, { fx: { rise: 60, pit: 0.8, eye: 0, lid: 3, sun: 0, rag: 0, dust: 0.1, dustAt: 0, dustTone: 0 } }),
-    beat(70, { fx: { rise: 44, pit: 0.95, eye: 0, lid: 3, sun: 0, rag: 0.5, dust: 0.25, dustAt: 0 } }),
-    beat(60, { fx: { rise: 28, pit: 1, eye: 0, lid: 3, sun: 0, rag: 1, dust: 0.45, dustAt: 0 } }),
-    beat(60, { fx: { rise: 14, pit: 1, eye: 0, lid: 3, sun: 0, rag: 1.4, dust: 0.65, dustAt: 0 } }),
-    beat(100, { fx: { rise: 5, pit: 1.05, eye: 0, lid: 3, sun: 0, rag: 1.5, dust: 0.85, dustAt: 0 } }),
-    // the slab drops its last pixels: impact
-    { ...beat(70, { hip: { x: 0, y: 1, tilt: 0 }, fx: { rise: 0, pit: 1.2, eye: 0, lid: 3, sun: 0, bash: 0.8, spark: 0.1, sparkAt: 2, dust: 0.2, dustAt: 0, chips: 0.15, chipsAt: 2, rag: 1, padY: 2 } }), name: 'land' },
-    beat(80, { hip: { x: 0, y: 0, tilt: 0 }, fx: { rise: 0, pit: 1.4, eye: 0, lid: 3, sun: 0, tilt: -1, spark: 0.45, sparkAt: 2, dust: 0.45, dustAt: 0, chips: 0.5, chipsAt: 2, padY: 1 } }),
-    beat(70, { fx: { rise: 0, pit: 1.7, eye: 0, lid: 3, sun: 0, tilt: 0, spark: 0.8, sparkAt: 2, dust: 0.75, dustAt: 0, padY: 0, fingY: 1 } }),
-    // the eyes: the left, then both; the tower's windows after them
-    beat(70, { fx: { pit: 1.9, eye: 0.6, lid: 3, sun: 0, dust: 0.95, dustAt: 0 } }),
-    beat(80, { fx: { eye: 1.2, lid: 2, sun: 0.4, glint: 0.3 } }),
-    beat(100, { fx: { eye: 2, lid: 0, sun: 1.4, glint: 0.7 } }),
-    beat(60, { fx: { eye: 1.4, lid: 1, sun: 1, rag: 1 } }),
-  ],
-  end: 'idle0',
-  endMs: 130,
-};
-
-// ------------------------------------------------------------------ revive: the plates fly back
-//
-// Not the summon: the giant comes back out of its own wreck. The heap the death left lies on the floor, the
-// cracks still dark; the plates fly back up the paths they fell along into the slab (the pauldron heaving
-// back up, the gauntlet finding the rim), the cracks closing; it stands whole (land), then the tower's
-// windows kindle and the eyes last.
-const HEAP: D = { ...DEAD, props: { shield: planted([2, 2]) }, fx: { ...DEAD.fx, tilt: 5, crack: 1, padY: 26, limp: 1, fingY: 20, plates: 1 } };
-const revive: AnimDef<Pose> = {
-  base: 'idle0',
-  beats: [
-    beat(100, { ...HEAP }),
-    beat(80, { ...HEAP, fx: { ...HEAP.fx, plates: 0.8 } }),
-    beat(70, { ...HEAP, fx: { ...HEAP.fx, plates: 0.58, tilt: 5, padY: 18, fingY: 14 } }),
-    beat(60, { ...DEAD, props: { shield: planted([2, 1]) }, fx: { ...DEAD.fx, tilt: 4, crack: 1, padY: 11, limp: 0.8, fingY: 8, plates: 0.36 } }),
-    beat(60, { ...DEAD, props: { shield: planted([1, 1]) }, fx: { ...DEAD.fx, tilt: 3, crack: 0.7, padY: 5, limp: 0.5, fingY: 4, plates: 0.16 } }),
-    beat(70, { hip: { x: 0, y: 3, tilt: 0 }, lean: 0.07, props: { shield: planted([1, 0]) }, fx: { eye: 0, lid: 3, sun: 0, tilt: 2, crack: 0.4, padY: 2, limp: 0.2, fingY: 2, plates: 0.04, rag: 0.8 } }),
-    { ...beat(90, { hip: { x: 0, y: 1, tilt: 0 }, props: { shield: planted() }, fx: { eye: 0, lid: 3, sun: 0, tilt: 0, crack: 0.15, padY: 1, plates: 0, bash: 0.5, dust: 0.2, dustAt: 0, rag: 1 } }), name: 'land' },
-    beat(90, { fx: { eye: 0, lid: 3, sun: 0.7, crack: 0, dust: 0.5, dustAt: 0 } }),
-    beat(80, { fx: { eye: 0.7, lid: 3, sun: 1.3, dust: 0.8, dustAt: 0 } }),
-    beat(80, { fx: { eye: 1.2, lid: 2, sun: 1.4, glint: 0.4 } }),
-    beat(110, { fx: { eye: 2, lid: 0, sun: 1.6, glint: 0.8 } }),
-    beat(120, { breath: 1, fx: { eye: 1.3, lid: 1, sun: 1, padY: -1 } }),
-    beat(130, { fx: { eye: 1.1, sun: 0.6 } }),
-  ],
-  end: 'idle0',
-  endMs: 140,
-};
-
-// ------------------------------------------------------------------ toGuard / fromGuard
-const toGuard: AnimDef<Pose> = {
-  base: 'idle0',
-  beats: [
-    beat(60, { props: { shield: planted([0, -1]) }, hip: { x: 0, y: 1, tilt: 0 }, fx: { lid: 2, tilt: 0, sun: 0.9 } }),
-    beat(70, { props: { shield: planted([0, -2]) }, hip: { x: 0, y: 2, tilt: 0 }, lean: 0.05, fx: { lid: 2, eye: 1.2, tilt: 1, sun: 1.3, padY: 1 } }),
-    beat(60, { props: { shield: planted([0, 1]) }, hip: { x: 1, y: 3, tilt: 0 }, lean: 0.1, fx: { lid: 2, eye: 1.4, tilt: 3, sun: 2, padY: 1, spark: 0.1, sparkAt: 2, dust: 0.15, dustAt: 0, bash: 0.35 } }),
-    beat(80, { props: { shield: planted([0, 1]) }, hip: { x: 1, y: 3, tilt: 0 }, lean: 0.1, fx: { lid: 2, eye: 1.4, tilt: 2, sun: 1.4, padY: 1, spark: 0.45, sparkAt: 2, dust: 0.4, dustAt: 0 } }),
-  ],
-  end: 'guard0',
-  endMs: 90,
-};
-
-const fromGuard: AnimDef<Pose> = {
-  base: 'guard0',
-  beats: [
-    beat(70, { props: { shield: planted([0, 0]) }, hip: { x: 1, y: 2, tilt: 0 }, lean: 0.08, fx: { lid: 2, tilt: 2, sun: 1, padY: 0 } }),
-    beat(70, { props: { shield: planted([0, -1]) }, hip: { x: 0, y: 1, tilt: 0 }, lean: 0.04, fx: { lid: 2, eye: 1.2, tilt: 1, sun: 0.8, padY: 0 } }),
-    beat(70, { props: { shield: planted() }, hip: { x: 0, y: 0, tilt: 0 }, lean: 0.01, fx: { lid: 1, eye: 1, tilt: 0, sun: 0.6, padY: 0 } }),
-    beat(80, { props: { shield: planted() }, hip: { x: 0, y: 0, tilt: 0 }, lean: 0, fx: { lid: 1, eye: 1, tilt: 0, sun: 0.5, padY: 1, fingY: 1 } }),
-  ],
-  end: 'idle0',
-  endMs: 90,
-};
-
-// ------------------------------------------------------------------ victory: the wall stands
-//
-// The giant rises to its full height behind the slab, heaves it clear of the dirt and plants it with a
-// thud, twice (the second one harder: the tower's windows blaze, the rim flares, the dust rolls out), then
-// holds it there, the eyes wide and steady.
-const victory: AnimDef<Pose> = {
-  base: 'idle0',
-  beats: [
-    beat(100, { hip: { x: 0, y: -1, tilt: 0 }, lean: -0.03, fx: { lid: 1, eye: 1.3, padY: -1, sun: 1.2 } }),
-    beat(90, { props: { shield: planted([0, -3]) }, hip: { x: 0, y: -1, tilt: 0 }, lean: -0.04, fx: { lid: 0, eye: 1.6, padY: -2, sun: 1.5, tilt: 1, dust: 0.2, dustAt: 0 } }),
-    beat(60, { props: { shield: planted([0, 1]) }, hip: { x: 0, y: 0, tilt: 0 }, fx: { lid: 0, eye: 1.8, padY: 0, sun: 1.8, bash: 0.6, spark: 0.1, sparkAt: 2, dust: 0.3, dustAt: 0, tilt: 0 } }),
-    beat(100, { props: { shield: planted([0, -4]) }, hip: { x: 0, y: -2, tilt: 0 }, lean: -0.05, fx: { lid: 0, eye: 2, padY: -2, sun: 2, tilt: 1, spark: 0.5, sparkAt: 2, dust: 0.55, dustAt: 0, glint: 0.4 } }),
-    beat(60, { props: { shield: planted([0, 1]) }, hip: { x: 0, y: 0, tilt: 0 }, fx: { lid: 0, eye: 2, padY: 0, sun: 2, bash: 1, spark: 0.1, sparkAt: 2, dust: 0.2, dustAt: 0, tilt: 0, rag: 1.8 } }),
-    beat(110, { props: { shield: planted() }, hip: { x: 0, y: -1, tilt: 0 }, lean: -0.02, fx: { lid: 0, eye: 2, padY: -1, sun: 2, spark: 0.45, sparkAt: 2, dust: 0.5, dustAt: 0, glint: 0.7, rag: 1.5 } }),
-    beat(130, { props: { shield: planted() }, hip: { x: 0, y: -1, tilt: 0 }, lean: -0.03, fx: { lid: 0, eye: 1.8, padY: -1, sun: 1.9, spark: 0.8, sparkAt: 2, dust: 0.85, dustAt: 0, rag: 1.2 } }),
-    beat(400, { props: { shield: planted() }, hip: { x: 0, y: -1, tilt: 0 }, lean: -0.03, fx: { lid: 1, eye: 1.7, padY: -1, sun: 1.8, rag: 1.1 } }),
-  ],
-  end: 'hold',
-};
-
-export const ANIMS: AnimDefs<Pose> = {
-  idle,
-  guard,
-  attack,
-  roar,
-  hit,
-  hitHeavy,
-  hitMagic,
-  death,
-  summon,
-  revive,
-  toGuard,
-  fromGuard,
-  victory,
-};
+/** Rig joints for the sameness tool and the hit kit's hip travel. */
+export function frameJoints(anim: AnyMonsterAnim, f: number): Record<string, { x: number; y: number }> {
+  const o = framePose(anim, f);
+  const sk = skeleton(o);
+  const sp = slabPoints(o);
+  const pt = (p: readonly [number, number]) => ({ x: rnd(p[0]), y: rnd(p[1]) });
+  return {
+    hips: pt(sk.P), chest: pt(sk.C), head: pt(sk.Hc), shoulderN: pt(sk.Sn), shoulderF: pt(sk.Sf), elbowN: pt(sk.elN), elbowF: pt(sk.elF),
+    handN: pt(sk.wN), handF: pt(sk.wF), kneeN: pt(sk.knN), kneeF: pt(sk.knF), ankleN: pt(sk.anN), ankleF: pt(sk.anF),
+    boss: pt(sp.boss), rim: pt(sp.rim),
+  };
+}

@@ -150,3 +150,7 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   anvil/coil + polar_sovereign (birleşme/ayrılma). Kapılar temiz (vitest bilinen 4; v1 17/17 + a6v1 26/26). Test sürümü 21.
   KARAR: "kurban bekleme döngüsü ortasında vuruluyor" (temas probu, tüm şeritlerde) → kit düzeyinde tek düzeltme (b),
   boşta bir şeride verilecek. cardface G1 → ortak frame.ts / test eşiği.
+- 2026-11-06: ŞERİT F BİTTİ (adba89d): hourglass_imp + shield_titan (yeni rig, eski parça dosyaları silindi),
+  windmane_knight, wing_lady. Ortak ek: flashDigits, guardGlint/counterAt ('clash'). Bilinen test hatası artık 1
+  (dusk_ashen). Açık notlar: ilan anı hexGlint opt-out dışında; chains_of_light windmane şarj sesini paylaşıyor;
+  runSummon'dan gelen camgöbeği çarpma flaşı; sahip SFX kliplerini dinlemeli. Test sürümü 22.

@@ -30,6 +30,7 @@ import { HERON_VOICE } from '../../audio/v3/reed_heron';
 import type { MaterialId } from '../../art/materials';
 import { AXEMAN_VOICE } from '../../audio/v3/crag_axeman';
 import { v3Recipe } from '../../presentation/registry';
+import { KART_F_VOICES } from '../../audio/v3/kart-f';
 import { KITE_VOICE } from '../../audio/v3/kite_fencer';
 import type { BlowKind } from './blow';
 import { SPIRALHORN_VOICE } from '../../audio/v3/steppe_spiralhorn';
@@ -224,6 +225,7 @@ export const CHARACTER_SOUNDS: Partial<Record<CardId, CharacterSounds>> = {
   reflection_archer: { roar: 'archerRoar', arrive: 'archerDrop', land: 'archerLand', charge: 'archerCharge', release: 'archerRelease', impact: 'archerImpact', deathStart: 'archerCrack', dissolve: 'archerFlat', afterDissolve: [[2, 'archerWeb', 0.9]], burst: 'archerShatter', reviveGather: 'archerReviveGather', reviveLand: 'archerReviveLand' }, // lane D (src/audio/v3/archer.ts)
   scrap_raiders: { roar: 'raidersRoar', arrive: 'raidersScrapRain', land: 'raidersHeapCrash', charge: 'raidersRev', release: 'raidersLaunch', impact: 'raidersRam', deathStart: 'raidersCreak', dissolve: 'raidersCollapse', afterDissolve: [[2, 'raidersWheelRoll', 0.85]], burst: 'raidersBurst', reviveGather: 'raidersReviveGather', reviveLand: 'raidersReviveLand' }, // lane D (src/audio/v3/raiders.ts)
   straw_decoy_token: { roar: 'scarecrowRoar', arrive: 'scarecrowFall', land: 'scarecrowStakeA', charge: 'scarecrowCharge', release: 'scarecrowWhip', impact: 'scarecrowSlap', deathStart: 'scarecrowUntie', dissolve: 'scarecrowSpill', afterDissolve: [[3, 'scarecrowTopple', 0.9]], burst: 'scarecrowScatter', reviveGather: 'scarecrowGather', reviveLand: 'scarecrowRise' }, // lane D (src/audio/v3/straw.ts)
+  ...KART_F_VOICES, // lane F cards (src/audio/v3/kart-f.ts)
   ...KART_B_VOICES, // lane B cards (src/audio/v3/kart-b.ts)
   // lane A (docs/v3/kart-a/ashen_drake.md §6.4)
   ashen_drake: {

@@ -905,9 +905,10 @@ export class MonsterUnit {
     //    v3 look lights only the face the blow lands on (≤ half the silhouette, A0 §6.2 item 1)
     if (LOOK_V3) contactFlash(sc, s, blow, { frames: power >= 3 ? 3 : 2, coverage: power >= 3 ? 0.45 : 0.4 });
     else flashOverlay(sc, s, power >= 3 ? 3 : 2);
-    // 3. hex-shield glint on the side the blow came from (bigger for heavier blows)
+    // 3. hex-shield glint on the side the blow came from (bigger for heavier blows); an art whose
+    //    guard is not a hex opts out (MonsterArt.guardGlint false)
     const c = this.core();
-    guardGlint(sc, c.x - blow.x * 6, c.y - blow.y * 6 - 2, -blow.x, s.depth + 0.5, 9 + power * 2);
+    if (this.art.guardGlint !== false) guardGlint(sc, c.x - blow.x * 6, c.y - blow.y * 6 - 2, -blow.x, s.depth + 0.5, 9 + power * 2);
     // 4. knock-back along the blow (integer px), then spring back to where it stood
     const token = ++this.kbToken;
     this.kbTween?.stop();

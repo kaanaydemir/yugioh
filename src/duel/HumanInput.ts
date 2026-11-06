@@ -845,6 +845,7 @@ export class HumanInput {
     if (!m.faceUp) return 'Kapalı canavar saldıramaz (Ana Aşamada çevirebilirsin)';
     if (m.position !== 'attack') return 'Savunma pozisyonundaki canavar saldıramaz';
     if (m.attacksThisTurn > 0) return 'Bu canavar bu tur zaten saldırdı';
+    if (m.noAttackTurn === s.turn) return 'Kum Saati Cücesi zamanını durdurdu: bu tur saldıramaz';
     return 'Bu canavar şu an saldıramaz';
   }
 

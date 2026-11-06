@@ -422,8 +422,10 @@ async function battleStartV3(ctx: Ctx<'phaseChange'>): Promise<void> {
   const duelist = v.duelists?.get(player);
   if (duelist) bg(ctx.wait(TURN_V3_MS.commandAt).then(() => duelist.play('command')));
   // the attackers-to-be, left to right: a round crimson floor ring, a held crimson pool, a 2-frame contour
+  // engine truth: a monster frozen this turn (Kum Saati Cücesi, noAttackTurn) is not an attacker-to-be
+  const frozen = new Set(ctx.stateNext.players[player].monsters.filter((m) => m && m.noAttackTurn === ctx.stateNext.turn).map((m) => m!.uid));
   const ready = unitsOf(ctx, player)
-    .filter((u) => u.position === 'attack')
+    .filter((u) => u.position === 'attack' && !frozen.has(u.uid))
     .sort((a, b) => a.home.x - b.home.x);
   ready.forEach((u, i) =>
     bg(
