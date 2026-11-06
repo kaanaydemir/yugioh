@@ -99,7 +99,7 @@ export class ActionMenu {
     this.style = opts.style ?? 'neutral';
     const R = UI_RAMP[this.style];
     const list = [...options];
-    if ((opts.cancelRow ?? true) && !list.some((o) => o.id === 'cancel')) list.push({ id: 'cancel', label: 'İptal' });
+    if ((opts.cancelRow ?? true) && !list.some((o) => o.id === 'cancel')) list.push({ id: 'cancel', label: 'Cancel' });
     const title = opts.title ?? '';
     const labelW = Math.max(...list.map((o) => measureText(o.label, 'md').w), title ? measureText(title, 'sm').w - 12 : 0);
     this.w = Math.max(70, PAD_X * 2 + 13 + labelW + 8);

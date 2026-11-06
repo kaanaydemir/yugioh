@@ -225,7 +225,7 @@ export class Stadium {
   setActive(player: PlayerId | null, turn: number | null): void {
     this.active = player;
     this.score.setTurn(turn, player);
-    this.leds.setTexts(` NEON DÜELLO • ${turn !== null ? `TUR ${turn} • ` : ''}`, (stand) => ` ${stand === 0 ? 'OYUNCU 1' : 'OYUNCU 2'} • NEON DÜELLO • `);
+    this.leds.setTexts(` NEON DÜELLO • ${turn !== null ? `TURN ${turn} • ` : ''}`, (stand) => ` ${stand === 0 ? 'PLAYER 1' : 'PLAYER 2'} • NEON DÜELLO • `);
   }
 
   setScore(lp0: number, lp1: number): void {

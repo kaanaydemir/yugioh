@@ -420,7 +420,7 @@ export function foldedPlate(w: number, h: number, style: UiStyle, step: number):
 
 /** The prompt plate's geometry and timeline (game px; ms at 1×). */
 export const TRAP_Q = Object.freeze({
-  /** Wide enough for the header: rune + "Tuzak açılsın mı?" (md, 100 px) + "OYUNCU n" (sm, 41 px). */
+  /** Wide enough for the header: rune + "Activate a Trap?" (md, 99 px) + "PLAYER n" (sm, 40 px). */
   minW: 176,
   padX: 8,
   gap: 6,
@@ -430,7 +430,7 @@ export const TRAP_Q = Object.freeze({
   cardY: 21,
   infoCap: 93,
   btnY: 104,
-  btnW: 62,
+  btnW: 76,
   btnH: 20,
   btnGap: 8,
   /** Screen margin, gap under the P2 panel, gap above the action buttons (P1). */
@@ -548,12 +548,12 @@ export function trapPromptV3(scene: Phaser.Scene, player: PlayerId, options: rea
     root.add(icon);
     tx += icon.width + 3;
   }
-  const question = new PalText(scene, tx, capYV3('md', TRAP_Q.headCap), opts.question ?? 'Tuzak açılsın mı?', { size: 'md', color: PAL.white });
+  const question = new PalText(scene, tx, capYV3('md', TRAP_Q.headCap), opts.question ?? 'Activate a Trap?', { size: 'md', color: PAL.white });
   root.add(question.root);
   // its first letters come with the plate's first frame (A6B-8)
   question.reveal(REDUCED_MOTION ? question.glyphCount : TRAP_Q.lettersPerFrame);
   const ownerTone = PLAYER_RAMP[player][3];
-  const ownerText = `OYUNCU ${player + 1}`;
+  const ownerText = `PLAYER ${player + 1}`;
   const owner = new PalText(scene, w - TRAP_Q.padX - textWidthV3(ownerText, 'sm'), capYV3('sm', TRAP_Q.ownerCap), ownerText, { size: 'sm', color: ownerTone });
   root.add(owner.root);
 
@@ -572,8 +572,8 @@ export function trapPromptV3(scene: Phaser.Scene, player: PlayerId, options: rea
   const info = new PalText(scene, 0, capYV3('sm', TRAP_Q.infoCap), '', { size: 'sm', color: PAL.mag4 });
   root.add(info.root);
   const bx0 = Math.round(w / 2 - TRAP_Q.btnW - TRAP_Q.btnGap / 2);
-  const openBtn = new Button(scene, bx0, TRAP_Q.btnY, { w: TRAP_Q.btnW, h: TRAP_Q.btnH, label: 'AÇ', icon: ICON.trap, style: 'trap' });
-  const passBtn = new Button(scene, bx0 + TRAP_Q.btnW + TRAP_Q.btnGap, TRAP_Q.btnY, { w: TRAP_Q.btnW, h: TRAP_Q.btnH, label: 'GEÇ', style: 'neutral' });
+  const openBtn = new Button(scene, bx0, TRAP_Q.btnY, { w: TRAP_Q.btnW, h: TRAP_Q.btnH, label: 'ACTIVATE', icon: ICON.trap, style: 'trap' });
+  const passBtn = new Button(scene, bx0 + TRAP_Q.btnW + TRAP_Q.btnGap, TRAP_Q.btnY, { w: TRAP_Q.btnW, h: TRAP_Q.btnH, label: 'PASS', style: 'neutral' });
   // the plate voices the answer itself (ui3Confirm / ui3Back): the buttons' own click sound stays off (A6B-7)
   openBtn.fireSound = false;
   passBtn.fireSound = false;
@@ -617,7 +617,7 @@ export function trapPromptV3(scene: Phaser.Scene, player: PlayerId, options: rea
     const id = i >= 0 ? cards[i].opt.cardId : null;
     infoId = id;
     const d0 = id ? cardDef(id) : null;
-    const text = d0 ? (d0.kind === 'spell' ? `${d0.name} · Hızlı Büyü` : d0.name) : 'Bir kart seç';
+    const text = d0 ? (d0.kind === 'spell' ? `${d0.name} · Quick-Play Spell` : d0.name) : 'Choose a card';
     info.setText(text);
     toneInfo();
     info.setPosition(Math.round(w / 2 - info.width / 2), capYV3('sm', TRAP_Q.infoCap));

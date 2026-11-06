@@ -35,7 +35,7 @@ import { BOARD_CENTER, LANES, zoneXY, type BoardSpot } from '../../view/layout';
 import { V3_A6_B } from '../../view/v3flags';
 import { REDUCED_MOTION } from '../../view/v3/motion';
 import { HudV3, ui3Ready, ui3Sfx } from '../../view/v3/hudV3';
-import { DUEL_PLATE, DuelPlate } from '../../view/v3/TurnPlate';
+import { DUEL_PLATE, DUEL_WORD, DuelPlate } from '../../view/v3/TurnPlate';
 import { bg, fs, lightFlash, type Ctx } from '../flow/_kit';
 import { V3HOOKS, type HudInAt } from './_hooks';
 
@@ -51,7 +51,7 @@ export const OPENING_V3 = Object.freeze({
   /** Both sides answer: their trims run and their pads swell (pulseSide). */
   sidesAt: 240,
   /** The thump after the last letter (DuelPlate: the frame after the "!" stamps). */
-  thumpAt: Math.round((DUEL_PLATE.stampFrame + 7) * FRAME),
+  thumpAt: Math.round((DUEL_PLATE.stampFrame + DUEL_WORD.length) * FRAME),
 });
 
 const ZONES: readonly (readonly [BoardSpot, number])[] = [

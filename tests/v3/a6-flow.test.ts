@@ -3,7 +3,7 @@
 // trim table matches F10; the v3 HUD is handed out only under V3_A6_B and offers HudView's whole API;
 // A6-B's files hold no off-palette colour constant and no ADD blend (source scan). Later B steps add
 // the odometer, target-corner, A6_MS and decision tests here; B5 the deck-out (F8) and the result plate /
-// victory / defeat (F9): the plate's Turkish lines and geometry, its painters, the fireworks' place, the
+// victory / defeat (F9): the plate's lines and geometry, its painters, the fireworks' place, the
 // loser's stepped shade (one side only), the motes, the dying tube and the timings against A6_MS.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -293,14 +293,14 @@ describe('B1: turn plate, odometer, turn / phase timings (F1, F2)', () => {
     }
   });
 
-  it('turn plate texts: hot-seat / vsBot / CPU, Turkish letters, palette tones', async () => {
+  it('turn plate texts: hot-seat / vsBot / CPU, palette tones', async () => {
     const { turnPlateText, battlePlateText } = await import('../../src/view/v3/TurnPlate');
     const txt = (o: Parameters<typeof turnPlateText>[0]) => turnPlateText(o).map((s) => s.text).join('');
-    expect(txt({ mode: 'hotseat', human: true, player: 1, turn: 4 })).toBe('OYUNCU 2 · TUR 4');
-    expect(txt({ mode: 'vsBot', human: true, player: 0, turn: 4 })).toBe('SIRA SENDE · TUR 4');
-    expect(txt({ mode: 'vsBot', human: false, player: 1, turn: 4 })).toBe('BİLGİSAYAR · TUR 4');
-    expect(txt({ mode: 'demo', human: false, player: 0, turn: 7 })).toBe('OYUNCU 1 · TUR 7');
-    expect(battlePlateText().map((s) => s.text).join('')).toBe('SAVAŞ AŞAMASI');
+    expect(txt({ mode: 'hotseat', human: true, player: 1, turn: 4 })).toBe('PLAYER 2 · TURN 4');
+    expect(txt({ mode: 'vsBot', human: true, player: 0, turn: 4 })).toBe('YOUR TURN · TURN 4');
+    expect(txt({ mode: 'vsBot', human: false, player: 1, turn: 4 })).toBe('CPU · TURN 4');
+    expect(txt({ mode: 'demo', human: false, player: 0, turn: 7 })).toBe('PLAYER 1 · TURN 7');
+    expect(battlePlateText().map((s) => s.text).join('')).toBe('BATTLE PHASE');
     for (const s of [...turnPlateText({ mode: 'hotseat', human: true, player: 0, turn: 1 }), ...turnPlateText({ mode: 'hotseat', human: true, player: 1, turn: 1 }), ...battlePlateText()])
       expect(PAL_SET.has(s.color)).toBe(true);
   });
@@ -433,11 +433,11 @@ describe('B1: turn plate, odometer, turn / phase timings (F1, F2)', () => {
   }, 60000);
 });
 
-describe('B-open: the "DÜELLO!" plate and the HUD arrival (F0)', () => {
+describe('B-open: the "DUEL!" plate and the HUD arrival (F0)', () => {
   it('the display face: 13-px caps, letters 2 px apart, the word and the marks fit inside the trim', async () => {
     const T = await import('../../src/view/v3/TurnPlate');
     const { letters, w } = T.duelWordLayout();
-    expect(letters.map((l) => l.ch).join('')).toBe('DÜELLO!');
+    expect(letters.map((l) => l.ch).join('')).toBe('DUEL!');
     for (let i = 1; i < letters.length; i++) expect(letters[i].x - (letters[i - 1].x + letters[i - 1].w)).toBe(2);
     expect(w).toBe(letters[letters.length - 1].x + letters[letters.length - 1].w);
     for (const L of letters) for (const [c, r] of T.duelLetterPixels(L.ch)) {
@@ -989,7 +989,7 @@ describe('B4: the trap window marks (S-4), the prompt plate, the curtain, the bl
     expect(trapPromptX(500, 0, true)).toBe(500);
   });
 
-  it('the curtain plate: centred over the hand band (the board stays visible), Turkish lines, whole pixels; it rises 6 px and rests', async () => {
+  it('the curtain plate: centred over the hand band (the board stays visible), its lines, whole pixels; it rises 6 px and rests', async () => {
     const { CURTAIN, CURTAIN_LINE2, curtainLine1, curtainRect, curtainY } = await import('../../src/view/v3/CurtainV3');
     const { UI } = await import('../../src/view/layout');
     for (const kind of ['turn', 'trap'] as const)
@@ -1000,9 +1000,9 @@ describe('B4: the trap window marks (S-4), the prompt plate, the curtain, the bl
         expect(r.y + r.h).toBeLessThanOrEqual(UI.handRestTop);
         expect(r.h).toBeLessThan(60); // a plate, not a curtain over the screen
       }
-    expect(curtainLine1('turn', 1).map((s) => s.text).join('')).toBe('SIRA: OYUNCU 2');
-    expect(curtainLine1('trap', 0).map((s) => s.text).join('')).toBe('TUZAK SORUSU: OYUNCU 1');
-    expect(CURTAIN_LINE2).toBe('Hazır olunca dokun');
+    expect(curtainLine1('turn', 1).map((s) => s.text).join('')).toBe('TURN: PLAYER 2');
+    expect(curtainLine1('trap', 0).map((s) => s.text).join('')).toBe('TRAP CHANCE: PLAYER 1');
+    expect(CURTAIN_LINE2).toBe('Tap when ready');
     const ys: number[] = [];
     for (let t = 0; t <= CURTAIN.riseMs + 20; t += 1000 / 60) ys.push(curtainY(252, t, false));
     expect(ys[0]).toBe(252 + CURTAIN.rise);
@@ -1041,24 +1041,24 @@ describe('B4: the trap window marks (S-4), the prompt plate, the curtain, the bl
 describe('B5: the deck-out (F8), the result plate, victory / defeat (F9)', () => {
   const FRAME = 1000 / 60;
 
-  it('the plate says who won and why, in Turkish: hot-seat "KAZANAN: OYUNCU n", vsBot "KAZANDIN!" / "KAYBETTİN" (no crown, the person’s own reason)', async () => {
+  it('the plate says who won and why: hot-seat "WINNER: PLAYER n", vsBot "YOU WIN!" / "YOU LOSE" (no crown, the person’s own reason)', async () => {
     const { RESULT_REASON, RESULT_REASON_LOST, resultText } = await import('../../src/view/v3/ResultPlate');
     const line1 = (t: { line1: { text: string }[] }) => t.line1.map((s) => s.text).join('');
     for (const w of [0, 1] as const) {
       const t = resultText({ winner: w, reason: 'lp', viewerWon: null });
-      expect(line1(t)).toBe(`KAZANAN: OYUNCU ${w + 1}`);
+      expect(line1(t)).toBe(`WINNER: PLAYER ${w + 1}`);
       expect(t.line1[0].color).toBe(PAL.gold4);
       expect(t.line1[1].color).toBe(PLAYER_RAMP[w][3]);
       expect(t.win).toBe(true);
     }
-    expect(RESULT_REASON).toEqual({ lp: "Rakibin LP'si sıfırlandı", deckout: 'Rakibin destesi bitti', surrender: 'Rakip teslim oldu', seals: 'Beş Mühür tamamlandı' });
-    expect(RESULT_REASON_LOST).toEqual({ lp: "LP'n sıfırlandı", deckout: 'Desten bitti', surrender: 'Teslim oldun', seals: "Rakip Beş Mühür'ü tamamladı" });
+    expect(RESULT_REASON).toEqual({ lp: "Opponent's LP reached 0", deckout: "Opponent's Deck ran out", surrender: 'Opponent surrendered', seals: 'The Five Seals are complete' });
+    expect(RESULT_REASON_LOST).toEqual({ lp: 'Your LP reached 0', deckout: 'Your Deck ran out', surrender: 'You surrendered', seals: 'Opponent completed the Five Seals' });
     for (const r of ['lp', 'deckout', 'surrender'] as const) {
       expect(resultText({ winner: 1, reason: r, viewerWon: null }).line2).toBe(RESULT_REASON[r]);
       const won = resultText({ winner: 0, reason: r, viewerWon: true });
-      expect([line1(won), won.line2, won.win]).toEqual(['KAZANDIN!', RESULT_REASON[r], true]);
+      expect([line1(won), won.line2, won.win]).toEqual(['YOU WIN!', RESULT_REASON[r], true]);
       const lost = resultText({ winner: 1, reason: r, viewerWon: false });
-      expect([line1(lost), lost.line2, lost.win]).toEqual(['KAYBETTİN', RESULT_REASON_LOST[r], false]);
+      expect([line1(lost), lost.line2, lost.win]).toEqual(['YOU LOSE', RESULT_REASON_LOST[r], false]);
       expect(lost.line1[0].color).toBe(PAL.crim3);
     }
     expect(resultText({ winner: 0, reason: null, viewerWon: null }).line2).toBe('');
@@ -1067,7 +1067,7 @@ describe('B5: the deck-out (F8), the result plate, victory / defeat (F9)', () =>
   it('every letter is in the font, and the lines (crown included) fit between the duelists’ marks', async () => {
     const { RESULT, RESULT_REASON, RESULT_REASON_LOST, resultText } = await import('../../src/view/v3/ResultPlate');
     const glyphs = (s: string) => [...s].filter((c) => c !== ' ').length;
-    const lines1: string[] = ['KAZANAN: OYUNCU 1', 'KAZANAN: OYUNCU 2', 'KAZANDIN!', 'KAYBETTİN'];
+    const lines1: string[] = ['WINNER: PLAYER 1', 'WINNER: PLAYER 2', 'YOU WIN!', 'YOU LOSE'];
     for (const s of lines1) expect(layoutLine(s, 'md').glyphs.length, s).toBe(glyphs(s));
     for (const s of [...Object.values(RESULT_REASON), ...Object.values(RESULT_REASON_LOST)]) {
       const L = layoutLine(s, 'sm');
@@ -1085,7 +1085,7 @@ describe('B5: the deck-out (F8), the result plate, victory / defeat (F9)', () =>
       }
   });
 
-  it('the plate stands where the "DÜELLO!" plate stood: centred, 3 px under the phase bar, clear of both panels; the button row under it', async () => {
+  it('the plate stands where the "DUEL!" plate stood: centred, 3 px under the phase bar, clear of both panels; the button row under it', async () => {
     const { RESULT, resultButtonRects, resultPlateRect } = await import('../../src/view/v3/ResultPlate');
     const { UI } = await import('../../src/view/layout');
     const r = resultPlateRect();
@@ -1196,10 +1196,10 @@ describe('B5: the deck-out (F8), the result plate, victory / defeat (F9)', () =>
     expect(pieceFrame({ x: 1, y: 0 }, 11).tone).toBeNull();
   });
 
-  it('the deck-out plate: "DESTE BİTTİ" in white on the crimson plate (TurnPlate kind deckOut)', async () => {
+  it('the deck-out plate: "DECK OUT" in white on the crimson plate (TurnPlate kind deckOut)', async () => {
     const { deckOutPlateText, plateWidth, plateRect } = await import('../../src/view/v3/TurnPlate');
     const seg = deckOutPlateText();
-    expect(seg.map((s) => s.text).join('')).toBe('DESTE BİTTİ');
+    expect(seg.map((s) => s.text).join('')).toBe('DECK OUT');
     expect(seg.every((s) => s.color === PAL.white)).toBe(true);
     for (const p of [0, 1] as const) {
       const r = plateRect(p, plateWidth(seg, 'deckOut'));
@@ -1361,7 +1361,7 @@ describe('A6-B fix round 1 (critic A6B-1 … A6B-7)', () => {
     const stamp0 = (RESULT.openH.length - 1) * RESULT.openFrames;
     const end1 = stamp0 + Math.ceil(n1 / RESULT.line1PerFrame);
     const end2 = Math.max(stamp0 + 1, end1 - RESULT.line2Lead) + Math.ceil(n2 / RESULT.line2PerFrame);
-    // "KAZANAN: OYUNCU 1" reads ≤ 200 ms after the plate opens (≈ 1.1 s after the game-over event), the reason ≤ 300 ms
+    // "WINNER: PLAYER 1" reads ≤ 200 ms after the plate opens (≈ 1.1 s after the game-over event), the reason ≤ 300 ms
     expect(end1 * (1000 / 60)).toBeLessThanOrEqual(200);
     expect(end2 * (1000 / 60)).toBeLessThanOrEqual(300);
     // three fireworks, 150 ms apart

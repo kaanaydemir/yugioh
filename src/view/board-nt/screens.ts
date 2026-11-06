@@ -77,12 +77,12 @@ interface Reaction {
   power: number;
 }
 
-/** The names the plates show: the vs-CPU duel names the computer's side BİLGİSAYAR (as the HUD does). */
+/** The names the plates show: the vs-CPU duel names the computer's side CPU (as the HUD does). */
 function plateNames(scene: Phaser.Scene): [string, string] {
-  const names: [string, string] = ['OYUNCU 1', 'OYUNCU 2'];
+  const names: [string, string] = ['PLAYER 1', 'PLAYER 2'];
   try {
     const d = scene.sys.settings.data as { mode?: string; botPlayer?: PlayerId } | undefined;
-    if (d?.mode === 'vsBot') names[d.botPlayer ?? 1] = 'BİLGİSAYAR';
+    if (d?.mode === 'vsBot') names[d.botPlayer ?? 1] = 'CPU';
   } catch {
     /* no launch data (previews): the defaults */
   }
@@ -160,9 +160,9 @@ export function createScreensLayer(ctx: NtCtx): NtLayer {
 
     // ---- name plate (sheared with the screen): baked here from the HUD's text painter in two tones (idle / active)
     const R = who === 0 ? RAMPS.cyan : RAMPS.crim;
-    // the right plate must stay right of the duelist notch (art/arena-nt/screens.ts NOTCH): OYUNCU 2 (41 px) still fits; only the
-    // computer's longer name (BİLGİSAYAR, vs-CPU duels only) shows as CPU — a hot-seat duel always reads OYUNCU 2
-    const label = who === 1 && names[who] === 'BİLGİSAYAR' && (textCanvas(names[who], 'sm', R[3]).bounds()?.w ?? 0) > 41 ? 'CPU' : names[who];
+    // the right plate must stay right of the duelist notch (art/arena-nt/screens.ts NOTCH): PLAYER 2 (40 px) still fits; the
+    // computer's side reads CPU
+    const label = names[who];
     const plateKeys: [string, string] = [`nt:screens:plate:${who}:${label}:3`, `nt:screens:plate:${who}:${label}:4`];
     const plates = [3, 4].map((tone) => paintPlate(who, textCanvas(label, 'sm', R[tone])));
     plates.forEach((pl, i) => canvasTexture(scene, plateKeys[i], pl.canvas));

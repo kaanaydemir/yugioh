@@ -393,7 +393,7 @@ export class BoardViewV2 implements BoardCtx {
     this.stadium.crowd(kind, side, power);
   }
 
-  /** A short message on the scoreboard's ticker line (e.g. 'TUZAK!'). */
+  /** A short message on the scoreboard's ticker line (e.g. 'TRAP!'). */
   scoreFlash(text: string, color: number | null = null, ms = 1600): void {
     if (this.destroyed) return;
     this.stadium.scoreFlash(text, color, ms);

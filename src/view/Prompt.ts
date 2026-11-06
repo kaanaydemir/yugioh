@@ -82,22 +82,22 @@ registerUiTarget('choice', (scene, _views, arg) => {
   const i = q.ids.indexOf(String(arg));
   return i >= 0 ? q.at[i] : null;
 });
-const NAME: Record<PlayerId, string> = { 0: 'OYUNCU 1', 1: 'OYUNCU 2' };
-const NAME_TITLE: Record<PlayerId, string> = { 0: 'Oyuncu 1', 1: 'Oyuncu 2' };
+const NAME: Record<PlayerId, string> = { 0: 'PLAYER 1', 1: 'PLAYER 2' };
+const NAME_TITLE: Record<PlayerId, string> = { 0: 'Player 1', 1: 'Player 2' };
 const REASON: Record<WinReason, string> = {
-  lp: "Rakibin LP'si sıfırlandı",
-  deckout: 'Rakibin destesi bitti',
-  surrender: 'Rakip teslim oldu',
-  seals: 'Beş Mühür tamamlandı',
+  lp: "Opponent's LP reached 0",
+  deckout: "Opponent's Deck ran out",
+  surrender: 'Opponent surrendered',
+  seals: 'The Five Seals are complete',
 };
 
 function capY(size: TextSize, capTop: number): number {
   return capTop - textMetrics(size).capTop;
 }
 
-/** Possessive suffix for "OYUNCU 1'İN" / "OYUNCU 2'NİN". */
+/** Possessive form: "PLAYER 1'S" / "PLAYER 2'S". */
 function possessive(p: PlayerId): string {
-  return p === 0 ? "OYUNCU 1'İN" : "OYUNCU 2'NİN";
+  return p === 0 ? "PLAYER 1'S" : "PLAYER 2'S";
 }
 
 export class Prompt {
@@ -217,10 +217,10 @@ export class Prompt {
     band.add([bandG, ghost, ghost2]);
     band.x = GAME_W + 40;
     root.add(band);
-    const small = pixelText(sc, GAME_W / 2, capY('md', bandY + 13), 'SIRA DEĞİŞİYOR', { size: 'md', color: R[4], originX: 0.5 });
+    const small = pixelText(sc, GAME_W / 2, capY('md', bandY + 13), 'SWITCHING TURNS', { size: 'md', color: R[4], originX: 0.5 });
     small.setAlpha(0);
     root.add(small);
-    const title = pixelLetters(sc, GAME_W / 2, capY('xl', bandY + 32), `${possessive(player)} SIRASI`, {
+    const title = pixelLetters(sc, GAME_W / 2, capY('xl', bandY + 32), `${possessive(player)} TURN`, {
       size: 'xl',
       color: PAL.white,
       originX: 0.5,
@@ -230,7 +230,7 @@ export class Prompt {
       l.obj.setAlpha(0);
       root.add(l.obj);
     }
-    const sub = pixelText(sc, GAME_W / 2 + 8, capY('md', bandY + 68), 'Hazır olunca tıkla', { size: 'md', color: PAL.white, originX: 0.5 });
+    const sub = pixelText(sc, GAME_W / 2 + 8, capY('md', bandY + 68), 'Click when ready', { size: 'md', color: PAL.white, originX: 0.5 });
     sub.setAlpha(0);
     const tap = sc.add.image(sub.x - sub.width / 2 - 14, bandY + 70, ICON.pointer).setTint(R[4]).setAlpha(0);
     root.add([sub, tap]);
@@ -431,7 +431,7 @@ export class Prompt {
     const cardsW = n * CARD_W + (n - 1) * gapX;
     // batch 2: a set quick spell can answer too (the question names it)
     const quick = options.some((o) => cardDef(o.cardId).kind === 'spell');
-    const question = quick ? `${NAME_TITLE[player]}: Hızlı büyü ya da tuzak açmak ister misin?` : `${NAME_TITLE[player]}: Tuzak kartı açmak ister misin?`;
+    const question = quick ? `${NAME_TITLE[player]}: activate a Quick-Play Spell or Trap?` : `${NAME_TITLE[player]}: activate a Trap card?`;
     const w = Math.max(252, cardsW + 40, measureText(question, 'sm').w + 24);
     const textY = 38 + CARD_H + 17;
     const lines = Math.max(...options.map((o) => wrapText(cardDef(o.cardId).text, 'sm', w - 20).length));
@@ -444,7 +444,7 @@ export class Prompt {
     const bg = sc.add.image(0, 0, panelTex(sc, 'trap', w, h, { header: 19, alpha: 248 })).setOrigin(0);
     panel.add([glow, bg]);
     const icon = sc.add.image(9, 5, ICON.trap).setOrigin(0).setTint(R[4]);
-    const head = pixelText(sc, 22, capY('md', 6), quick ? 'YANIT FIRSATI' : 'TUZAK FIRSATI', { size: 'md', color: R[4] });
+    const head = pixelText(sc, 22, capY('md', 6), quick ? 'RESPONSE CHANCE' : 'TRAP CHANCE', { size: 'md', color: R[4] });
     const who = pixelText(sc, w - 9, capY('sm', 7), NAME[player], { size: 'sm', color: PLAYER_COLOR[player] });
     who.x = Math.round(w - 9 - who.width);
     const q = pixelText(sc, Math.round(w / 2), capY('sm', 26), question, { size: 'sm', color: PAL.white });
@@ -475,8 +475,8 @@ export class Prompt {
     let selected = n === 1 ? 0 : -1;
     const bw = 76;
     const by = h - 33;
-    const openBtn = new Button(sc, Math.round(w / 2 - bw - 6), by, { w: bw, h: 25, label: 'AÇ', icon: ICON.trap, style: 'trap' });
-    const passBtn = new Button(sc, Math.round(w / 2 + 6), by, { w: bw, h: 25, label: 'GEÇ', style: 'neutral' });
+    const openBtn = new Button(sc, Math.round(w / 2 - bw - 6), by, { w: bw, h: 25, label: 'ACTIVATE', icon: ICON.trap, style: 'trap' });
+    const passBtn = new Button(sc, Math.round(w / 2 + 6), by, { w: bw, h: 25, label: 'PASS', style: 'neutral' });
     panel.add([openBtn, passBtn]);
     openBtn.setEnabled(selected >= 0);
 
@@ -605,7 +605,7 @@ export class Prompt {
     const build = (s: string, animate: boolean) => {
       stopLoops();
       bar?.destroy();
-      const extra = 20 + (showCancel ? 58 : 10);
+      const extra = 20 + (showCancel ? 64 : 10);
       // md when it fits, else the small font, wrapped onto two lines if it must
       let size: TextSize = 'md';
       let m = measureText(s, 'md');
@@ -630,7 +630,7 @@ export class Prompt {
         sc.tweens.add({ targets: glow, alpha: { from: 0.25, to: 0.7 }, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.InOut' }),
       );
       if (showCancel) {
-        cancelBtn = new Button(sc, w - 52, Math.round(H / 2) - 7, { w: 48, h: 15, label: 'İPTAL', size: 'sm', icon: ICON.close, style: 'neutral' });
+        cancelBtn = new Button(sc, w - 58, Math.round(H / 2) - 7, { w: 54, h: 15, label: 'CANCEL', size: 'sm', icon: ICON.close, style: 'neutral' });
         cancelBtn.onClick = () => doCancel();
         bar.add(cancelBtn);
       }
@@ -745,7 +745,7 @@ export class Prompt {
       bar?.destroy();
       trim?.destroy();
       lines = [];
-      const extra = 20 + (showCancel ? 58 : 10);
+      const extra = 20 + (showCancel ? 64 : 10);
       // md when it fits, else the small font, on two lines if it must
       let size: TextSize = 'md';
       let parts = [s];
@@ -786,7 +786,7 @@ export class Prompt {
       });
       cancelBtn = null;
       if (showCancel) {
-        cancelBtn = new Button(sc, w - 52, Math.round(H / 2) - 7, { w: 48, h: 15, label: 'İPTAL', size: 'sm', icon: ICON.close, style: 'neutral' });
+        cancelBtn = new Button(sc, w - 58, Math.round(H / 2) - 7, { w: 54, h: 15, label: 'CANCEL', size: 'sm', icon: ICON.close, style: 'neutral' });
         cancelBtn.onClick = () => doCancel();
         bar.add(cancelBtn);
       }
@@ -875,7 +875,7 @@ export class Prompt {
 
   // ================================================================ confirm
 
-  /** Yes / no dialog. Enter = EVET, Esc = HAYIR. */
+  /** Yes / no dialog. Enter = YES, Esc = NO. */
   async confirm(text: string, opts: { yes?: string; no?: string; style?: 'neutral' | 'gold' | 'p1' | 'p2' | 'trap' } = {}): Promise<boolean> {
     const sc = this.scene;
     const style = opts.style ?? 'neutral';
@@ -892,9 +892,12 @@ export class Prompt {
     const bg = sc.add.image(-Math.round(w / 2), -Math.round(h / 2), panelTex(sc, style, w, h, { alpha: 248 })).setOrigin(0);
     const t = pixelText(sc, 0, -Math.round(h / 2) + 12, text, { size: 'md', color: PAL.white, maxWidth: maxW, align: 'center' });
     t.x = -Math.round(t.width / 2);
-    const bw = 72;
-    const yes = new Button(sc, -bw - 5, Math.round(h / 2) - 34, { w: bw, h: 25, label: opts.yes ?? 'EVET', icon: ICON.check, style: style === 'neutral' ? 'gold' : style });
-    const no = new Button(sc, 5, Math.round(h / 2) - 34, { w: bw, h: 25, label: opts.no ?? 'HAYIR', style: 'neutral' });
+    const yesLabel = opts.yes ?? 'YES';
+    const noLabel = opts.no ?? 'NO';
+    // wide enough for the longer label (icon 7 + gap 4 + 7 px padding a side), never under 72
+    const bw = Math.max(72, 2 * Math.ceil((measureText(yesLabel, 'md').w + 25) / 2), 2 * Math.ceil((measureText(noLabel, 'md').w + 14) / 2));
+    const yes = new Button(sc, -bw - 5, Math.round(h / 2) - 34, { w: bw, h: 25, label: yesLabel, icon: ICON.check, style: style === 'neutral' ? 'gold' : style });
+    const no = new Button(sc, 5, Math.round(h / 2) - 34, { w: bw, h: 25, label: noLabel, style: 'neutral' });
     panel.add([glow, bg, t, yes, no]);
     root.add(panel);
     sc.tweens.add({ targets: dim, alpha: 0.5, duration: 160 });
@@ -1049,7 +1052,7 @@ export class Prompt {
     band.setAlpha(0);
     root.add(band);
     const crown = sc.add.image(cx, cy - 50, crownTex(sc, winner)).setScale(2).setAlpha(0);
-    const kaz = pixelText(sc, cx, capY('lg', cy - 26), 'KAZANAN', { size: 'lg', color: PAL.gold4, originX: 0.5, shadow: 1 });
+    const kaz = pixelText(sc, cx, capY('lg', cy - 26), 'WINNER', { size: 'lg', color: PAL.gold4, originX: 0.5, shadow: 1 });
     kaz.setAlpha(0);
     const title = pixelLetters(sc, cx, capY('xl', cy + 2), NAME[winner], { size: 'xl', color: R[3], originX: 0.5, shadow: 1 });
     for (const l of title.letters) {
@@ -1129,7 +1132,7 @@ export class Prompt {
     plate.fillStyle(PAL.gold1).fillRect(0, top + 2, GAME_W, 1).fillRect(0, top + plateH - 3, GAME_W, 1);
     root.add(plate);
     // caption: "OYUNCU 1 KAZANDI · Rakibin LP'si sıfırlandı" (the winner in their colour)
-    const who = `${NAME[winner]} KAZANDI`;
+    const who = `${NAME[winner]} WINS`;
     const rest = reason ? ` · ${REASON[reason]}` : '';
     const capTop = top + 9;
     const cw = measureText(who + rest, 'sm').w;
@@ -1158,8 +1161,8 @@ export class Prompt {
     const gap = 8;
     const total = menu ? wA + gap + wB : wA;
     const x0 = Math.round(cx - total / 2);
-    const again = new Button(sc, x0, y, { w: wA, h: 25, label: 'TEKRAR OYNA', icon: ICON.replay, style: 'gold' });
-    const back = menu ? new Button(sc, x0 + wA + gap, y, { w: wB, h: 25, label: 'ANA MENÜ', icon: ICON.close, style: 'neutral' }) : null;
+    const again = new Button(sc, x0, y, { w: wA, h: 25, label: 'PLAY AGAIN', icon: ICON.replay, style: 'gold' });
+    const back = menu ? new Button(sc, x0 + wA + gap, y, { w: wB, h: 25, label: 'MAIN MENU', icon: ICON.close, style: 'neutral' }) : null;
     for (const [i, btn] of [again, back].entries()) {
       if (!btn) continue;
       root.add(btn);

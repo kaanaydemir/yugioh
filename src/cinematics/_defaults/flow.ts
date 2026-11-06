@@ -72,7 +72,7 @@ async function coinFlip(ctx: Ctx<'gameStart'>, first: PlayerId): Promise<void> {
   ctx.sfx('cardSlam', { volume: 0.6 });
   void tween(sc, { targets: coin, scaleX: 2, scaleY: 2, duration: 220, ease: 'Back.Out' });
   void sparkleBurst(sc, cx, cy + 40, { ramp: PLAYER_RAMP[first], count: 18 });
-  const t = pixelText(sc, cx, cy + 74, first === 0 ? 'OYUNCU 1 BAŞLIYOR!' : 'OYUNCU 2 BAŞLIYOR!', { size: 'md', color: PLAYER_COLOR[first], originX: 0.5, originY: 0.5, shadow: 1 })
+  const t = pixelText(sc, cx, cy + 74, first === 0 ? 'PLAYER 1 GOES FIRST!' : 'PLAYER 2 GOES FIRST!', { size: 'md', color: PLAYER_COLOR[first], originX: 0.5, originY: 0.5, shadow: 1 })
     .setDepth(DEPTH.BANNER - 4)
     .setScrollFactor(0)
     .setAlpha(0);
@@ -249,7 +249,7 @@ registerEvent(
     const p = ctx.ev.player;
     const sc = ctx.scene;
     const at = ctx.views.field.tileAt(p, 'spellTrap', 1)?.home ?? { x: GAME_W / 2, y: 180 };
-    const t = pixelText(sc, at.x, at.y - 18, 'GEÇ', { size: 'md', color: PAL.mist, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.FX_TOP);
+    const t = pixelText(sc, at.x, at.y - 18, 'PASS', { size: 'md', color: PAL.mist, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.FX_TOP);
     ctx.sfx('uiBack', { volume: 0.5 });
     await tween(sc, { targets: t, y: t.y - 12, alpha: 0, duration: 520, ease: 'Quad.Out' });
     t.destroy();
@@ -264,7 +264,7 @@ registerEvent(
     void pile.flash(PAL.crim3);
     void shake(ctx.scene, 300, 3);
     ctx.sfx('defeat', { volume: 0.6 });
-    await banner(ctx.scene, 'DESTE BİTTİ!', { style: 'big', color: PAL.crim3 });
+    await banner(ctx.scene, 'DECK OUT!', { style: 'big', color: PAL.crim3 });
   },
   P,
 );

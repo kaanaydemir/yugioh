@@ -62,8 +62,8 @@ export interface HudOpts {
 
 const ADD = Phaser.BlendModes.ADD;
 const PHASES: Phase[] = ['draw', 'main', 'battle', 'end'];
-export const PHASE_LABEL: Record<Phase, string> = { draw: 'ÇEKME', main: 'ANA', battle: 'SAVAŞ', end: 'BİTİŞ' };
-const PLAYER_NAME: Record<PlayerId, string> = { 0: 'OYUNCU 1', 1: 'OYUNCU 2' };
+export const PHASE_LABEL: Record<Phase, string> = { draw: 'DRAW', main: 'MAIN', battle: 'BATTLE', end: 'END' };
+const PLAYER_NAME: Record<PlayerId, string> = { 0: 'PLAYER 1', 1: 'PLAYER 2' };
 
 /** Text y so that the caps of `size` start at `capTop`. */
 function capY(size: TextSize, capTop: number): number {
@@ -89,10 +89,10 @@ const COMET = byArena(14, 11);
 /** Name line + left column x of the panel text. */
 const NAME = byArena({ size: 'md' as TextSize, x: 8, cap: 5 }, { size: 'sm' as TextSize, x: 7, cap: 4 });
 const LP_LABEL_X = byArena(8, 6);
-/** SIRA chip (header, right end). */
+/** TURN chip (header, right end). */
 const CHIP = byArena(
-  { w: 34, h: 11, y: 2, right: 6, caretX: 4, caretY: 2, textX: 12, textCap: 3, caret: ICON.caret as string },
-  { w: 30, h: 9, y: 2, right: 5, caretX: 3, caretY: 1, textX: 9, textCap: 2, caret: ICON.caretSm as string },
+  { w: 36, h: 11, y: 2, right: 6, caretX: 4, caretY: 2, textX: 12, textCap: 3, caret: ICON.caret as string },
+  { w: 33, h: 9, y: 2, right: 5, caretX: 3, caretY: 1, textX: 9, textCap: 2, caret: ICON.caretSm as string },
 );
 /** v2 count column: groove x, glyph x, first glyph top, row pitch, number x. */
 const SIDE = { groove: 95, iconX: 99, top: 13, pitch: 8, textX: 109, pivot: 112 };
@@ -163,8 +163,8 @@ const SEG_CAP = byArena(5, 4);
 const SEP_Y = byArena(7, 6);
 /** Turn badge left of the phase bar. */
 const TURN = byArena(
-  { dx: -46, w: 42, h: 16, labelX: 6, labelCap: 6, numCap: 5, numCx: 33 },
-  { dx: -41, w: 38, h: 14, labelX: 5, labelCap: 5, numCap: 4, numCx: 29 },
+  { dx: -50, w: 46, h: 16, labelX: 5, labelCap: 6, numCap: 5, numCx: 36 },
+  { dx: -47, w: 44, h: 14, labelX: 4, labelCap: 5, numCap: 4, numCx: 34 },
 );
 /** Main buttons (inside UI.buttons): height and the two tops. */
 const MAIN_BTN = byArena({ h: 25, y1: 1, y2: 30 }, { h: 19, y1: 0, y2: 21 });
@@ -289,7 +289,7 @@ class HudViewV1 {
     const tb = { x: pb.x + TURN.dx, y: pb.y, w: TURN.w, h: TURN.h };
     const turnRoot = this.track(scene.add.container(tb.x, tb.y).setDepth(DEPTH.HUD).setScrollFactor(0));
     turnRoot.add(scene.add.image(0, 0, panelTex(scene, 'neutral', tb.w, tb.h, { scan: false })).setOrigin(0));
-    turnRoot.add(pixelText(scene, TURN.labelX, capY('sm', TURN.labelCap), 'TUR', { size: 'sm', color: PAL.mist }));
+    turnRoot.add(pixelText(scene, TURN.labelX, capY('sm', TURN.labelCap), 'TURN', { size: 'sm', color: PAL.mist }));
     this.turnText = pixelText(scene, 25, capY('md', TURN.numCap) + 3, String(this.turn), { size: 'md', color: PAL.white });
     this.turnText.setOrigin(0, 0);
     turnRoot.add(this.turnText);
@@ -298,13 +298,13 @@ class HudViewV1 {
     // ---- main buttons
     const b = UI.buttons;
     this.battleButton = this.track(
-      new Button(scene, b.x, b.y + MAIN_BTN.y1, { w: b.w, h: MAIN_BTN.h, label: 'SAVAŞ', icon: ICON.swords, style: 'fire', depth: DEPTH.HUD, onClick: () => this.onBattle?.() }),
+      new Button(scene, b.x, b.y + MAIN_BTN.y1, { w: b.w, h: MAIN_BTN.h, label: 'BATTLE', icon: ICON.swords, style: 'fire', depth: DEPTH.HUD, onClick: () => this.onBattle?.() }),
     );
     this.endTurnButton = this.track(
       new Button(scene, b.x, b.y + MAIN_BTN.y2, {
         w: b.w,
         h: MAIN_BTN.h,
-        label: 'TURU BİTİR',
+        label: 'END TURN',
         icon: ICON.endTurn,
         style: playerStyle(this.activePlayer),
         depth: DEPTH.HUD,
@@ -334,10 +334,10 @@ class HudViewV1 {
     for (const btn of [this.speedButton, this.soundButton, this.logButton, this.menuButton]) btn.setScrollFactor(0);
     // the toolbar is icons only: name each one on hover
     const tips: [Button, () => string][] = [
-      [this.speedButton, () => `Animasyon hızı: ${this.speed}× (tıkla: değiştir)`],
-      [this.soundButton, () => (this.soundOn ? 'Sesi kapat' : 'Sesi aç')],
-      [this.logButton, () => 'Savaş günlüğü'],
-      [this.menuButton, () => 'Düello menüsü (Esc)'],
+      [this.speedButton, () => `Animation speed: ${this.speed}× (click: change)`],
+      [this.soundButton, () => (this.soundOn ? 'Mute sound' : 'Unmute sound')],
+      [this.logButton, () => 'Battle log'],
+      [this.menuButton, () => 'Duel menu (Esc)'],
     ];
     for (const [btn, text] of tips) btn.onHover = (on) => (on ? this.showTip(btn, text()) : this.hideTip(btn));
 
@@ -885,7 +885,7 @@ class HudViewV1 {
     chipBg.fillStyle(R[3]).fillRect(1, 1, chipW - 2, 1);
     chipBg.fillStyle(R[1]).fillRect(1, chipH - 2, chipW - 2, 1);
     const caret = sc.add.image(CHIP.caretX, CHIP.caretY, CHIP.caret).setOrigin(0).setScale(1).setTint(PAL.white);
-    const chipText = pixelText(sc, CHIP.textX, capY('sm', CHIP.textCap), 'SIRA', { size: 'sm', color: PAL.white });
+    const chipText = pixelText(sc, CHIP.textX, capY('sm', CHIP.textCap), 'TURN', { size: 'sm', color: PAL.white });
     chip.add([chipBg, caret, chipText]);
     const chipX = PW - chipW - CHIP.right;
     chip.setData('x', chipX).setPosition(chipX, CHIP.y).setVisible(false);
@@ -1325,7 +1325,7 @@ class HudViewV1 {
     const k = (this.speed === 3 ? 1 : this.speed + 1) as SpeedLevel;
     this.setSpeed(k);
     this.onSpeed?.(k);
-    if (this.tip?.owner === this.speedButton) this.showTip(this.speedButton, `Animasyon hızı: ${k}× (tıkla: değiştir)`);
+    if (this.tip?.owner === this.speedButton) this.showTip(this.speedButton, `Animation speed: ${k}× (click: change)`);
   }
 
   private toggleSound(): void {
@@ -1338,7 +1338,7 @@ class HudViewV1 {
     } else sfx.setMuted(true);
     this.setSoundOn(on);
     this.onSound?.(!on);
-    if (this.tip?.owner === this.soundButton) this.showTip(this.soundButton, on ? 'Sesi kapat' : 'Sesi aç');
+    if (this.tip?.owner === this.soundButton) this.showTip(this.soundButton, on ? 'Mute sound' : 'Unmute sound');
   }
 
   // ================================================================ toolbar tooltips

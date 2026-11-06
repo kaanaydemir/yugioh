@@ -101,7 +101,7 @@ registerEvent(
       void u.play('hit');
     }
     await ctx.unfocus(200);
-    await banner(ctx.scene, 'SAVAŞ BİTTİ', { style: 'trap' });
+    await banner(ctx.scene, 'BATTLE OVER', { style: 'trap' });
   },
   P,
 );

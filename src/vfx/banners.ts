@@ -1,11 +1,11 @@
 // Text banners (GAME_DESIGN §6 turnStart / phaseChange / trap opening / gameStart / gameOver).
 //
-//   await turnBanner(scene, 1, 3);                 // "OYUNCU 2 · TUR 3" sweeps in from P2's side
-//   await phaseBanner(scene, 'battle');            // "SAVAŞ AŞAMASI" + red edge pulse
-//   await trapBanner(scene);                       // "TUZAK!" letters slam down (magenta)
-//   await banner(scene, 'YILDIRIM HÜKMÜ', { style: 'spell', sub: 'BÜYÜ KARTI' });
-//   await duelStart(scene);                        // "DÜELLO!" gold slam with focus lines
-//   await victory(scene, 0);                       // "KAZANAN: OYUNCU 1" + gold fireworks (stays up)
+//   await turnBanner(scene, 1, 3);                 // "PLAYER 2 · TURN 3" sweeps in from P2's side
+//   await phaseBanner(scene, 'battle');            // "BATTLE PHASE" + red edge pulse
+//   await trapBanner(scene);                       // "TRAP!" letters slam down (magenta)
+//   await banner(scene, 'JUDGMENT BOLT', { style: 'spell', sub: 'SPELL CARD' });
+//   await duelStart(scene);                        // "DUEL!" gold slam with focus lines
+//   await victory(scene, 0);                       // "WINNER: PLAYER 1" + gold fireworks (stays up)
 //   clearBanners(scene);                           // fade out a persistent victory screen
 //
 // Two motion families:
@@ -530,17 +530,17 @@ export async function banner(scene: Phaser.Scene, text: string, o: BannerOpts = 
   }
 }
 
-/** "OYUNCU 2 · TUR 3" — sweeps in from the player's side in their color (~1.0 s). */
+/** "PLAYER 2 · TURN 3" — sweeps in from the player's side in their color (~1.0 s). */
 export async function turnBanner(scene: Phaser.Scene, player: PlayerId, turn: number): Promise<void> {
   snd('turnStart', 0.8);
-  await banner(scene, `OYUNCU ${player + 1} · TUR ${turn}`, { style: 'turn', color: PLAYER_RAMP[player][3], dir: player === 0 ? 1 : -1 });
+  await banner(scene, `PLAYER ${player + 1} · TURN ${turn}`, { style: 'turn', color: PLAYER_RAMP[player][3], dir: player === 0 ? 1 : -1 });
 }
 
 const PHASE_LABEL: Record<Phase, string> = {
-  draw: 'ÇEKME AŞAMASI',
-  main: 'ANA AŞAMA',
-  battle: 'SAVAŞ AŞAMASI',
-  end: 'BİTİŞ AŞAMASI',
+  draw: 'DRAW PHASE',
+  main: 'MAIN PHASE',
+  battle: 'BATTLE PHASE',
+  end: 'END PHASE',
 };
 
 const PHASE_RAMP: Record<Phase, Ramp> = {
@@ -562,14 +562,14 @@ export async function phaseBanner(scene: Phaser.Scene, phase: Phase): Promise<vo
   }
 }
 
-/** "TUZAK!" — magenta letters slam down one by one (~1.2 s). */
+/** "TRAP!" — magenta letters slam down one by one (~1.2 s). */
 export async function trapBanner(scene: Phaser.Scene): Promise<void> {
-  await banner(scene, 'TUZAK!', { style: 'trap' });
+  await banner(scene, 'TRAP!', { style: 'trap' });
 }
 
-/** "DÜELLO!" — gold letters punch in from the camera, focus lines + 5 px shake (~1.5 s). */
+/** "DUEL!" — gold letters punch in from the camera, focus lines + 5 px shake (~1.5 s). */
 export async function duelStart(scene: Phaser.Scene): Promise<void> {
-  await banner(scene, 'DÜELLO!', { style: 'big' });
+  await banner(scene, 'DUEL!', { style: 'big' });
 }
 
 // ---------------------------------------------------------------- red edge pulse (battle phase)
@@ -728,8 +728,8 @@ export async function victory(scene: Phaser.Scene, player: PlayerId, o: { hold?:
   });
 
   await sleep(scene, 160);
-  const title = `KAZANAN: OYUNCU ${player + 1}`;
-  const nameStart = title.indexOf('OYUNCU');
+  const title = `WINNER: PLAYER ${player + 1}`;
+  const nameStart = title.indexOf('PLAYER');
   const built = await slamBanner(scene, title, { ...STYLE.big, H: 58, mul: 1 }, RAMPS.gold, {
     punch: true,
     keep: true,

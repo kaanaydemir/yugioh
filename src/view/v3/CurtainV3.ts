@@ -76,11 +76,11 @@ export const CURTAIN = Object.freeze({
 
 /** The plate's first line: who is asked (in their tone). */
 export function curtainLine1(kind: CurtainKind, player: PlayerId): { text: string; color: number }[] {
-  const who = { text: `OYUNCU ${player + 1}`, color: PLAYER_RAMP[player][4] };
-  return kind === 'trap' ? [{ text: 'TUZAK SORUSU: ', color: PAL.mag4 }, who] : [{ text: 'SIRA: ', color: PAL.mist }, who];
+  const who = { text: `PLAYER ${player + 1}`, color: PLAYER_RAMP[player][4] };
+  return kind === 'trap' ? [{ text: 'TRAP CHANCE: ', color: PAL.mag4 }, who] : [{ text: 'TURN: ', color: PAL.mist }, who];
 }
 
-export const CURTAIN_LINE2 = 'Hazır olunca dokun';
+export const CURTAIN_LINE2 = 'Tap when ready';
 /** The tap icon's drawn width (ICON.pointer, 11 × 12) and its gap to the text. */
 const TAP_W = 11;
 const TAP_GAP = 4;

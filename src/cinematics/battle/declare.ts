@@ -272,7 +272,7 @@ registerEvent(
     // small "Geç" over the defender's spell/trap row
     const row = zoneXY(p, 'spellTrap', LANE_MID);
     const at = { x: row.x, y: row.y - 22 };
-    const t = pixelText(sc, at.x, at.y, 'Geç', { size: 'md', color: PAL.mist, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.FX_TOP + 5);
+    const t = pixelText(sc, at.x, at.y, 'Pass', { size: 'md', color: PAL.mist, originX: 0.5, originY: 0.5 }).setDepth(DEPTH.FX_TOP + 5);
     ctx.sfx('uiBack', { volume: 0.5, pitch: 0.9 });
     if (LOOK_V3) {
       // v3: never squashed — it drops in on whole pixels (2 px, a dim tone, then lit), holds and
@@ -340,9 +340,9 @@ registerEvent(
     } else hold?.destroy();
     void ctx.unfocus(260);
     void arenaDim(sc, 0, 420);
-    ctx.log('Saldırı geçersiz kılındı!', PAL.mag3);
+    ctx.log('Attack negated!', PAL.mag3);
     const o: BannerOpts & { stagger: number } = { style: 'trap', hold: 140, stagger: 18 };
-    await banner(sc, 'SAVAŞ BİTTİ', o);
+    await banner(sc, 'BATTLE OVER', o);
   },
   { name: 'tb:attackNegated' },
 );
@@ -660,6 +660,6 @@ async function attackNegatedV3(ctx: Ctx<'attackNegated'>): Promise<void> {
   } else hold?.destroy();
   void ctx.unfocus(260);
   void arenaDim(sc, 0, 420);
-  ctx.log('Saldırı geçersiz kılındı!', PAL.mag3);
-  await resultPlate(sc, 'SAVAŞ BİTTİ');
+  ctx.log('Attack negated!', PAL.mag3);
+  await resultPlate(sc, 'BATTLE OVER');
 }

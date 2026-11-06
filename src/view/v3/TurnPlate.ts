@@ -129,22 +129,22 @@ export function plateBody(w: number, h: number, step: number): PixelCanvas {
  */
 export function turnPlateText(o: { mode: 'hotseat' | 'vsBot' | 'demo'; human: boolean; player: PlayerId; turn: number }): PlateSegment[] {
   const tone = (o.player === 0 ? RAMPS.cyan : RAMPS.crim)[3];
-  const name = o.mode === 'vsBot' ? (o.human ? 'SIRA SENDE' : 'BİLGİSAYAR') : `OYUNCU ${o.player + 1}`;
+  const name = o.mode === 'vsBot' ? (o.human ? 'YOUR TURN' : 'CPU') : `PLAYER ${o.player + 1}`;
   return [
     { text: name, color: tone },
     { text: ' · ', color: PAL.steel },
-    { text: `TUR ${o.turn}`, color: PAL.white },
+    { text: `TURN ${o.turn}`, color: PAL.white },
   ];
 }
 
 /** The deck-out plate's text (F8, B5). */
 export function deckOutPlateText(): PlateSegment[] {
-  return [{ text: 'DESTE BİTTİ', color: PAL.white }];
+  return [{ text: 'DECK OUT', color: PAL.white }];
 }
 
 /** The battle plate's text (F2). */
 export function battlePlateText(): PlateSegment[] {
-  return [{ text: 'SAVAŞ AŞAMASI', color: PAL.white }];
+  return [{ text: 'BATTLE PHASE', color: PAL.white }];
 }
 
 // ================================================================ the component
@@ -632,16 +632,16 @@ export function plateCanvas(spec: Pick<PlateSpec, 'player' | 'kind' | 'segments'
   return p;
 }
 
-// ================================================================ the "DÜELLO!" plate (F0, the large size)
+// ================================================================ the "DUEL!" plate (F0, the large size)
 //
 // The opening's "DÜELLO!" beat (docs/v3/A6_PLAN.md F0, lane A6-B step B-open) — the large size of the
 // plate component, instead of today's full-width gold band, white first frame and focus lines (§1.2,
 // KO-4). V3_A6_B only (src/cinematics/v3small/opening-flow.ts shows it; v3small/turn.ts makes it leave).
 //
 // Look (S-1 frame language, palette only, whole pixels; no alpha, ADD, scale or rotation):
-//   body     160 × 26, the frameRectV3 bands, 1-px ink outline with a 2-px corner cut, gold ace corners
+//   body     136 × 26, the frameRectV3 bands, 1-px ink outline with a 2-px corner cut, gold ace corners
 //   trim     gold, one tone up at rest (gold3 / gold4), appearing in two palette steps
-//   word     "DÜELLO!" in its own display face drawn at 1× (13-px caps, 2-px stems, chamfered D / O /
+//   word     "DUEL!" in its own display face drawn at 1× (13-px caps, 2-px stems, chamfered D / O /
 //            U like the title logo's tubes, 1-px ink outline) in three clean gold bands (gold4 / gold3 /
 //            gold2), flanked by the two duelists' marks (a P1 cyan diamond left, a P2 crimson right)
 // Motion (frames at 60 fps, scene clock: speed / skip aware):
@@ -663,7 +663,7 @@ export function plateCanvas(spec: Pick<PlateSpec, 'player' | 'kind' | 'segments'
 
 /** The large plate's geometry and timeline (frames at 60 fps). */
 export const DUEL_PLATE = Object.freeze({
-  w: 160,
+  w: 136,
   h: 26,
   /** Outline corner cut (a 1-px ink diagonal: the big plate's corners). */
   cut: 2,
@@ -712,7 +712,7 @@ const DUEL_GLYPHS: Readonly<Record<string, readonly string[]>> = Object.freeze({
 });
 
 /** The word, its letters (Ü = U + two dots) and the gap between neighbouring fills (px). */
-export const DUEL_WORD = 'DÜELLO!';
+export const DUEL_WORD = 'DUEL!';
 const LETTER_GAP = 2;
 
 export interface DuelLetter {
@@ -819,8 +819,8 @@ export function duelPlateLayout(): { wordX: number; capY: number; marks: [number
   const { w, h } = DUEL_PLATE;
   const word = duelWordLayout();
   const wordX = Math.round((w - word.w) / 2);
-  // the caps half a pixel under the plate's middle: the Ü's dots balance them above
-  const capY = Math.floor((h - DUEL_CAP) / 2) + 1;
+  // the caps half a pixel under the plate's middle when an Ü's dots balance them above
+  const capY = Math.floor((h - DUEL_CAP) / 2) + (word.letters.some((l) => l.dots) ? 1 : 0);
   const markY = capY + Math.floor(DUEL_CAP / 2) - 4;
   return { wordX, capY, marks: [wordX - 13 - 9, wordX + word.w + 13], markY, wordW: word.w };
 }

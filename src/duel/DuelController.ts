@@ -77,7 +77,7 @@ export class DuelController {
     // the toolbar's sound switch starts from what is actually audible
     views.hud.setSoundOn(!sfx.isMuted() && loadSettings().sound);
     // vs CPU: say who the computer is
-    if (views.info.mode === 'vsBot') for (const p of opts.cpu) views.hud.setPlayerName(p, 'BİLGİSAYAR');
+    if (views.info.mode === 'vsBot') for (const p of opts.cpu) views.hud.setPlayerName(p, 'CPU');
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.stop());
   }
 
@@ -218,8 +218,8 @@ export class DuelController {
   /** The guidance line while the CPU decides (vs CPU) or while the demo plays. */
   private cpuHint(p: PlayerId): void {
     const v = this.views;
-    if (v.info.mode === 'demo' || this.auto) v.hud.setHint('İzleme modu · Esc: menü', { style: 'gold' });
-    else v.hud.setHint(this.state.pending ? 'Bilgisayar düşünüyor…' : 'Sıra bilgisayarda…', { player: p });
+    if (v.info.mode === 'demo' || this.auto) v.hud.setHint('Spectator mode · Esc: menu', { style: 'gold' });
+    else v.hud.setHint(this.state.pending ? 'CPU is thinking…' : 'CPU turn…', { player: p });
   }
 
   private lock(b: boolean, actor?: PlayerId): void {

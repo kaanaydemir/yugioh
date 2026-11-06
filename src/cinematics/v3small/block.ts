@@ -10,10 +10,10 @@
 //   0        ui3Block (A2's own shieldBlock / impact sounds already ring on this frame: no fallback
 //            sound while lane A6-A's recipe is silent — nothing doubles)
 //   0        a 9×10 shield appears over the defender's DEF digits (2 px above its badge): one white
-//            frame, then the defender's tone (body, a lit left edge, a white rib); beside it "BLOK"
+//            frame, then the defender's tone (body, a lit left edge, a white rib); beside it "BLOCK"
 //            stamped one letter a frame (each letter one white frame, then the defender's light tone)
 //   0–260    the shield holds; 260–293 two palette steps down; gone
-//   0–400    "BLOK" holds; 400–433 two palette steps down; gone
+//   0–400    "BLOCK" holds; 400–433 two palette steps down; gone
 // ATK = DEF (no damage event) shows nothing, as today. Whole pixels, palette only, no alpha / ADD /
 // scale; no camera call (KO-1 … KO-4, KO-10). Reduced motion: no stamping (the word at once).
 
@@ -108,7 +108,7 @@ export function shieldXY(badge: { x: number; y: number }, atk: number, def: numb
 
 // ---------------------------------------------------------------- the handler
 
-/** Show the shield + "BLOK" over the defender (runs on its own; never awaited by the damage). */
+/** Show the shield + "BLOCK" over the defender (runs on its own; never awaited by the damage). */
 export function showBlock(scene: Phaser.Scene, unit: MonsterUnit, defender: PlayerId): void {
   const badge = unit.badge;
   if (!badge.image.active) return;
@@ -116,8 +116,8 @@ export function showBlock(scene: Phaser.Scene, unit: MonsterUnit, defender: Play
   const at = shieldXY({ x: badge.image.x, y: badge.image.y }, badge.atk, badge.def);
   const key = (s: 0 | 1 | 2 | 'white') => canvasTexture(scene, `ui3:block:shield:${hex(R[3])}:${s}`, () => shieldCanvas(R, s));
   const shield = scene.add.image(at.x, at.y, key('white')).setOrigin(0, 0).setDepth(BLOCK_V3.depth);
-  // "BLOK": one glyph image per letter, stamped one a frame (a letter's first frame white, 1 px high)
-  const L = layoutLine('BLOK', 'sm');
+  // "BLOCK": one glyph image per letter, stamped one a frame (a letter's first frame white, 1 px high)
+  const L = layoutLine('BLOCK', 'sm');
   const wx = at.x + SHIELD_W + BLOCK_V3.wordGap;
   const wy = at.y + Math.round((SHIELD_H - L.h) / 2);
   const word = L.glyphs.map((g) => scene.add.image(wx + g.x, wy, glyphTexture(scene, g.code, 'sm', PAL.white)).setOrigin(0, 0).setDepth(BLOCK_V3.depth).setVisible(false));

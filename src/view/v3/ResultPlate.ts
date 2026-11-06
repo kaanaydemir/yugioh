@@ -115,16 +115,16 @@ export interface ResultSpec {
 
 /** The reasons, from the winner's side (the plan's lines) and from a person who lost to the computer. */
 export const RESULT_REASON: Readonly<Record<WinReason, string>> = Object.freeze({
-  lp: "Rakibin LP'si sıfırlandı",
-  deckout: 'Rakibin destesi bitti',
-  surrender: 'Rakip teslim oldu',
-  seals: 'Beş Mühür tamamlandı',
+  lp: "Opponent's LP reached 0",
+  deckout: "Opponent's Deck ran out",
+  surrender: 'Opponent surrendered',
+  seals: 'The Five Seals are complete',
 });
 export const RESULT_REASON_LOST: Readonly<Record<WinReason, string>> = Object.freeze({
-  lp: "LP'n sıfırlandı",
-  deckout: 'Desten bitti',
-  surrender: 'Teslim oldun',
-  seals: 'Rakip Beş Mühür\'ü tamamladı',
+  lp: 'Your LP reached 0',
+  deckout: 'Your Deck ran out',
+  surrender: 'You surrendered',
+  seals: 'Opponent completed the Five Seals',
 });
 
 export interface ResultText {
@@ -137,13 +137,13 @@ export interface ResultText {
 /** The plate's two lines (pure). */
 export function resultText(spec: ResultSpec): ResultText {
   const r = spec.reason ?? null;
-  if (spec.viewerWon === false) return { line1: [{ text: 'KAYBETTİN', color: PAL.crim3 }], line2: r ? RESULT_REASON_LOST[r] : '', win: false };
+  if (spec.viewerWon === false) return { line1: [{ text: 'YOU LOSE', color: PAL.crim3 }], line2: r ? RESULT_REASON_LOST[r] : '', win: false };
   const line2 = r ? RESULT_REASON[r] : '';
-  if (spec.viewerWon === true) return { line1: [{ text: 'KAZANDIN!', color: PAL.gold4 }], line2, win: true };
+  if (spec.viewerWon === true) return { line1: [{ text: 'YOU WIN!', color: PAL.gold4 }], line2, win: true };
   return {
     line1: [
-      { text: 'KAZANAN: ', color: PAL.gold4 },
-      { text: `OYUNCU ${spec.winner + 1}`, color: PLAYER_RAMP[spec.winner][3] },
+      { text: 'WINNER: ', color: PAL.gold4 },
+      { text: `PLAYER ${spec.winner + 1}`, color: PLAYER_RAMP[spec.winner][3] },
     ],
     line2,
     win: true,
@@ -673,8 +673,8 @@ export async function gameOverV3(scene: Phaser.Scene, winner: PlayerId, reason: 
   // eats clicks on the board and the HUD under it; draws nothing
   const blocker = scene.add.zone(0, 0, GAME_W, GAME_H).setOrigin(0).setInteractive();
   root.add(blocker);
-  const again = new Button(scene, rects[0].x, rects[0].y, { w: rects[0].w, h: rects[0].h, label: 'TEKRAR OYNA', icon: ICON.replay, style: 'gold' });
-  const back = opts.menu ? new Button(scene, rects[1].x, rects[1].y, { w: rects[1].w, h: rects[1].h, label: 'ANA MENÜ', icon: ICON.close, style: 'neutral' }) : null;
+  const again = new Button(scene, rects[0].x, rects[0].y, { w: rects[0].w, h: rects[0].h, label: 'PLAY AGAIN', icon: ICON.replay, style: 'gold' });
+  const back = opts.menu ? new Button(scene, rects[1].x, rects[1].y, { w: rects[1].w, h: rects[1].h, label: 'MAIN MENU', icon: ICON.close, style: 'neutral' }) : null;
   const buttons = back ? [again, back] : [again];
   root.add(buttons);
   openRow = { scene, rects };

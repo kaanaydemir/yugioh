@@ -6,7 +6,7 @@
 // stay upright, step whole along the slope, sit inside the band with a 1-px margin, and a
 // letter that would be cut by a board end or covered by a tower mast is simply not shown.
 // The scoreboard shows live content — both players' LP, the turn, an active-player light — and
-// uses its ticker line only for short event flashes ('TUZAK!').
+// uses its ticker line only for short event flashes ('TRAP!').
 
 import Phaser from 'phaser';
 import { AK2, LED_FX_FRAMES, type LedScheme, arenaV2Layout } from '../../art/arena-v2';
@@ -239,7 +239,7 @@ export class Scoreboard {
 
   private showTurn(): void {
     this.lines.turn.scheme = 'w';
-    const txt = this.turn === null ? 'NEON DÜELLO' : `TUR ${this.turn}`;
+    const txt = this.turn === null ? 'NEON DÜELLO' : `TURN ${this.turn}`;
     this.setText('turn', txt, this.sx + SCORE_SCREEN.w / 2, 'center');
     for (const im of this.lines.turn.imgs) im.setAlpha(1);
   }

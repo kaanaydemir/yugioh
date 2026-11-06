@@ -80,7 +80,7 @@ registerEvent(
     if (duelist) bg(duelist.play('hurt'));
     await all(flashes);
     zero.setVisible(true);
-    const ban = banner(sc, 'DESTE BİTTİ!', { style: 'big', color: PAL.crim3 });
+    const ban = banner(sc, 'DECK OUT!', { style: 'big', color: PAL.crim3 });
     ctx.sfx('defeat', { volume: 0.5 });
     await ctx.wait(500);
     bg(ctx.unfocus(500));

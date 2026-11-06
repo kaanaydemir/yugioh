@@ -136,8 +136,8 @@ interface ArrivalPiece {
 }
 
 const PHASES: Phase[] = ['draw', 'main', 'battle', 'end'];
-const PHASE_LABEL_V3: Record<Phase, string> = { draw: 'ÇEKME', main: 'ANA', battle: 'SAVAŞ', end: 'BİTİŞ' };
-const PLAYER_NAME: Record<PlayerId, string> = { 0: 'OYUNCU 1', 1: 'OYUNCU 2' };
+const PHASE_LABEL_V3: Record<Phase, string> = { draw: 'DRAW', main: 'MAIN', battle: 'BATTLE', end: 'END' };
+const PLAYER_NAME: Record<PlayerId, string> = { 0: 'PLAYER 1', 1: 'PLAYER 2' };
 const FRAME_MS = 1000 / 60;
 
 type Kind = HudCountKind;
@@ -424,7 +424,7 @@ export class HudV3 implements HudApi {
     this.turnBody = scene.add.image(0, 0, badgeKey).setOrigin(0);
     this.turnRoot.add(this.turnBody);
     this.turnTrim = new TrimGfx(scene, this.turnRoot, 0, 0, T.w, T.h).set(styleTrim('neutral', -1));
-    const tur = new PalText(scene, T.labelX, capYV3('sm', T.labelCap), 'TUR', { size: 'sm', color: PAL.mist });
+    const tur = new PalText(scene, T.labelX, capYV3('sm', T.labelCap), 'TURN', { size: 'sm', color: PAL.mist });
     this.turnRoot.add(tur.root);
     // the number: an odometer whose window is the badge's inside (the rows between the trims)
     const numY = capYV3('md', T.numCap);
@@ -434,10 +434,10 @@ export class HudV3 implements HudApi {
     const b = UI.buttons;
     const M = HUD3.mainBtn;
     this.battleButton = this.track(
-      new Button(scene, b.x, b.y + M.y1, { w: b.w, h: M.h, label: 'SAVAŞ', icon: ICON.swords, style: 'fire', depth: DEPTH.HUD, onClick: () => this.onBattle?.() }),
+      new Button(scene, b.x, b.y + M.y1, { w: b.w, h: M.h, label: 'BATTLE', icon: ICON.swords, style: 'fire', depth: DEPTH.HUD, onClick: () => this.onBattle?.() }),
     );
     this.endTurnButton = this.track(
-      new Button(scene, b.x, b.y + M.y2, { w: b.w, h: M.h, label: 'TURU BİTİR', icon: ICON.endTurn, style: 'spell', depth: DEPTH.HUD, onClick: () => this.onEndTurn?.() }),
+      new Button(scene, b.x, b.y + M.y2, { w: b.w, h: M.h, label: 'END TURN', icon: ICON.endTurn, style: 'spell', depth: DEPTH.HUD, onClick: () => this.onEndTurn?.() }),
     );
     this.battleButton.setScrollFactor(0);
     this.endTurnButton.setScrollFactor(0);
@@ -457,10 +457,10 @@ export class HudV3 implements HudApi {
     this.menuButton = this.track(new Button(scene, 78, TB.y, { w: 17, h: TB.h, icon: menuSrc, depth: DEPTH.HUD, onClick: () => this.onMenu?.() }));
     for (const btn of [this.speedButton, this.soundButton, this.logButton, this.menuButton]) btn.setScrollFactor(0);
     const tips: [Button, () => string][] = [
-      [this.speedButton, () => `Animasyon hızı: ${this.speed}× (tıkla: değiştir)`],
-      [this.soundButton, () => (this.soundOn ? 'Sesi kapat' : 'Sesi aç')],
-      [this.logButton, () => 'Savaş günlüğü'],
-      [this.menuButton, () => 'Düello menüsü (Esc)'],
+      [this.speedButton, () => `Animation speed: ${this.speed}× (click: change)`],
+      [this.soundButton, () => (this.soundOn ? 'Mute sound' : 'Unmute sound')],
+      [this.logButton, () => 'Battle log'],
+      [this.menuButton, () => 'Duel menu (Esc)'],
     ];
     for (const [btn, text] of tips) btn.onHover = (on) => (on ? this.showTip(btn, text()) : this.hideTip(btn));
 
@@ -1448,7 +1448,7 @@ export class HudV3 implements HudApi {
     const k = (this.speed === 3 ? 1 : this.speed + 1) as SpeedLevel;
     this.setSpeed(k);
     this.onSpeed?.(k);
-    if (this.tip?.owner === this.speedButton) this.showTip(this.speedButton, `Animasyon hızı: ${k}× (tıkla: değiştir)`);
+    if (this.tip?.owner === this.speedButton) this.showTip(this.speedButton, `Animation speed: ${k}× (click: change)`);
   }
 
   private toggleSound(): void {
@@ -1459,7 +1459,7 @@ export class HudV3 implements HudApi {
     } else sfx.setMuted(true);
     this.setSoundOn(on);
     this.onSound?.(!on);
-    if (this.tip?.owner === this.soundButton) this.showTip(this.soundButton, on ? 'Sesi kapat' : 'Sesi aç');
+    if (this.tip?.owner === this.soundButton) this.showTip(this.soundButton, on ? 'Mute sound' : 'Unmute sound');
   }
 
   /** Toolbar tooltip: a small neutral plate under the button, shown 150 ms after the hover. */

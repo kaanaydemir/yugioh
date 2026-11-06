@@ -789,7 +789,7 @@ async function gameOverV3(ctx: Ctx<'gameOver'>): Promise<void> {
 
     // ---- the result plate (the deck-out plate hops into it), the sting and the fanfare
     await ctx.wait(END_V3_MS.plateAt - END_V3_MS.winnerAt - (keepDeck ? END_V3_MS.hopLead : 0));
-    if (keepDeck && keepDeck.active) bg(keepDeck.shrinkTo(resultPlateRect(), ['DESTE BİTTİ'], undefined, { frames: 7 }));
+    if (keepDeck && keepDeck.active) bg(keepDeck.shrinkTo(resultPlateRect(), ['DECK OUT'], undefined, { frames: 7 }));
     if (keepDeck) await ctx.wait(END_V3_MS.hopLead);
     const plate = ResultPlate.show(sc, { winner, reason: ctx.ev.reason, viewerWon });
     const pool = poolHandle;

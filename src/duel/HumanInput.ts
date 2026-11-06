@@ -130,13 +130,13 @@ export class HumanInput {
     v.hud.onBattleBlocked = () => {
       const s = this.state;
       if (!s || this.mode !== 'idle') return;
-      if (s.phase === 'battle') v.hud.flashHint('Zaten Savaş Aşamasındasın');
-      else if (s.turn <= 1) v.hud.flashHint('Düellonun ilk turunda Savaş Aşaması yok');
+      if (s.phase === 'battle') v.hud.flashHint('Already in the Battle Phase');
+      else if (s.turn <= 1) v.hud.flashHint('No Battle Phase on the first turn of the duel');
     };
     v.hand.onSelect = (uid) => {
       if (this.onHandPick) return this.onHandPick(uid);
       if (this.onChoice && this.mode === 'idle') return this.onChoice({ kind: 'hand', uid });
-      if (this.mode === 'off' && this.state && this.state.winner === null) v.hud.flashHint('Şu an sıra sende değil', { style: 'neutral', ms: 1400 });
+      if (this.mode === 'off' && this.state && this.state.winner === null) v.hud.flashHint('It is not your turn', { style: 'neutral', ms: 1400 });
     };
     v.hand.onHover = (uid) => {
       if (uid === null) {
@@ -252,7 +252,7 @@ export class HumanInput {
           V3_A6_B
             ? {
                 onFocus: (id) => (id ? this.views.inspect.show(id) : this.views.inspect.hide()),
-                ...(pd.options.some((u) => isSpell(cardDef(state.cards[u].cardId))) ? { question: 'Kart açılsın mı?' } : {}),
+                ...(pd.options.some((u) => isSpell(cardDef(state.cards[u].cardId))) ? { question: 'Activate a card?' } : {}),
               }
             : undefined,
         );
@@ -275,9 +275,9 @@ export class HumanInput {
         this.setMode('cards');
         const src = state.cards[pd.sourceUid];
         const call = await this.views.prompt.choose(describePending(state, pd), [
-          { id: 'tails', label: 'YAZI' },
-          { id: 'heads', label: 'TURA' },
-        ], { title: src ? CARDS[src.cardId].name : 'Yazı-Tura', style: player === 0 ? 'p1' : 'p2' });
+          { id: 'tails', label: 'TAILS' },
+          { id: 'heads', label: 'HEADS' },
+        ], { title: src ? CARDS[src.cardId].name : 'Coin Toss', style: player === 0 ? 'p1' : 'p2' });
         if (token !== this.token) return null;
         return { type: 'callCoin', player, call: call === 'heads' ? 'heads' : 'tails' };
       }
@@ -350,16 +350,16 @@ export class HumanInput {
     const p = this.player;
     switch (m) {
       case 'menu':
-        hud.setHint('Ne yapacağını seç · Esc: vazgeç', { player: p });
+        hud.setHint('Choose an action · Esc: cancel', { player: p });
         break;
       case 'zone':
         // v3 (F4): the instruction bar says it; the hint line does not repeat it (it keeps the reasons)
         if (V3_A6_B) hud.setHint(null);
-        else hud.setHint(this.zoneCancel ? 'Parlayan alanlardan birine tıkla · Esc: geri' : 'Parlayan hedeflerden birine tıkla', { player: p });
+        else hud.setHint(this.zoneCancel ? 'Click a glowing zone · Esc: back' : 'Click a glowing target', { player: p });
         break;
       case 'tribute':
         if (V3_A6_B) hud.setHint(null);
-        else hud.setHint('Kurban edilecek canavarlarına tıkla · Esc: geri', { style: 'gold' });
+        else hud.setHint('Click the monsters to Tribute · Esc: back', { style: 'gold' });
         break;
       case 'idle':
       case 'discard':
@@ -381,7 +381,7 @@ export class HumanInput {
     }
     if (this.mode === 'off') void this.pauseMenu(false);
     else if (this.mode === 'zone' || this.mode === 'tribute' || this.mode === 'discard')
-      this.views.hud.flashHint(this.zoneCancel ? 'Önce seçimini bitir ya da Esc ile geri dön' : 'Önce seçimini bitir', { style: 'neutral', ms: 1600 });
+      this.views.hud.flashHint(this.zoneCancel ? 'Finish your choice first, or press Esc to go back' : 'Finish your choice first', { style: 'neutral', ms: 1600 });
   }
 
   /**
@@ -403,24 +403,24 @@ export class HumanInput {
     const prev = this.mode;
     if (canSurrender) this.setMode('pause');
     try {
-      const opts: MenuOption[] = [{ id: 'resume', label: 'Devam Et' }];
-      if (canSurrender) opts.push({ id: 'surrender', label: 'Teslim Ol' });
-      opts.push({ id: 'quit', label: 'Ana Menüye Dön' });
+      const opts: MenuOption[] = [{ id: 'resume', label: 'Resume' }];
+      if (canSurrender) opts.push({ id: 'surrender', label: 'Surrender' });
+      opts.push({ id: 'quit', label: 'Main Menu' });
       const id = await this.views.menu.open(GAME_W / 2, 60, opts, {
         style: canSurrender ? playerStyle(this.player) : 'neutral',
-        title: 'Düello Menüsü',
+        title: 'Duel Menu',
         cancelRow: false,
       });
       if (id === 'surrender') {
-        const ok = await this.views.prompt.confirm('Teslim olursan düelloyu kaybedersin. Emin misin?', {
-          yes: 'TESLİM OL',
-          no: 'VAZGEÇ',
+        const ok = await this.views.prompt.confirm('If you surrender, you lose the duel. Are you sure?', {
+          yes: 'SURRENDER',
+          no: 'CANCEL',
           style: this.player === 0 ? 'p1' : 'p2',
         });
         return ok ? 'surrender' : 'resume';
       }
       if (id === 'quit') {
-        const ok = await this.views.prompt.confirm('Düello yarıda kalacak. Ana menüye dönülsün mü?', { yes: 'ANA MENÜ', no: 'VAZGEÇ' });
+        const ok = await this.views.prompt.confirm('The duel will be abandoned. Return to the main menu?', { yes: 'MAIN MENU', no: 'CANCEL' });
         if (ok) {
           this.onQuit?.();
           return 'quit';
@@ -442,7 +442,7 @@ export class HumanInput {
     const cardId = s.cards[uid].cardId;
     const d = CARDS[cardId];
     if (s.phase !== 'main') {
-      hud.flashHint('Savaş Aşamasında elden kart oynanmaz');
+      hud.flashHint('Cards cannot be played from the hand in the Battle Phase');
       if (V3_A6_B) void this.views.hand.reject(uid); // F5 (a key pick; a click is refused by the hand itself)
       return null;
     }
@@ -454,26 +454,26 @@ export class HumanInput {
       opts = [
         {
           id: 'specialSummon',
-          label: 'Birleştirerek Çağır (3 parça)',
+          label: 'Fusion Summon (3 pieces)',
           enabled: has('specialSummon'),
-          reason: s.phase !== 'main' ? 'Canavarlar yalnızca Ana Aşamada çağrılır' : 'Sahanda Kutup İğnesi, Kutup Örsü ve Kutup Bobini olmalı',
+          reason: s.phase !== 'main' ? 'Monsters can only be Summoned in the Main Phase' : 'You need Polar Needle, Polar Anvil and Polar Coil on your field',
         },
       ];
     } else if (isMonster(d)) {
       const need = tributesFor(d.level);
       const why = this.summonReason(cardId);
       opts = [
-        { id: 'normalSummon', label: need ? `Kurbanla Çağır (${need})` : 'Çağır', enabled: has('normalSummon'), reason: why ?? undefined },
-        { id: 'setMonster', label: need ? `Kapalı Koy (${need} kurban)` : 'Kapalı Koy', enabled: has('setMonster'), reason: why ?? undefined },
+        { id: 'normalSummon', label: need ? `Tribute Summon (${need})` : 'Summon', enabled: has('normalSummon'), reason: why ?? undefined },
+        { id: 'setMonster', label: need ? `Set (${need} Tribute)` : 'Set', enabled: has('setMonster'), reason: why ?? undefined },
       ];
     } else if (isSpell(d)) {
-      opts = [{ id: 'activateSpell', label: 'Aktive Et', enabled: has('activateSpell'), reason: this.spellReason(cardId, true) ?? undefined }];
-      if (d.spellType !== 'field') opts.push({ id: 'setSpellTrap', label: 'Kapalı Koy', enabled: has('setSpellTrap'), reason: 'Büyü/Tuzak alanların dolu' });
+      opts = [{ id: 'activateSpell', label: 'Activate', enabled: has('activateSpell'), reason: this.spellReason(cardId, true) ?? undefined }];
+      if (d.spellType !== 'field') opts.push({ id: 'setSpellTrap', label: 'Set', enabled: has('setSpellTrap'), reason: 'Your Spell/Trap Zones are full' });
     } else {
-      opts = [{ id: 'setSpellTrap', label: 'Kapalı Koy', enabled: has('setSpellTrap'), reason: 'Büyü/Tuzak alanların dolu' }];
+      opts = [{ id: 'setSpellTrap', label: 'Set', enabled: has('setSpellTrap'), reason: 'Your Spell/Trap Zones are full' }];
     }
     if (!opts.some((o) => o.enabled)) {
-      hud.flashHint(opts[0].reason ?? 'Bu kart şu an oynanamaz');
+      hud.flashHint(opts[0].reason ?? 'This card cannot be played right now');
       if (V3_A6_B) void this.views.hand.reject(uid);
       return null;
     }
@@ -495,7 +495,7 @@ export class HumanInput {
         const zones = [...new Set((cands as Extract<Action, { type: 'setSpellTrap' }>[]).map((a) => a.zone))];
         const z = await this.pickOne(
           zones.map((i) => ({ player: p, zone: 'spellTrap' as ZoneKind, index: i })),
-          `${d.name}: kapalı koymak için bir büyü/tuzak alanı seç`,
+          `${d.name}: choose a Spell/Trap Zone to Set it in`,
         );
         return cands.find((a) => (a as { zone: number }).zone === z?.index) ?? null;
       }
@@ -515,7 +515,7 @@ export class HumanInput {
     if (!chosen) return null;
     const key = [...chosen].sort((a, b) => a - b).join(',');
     const hit = cands.find((a) => [...a.tributes].sort((x, y) => x - y).join(',') === key) ?? null;
-    if (!hit) this.views.hud.flashHint('Her parçadan birer tane seç: İğne, Örs ve Bobin', { style: 'neutral', ms: 2200 });
+    if (!hit) this.views.hud.flashHint('Pick one of each piece: Needle, Anvil and Coil', { style: 'neutral', ms: 2200 });
     return hit;
   }
 
@@ -525,7 +525,7 @@ export class HumanInput {
     const hud = this.views.hud;
     if (ref.player !== p) {
       if (s.phase === 'battle' && ref.zone === 'monster' && s.players[ref.player].monsters[ref.index])
-        hud.flashHint(legal.some((a) => a.type === 'attack') ? 'Önce saldıracak kendi canavarına tıkla' : 'Saldırabilecek canavarın yok', { style: 'neutral' });
+        hud.flashHint(legal.some((a) => a.type === 'attack') ? 'First click your monster that will attack' : 'You have no monster that can attack', { style: 'neutral' });
       return this.refuse(ref);
     }
     if (ref.zone === 'spellTrap') {
@@ -535,7 +535,7 @@ export class HumanInput {
       const acts = legal.filter((a) => a.type === 'activateSpell' && a.uid === st.uid) as Extract<Action, { type: 'activateSpell' }>[];
       if (!acts.length) {
         hud.flashHint(
-          isTrap(cardDef(id)) ? 'Tuzaklar rakip saldırınca ya da canavar çağırınca açılır: o an sana sorulur' : (this.spellReason(id, false) ?? 'Bu kart şu an aktive edilemez'),
+          isTrap(cardDef(id)) ? 'Traps activate when your opponent attacks or summons: you will be asked then' : (this.spellReason(id, false) ?? 'This card cannot be activated right now'),
           { style: isTrap(cardDef(id)) ? 'trap' : 'fire', ms: 2600 },
         );
         return this.refuse(ref);
@@ -543,7 +543,7 @@ export class HumanInput {
       const t = this.views.field.tileAt(p, 'spellTrap', ref.index);
       this.pin(id);
       this.setMode('menu');
-      const verb = await this.views.menu.open(t?.home.x ?? 320, (t?.home.y ?? 200) - 14, [{ id: 'activateSpell', label: 'Aktive Et' }], {
+      const verb = await this.views.menu.open(t?.home.x ?? 320, (t?.home.y ?? 200) - 14, [{ id: 'activateSpell', label: 'Activate' }], {
         style: playerStyle(p),
         title: CARDS[id].name,
       });
@@ -571,8 +571,8 @@ export class HumanInput {
       let verb: string | null = 'attack';
       if (direct) {
         const opts: MenuOption[] = [];
-        if (targets.length) opts.push({ id: 'attack', label: 'Canavara Saldır' });
-        opts.push({ id: 'direct', label: 'Doğrudan Saldır' });
+        if (targets.length) opts.push({ id: 'attack', label: 'Attack Monster' });
+        opts.push({ id: 'direct', label: 'Direct Attack' });
         this.setMode('menu');
         verb = await this.views.menu.open(anchor.x, anchor.y - 2, opts, { style: playerStyle(p), title: CARDS[id].name });
       }
@@ -588,7 +588,7 @@ export class HumanInput {
       try {
         const r = await this.pickZone(
           targets.map((a) => ({ player: opp, zone: 'monster' as ZoneKind, index: a.targetZone! })),
-          `${CARDS[id].name}: saldırılacak canavarı seç`,
+          `${CARDS[id].name}: choose the monster to attack`,
           // v3 (A6B-7): the attack's declare sounds its own lock-on on the click's frame — no second lock sound
           { cancel: true, color: PAL.gold3, lockSound: false },
         );
@@ -609,25 +609,25 @@ export class HumanInput {
     const flip = legal.find((a) => a.type === 'flipSummon' && a.zone === ref.index) ?? null;
     const effect = legal.find((a) => a.type === 'activateMonster' && a.zone === ref.index) ?? null;
     const opts: MenuOption[] = [];
-    if (!slot.faceUp) opts.push({ id: 'flip', label: 'Çevirerek Çağır', enabled: !!flip, reason: this.flipReason(ref.index) ?? undefined });
+    if (!slot.faceUp) opts.push({ id: 'flip', label: 'Flip Summon', enabled: !!flip, reason: this.flipReason(ref.index) ?? undefined });
     else
       opts.push({
         id: 'change',
-        label: slot.position === 'attack' ? 'Savunmaya Geç' : 'Saldırıya Geç',
+        label: slot.position === 'attack' ? 'To Defense' : 'To Attack',
         enabled: !!change,
         reason: this.positionReason(ref.index) ?? undefined,
       });
     // batch 2: an ignition effect (Kadran Soytarısı, Kovuk Devi) — offered only on the cards that have one
     const fx = slot.faceUp ? cardDef(id) : null;
     if (fx && isMonster(fx) && (fx.effect === 'coinWipe' || fx.effect === 'banishGraveBoost400'))
-      opts.unshift({ id: 'effect', label: 'Etkiyi Kullan', enabled: !!effect, reason: this.effectReason(ref.index) ?? undefined });
+      opts.unshift({ id: 'effect', label: 'Use Effect', enabled: !!effect, reason: this.effectReason(ref.index) ?? undefined });
     if (!opts.some((o) => o.enabled)) {
-      hud.flashHint(opts[0].reason ?? 'Bu canavarla şu an bir şey yapılamaz', { style: 'neutral' });
+      hud.flashHint(opts[0].reason ?? 'Nothing can be done with this monster right now', { style: 'neutral' });
       return this.refuse(ref);
     }
     this.pin(slot.faceUp ? id : id, slot.faceUp ? stats : {});
     this.setMode('menu');
-    const verb = await this.views.menu.open(anchor.x, anchor.y - 2, opts, { style: playerStyle(p), title: slot.faceUp ? CARDS[id].name : `${CARDS[id].name} (kapalı)` });
+    const verb = await this.views.menu.open(anchor.x, anchor.y - 2, opts, { style: playerStyle(p), title: slot.faceUp ? CARDS[id].name : `${CARDS[id].name} (face-down)` });
     if (verb === 'flip') return flip;
     if (verb === 'change') return change;
     if (verb === 'effect') return effect;
@@ -650,7 +650,7 @@ export class HumanInput {
     const zones = [...new Set(list.map((a) => a.zone))];
     const z = await this.pickOne(
       zones.map((i) => ({ player: p, zone: 'monster' as ZoneKind, index: i })),
-      set ? `${name}: kapalı koymak için bir canavar alanı seç` : `${name}: çağırmak için bir canavar alanı seç`,
+      set ? `${name}: choose a Monster Zone to Set it in` : `${name}: choose a Monster Zone to Summon to`,
     );
     if (!z) return null;
     return list.find((a) => a.zone === z.index) ?? null;
@@ -668,19 +668,19 @@ export class HumanInput {
       this.setMode('cards');
       const uid = await pickCard(
         this.scene,
-        `${name}: hangi canavar geri gelsin?`,
+        `${name}: which monster comes back?`,
         uids.map((u) => {
           const owner = s.cards[u].owner;
-          return { uid: u, cardId: s.cards[u].cardId, owner, label: owner === p ? 'SENİN' : 'RAKİBİN' };
+          return { uid: u, cardId: s.cards[u].cardId, owner, label: owner === p ? 'YOURS' : 'OPPONENT' };
         }),
-        { subtitle: 'Seçtiğin canavar senin sahana saldırı pozisyonunda gelir' },
+        { subtitle: 'The monster you choose comes to your field in Attack Position' },
       );
       if (uid === null) return null;
       const forUid = withTarget.filter((a) => (a.target as { uid: Uid }).uid === uid);
       const zones = [...new Set(forUid.map((a) => (a.target as { toZone: number }).toZone))];
       const z = await this.pickOne(
         zones.map((i) => ({ player: p, zone: 'monster' as ZoneKind, index: i })),
-        `${CARDS[s.cards[uid].cardId].name}: geleceği canavar alanını seç`,
+        `${CARDS[s.cards[uid].cardId].name}: choose the Monster Zone it comes to`,
       );
       if (!z) return null;
       return forUid.find((a) => (a.target as { toZone: number }).toZone === z.index) ?? null;
@@ -693,14 +693,14 @@ export class HumanInput {
     }
     const hostile = [...refs.values()].some((r) => r.player !== p);
     const b2Text: Partial<Record<CardId, string>> = {
-      puppet_string: `${name}: tur sonuna kadar kontrolüne alacağın rakip canavarı seç`,
-      soul_leash: `${name}: kuşanıp kontrolüne alacağın rakip canavarı seç`,
-      auger_lance: `${name}: yok edilecek büyü/tuzak kartını seç`,
-      spite_axe: `${name}: kuşanacak canavarını seç`,
+      puppet_string: `${name}: choose an opponent's monster to control until the End Phase`,
+      soul_leash: `${name}: choose an opponent's monster to equip and take control of`,
+      auger_lance: `${name}: choose the Spell/Trap to destroy`,
+      spite_axe: `${name}: choose your monster to equip`,
     };
     const r = await this.pickZone(
       [...refs.values()],
-      b2Text[cardId] ?? (hostile ? `${name}: yok edilecek rakip canavarı seç` : `${name}: kuşanacak canavarını seç`),
+      b2Text[cardId] ?? (hostile ? `${name}: choose the opponent's monster to destroy` : `${name}: choose your monster to equip`),
       { cancel: true, color: PAL.gold3 },
     );
     if (!r) return null;
@@ -723,9 +723,9 @@ export class HumanInput {
     const ready = s.players[this.player].monsters.some((m) => m && m.faceUp && m.position === 'attack' && m.attacksThisTurn === 0);
     if (!ready) return true;
     this.setMode('pause');
-    return this.views.prompt.confirm('Saldırabilecek canavarın var. Savaş Aşamasına geçmeden turu bitirmek istiyor musun?', {
-      yes: 'BİTİR',
-      no: 'VAZGEÇ',
+    return this.views.prompt.confirm('You have monsters that can attack. End your turn without entering the Battle Phase?', {
+      yes: 'END TURN',
+      no: 'CANCEL',
       style: this.player === 0 ? 'p1' : 'p2',
     });
   }
@@ -737,13 +737,13 @@ export class HumanInput {
     const me = s.players[this.player];
     const d = cardDef(cardId);
     if (!isMonster(d)) return null;
-    if (s.phase !== 'main') return 'Canavarlar yalnızca Ana Aşamada çağrılır';
-    if (me.noSummonTurn === s.turn) return 'Saman Korkuluklar bu tur başka canavar çağırmana izin vermiyor';
-    if (me.normalSummonUsed) return 'Bu tur zaten bir canavar çağırdın ya da kapalı koydun (turda 1 hak)';
+    if (s.phase !== 'main') return 'Monsters can only be Summoned in the Main Phase';
+    if (me.noSummonTurn === s.turn) return 'Straw Decoys: you cannot Summon other monsters this turn';
+    if (me.normalSummonUsed) return 'You already Summoned or Set a monster this turn (1 per turn)';
     const need = tributesFor(d.level);
     const onField = me.monsters.filter(Boolean).length;
-    if (need > onField) return `Seviye ${d.level} canavar ${need} kurban ister (sahanda ${onField} canavarın var)`;
-    if (need === 0 && freeMonsterZones(s, this.player).length === 0) return 'Canavar alanların dolu';
+    if (need > onField) return `A Level ${d.level} monster needs ${need} Tribute (you have ${onField} on the field)`;
+    if (need === 0 && freeMonsterZones(s, this.player).length === 0) return 'Your Monster Zones are full';
     return null;
   }
 
@@ -751,50 +751,50 @@ export class HumanInput {
     const s = this.state!;
     const p = this.player;
     const opp: PlayerId = p === 0 ? 1 : 0;
-    if (s.phase !== 'main') return 'Büyüler yalnızca Ana Aşamada aktive edilir';
+    if (s.phase !== 'main') return 'Spells can only be activated in the Main Phase';
     switch (cardId) {
       case 'judgment_bolt':
-        return s.players[opp].monsters.some(Boolean) ? null : 'Rakibin sahasında yok edilecek canavar yok';
+        return s.players[opp].monsters.some(Boolean) ? null : 'Your opponent has no monster to destroy';
       case 'soul_recall': {
         const any = ([0, 1] as PlayerId[]).some((g) => s.players[g].graveyard.some((u) => isMonster(cardDef(s.cards[u].cardId))));
-        if (!any) return 'Mezarlıklarda geri çağrılacak canavar yok';
-        return freeMonsterZones(s, p).length ? null : 'Canavar alanların dolu';
+        if (!any) return 'No monster in the Graveyards to bring back';
+        return freeMonsterZones(s, p).length ? null : 'Your Monster Zones are full';
       }
       case 'dragon_blade':
-        if (!s.players[p].monsters.some((m) => m && m.faceUp)) return 'Sahanda kuşanacak açık bir canavarın yok';
-        return fromHand && !freeSpellTrapZones(s, p).length ? 'Büyü/Tuzak alanların dolu' : null;
+        if (!s.players[p].monsters.some((m) => m && m.faceUp)) return 'You have no face-up monster to equip';
+        return fromHand && !freeSpellTrapZones(s, p).length ? 'Your Spell/Trap Zones are full' : null;
       case 'volcano_arena':
-        return fromHand ? null : 'Alan büyüsü yalnızca elden aktive edilir';
+        return fromHand ? null : 'A Field Spell can only be activated from the hand';
       // ---- batch 2
       case 'well_pail':
-        return s.players[p].deck.length >= 2 ? null : 'Destende en az 2 kart olmalı';
+        return s.players[p].deck.length >= 2 ? null : 'Your Deck needs at least 2 cards';
       case 'winnow_sieve':
-        return s.players[p].deck.length >= 3 ? null : 'Destende en az 3 kart olmalı';
+        return s.players[p].deck.length >= 3 ? null : 'Your Deck needs at least 3 cards';
       case 'puppet_string':
       case 'soul_leash':
-        if (!freeMonsterZones(s, p).length) return 'Canavar alanların dolu';
-        return s.players[opp].monsters.some(Boolean) ? 'Kontrolüne alınabilecek rakip canavar yok' : 'Rakibin sahasında canavar yok';
+        if (!freeMonsterZones(s, p).length) return 'Your Monster Zones are full';
+        return s.players[opp].monsters.some(Boolean) ? 'No opponent monster you can take control of' : 'Your opponent has no monsters';
       case 'void_eye':
-        return 'Sahada yok edilecek canavar yok';
+        return 'No monster on the field to destroy';
       case 'sweeping_gale':
-        return 'Rakibin sahasında büyü/tuzak kartı yok';
+        return 'Your opponent has no Spell/Trap cards';
       case 'auger_lance':
         if (!fromHand) {
           const st = s.players[p].spellTraps.find((x) => x && s.cards[x.uid].cardId === 'auger_lance' && !x.faceUp);
-          if (st && st.setTurn >= s.turn) return 'Kapalı konan hızlı büyü bir sonraki turdan itibaren açılır';
+          if (st && st.setTurn >= s.turn) return 'A Set Quick-Play Spell can be activated from your next turn';
         }
-        return 'Sahada yok edilecek büyü/tuzak kartı yok';
+        return 'No Spell/Trap on the field to destroy';
       case 'straw_decoys':
         if (!fromHand) {
           const st = s.players[p].spellTraps.find((x) => x && s.cards[x.uid].cardId === 'straw_decoys' && !x.faceUp);
-          if (st && st.setTurn >= s.turn) return 'Kapalı konan hızlı büyü bir sonraki turdan itibaren açılır';
+          if (st && st.setTurn >= s.turn) return 'A Set Quick-Play Spell can be activated from your next turn';
         }
-        return 'Canavar alanların dolu';
+        return 'Your Monster Zones are full';
       case 'lucky_die':
-        return 'Sahanda açık bir canavarın yok';
+        return 'You have no face-up monster';
       case 'spite_axe':
-        if (!s.players[p].monsters.some((m) => m && m.faceUp)) return 'Sahanda kuşanacak açık bir canavarın yok';
-        return fromHand && !freeSpellTrapZones(s, p).length ? 'Büyü/Tuzak alanların dolu' : null;
+        if (!s.players[p].monsters.some((m) => m && m.faceUp)) return 'You have no face-up monster to equip';
+        return fromHand && !freeSpellTrapZones(s, p).length ? 'Your Spell/Trap Zones are full' : null;
     }
     return null;
   }
@@ -806,14 +806,14 @@ export class HumanInput {
     const m = s.players[p].monsters[zone];
     if (!m) return null;
     const d = cardDef(s.cards[m.uid].cardId);
-    if (s.phase !== 'main') return 'Etkiler yalnızca Ana Aşamada kullanılır';
+    if (s.phase !== 'main') return 'Effects can only be used in the Main Phase';
     if (isMonster(d) && d.effect === 'coinWipe') {
-      if (!s.players[p === 0 ? 1 : 0].monsters.some(Boolean)) return 'Rakibin sahasında canavar yok';
-      return 'Bu etki bu tur zaten kullanıldı (turda 1 kez)';
+      if (!s.players[p === 0 ? 1 : 0].monsters.some(Boolean)) return 'Your opponent has no monsters';
+      return 'This effect was already used this turn (once per turn)';
     }
     if (isMonster(d) && d.effect === 'banishGraveBoost400') {
-      if (!s.players[p].graveyard.some((u) => isMonster(cardDef(s.cards[u].cardId)))) return 'Mezarlığında oyundan çıkarılacak canavar yok';
-      return 'Bu etki bu tur zaten kullanıldı (turda 1 kez)';
+      if (!s.players[p].graveyard.some((u) => isMonster(cardDef(s.cards[u].cardId)))) return 'No monster in your Graveyard to banish';
+      return 'This effect was already used this turn (once per turn)';
     }
     return null;
   }
@@ -822,9 +822,9 @@ export class HumanInput {
     const s = this.state!;
     const m = s.players[this.player].monsters[zone];
     if (!m) return null;
-    if (m.enteredTurn === s.turn) return 'Bu tur sahaya geldi: pozisyonu bir sonraki turunda değişebilir';
-    if (m.attacksThisTurn > 0) return 'Bu tur saldırdı';
-    if (m.positionChangedTurn === s.turn) return 'Pozisyonu bu tur zaten değişti (turda 1 kez)';
+    if (m.enteredTurn === s.turn) return 'It arrived this turn: it can change position on your next turn';
+    if (m.attacksThisTurn > 0) return 'It attacked this turn';
+    if (m.positionChangedTurn === s.turn) return 'Its position already changed this turn (once per turn)';
     return null;
   }
 
@@ -832,21 +832,21 @@ export class HumanInput {
     const s = this.state!;
     const m = s.players[this.player].monsters[zone];
     if (!m) return null;
-    if (m.enteredTurn === s.turn) return 'Kapalı konduğu tur çevrilemez: bir sonraki turunu bekle';
-    if (m.positionChangedTurn === s.turn) return 'Bu tur zaten çevrildi';
+    if (m.enteredTurn === s.turn) return 'It cannot be flipped the turn it was Set: wait for your next turn';
+    if (m.positionChangedTurn === s.turn) return 'It was already flipped this turn';
     return null;
   }
 
   private attackReason(zone: number): string {
     const s = this.state!;
     const m = s.players[this.player].monsters[zone];
-    if (s.turn <= 1) return 'Düellonun ilk turunda saldırı yok';
-    if (!m) return 'Burada canavar yok';
-    if (!m.faceUp) return 'Kapalı canavar saldıramaz (Ana Aşamada çevirebilirsin)';
-    if (m.position !== 'attack') return 'Savunma pozisyonundaki canavar saldıramaz';
-    if (m.attacksThisTurn > 0) return 'Bu canavar bu tur zaten saldırdı';
-    if (m.noAttackTurn === s.turn) return 'Kum Saati Cücesi zamanını durdurdu: bu tur saldıramaz';
-    return 'Bu canavar şu an saldıramaz';
+    if (s.turn <= 1) return 'No attacks on the first turn of the duel';
+    if (!m) return 'No monster here';
+    if (!m.faceUp) return 'A face-down monster cannot attack (you can flip it in the Main Phase)';
+    if (m.position !== 'attack') return 'A monster in Defense Position cannot attack';
+    if (m.attacksThisTurn > 0) return 'This monster already attacked this turn';
+    if (m.noAttackTurn === s.turn) return 'Hourglass Imp stopped its time: it cannot attack this turn';
+    return 'This monster cannot attack right now';
   }
 
   // ================================================================ pickers
@@ -916,7 +916,7 @@ export class HumanInput {
           if (aim) this.rejectHit(h);
           else sfx.play('uiError', { volume: 0.4 });
           // v3: candidates with corners are "marked", not lit (the floor highlight is theirs only without a monster)
-          const why = !aim || !aim.size ? 'Parlayan alanlardan birine tıkla' : aim.size === refs.length ? 'İşaretli hedeflerden birine tıkla' : 'İşaretli ya da parlayan alanlardan birine tıkla';
+          const why = !aim || !aim.size ? 'Click a glowing zone' : aim.size === refs.length ? 'Click a marked target' : 'Click a marked target or a glowing zone';
           this.views.hud.flashHint(why, { style: 'neutral', ms: 1200 });
         }
       };
@@ -949,7 +949,7 @@ export class HumanInput {
         field.tileAt(p, 'monster', i)?.setHighlight(chosen.has(uid) ? PAL.white : null);
       }
     };
-    const label = () => `${forName}: kurban edilecek ${need} canavarı seç (${chosen.size}/${need})`;
+    const label = () => `${forName}: choose ${need} monster${need === 1 ? '' : 's'} to Tribute (${chosen.size}/${need})`;
     const ins = this.views.prompt.instruction(label(), { cancel: true, style: 'gold' });
     this.instruction = ins;
     this.zoneHover = { refs, color: PAL.gold3, hot: '' };
@@ -995,7 +995,7 @@ export class HumanInput {
         if (uid === undefined || !pool.includes(uid)) {
           if (aim) this.rejectHit(h);
           else sfx.play('uiError', { volume: 0.4 });
-          this.views.hud.flashHint('Kurban olarak kendi canavarlarından birine tıkla', { style: 'neutral', ms: 1400 });
+          this.views.hud.flashHint('Click one of your own monsters to Tribute', { style: 'neutral', ms: 1400 });
           return;
         }
         if (chosen.has(uid)) chosen.delete(uid);
@@ -1032,7 +1032,7 @@ export class HumanInput {
     const ins = this.views.prompt.instruction(text, { cancel: false, style: 'trap' });
     this.instruction = ins;
     this.setMode('discard');
-    const hint = () => hud.setHint(`Atılacak kartlara tıkla (${chosen.length}/${count}) · tekrar tıkla: geri al`, { style: 'trap' });
+    const hint = () => hud.setHint(`Click the cards to discard (${chosen.length}/${count}) · click again: undo`, { style: 'trap' });
     hint();
     hand.setPlayable(hand.uids);
     hand.setEnabled(true);
@@ -1066,7 +1066,7 @@ export class HumanInput {
         asking = true;
         const names = chosen.map((u) => CARDS[this.state!.cards[u].cardId].name).join(', ');
         void this.views.prompt
-          .confirm(`${names} mezarlığa gitsin mi?`, { yes: 'AT', no: 'DEĞİŞTİR', style: 'trap' })
+          .confirm(`Send ${names} to the Graveyard?`, { yes: 'DISCARD', no: 'CHANGE', style: 'trap' })
           .then((ok) => {
             asking = false;
             if (done) return;
@@ -1135,9 +1135,9 @@ export class HumanInput {
     });
     // guidance line
     let hint: string;
-    if (s.phase === 'battle') hint = canAttack ? 'Saldıracak canavarına tıkla ya da TURU BİTİR' : 'Saldırabilecek canavarın yok: TURU BİTİR';
-    else if (other) hint = canBattle ? "Bir kart seç ya da SAVAŞ'a geç" : 'Bir kart seç ya da TURU BİTİR (ilk turda saldırı yok)';
-    else hint = canBattle ? "Oynayacak kartın yok: SAVAŞ'a geç ya da TURU BİTİR" : 'Oynayacak kartın yok: TURU BİTİR';
+    if (s.phase === 'battle') hint = canAttack ? 'Click a monster to attack with, or END TURN' : 'No monster can attack: END TURN';
+    else if (other) hint = canBattle ? 'Choose a card, or go to BATTLE' : 'Choose a card, or END TURN (no attacks on the first turn)';
+    else hint = canBattle ? 'No cards to play: go to BATTLE, or END TURN' : 'No cards to play: END TURN';
     this.setMode('idle');
     v.hud.setHint(hint, { player: p });
   }

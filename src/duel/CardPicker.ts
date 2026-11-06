@@ -93,7 +93,7 @@ export async function pickCard(scene: Phaser.Scene, title: string, cards: PickCa
   if (n) describe(cards[0]);
   let cancel: Button | null = null;
   if (canCancel) {
-    cancel = new Button(scene, GAME_W / 2 - 36, CARD_Y + CARD_H / 2 + 40, { w: 72, h: 18, label: 'İPTAL', size: 'sm', icon: ICON.close, style: 'neutral' });
+    cancel = new Button(scene, GAME_W / 2 - 36, CARD_Y + CARD_H / 2 + 40, { w: 72, h: 18, label: 'CANCEL', size: 'sm', icon: ICON.close, style: 'neutral' });
     cancel.setScrollFactor(0);
     cancel.onClick = () => {
       sfx.play('uiBack', { volume: 0.6 });

@@ -96,7 +96,7 @@ export class LogView {
     const p = sc.add.container(GAME_W + 8, y).setDepth(DEPTH.MENU - 10).setScrollFactor(0);
     const glow = sc.add.image(-GLOW_PAD, -GLOW_PAD, glowTex(sc, w, h)).setOrigin(0).setBlendMode(ADD).setTint(PAL.steel).setAlpha(0.35);
     const bg = sc.add.image(0, 0, panelTex(sc, 'neutral', w, h, { header: 15, alpha: 240 })).setOrigin(0);
-    const title = pixelText(sc, 8, 5 - textMetrics('md').capTop, 'SAVAŞ GÜNLÜĞÜ', { size: 'md', color: PAL.mist });
+    const title = pixelText(sc, 8, 5 - textMetrics('md').capTop, 'BATTLE LOG', { size: 'md', color: PAL.mist });
     p.add([glow, bg, title]);
     this.lines = sc.add.container(0, 0);
     p.add(this.lines);
@@ -115,7 +115,7 @@ export class LogView {
     const bottom = h - 6;
     if (!this.entries.length) {
       // empty state: say what will appear here instead of an empty box
-      const t = pixelText(this.scene, Math.round(w / 2), top + 14, 'Henüz kayıt yok. Hamleler burada listelenir.', {
+      const t = pixelText(this.scene, Math.round(w / 2), top + 14, 'No entries yet. Moves are listed here.', {
         size: 'sm',
         color: PAL.steel,
         maxWidth: maxW,

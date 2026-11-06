@@ -302,8 +302,8 @@ registerCardHook(
       await chainsBind(ctx.scene, from, u.sprite, { home });
       u.settle();
     }
-    if (nEv) ctx.log('Saldırı geçersiz kılındı!', PAL.mag3);
-    await banner(ctx.scene, 'SAVAŞ BİTTİ', { style: 'trap' });
+    if (nEv) ctx.log('Attack negated!', PAL.mag3);
+    await banner(ctx.scene, 'BATTLE OVER', { style: 'trap' });
     await playRun(ctx, resolutionRun(ctx));
   },
   P,

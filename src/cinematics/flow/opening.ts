@@ -61,7 +61,7 @@ function installSkip(ctx: AnyCtx): Skipper {
   const base0 = speed.base;
   const fast = base0 * 4;
   let skipped = false;
-  const hint = pixelText(sc, GAME_W - 6, GAME_H - 6, 'Atlamak için tıkla', { size: 'sm', color: PAL.mist, originX: 1, originY: 1 })
+  const hint = pixelText(sc, GAME_W - 6, GAME_H - 6, 'Click to skip', { size: 'sm', color: PAL.mist, originX: 1, originY: 1 })
     .setScrollFactor(0)
     .setDepth(DEPTH.HUD + 60)
     .setAlpha(0);
@@ -233,7 +233,7 @@ async function coinToss(ctx: AnyCtx, first: PlayerId, onExit?: () => void): Prom
   void lightFlash(sc, ground.x, restY, R[3], fs(54), 620, { floorY: ground.y, ring: true, intensity: 1.2 });
   coinLight.setColor(R[3]).setIntensity(0.9, 120);
   bg(run(sc, 160, (t) => coin.setScale(lerp(1.25, 1, t), lerp(0.85, 1, t))));
-  const txt = pixelLetters(sc, ground.x, ground.y + 22, first === 0 ? 'OYUNCU 1 BAŞLIYOR!' : 'OYUNCU 2 BAŞLIYOR!', {
+  const txt = pixelLetters(sc, ground.x, ground.y + 22, first === 0 ? 'PLAYER 1 GOES FIRST!' : 'PLAYER 2 GOES FIRST!', {
     size: 'lg',
     color: R[3],
     originX: 0.5,

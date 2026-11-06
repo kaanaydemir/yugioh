@@ -54,9 +54,9 @@ export const HUD3 = Object.freeze({
   emblem: Object.freeze({ x: 115, y: 13, w: 25, h: 23 }),
   /** Count groups (deck / hand / grave): icon left x; icons centred on cy. */
   counts: Object.freeze({ cy: 50, x: Object.freeze([8, 54, 100]) }),
-  chip: Object.freeze({ w: 34, h: 11, y: 2, right: 6 }),
+  chip: Object.freeze({ w: 36, h: 11, y: 2, right: 6 }),
   phase: Object.freeze({ segW: 54, segX0: 4, cap: 5, sepY: 7, pillY: 1, pillH: 14 }),
-  turn: Object.freeze({ dx: -46, w: 42, h: 16, labelX: 6, labelCap: 6, numCap: 5, numCx: 33 }),
+  turn: Object.freeze({ dx: -50, w: 46, h: 16, labelX: 5, labelCap: 6, numCap: 5, numCx: 36 }),
   mainBtn: Object.freeze({ h: 25, y1: 1, y2: 30 }),
   toolbar: Object.freeze({ y: 4, h: 16 }),
   hint: Object.freeze({ y: HINT_Y, cx: 320, h: 17, padL: 16, padR: 8 }),
@@ -82,7 +82,7 @@ export const HUD3_P2C = Object.freeze({
   lpCounter: Object.freeze({ x: 20 }),
   bar: Object.freeze({ x: 8, y: 32, w: 132, h: 3 }),
   counts: Object.freeze({ cy: 41, x: Object.freeze([8, 54, 100]) }),
-  chip: Object.freeze({ w: 34, h: 11, y: 1, right: 6 }),
+  chip: Object.freeze({ w: 36, h: 11, y: 1, right: 6 }),
 });
 
 /** Is this player's panel the compact one (Neon Tower, player 2)? */
@@ -353,7 +353,7 @@ export function panelBodyV3(player: PlayerId): PixelCanvas {
   return p;
 }
 
-/** The SIRA chip (34 × 11): a small plate with the owner's trim, the caret and "SIRA" in the light tone. */
+/** The TURN chip (36 × 11): a small plate with the owner's trim, the caret and "TURN" in the light tone. */
 export function chipV3(player: PlayerId, caretDx = 0): PixelCanvas {
   const { w, h } = HUD3.chip;
   const style = playerStyleV3(player);
@@ -363,7 +363,7 @@ export function chipV3(player: PlayerId, caretDx = 0): PixelCanvas {
   // caret ▶ (3 × 5) and the word
   const cx = 4 + caretDx;
   for (let i = 0; i < 3; i++) p.vline(cx + i, 3 + i, 7 - i, t.light);
-  paintText(p, 10, capYV3('sm', 3), 'SIRA', 'sm', styleTone(style, 2));
+  paintText(p, 10, capYV3('sm', 3), 'TURN', 'sm', styleTone(style, 2));
   return p;
 }
 
