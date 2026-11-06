@@ -341,6 +341,17 @@ function drawBase(f: Frame): void {
       for (let y = -8; y <= -3; y++) for (let x = -24; x <= -22; x++) mark(q, x - sh, y + 0.5, PAL.stone0);
       for (let x = -20; x <= 16; x += 4) mark(q, x, -9.5, PAL.stone1);
     }
+    // it STANDS: an arch is cut under the block's middle, so the plinth reads as two broad iron feet (the heel
+    // block behind, the horn-toed foot before) with the floor showing between them
+    if (c > 0.5 && sh <= 0) {
+      for (let x = -12; x <= 4; x++) {
+        const hgt = x === -12 || x === 4 ? 2 : x === -11 || x === 3 ? 4 : 5;
+        for (let y = 0; y < hgt; y++) {
+          const [X, Y] = map([x + 0.5, -y - 0.5]);
+          q.erase(rnd(X - 0.5), rnd(Y - 0.5));
+        }
+      }
+    }
     f.comp.add(q, Part.plinth, { out: PAL.stone0 });
   }
   // waist
@@ -590,6 +601,55 @@ function basePoles(f: Frame): void {
     const [X, Y] = map([x + o.shard, y]);
     set(X - 0.5, Y - 0.5, sR[Math.max(0, kS - d)]);
   }
+}
+
+/** The two poles read on the whole body at 1×: the back half's outer edge glows fire (N), the front half's
+ *  water (S) — one rim px on the side edges of the body parts (flipped when the poles are swapped). */
+/** copper tones by value (dark → light) and the S pole's blue the front quarter of the chest turns to */
+const COPPER5: readonly number[] = [PAL.fire0, PAL.fire1, PAL.fire2, PAL.fire3, PAL.skin3];
+const WATER5: readonly number[] = [PAL.water0, PAL.water1, PAL.water2, PAL.water3, PAL.water4];
+function poleRim(f: Frame): void {
+  const { o, p, comp } = f;
+  if (o.core <= 0.05 || o.diss > 0 || o.ctilt > 0) return;
+  const fN = o.flip > 0;
+  const mid = RX + 1;
+  const kN = clamp(fl(o.poleN), 1, 2);
+  const kS = clamp(fl(o.poleS), 1, 2);
+  const BODY = [Part.plinth, Part.waist, Part.cup, Part.coil, Part.head, Part.spoolN, Part.spoolF, Part.armN, Part.armF];
+  const fire = [PAL.fire2, PAL.fire3, PAL.fire4];
+  const water = [PAL.water2, PAL.water3, PAL.water4];
+  const src = p.clone();
+  const edge = (x: number, y: number) => !src.isOpaque(x, y) || src.get(x, y) === PAL.ink;
+  for (let y = 2; y < GY - 1; y++)
+    for (let x = 2; x < W - 2; x++) {
+      if (!BODY.includes(comp.id[y * W + x])) continue;
+      const c = src.get(x, y);
+      if (c === null || c === PAL.ink) continue;
+      const back = x < mid;
+      const north = back !== fN;
+      const r = north ? fire : water;
+      const k = north ? kN : kS;
+      const id = comp.id[y * W + x];
+      // the copper chest's front quarter catches the S pole's blue (its copper tones turn water, by value)
+      if (id === Part.coil && !back) {
+        let d = 0;
+        while (d < 6 && !edge(x + d + 1, y)) d++;
+        if (d < 5) {
+          const i = COPPER5.indexOf(c);
+          if (i >= 0) {
+            p.set(x, y, WATER5[Math.min(4, i + (d < 2 ? 1 : 0))]);
+            continue;
+          }
+        }
+      }
+      // the outward-facing side edge of each half, 2 px deep (the outline itself stays ink)
+      const out1 = back ? edge(x - 1, y) : edge(x + 1, y);
+      const out2 = !out1 && (back ? edge(x - 2, y) : edge(x + 2, y));
+      if (!out1 && !out2) continue;
+      // the glow steps down the body: brightest at the chest, a tone darker on the base and the head
+      const dim = (y > GY - 30 || y < GY - 74 ? 1 : 0) + (out2 ? 1 : 0);
+      p.set(x, y, r[Math.max(0, k - dim)]);
+    }
 }
 
 /** The chest core window (N fire left / S water right halves, white seam at full charge) + seam leaks. */
@@ -1072,6 +1132,7 @@ export function drawSovereign(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'righ
 
   // light layer
   if (o.diss < 0.7 || o.gather) {
+    poleRim(f);
     basePoles(f);
     coreLight(f);
     climbLight(f);

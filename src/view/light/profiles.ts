@@ -104,7 +104,7 @@ export const MONSTER_GLOW: Record<MonsterId, MonsterGlow> = {
   polar_needle: { emissive: [T(PAL.fire4, 1), T(PAL.water4, 0.8), T(PAL.gold4, 0.6)], halo: 0.5, pool: 0.8, spill: PAL.fire3 }, // = the recipe's glow (N fire / S water / gold pivot)
   polar_anvil: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
   polar_coil: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
-  polar_sovereign: { emissive: [T(PAL.earth4, 0.8), T(PAL.gold4, 0.8), T(PAL.white, 0.6)], halo: 0.6, pool: 0.9 },
+  polar_sovereign: { emissive: [T(PAL.fire4, 0.9), T(PAL.water4, 0.9), T(PAL.gold4, 0.8), T(PAL.white, 0.4)], halo: 0.7, pool: 1.1, spill: PAL.water3 }, // = the recipe's glow (N fire back / S water front / gold crown)
   straw_decoy_token: { emissive: [T(PAL.gold4, 0.5)], halo: 0.2, pool: 0.5 },
 };
 

@@ -9,6 +9,8 @@
 //
 //   fusion  sovereignDust      the iron-dust compass rose drawn across three zones (metallic glassRain sweep)
 //           sovereignRise      the three pieces rise humming their own pitches (sustained → the swap)
+//           sovereignTumble    the swap → KLAK 1: the chord held, the anvil's tumbling creak, a whine rising into the clamp
+//           sovereignCutin     the ace cut-in's own whine: two poles' FM sweeps crossing
 //           sovereignKlak1/2/3 KLAK: heavy clank + 35 Hz gong + crack, each a whole tone lower
 //           sovereignLand      the landing: the gong full, the chord, the iron-dust shock ring
 //           sovereignSpear     the spear struck down: the butt's ring and the crown's chime
@@ -86,7 +88,11 @@ export const V3_POLAR_SOVEREIGN_RECIPES = {
     play(v) {
       sweep(v, 0, 0.8, [1800, 5200, 3000], 0.12, { kind: 'pink', q: 2.2, pan: [-0.6, 0.6], peakAt: 0.6 });
       glassRain(v, { d: 0.8, n: 26, g: 0.075, notes: DUST, dec: [0.03, 0.09], curve: 0.7, spread: 0.8, modes: 2 });
-      poleHum(v, 0, [[0, 0], [0.5, 0.12], [0.9, 0.0001, 'e']]);
+      // the tail bridges into the rise: the drawn rose keeps ringing (a thinning dust shimmer) and the family beat
+      // swells under the card sinking into the middle tile, the low chord waking under it
+      glassRain(v, { t: 0.8, d: 0.6, n: 10, g: 0.04, notes: DUST, dec: [0.04, 0.12], curve: 1.4, spread: 0.6, modes: 2 });
+      poleHum(v, 0, [[0, 0], [0.5, 0.12], [0.9, 0.14], [1.45, 0.1], [1.6, 0.0001, 'e']]);
+      chord(v, 0.7, [[0, 0], [0.4, 0.07], [0.75, 0.09], [0.9, 0.0001, 'e']]);
     },
   },
   /** Fusion (0.8): the three pieces rise, each humming its own pitch over the family beat (stopped at the swap). */
@@ -96,7 +102,7 @@ export const V3_POLAR_SOVEREIGN_RECIPES = {
     verb: 0.35,
     duck: 0.45,
     play(v) {
-      const D = 1.15;
+      const D = 1.6;
       const env = (t0: number): Pt[] => [[0, 0], [t0, 0.0001], [t0 + 0.2, 0.1], [D, 0.16], [D + 0.12, 0.0001, 'e']];
       // anvil low, then coil, then needle — staggered, each through its own colour
       v.tone('triangle', [[0, E2], [D, E2 * 1.02, 'e']], { g: env(0), to: v.filt('lowpass', 600, 0.8) });
@@ -104,6 +110,51 @@ export const V3_POLAR_SOVEREIGN_RECIPES = {
       v.tone('square', [[0, A3], [D, A3 * 1.02, 'e']], { g: scaled(env(0.3), 0.3), to: v.filt('lowpass', 1400, 1) });
       poleHum(v, 0, [[0, 0], [D, 0.2], [D + 0.12, 0.0001, 'e']]);
       glassRain(v, { t: 0.2, d: D - 0.2, n: 10, g: 0.04, notes: DUST, dec: [0.03, 0.08], curve: 1, modes: 2 });
+    },
+  },
+  /** Fusion (the swap → KLAK 1, sustained; stopped on the first KLAK): the exploded pieces hold their chord in the
+   *  field, the upright anvil TUMBLES over into the base (a heavy groaning creak, iron scraping iron, a mid-air
+   *  thud as it turns) and a magnetic whine rises into the clamp. */
+  sovereignTumble: {
+    cap: 1,
+    gap: 0.3,
+    verb: 0.4,
+    duck: 0.5,
+    play(v) {
+      const D = 1.6;
+      // the chord held (82 / 147 / 220) over the family beat — the bed never drops out
+      chord(v, 0, [[0, 0.1], [0.3, 0.14], [D - 0.2, 0.18], [D, 0.0001, 'e']]);
+      poleHum(v, 0, [[0, 0.14], [D - 0.2, 0.2], [D, 0.0001, 'e']]);
+      // the tumble: a slow groaning creak (a low saw through a wandering band), iron on iron, a heavy turn
+      const creak = v.filt('bandpass', [[0, 260], [0.25, 520, 'e'], [0.5, 340, 'e'], [0.8, 610, 'e']], 6);
+      v.tone('sawtooth', [[0, 46], [0.3, 52], [0.6, 41], [0.85, 49]], { g: [[0, 0], [0.06, 0.16], [0.75, 0.12], [0.95, 0.0001, 'e']], to: creak });
+      v.noise('pink', { t: 0.05, g: [[0, 0], [0.1, 0.06], [0.7, 0.04], [0.9, 0.0001, 'e']], to: v.filt('bandpass', [[0, 900], [0.8, 1600, 'e']], 4) });
+      thump(v, 0.32, 90, 40, 0.26, 0.2, { drive: 1.4 });
+      clank(v, 260, 0.34, 0.08, 0.3, { ratio: 1.41, index: 1.6, click: 0.5 });
+      // the magnetic whine rising into the clamp (two poles: a falling and a rising partial converging)
+      v.tone('sine', [[0, 0], [0.2, 330], [D, 1320, 'e']], { g: [[0, 0], [0.2, 0.0001], [0.6, 0.03], [D - 0.1, 0.09], [D, 0.0001, 'e']] });
+      v.tone('sine', [[0, 0], [0.2, 2640], [D, 1320, 'e']], { g: [[0, 0], [0.2, 0.0001], [0.7, 0.02], [D - 0.1, 0.05], [D, 0.0001, 'e']] });
+      glassRain(v, { t: 0.1, d: D - 0.2, n: 12, g: 0.035, notes: DUST, dec: [0.03, 0.08], curve: 0.8, modes: 2 });
+    },
+  },
+  /** Fusion (3.4): the cut-in's own whine — two poles as two FM sweeps crossing (fire falling from high, water
+   *  rising from low, panned to their halves of the band), a bright iron shimmer where they meet. */
+  sovereignCutin: {
+    cap: 1,
+    gap: 0.3,
+    verb: 0.45,
+    duck: 0.55,
+    play(v) {
+      const D = 0.7;
+      const pl = v.panner([[0, -0.8], [D, -0.3]]);
+      const pr = v.panner([[0, 0.8], [D, 0.3]]);
+      v.bell(1320, { g: 0.06, dec: D, ratio: 1.41, index: 2.2, idxDec: 0.4, to: pl });
+      v.tone('sawtooth', [[0, 1320], [0.32, 660, 'e']], { g: [[0, 0], [0.03, 0.05], [0.4, 0.0001, 'e']], to: v.filt('bandpass', 1800, 4) });
+      v.tone('sine', [[0, 220], [0.32, 660, 'e'], [D, 880, 'e']], { g: [[0, 0], [0.04, 0.09], [0.35, 0.08], [D, 0.0001, 'e']], to: pr });
+      v.tone('sine', [[0, 1760], [0.32, 660, 'e'], [D, 495, 'e']], { g: [[0, 0], [0.04, 0.06], [0.35, 0.05], [D, 0.0001, 'e']], to: pl });
+      sweep(v, 0, 0.45, [700, 3400, 1500], 0.14, { kind: 'pink', q: 2, pan: [-0.6, 0.6], peakAt: 0.3 });
+      glassRain(v, { t: 0.28, d: 0.4, n: 12, g: 0.05, notes: DUST, dec: [0.03, 0.1], curve: 1, spread: 0.9, modes: 2 });
+      poleHum(v, 0, [[0, 0], [0.3, 0.12], [D, 0.0001, 'e']]);
     },
   },
   sovereignKlak1: { cap: 2, gap: 0.05, verb: 0.38, duck: 0.6, play: (v) => klak(v, 0) },

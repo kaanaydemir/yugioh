@@ -24,9 +24,10 @@
 //   (death f0…f3, sovereignCrack), the field REPELS (sovereignRepel): the body is flung apart in three two-colour
 //   streaks toward the landing zones; then the effect hook lands each piece in its zone in defense (from the sky of
 //   the streak, toGuard on the floor, an iron-dust puff, its own pitch).
-// DEATH (no split): the art's own death — the cracks, the repel, the three pieces fall and end in their own finals
-//   (the needle-spear ripped away, the chest toppled with its wire unwound, the base pushed apart) and dissolve; the
-//   burst is iron dust settling (sovereignBurst), no generic shatter.
+// DEATH (no split): the same cracks and repel; on the white flash frame the three PIECES are born where their parts
+//   were and fall onto the tile, then each dies its OWN death with its own final material and sounds, staggered
+//   (_polar_sovereign-finals: the needle ripped away spinning off-screen, the anvil's halves repelled apart as iron
+//   plates, the coil unwound and its empty spool rolling off). No deathV3 / generic material break.
 
 import { PAL, RAMPS } from '../../art/palette';
 import type { CardId, MonsterId } from '../../data/cards';
@@ -38,7 +39,8 @@ import { hitStop, shake, wait } from '../../vfx/core';
 import { fx, registerCardHook, registerStrike } from '../api';
 import type { StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
-import { atFrame, panAt, play, start, takeCharge } from '../_v3/sound';
+import { CUTIN_BAND_SPLIT } from '../_v3/cutin';
+import { atFrame, fade, hush, panAt, play, start, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { bg, run, runSummon, type Stage } from '../summon-a/_kit';
 import { COIL_EXPLODED, NEEDLE_EXPLODED, RX as SRX } from '../../art/monsters-v3/polar_sovereign-rig';
@@ -71,7 +73,7 @@ const FOLD: Readonly<Record<string, readonly [number, number]>> = { polar_anvil:
 const PIECE_PITCH: Readonly<Record<string, number>> = { polar_needle: 1.5, polar_coil: 1.12, polar_anvil: 0.8 };
 
 /** Handed from the tribute pre-show to the summon entrance (same event batch, played in order). */
-let pending: { rose: DustRose | null; pools: LightHandle[]; dimmed: boolean } | null = null;
+let pending: { rose: DustRose | null; pools: LightHandle[]; dimmed: boolean; tumble?: { stop(ms?: number): void } } | null = null;
 /** The split's piece-sparks hanging over the landing zones, keyed by the sovereign's uid (destroyed → effect hook). */
 const sparks = new Map<number, { zones: number[]; h: ReturnType<typeof flingPieces>; hum: { stop(ms?: number): void } }>();
 /** where a flung piece hangs before it drops: HANG px over its tile */
@@ -80,6 +82,9 @@ let lastSeam = -1;
 const NO_HUM: { stop(ms?: number): void } = { stop: () => undefined };
 
 const ease = (t: number) => t * t * (3 - 2 * t);
+
+// the ace cut-in's band is split in its two poles: orange (N, fire) behind the portrait, blue (S, water) before it
+if (LOOK_V3) CUTIN_BAND_SPLIT.set(ID as MonsterId, { back: RAMPS.fire, front: RAMPS.water });
 
 // ================================================================ fusion: the pre-show (tribute hook)
 
@@ -114,6 +119,30 @@ registerCardHook(
     seedFx(ev.forUid * 37 + 11);
     const dest = zoneXY(dEv.player, 'monster', dEv.zone);
     const dir = dEv.player === 0 ? 1 : -1;
+    // a face-down piece (the engine allows it) is turned face up on its tile first and stands up out of it, so all
+    // three answer the call (the others wait the beat with it)
+    const shut = group.filter((g) => {
+      const u0 = field.unit(g.uid);
+      return !u0 || u0.retired || !u0.sprite.active || !u0.sprite.visible;
+    });
+    if (shut.length) {
+      await Promise.all(
+        shut.map(async (g) => {
+          const t = field.tileOf(g.uid);
+          if (!t) return;
+          t.setCard(g.cardId);
+          ctx.sfx('cardFlip', { volume: 0.8 });
+          await t.flipUp(320);
+          const nu = field.addUnit(g.uid, { hidden: true, position: 'defense' });
+          if (!nu) return;
+          nu.badge.setVisible(false);
+          nu.pose('guard', 0);
+          nu.showSprite();
+          void lightFlash(ctx.scene, t.home.x, t.home.y - 10, POLE_COLOR[g.cardId] ?? PAL.gold4, 22, 200, { floorY: t.home.y, intensity: 0.8 });
+          if (nu.has('fromGuard')) await nu.playRange('fromGuard', 0);
+        }),
+      );
+    }
     const rel = group.map((g) => ({ g, ...field.release(g.uid) }));
     const pools: LightHandle[] = [];
 
@@ -156,7 +185,6 @@ registerCardHook(
     rel.forEach(({ g, tile, unit }, i) => {
       if (tile) bg(tile.dissolve(520).then(() => tile.destroy()));
       if (unit) unit.badge.setVisible(false);
-      bg(fx.cardToGraveyard(ctx, { owner: g.owner, cardId: g.cardId as MonsterId, from: { x: homes[i].x, y: homes[i].y - 4 }, delay: 120 + i * 90 }));
     });
     const sprites = rel.map(({ unit }) => (unit && unit.sprite.active ? unit : null));
     const starts = sprites.map((u, i) => (u ? { x: u.sprite.x, y: u.sprite.y } : homes[i]));
@@ -204,7 +232,9 @@ registerCardHook(
         if (i < rel.length) p.setIntensity(0.75 - 0.5 * t, 0);
       });
     });
-    rise.stop(60);
+    // the hum is never cut: the chord is held through the swap and the anvil's tumble into KLAK 1 (sovereignTumble)
+    rise.stop(220);
+    const tumble = start('sovereignTumble', { volume: 0.95, pan: panAt(dest.x) });
 
     // ---- 1.9 swap: the magnetic flash; the card is spent, the pieces' units go, the sovereign's frames take over
     void lightFlash(sc, dest.x, dest.y - 30, PAL.white, 60, 260, { floorY: dest.y, intensity: 1 });
@@ -214,7 +244,9 @@ registerCardHook(
     });
     if (card.active) card.destroy();
     for (let i = 0; i < rel.length; i++) void pools[i].fadeOut(200);
-    pending = { rose, pools: [centre], dimmed: true };
+    // the pieces' cards are spent only now, when their bodies have become the sovereign: out of the flash to the grave
+    rel.forEach(({ g }, i) => bg(fx.cardToGraveyard(ctx, { owner: g.owner, cardId: g.cardId as MonsterId, from: { x: dest.x + (i - 1) * 10, y: dest.y - 4 }, delay: 60 + i * 80 })));
+    pending = { rose, pools: [centre], dimmed: true, tumble };
     await ctx.play(di, { tribute: true, noCard: true, cutIn: true });
   },
   { priority: 20, name: 'd:polar_sovereign:fusion' },
@@ -242,6 +274,7 @@ async function fusionV3(S: Stage): Promise<void> {
   for (let k = 0; k < 3; k++) {
     const f = SUMMON_KLAK[k];
     await u.playRange('summon', from, f);
+    if (k === 0) pre?.tumble?.stop(30);
     play((['sovereignKlak1', 'sovereignKlak2', 'sovereignKlak3'] as const)[k], { volume: 0.95, pan });
     const at = joint(k);
     void lightFlash(sc, at.x, at.y, PAL.white, 34 + k * 8, 200, { floorY: S.home.y, intensity: 1 });
@@ -254,6 +287,10 @@ async function fusionV3(S: Stage): Promise<void> {
   // the assembled body hangs in its field: the ace cut-in
   await u.playRange('summon', from, SUMMON_HOLD);
   if (rose) bg(rose.dismiss(420));
+  // the cut-in's own whine (two poles' sweeps crossing) over the band; the shared whoosh / slam thud step back
+  play('sovereignCutin', { volume: 0.9, pan });
+  bg(wait(sc, 90).then(() => fade(['whoosh'], 40)));
+  bg(wait(sc, 420).then(() => fade(['impactHeavy'], 30)));
   await S.climax();
   // the landing: shock ring, gong, the light comes back up
   atFrame(u, 'summon', SUMMON_LAND, () => {
@@ -315,21 +352,29 @@ registerStrike(
     const from = u.muzzle();
     const aim = s.to;
     const depth = DEPTH.FX + 1;
-    const rose = targetRose(sc, aim, 420, s.target && s.target.sprite.active ? s.target.sprite.depth - 0.5 : DEPTH.FX - 1);
+    // a throw, not a shove: the spear rises into a parabola (higher on a short throw, so on the same column it
+    // goes UP over the foe and comes down onto it, its point outside the body until contact); the flight time
+    // follows the real path length
+    const dist = Math.hypot(aim.x - from.x, aim.y - from.y);
+    const arc = Math.round(Math.max(14, Math.min(36, 44 - dist * 0.12)));
+    const path = dist + arc * 1.4;
+    const flight = Math.round(130 + path * 1.2);
+    const rose = targetRose(sc, aim, flight + 40, s.target && s.target.sprite.active ? s.target.sprite.depth - 0.5 : DEPTH.FX - 1);
     play('sovereignRose', { volume: 0.75, pan: panAt(aim.x) });
     void u.playRange('attack', ATTACK_THROW, 12);
-    const dist = Math.hypot(aim.x - from.x, aim.y - from.y);
-    const flight = Math.round(Math.max(240, Math.min(420, dist * 1.4)));
-    await spearShot(sc, from, aim, flight, depth);
+    await spearShot(sc, from, aim, flight, depth, { arc, tip: true });
     // ---- contact: the spear in the rose's heart
     rose.destroy();
-    s.impact(aim);
+    hush(['impactHeavy'], () => s.impact(aim));
     play('sovereignPierce', { volume: 1, pan: panAt(aim.x) });
+    // a target without its own material sound gets the generic body blow from the reaction (react.ts) a tick
+    // later, outside the hush: the pierce scores the contact on its own, so that layer steps back at once
+    bg(wait(sc, 1).then(() => fade(['impactHeavy'], 25)));
     bg(poleBlast(sc, aim, s.toGround.y, DEPTH.FX + 2));
     void lightFlash(sc, aim.x, aim.y, PAL.white, 44, 260, { floorY: s.toGround.y, intensity: 1, ring: true });
     bg(shake(sc, 200, 5));
     // the spear stays buried in the rose's heart, quivering, until the recall rips it out
-    const stuck = spearStuck(sc, from, aim, depth);
+    const stuck = spearStuck(sc, { x: from.x, y: from.y - 4 * arc }, aim, depth);
     // the ace's own extra beat over the heavy class's hit-stop (spec: 140 ms)
     await hitStop(sc, 20);
     if (loses || !u.sprite.active || u.retired) {
@@ -341,7 +386,10 @@ registerStrike(
     if (!u.sprite.active || u.retired) return;
     // ---- the recall: the spear snaps back into the fist, to the shoulder, home
     play('sovereignRecall', { volume: 0.85, pan });
-    await spearShot(sc, aim, u.muzzle(), 220, depth, { back: true });
+    // out of the heart along the line it went in (the stuck spear's centre), back to the fist
+    const dl = Math.hypot(aim.x - from.x, aim.y - from.y + 4 * arc) || 1;
+    const outAt = { x: aim.x - ((aim.x - from.x) / dl) * 22, y: aim.y - ((aim.y - from.y + 4 * arc) / dl) * 22 };
+    await spearShot(sc, outAt, u.muzzle(), 220, depth, { back: true, arc: Math.round(arc * 0.4) });
     if (!u.sprite.active || u.retired) return;
     void lightFlash(sc, u.muzzle().x, u.muzzle().y, PAL.water4, 14, 160, { floorY: u.home.y, intensity: 0.7 });
     await u.playRange('attack', ATTACK_CATCH);
@@ -377,8 +425,8 @@ const REPEL_AT: Readonly<Record<string, XY>> = { polar_anvil: { x: -9, y: 0 }, p
 /** The no-split heap: where each piece falls on the sovereign's own tile (P1 px from its anchor), its arc and its turn. */
 const FALL: Readonly<Record<string, { x: number; y: number; arc: number; delay: number }>> = {
   polar_needle: { x: -20, y: -5, arc: 18, delay: 0 },
-  polar_anvil: { x: -5, y: 1, arc: 6, delay: 170 },
-  polar_coil: { x: 17, y: 5, arc: 14, delay: 340 },
+  polar_anvil: { x: -5, y: 1, arc: 6, delay: 130 },
+  polar_coil: { x: 17, y: 5, arc: 14, delay: 260 },
 };
 
 registerCardHook(
@@ -406,13 +454,19 @@ registerCardHook(
     const dir: 1 | -1 = u.flipX ? -1 : 1;
     // cracks run along the joints (death f0…f3)
     play('sovereignCrack', { volume: 0.9, pan });
-    await u.playRange('death', 0, DEATH_SPLIT);
+    // a lethal blow's reaction may already have cracked it open (the death pose joined from the recoil): go on from
+    // there, never replay the cracks
+    const fi0 = u.frameInfo();
+    const at0 = fi0.anim === 'death' ? fi0.frame : -1;
+    if (at0 < DEATH_SPLIT) await u.playRange('death', Math.max(0, at0), DEATH_SPLIT);
+    else u.pose('death', DEATH_SPLIT);
     // the cracks hold: the body trembles on its joints (1 px, ever faster) while the seams flicker in the pole colours
     const r0 = { x: u.sprite.x, y: u.sprite.y };
     const seams = [PAL.fire4, PAL.water4, PAL.gold4];
-    await run(sc, 320, (t, el) => {
+    await run(sc, split ? 280 : 200, (t, el) => {
       const step = Math.floor(el / (t < 0.5 ? 50 : 30));
-      u.sprite.setPosition(Math.round(r0.x + (step % 2 ? 1 : -1) * (t > 0.2 ? 1 : 0)), Math.round(r0.y));
+      const amp = t > 0.6 ? 2 : t > 0.15 ? 1 : 0;
+      u.sprite.setPosition(Math.round(r0.x + (step % 2 ? 1 : -1) * amp), Math.round(r0.y - (step % 3 === 0 && t > 0.5 ? 1 : 0)));
       if (step % 3 === 0 && step !== lastSeam) {
         lastSeam = step;
         const k = (step / 3) % 3;
@@ -458,7 +512,7 @@ registerCardHook(
     const to = split.zones.map((z) => zoneXY(z.player, 'monster', z.zone));
     cardOut();
     const order = split.zones.map((_, i) => i).sort((a, b) => to[a].x - to[b].x || a - b);
-    const LAUNCH: XY[] = [{ x: -54, y: -58 }, { x: 0, y: -96 }, { x: 54, y: -58 }];
+    const LAUNCH: XY[] = [{ x: -86, y: -64 }, { x: 6, y: -128 }, { x: 86, y: -64 }];
     const launchOf = (i: number): XY => LAUNCH[order.indexOf(i)] ?? { x: 0, y: -80 };
     const h = flingPieces(
       sc,
@@ -476,7 +530,7 @@ registerCardHook(
           pole: POLE_COLOR[z.cardId] ?? PAL.gold4,
         };
       }),
-      640,
+      720,
     );
     bodyGone();
     const prev = sparks.get(ev.uid);

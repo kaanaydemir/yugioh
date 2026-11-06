@@ -6,22 +6,23 @@
 //               spinning wide on its pin, the copper chest blazing (the core seam white-hot = the card's brightest
 //               point, the EARTH sun behind it), the needle pauldrons spread; behind him a compass rose of field lines
 //               (eight rays, the N ray longest) drawn one tone up on the backdrop, iron dust riding them.
-// small (44×34) the SAME picture, closer: a 1:1 crop of the sprite — crown, helm with the two-colour eyes (the S eye
-//               white = the focus), the needle pauldrons, the raised spear shaft, the upper chest.
+//               In front of the backdrop the rose is drawn again as FIELD LINES in the two poles: the rays and the
+//               dial behind his back half in fire (N), behind his front half in water (S) — the orange-left /
+//               blue-right split of the storyboard, echoed by the sprite's own pole rims.
+// small (44×34) the SAME picture at half size (the whole figure: crown, raised spear point, the pole split, the
+//               plinth's top at the frame's foot): the big subject reduced, the backdrop and rose native.
 // Living (4 frames, 160 ms): the crown turns, the rings climb the chest, the rose rays flow outward.
 // Colours only from PAL (the sprite's tones folded to the card budget).
 
 import { PixelCanvas } from '../pixel';
 import { PAL } from '../palette';
 import { drawSovereign, pose, skeleton, W as SW, H as SH } from '../monsters-v3/polar_sovereign-rig';
-import { paintBackdrop, recolor } from './_kit';
+import { newLayers, paintBackdrop, recolor, reduceLight, reduceSubject } from './_kit';
 import type { ArtLayers, CardArtV3 } from './_types';
 
 /** sprite frame → big picture offset (frame px → picture px 1:1) */
 const BIG_DX = -11;
 const BIG_DY = -12;
-/** the sprite frame's crop that is the small picture */
-const SMALL_CROP = [29, 22, 44, 34] as const;
 
 const cardPose = (f: number) =>
   pose({
@@ -31,9 +32,8 @@ const cardPose = (f: number) =>
 
 const CORE = skeleton(cardPose(0)).core;
 const FOCUS = [CORE[0] + BIG_DX, CORE[1] + BIG_DY] as const;
-/** the small picture's focus: the S eye in the visor (the crop is too tight for the chest core) */
-const VISOR = skeleton(cardPose(0)).visor;
-const FOCUS_SMALL = [VISOR[0] + 3 - SMALL_CROP[0], VISOR[1] - SMALL_CROP[1]] as const;
+/** the small picture's focus: the same chest core at half size */
+const FOCUS_SMALL = [Math.floor(FOCUS[0] / 2), Math.floor(FOCUS[1] / 2)] as const;
 
 /** The card's tone budget (≤ 20 with the backdrop): the sprite's rarest tones folded into their neighbours. */
 const FOLD: Readonly<Record<number, number>> = {
@@ -99,18 +99,53 @@ function roseLines(p: PixelCanvas, cx: number, cy: number, f: number): void {
   }
 }
 
+/** The rose's field lines in the two poles, behind the figure (subject layer, under the sprite): rays from the
+ *  chest (dashed, flowing out a step a frame), the back half fire, the front half water, and a two-colour dial. */
+function poleField(p: PixelCanvas, cx: number, cy: number, f: number, box: { x0: number; y0: number; x1: number; y1: number }): void {
+  const inBox = (x: number, y: number) => x >= box.x0 && x <= box.x1 && y >= box.y0 && y <= box.y1;
+  const col = (x: number, hot: boolean) => (x < cx ? (hot ? PAL.fire3 : PAL.fire2) : hot ? PAL.water4 : PAL.water2);
+  for (let k = 0; k < 8; k++) {
+    const a = -Math.PI / 2 + (k * Math.PI) / 4 + Math.PI / 8;
+    const len = k % 2 ? 40 : 54;
+    for (let i = 34; i < len; i++) {
+      if (((i >> 1) - f) % 4 === 0) continue;
+      const x = Math.round(cx + Math.cos(a) * i);
+      const y = Math.round(cy + Math.sin(a) * i * 0.78);
+      if (!inBox(x, y) || p.isOpaque(x, y)) continue;
+      p.set(x, y, col(x, i > len - 6));
+    }
+  }
+  for (let i = 0; i < 140; i++) {
+    if ((i + f * 3) % 7 >= 5) continue;
+    const a = (i / 140) * Math.PI * 2;
+    const x = Math.round(cx + Math.cos(a) * 38);
+    const y = Math.round(cy + Math.sin(a) * 30);
+    if (!inBox(x, y) || p.isOpaque(x, y)) continue;
+    p.set(x, y, col(x, false));
+  }
+}
+
 function big(l: ArtLayers, f: number): void {
   paintBackdrop(l.backdrop, 'EARTH', { focus: FOCUS });
   roseLines(l.backdrop, FOCUS[0], FOCUS[1], f);
   l.subject.blit(sprite(f), BIG_DX, BIG_DY);
+  // the field lines live inside the figure's own box (behind it: never over a body pixel)
+  const b = l.subject.bounds();
+  if (b) poleField(l.subject, FOCUS[0], FOCUS[1], f, { x0: b.x, y0: b.y, x1: b.x + b.w - 1, y1: b.y + b.h - 1 });
   const [fx, fy] = FOCUS;
   l.light.set(fx, fy, PAL.white).set(fx - 1, fy, PAL.white).set(fx + 1, fy, PAL.white);
 }
 
-function small(l: ArtLayers, f: number): void {
-  paintBackdrop(l.backdrop, 'EARTH', { focus: FOCUS_SMALL, horizon: 26, radius: 14 });
+function small(l: ArtLayers, f: number, bigL?: ArtLayers): void {
+  const B = bigL ?? (() => {
+    const b = newLayers('big');
+    big(b, f);
+    return b;
+  })();
+  paintBackdrop(l.backdrop, 'EARTH', { focus: FOCUS });
   roseLines(l.backdrop, FOCUS_SMALL[0], FOCUS_SMALL[1], f);
-  l.subject.blit(sprite(f).crop(SMALL_CROP[0], SMALL_CROP[1], SMALL_CROP[2], SMALL_CROP[3]), 0, 0);
+  l.subject.blit(reduceSubject(B.subject), 0, 0);
+  l.light.blit(reduceLight(B.light), 0, 0);
   const [fx, fy] = FOCUS_SMALL;
   l.light.set(fx, fy, PAL.white);
 }

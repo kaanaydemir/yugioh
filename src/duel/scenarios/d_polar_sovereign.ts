@@ -55,6 +55,16 @@ const scenarios: Record<string, Scenario> = {
     stage: { zones: 5, phase: 'battle', p0: { monsters: five(N, N, 'polar_sovereign') }, p1: { monsters: five(N, N, { id: 'crystal_wyrm', position: 'attack' }) } },
     steps: [attack(2, 2)],
   },
+  psRevive: {
+    desc: 'Ruh Çağrısı mezarlıktaki Kutup Hükümdarı’nı geri getirir (diriliş)',
+    stage: { zones: 5, p0: { hand: ['soul_recall'], graveyard: ['polar_sovereign'] } },
+    steps: [(D) => ({ type: 'activateSpell', player: 0, uid: D.uid('soul_recall', 0), target: { kind: 'graveyard', uid: D.uid('polar_sovereign', 0), toZone: 2 } })],
+  },
+  psFusionSet: {
+    desc: 'Kutup Hükümdarı birleşmesi: Kutup Örsü kapalı savunmada — açılır, sonra yükselir',
+    stage: { zones: 5, p0: { hand: ['polar_sovereign'], monsters: five('polar_needle', N, { id: 'polar_anvil', position: 'defense', faceUp: false }, N, 'polar_coil') } },
+    steps: [fuse(0, 2)],
+  },
   psPosition: {
     desc: 'Kutup Hükümdarı savunma pozisyonuna geçer',
     stage: { zones: 5, p0: { monsters: five(N, N, 'polar_sovereign') } },

@@ -175,33 +175,71 @@ export function spearCanvas(d: XY, flipLight: boolean): PixelCanvas {
   return q;
 }
 
-/** Fly the spear from `a` to `b` (its centre), point first, with a two-colour wake; resolves on arrival. */
-export function spearShot(scene: Phaser.Scene, a: XY, b: XY, ms: number, depth: number, o: { back?: boolean } = {}): Promise<void> {
+const SPEAR_DIRS = 32;
+const spearCache = new Map<string, PixelCanvas>();
+/** The spear canvas for a direction quantized to 1/32 turn (cached). */
+function spearAt(d: XY): PixelCanvas {
+  const k = ((Math.round((Math.atan2(d.y, d.x) / TAU) * SPEAR_DIRS) % SPEAR_DIRS) + SPEAR_DIRS) % SPEAR_DIRS;
+  const a = (k / SPEAR_DIRS) * TAU;
+  const q = { x: Math.cos(a), y: Math.sin(a) };
+  const key = `${k}:${q.x < 0 ? 'r' : 'l'}`;
+  let c = spearCache.get(key);
+  if (!c) {
+    c = spearCanvas(q, q.x < 0);
+    spearCache.set(key, c);
+  }
+  return c;
+}
+
+/** Fly the spear from `a` to `b` (its centre; with `tip` its POINT lands on `b`), point first, with a two-colour
+ *  wake. `arc` lifts the flight into a throw's parabola (px at the apex): the spear turns along it, so on a short
+ *  throw it rises over the foe and comes DOWN onto it, its point outside the target until the last frame. */
+export function spearShot(scene: Phaser.Scene, a: XY, b0: XY, ms: number, depth: number, o: { back?: boolean; arc?: number; tip?: boolean } = {}): Promise<void> {
+  const arc = o.arc ?? 0;
+  const l0 = Math.hypot(b0.x - a.x, b0.y - a.y) || 1;
+  // the tip lands on b: the centre stops 28 px short along the final descent direction
+  const endDir: XY = { x: (b0.x - a.x) / l0, y: (b0.y - a.y + 4 * arc) / l0 };
+  const el0 = Math.hypot(endDir.x, endDir.y) || 1;
+  const b: XY = o.tip ? { x: b0.x - (endDir.x / el0) * 28, y: b0.y - (endDir.y / el0) * 28 } : b0;
   const dx = b.x - a.x;
   const dy = b.y - a.y;
-  const l = Math.hypot(dx, dy) || 1;
-  // flying home (the recall), the spear comes back butt first: it keeps pointing at the foe
-  const dir: XY = o.back ? { x: -dx / l, y: -dy / l } : { x: dx / l, y: dy / l };
-  const sp = spearCanvas(dir, dir.x < 0);
+  const pos = (e: number): XY => ({ x: a.x + dx * e, y: a.y + dy * e - 4 * arc * e * (1 - e) });
+  const tan = (e: number): XY => {
+    const tx = dx;
+    const ty = dy - 4 * arc * (1 - 2 * e);
+    const l = Math.hypot(tx, ty) || 1;
+    // flying home (the recall), the spear comes back butt first: it keeps pointing at the foe
+    return o.back ? { x: -tx / l, y: -ty / l } : { x: tx / l, y: ty / l };
+  };
   const r = new Raster(scene, a.x - 36, a.y - 24, 72, 48, depth);
-  r.draw((rr) => rr.pc.blit(sp, 0, 0));
-  const wake = Raster.around(scene, (a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(dx) + 80, Math.abs(dy) + 60, depth - 0.2);
+  let shown: PixelCanvas | null = null;
+  const show = (e: number) => {
+    const c = spearAt(tan(e));
+    if (c !== shown) {
+      shown = c;
+      r.draw((rr) => rr.pc.blit(c, 0, 0));
+    }
+  };
+  show(0);
+  const wake = Raster.around(scene, (a.x + b.x) / 2, (a.y + b.y) / 2 - arc, Math.abs(dx) + 90, Math.abs(dy) + 70 + arc * 2, depth - 0.2);
   return run(scene, ms, (t) => {
-    const e = o.back ? t * t : t < 1 ? 1 - Math.pow(1 - t, 1.6) : 1;
-    const x = rnd(a.x + dx * e);
-    const y = rnd(a.y + dy * e);
-    r.moveTo(x - 36, y - 24);
+    // forward: it leaves the fist hard and gathers weight on the way down; home: snapped in
+    const e = o.back ? t * t : arc > 0 ? Math.pow(t, 1.18) : t < 1 ? 1 - Math.pow(1 - t, 1.6) : 1;
+    const q = pos(e);
+    show(e);
+    r.moveTo(rnd(q.x) - 36, rnd(q.y) - 24);
     wake.draw((rr) => {
-      const n = 16;
+      const n = 18;
       for (let i = 1; i <= n; i++) {
-        const k = e - (i / n) * 0.35;
+        const k = e - (i / n) * 0.4;
         if (k <= 0) break;
-        const wx = a.x + dx * k;
-        const wy = a.y + dy * k;
-        const nx = -dir.y * 2;
-        const ny = dir.x * 2;
-        rr.px(wx + nx, wy + ny, i < n / 2 ? PAL.fire4 : PAL.fire2);
-        rr.px(wx - nx, wy - ny, i < n / 2 ? PAL.water4 : PAL.water2);
+        const w = pos(k);
+        const d = tan(k);
+        const nx = -d.y * 2;
+        const ny = d.x * 2;
+        rr.px(w.x + nx, w.y + ny, i < n / 2 ? PAL.fire4 : PAL.fire2);
+        rr.px(w.x - nx, w.y - ny, i < n / 2 ? PAL.water4 : PAL.water2);
+        if (i % 4 === 0) rr.px(w.x, w.y + 3, PAL.steel);
       }
     });
   }).then(() => {
@@ -218,8 +256,9 @@ export function spearStuck(scene: Phaser.Scene, from: XY, at: XY, depth: number)
   const l = Math.hypot(dx, dy) || 1;
   const dir: XY = { x: dx / l, y: dy / l };
   const sp = spearCanvas(dir, dir.x < 0);
-  const bx = rnd(at.x - dir.x * 5);
-  const by = rnd(at.y - dir.y * 5);
+  // the point is buried ~6 px in the rose's heart: the centre sits 22 px back along the descent
+  const bx = rnd(at.x - dir.x * 22);
+  const by = rnd(at.y - dir.y * 22);
   const r = new Raster(scene, bx - 36, by - 24, 72, 48, depth);
   r.draw((rr) => rr.pc.blit(sp, 0, 0));
   let alive = true;
@@ -255,16 +294,37 @@ export function targetRose(scene: Phaser.Scene, c: XY, ms: number, depth: number
         const a = (i / n) * TAU + t * 2.4;
         if (((i >> 1) + Math.floor(t * 10)) % 4 === 3) continue;
         const left = Math.cos(a) < 0;
-        rr.px(c.x + Math.cos(a) * R, c.y + Math.sin(a) * R * 0.62, left ? (t > 0.6 ? PAL.fire4 : PAL.fire3) : t > 0.6 ? PAL.water4 : PAL.water3);
+        const col = left ? (t > 0.6 ? PAL.fire4 : PAL.fire3) : t > 0.6 ? PAL.water4 : PAL.water3;
+        // 2 px thick (reads at 1×), a darker under-edge
+        rr.px(c.x + Math.cos(a) * R, c.y + Math.sin(a) * R * 0.62, col);
+        rr.px(c.x + Math.cos(a) * R, c.y + Math.sin(a) * R * 0.62 + 1, left ? PAL.fire2 : PAL.water2);
+      }
+      // the closing: the last beats lock a solid two-colour ring and a white cross-hair on the heart
+      if (t > 0.78) {
+        const R2 = R - 3;
+        const m = rnd(R2 * 6);
+        for (let i = 0; i < m; i++) {
+          const a = (i / m) * TAU;
+          rr.px(c.x + Math.cos(a) * R2, c.y + Math.sin(a) * R2 * 0.62, Math.cos(a) < 0 ? PAL.fire4 : PAL.water4);
+        }
+        for (let d = 2; d < 6; d++) {
+          rr.px(c.x - d, c.y, PAL.white);
+          rr.px(c.x + d, c.y, PAL.white);
+          rr.px(c.x, c.y - d, PAL.white);
+          rr.px(c.x, c.y + d, PAL.white);
+        }
       }
       // eight rays drawn inward (N ray fire from the top, S ray water from the bottom)
       for (let k = 0; k < 8; k++) {
         const a = -Math.PI / 2 + (k * TAU) / 8;
         const L = (k % 2 ? 0.6 : 1) * (R + 10);
         const reach = Math.min(1, t * 1.6);
-        for (let d = L; d > L * (1 - reach) + 6; d -= 1.5) {
-          const col = k === 0 ? PAL.fire4 : k === 4 ? PAL.water4 : k < 4 ? PAL.water2 : PAL.fire2;
-          rr.px(c.x + Math.cos(a) * d, c.y + Math.sin(a) * d * 0.62, col);
+        for (let d = L; d > L * (1 - reach) + 6; d -= 1) {
+          const col = k === 0 ? PAL.fire4 : k === 4 ? PAL.water4 : k < 4 ? PAL.water3 : PAL.fire3;
+          const x = c.x + Math.cos(a) * d;
+          const y = c.y + Math.sin(a) * d * 0.62;
+          rr.px(x, y, col);
+          if (k % 2 === 0) rr.px(x + 1, y, col);
         }
       }
     });
