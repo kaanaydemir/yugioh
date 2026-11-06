@@ -2,8 +2,9 @@
 // falls through to the chain below every hook, byte-identical). Pixel set pieces: ./_polar_sovereign-fx.ts; sounds:
 // src/audio/v3/polar_sovereign.ts; the sprite's own frames: src/art/monsters-v3/polar_sovereign-anims.ts.
 //
-// FUSION (the special summon from the hand, ≈ 6.3 s with the cut-in; YENI_KARTLAR §C15 steps 1–5). The camera never
-// moves (EF-8): the push-in is faked with the arena dimming and the light pools.
+// FUSION (the special summon from the hand, ≈ 6.3 s with the cut-in; YENI_KARTLAR §C15 steps 1–5). The camera keeps
+// only today's ace lean (EF-8: the same small integer pan the shared ace summon makes, zoom stays 1); the push-in is
+// faked with the arena dimming and the light pools.
 //   0.0  the tribute hook takes the three pieces: the arena dims, the sovereign's card rises from the hand over the
 //        middle zone, the three pieces flare in their pole colours and an IRON-DUST COMPASS ROSE is drawn on the floor
 //        across the three zones (sovereignDust)
@@ -282,6 +283,8 @@ async function fusionV3(S: Stage): Promise<void> {
   u.pose('summon', 0);
   u.showSprite();
   u.badge.setVisible(false);
+  // today's ace lean, kept as it was (EF-8; the shared ace summon's focus, _core/helpers.ts) — runSummon unfocuses
+  if (S.big) bg(S.ctx.focus({ x: S.home.x, y: S.home.y - 30 }, { zoom: 1.05, ms: 420, pan: 0.3 }));
   const glow = S.glow({ color: PAL.gold3, radius: 46, intensity: 0.7, anim: 'breathe', fadeIn: 60 });
   await S.wait(u.frameMs('summon', 0));
   // the three KLAKs: each a 120 ms hit-stop, a white flash at its joint, a heavier shake, a tone lower
