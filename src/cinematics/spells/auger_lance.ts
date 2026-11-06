@@ -45,7 +45,7 @@ import Phaser from 'phaser';
 import type { GameEvent, PlayerId, Uid, ZoneRef } from '../../engine/types';
 import type { CardId } from '../../data/cards';
 import { PAL } from '../../art/palette';
-import { FLAT_H, FLAT_W, STAND_H, STAND_W, ZS, cardMip, isoProject, poseAxes, qAxis, qMul, qSlerp, renderCard, restQuat, standQuat, type Quat } from '../../art/cards';
+import { FLAT_H, FLAT_W, STAND_H, STAND_W, cardMip, isoProject, poseAxes, qAxis, qFromBasis, qMul, qSlerp, renderCard, restQuat, standQuat, type Quat, type V3 } from '../../art/cards';
 import type { TileCard } from '../../view/TileCard';
 import { CardSprite } from '../../view/CardSprite';
 import { BOARD_CENTER, DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
@@ -70,7 +70,7 @@ const DRILL_MS = 480;
 const HOLE_MS = 130;
 const CRACK_MS = 100;
 const RETRACT_MS = 240;
-const COLLAPSE_MS = 150;
+const COLLAPSE_MS = 190;
 const BITE_STOP = 50;
 const PIERCE_STOP = 70;
 
@@ -111,6 +111,27 @@ interface TopPose {
 function cornerQ(theta: number, wobble: number): Quat {
   const tilt = qAxis([Math.cos(theta * 0.5), Math.sin(theta * 0.5), 0], wobble);
   return qMul(tilt, qMul(qAxis([0, 0, 1], theta), qMul(standQuat(), ROLL)));
+}
+
+/** Spin poses per revolution: the turning card is quantized to clear, distinct poses (no aliasing flicker). */
+const SPIN_STEPS = 12;
+/** The highest visible spin rate (rad/s): every sampled frame stays a readable pose. */
+const SPIN_MAX = 20;
+
+/**
+ * The dying top TOPPLES: the card standing face-on on its corner (rolled `r` in its plane) settles onto its
+ * bottom edge, tips BACK by `phi` (0 standing → π/2 flat, face up) and keeps turning `psi` round the vertical —
+ * one continuous fall that always shows its face, ending exactly in the tile's rest pose (no edge-on frame).
+ */
+function toppleQ(r: number, phi: number, psi: number): { q: Quat; uz: number; vz: number } {
+  const h: V3 = [Math.SQRT1_2, -Math.SQRT1_2, 0];
+  const d: V3 = [Math.SQRT1_2 * Math.sin(phi), Math.SQRT1_2 * Math.sin(phi), -Math.cos(phi)];
+  const u: V3 = [Math.cos(r) * h[0] + Math.sin(r) * d[0], Math.cos(r) * h[1] + Math.sin(r) * d[1], Math.sin(r) * d[2]];
+  const v: V3 = [-Math.sin(r) * h[0] + Math.cos(r) * d[0], -Math.sin(r) * h[1] + Math.cos(r) * d[1], Math.cos(r) * d[2]];
+  const c = Math.cos(psi);
+  const s = Math.sin(psi);
+  const yaw = (a: V3): V3 => [a[0] * c - a[1] * s, a[0] * s + a[1] * c, a[2]];
+  return { q: qFromBasis(yaw(u), yaw(v)), uz: Math.abs(u[2]), vz: Math.abs(v[2]) };
 }
 
 /** The three cracks out of the bore (screen angles, rad): irregular so the pieces differ in size. */
@@ -497,10 +518,11 @@ class Curls {
 }
 
 /** The lance's shadow on the floor: an ink checker ellipse that grows as it nears (no alpha). */
-function floorShadow(sc: Phaser.Scene, at: XY): { set(k: number): void; destroy(): void } {
-  const ras = Raster.around(sc, at.x, at.y, 40, 14, DEPTH.SHADOW - 2);
+function floorShadow(sc: Phaser.Scene, at0: XY): { set(k: number, dx?: number, dy?: number): void; destroy(): void } {
+  const ras = Raster.around(sc, at0.x, at0.y, 44, 18, DEPTH.SHADOW - 2);
   return {
-    set(k: number) {
+    set(k: number, dx = 0, dy = 0) {
+      const at = { x: at0.x + dx, y: at0.y + dy };
       ras.draw((g) => {
         const rx = Math.round(2 + 9 * k);
         const ry = Math.max(1, Math.round(rx / 2.4));
@@ -761,7 +783,12 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   let wob = 0;
   let spinV = 0;
   let tint = 0;
-  const cornerPose = (): TopPose => ({ q: cornerQ(theta, wob), w: TOP_W, h: TOP_H, z: TOP_ZC, light: 0.22 * Math.cos(theta * 2), tint: PAL.teal4, tintAmt: tint });
+  // the drawn angle: quantized to SPIN_STEPS clear poses per turn once it spins fast (no aliasing flicker)
+  const thetaDrawn = (): number => (spinV > 8 ? Math.round(theta / (TAU / SPIN_STEPS)) * (TAU / SPIN_STEPS) : theta);
+  const cornerPose = (): TopPose => {
+    const th = thetaDrawn();
+    return { q: cornerQ(th, wob), w: TOP_W, h: TOP_H, z: TOP_ZC, light: 0.22 * Math.cos(th * 2), tint: PAL.teal4, tintAmt: tint };
+  };
   const liftPose = (k: number): TopPose => {
     const e = E.outCubic(k);
     const c = cornerPose();
@@ -818,11 +845,20 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   const curls = new Curls(sc, { x: floor.x, y: contactY }, uDepth + 1.5);
   const chips = new PxSparks(sc, uDepth + 1.6);
   const rings = new Raster(sc, floor.x - 30, contactY - 10, 60, 30, uDepth + 1.4);
+  // the top's spin trail: its two side corners leave short 1-px arcs (teal3 → teal1) behind them as it turns
+  const cardCY = Math.round(floor.y + isoProject([0, 0, TOP_ZC])[1]);
+  const trail = Raster.around(sc, floor.x, cardCY, 96, 80, uDepth + 0.45);
+  const cornerAt = (th: number, i: number): XY => {
+    const { ex, ey } = poseAxes(cornerQ(th, wob), TOP_W, TOP_H);
+    const sx = i === 0 || i === 3 ? -0.5 : 0.5;
+    const sy = i < 2 ? -0.5 : 0.5;
+    return { x: floor.x + ex[0] * sx + ey[0] * sy, y: cardCY + ex[1] * sx + ey[1] * sy };
+  };
   let curlAcc = 0;
   let chipAcc = 0;
   const dir = s.uid % 2 ? 1 : -1;
   await run(sc, DRILL_MS, (t, el, dt) => {
-    spinV = 6 + 30 * E.inQuad(t);
+    spinV = 6 + (SPIN_MAX - 6) * E.inQuad(t);
     wob = 0.09 * Math.sin(t * 9) * (1 - t * 0.4);
     tint = 0.34 * E.inQuad(t);
     hot = t;
@@ -830,6 +866,22 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
     // the lance shudders 1 px side to side as it bites (every 2 frames), harder at the end
     jit = Math.floor(el / (t < 0.5 ? 45 : 30)) % 2 ? 1 : 0;
     tipY = contactY + Math.round(6 * E.outCubic(t));
+    // the top precesses: its shadow circles a pixel or two under it
+    shadow.set(1, Math.round(2 * Math.cos(el * 0.018)), Math.round(Math.sin(el * 0.018)));
+    trail.draw((g) => {
+      if (t < 0.12) return;
+      const th0 = thetaDrawn();
+      // the two corners furthest out to the sides right now
+      const cs = [0, 1, 2, 3].map((i) => ({ i, p: cornerAt(th0, i) })).sort((a, b) => a.p.x - b.p.x);
+      for (const { i } of [cs[0], cs[3]]) {
+        let prev = cornerAt(th0, i);
+        for (let k = 1; k <= 4; k++) {
+          const p = cornerAt(th0 - k * 0.2, i);
+          g.line(Math.round(prev.x), Math.round(prev.y), Math.round(p.x), Math.round(p.y), k === 1 ? PAL.teal3 : k < 4 ? PAL.teal2 : PAL.teal1);
+          prev = p;
+        }
+      }
+    });
     curlAcc += dt;
     chipAcc += dt;
     // shavings flung along the spin (one side faster: the turning direction), denser and bigger as it bites
@@ -865,6 +917,7 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
     });
   });
   rings.destroy();
+  trail.destroy();
 
   // ---- T+1000: PIERCE — a freeze on the white card, a floor shock ring, the lance punched through
   drill.stop(20);
@@ -880,7 +933,8 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   tipY = contactY + 18;
   hot = 1;
   drawL();
-  top.draw({ ...cornerPose(), tint: PAL.white, tintAmt: 0.85 });
+  // the flash frame already shows the punched bore (the lance's tip in front of it): white for one beat only
+  top.draw({ ...cornerPose(), tint: PAL.white, tintAmt: 0.85, hole: 5, hot: true });
   void floorRing(sc, floor.x, floor.y, { r0: 8, r1: 64, ms: 380, ramp: [PAL.white, PAL.teal4, PAL.teal3, PAL.teal2, PAL.teal1], depth: DEPTH.SHADOW - 1, width: 2 });
   void lightFlash(sc, floor.x, floor.y - 20, PAL.teal4, 40, 360, { floorY: floor.y, ring: true, intensity: 1.1, air: 0.6 });
   void floorLight.fadeOut(260);
@@ -894,7 +948,10 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   }
   shardSp.release();
   chips.release();
-  await stopTime(sc, PIERCE_STOP);
+  await stopTime(sc, PIERCE_STOP / 2);
+  // …then it steps down to teal4: the face, the bore and its glowing lip read while time is still held
+  top.draw({ ...cornerPose(), tint: PAL.teal4, tintAmt: 0.5, hole: 5, hot: true });
+  await stopTime(sc, PIERCE_STOP / 2);
 
   // ---- T+1070: THE BORE — a 6-px hole with a glowing lip held; a helical FOUNTAIN of big curls out of it
   let hole = 4;
@@ -950,12 +1007,20 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   });
   await run(sc, CRACK_MS, (t) => top.draw({ ...cornerPose(), hole: 6, hot: t < 0.5, crack: E.outCubic(t) }));
 
-  // ---- T+1300: the broken card falls flat, its pieces drifting apart along the cracks (FACE UP)
+  // ---- T+1300: the dying top TOPPLES: it settles off its corner onto its edge, tips back and falls flat FACE UP,
+  // still turning (its last eighth of a turn lands it in the tile's rest pose), the pieces drifting apart along
+  // the cracks. Never an edge-on frame, never a re-raise: the next frame the leaving card is born from this pose.
   const endQ = restQuat(owner, 'up', true);
-  const cq = cornerPose().q;
+  const psiEnd = Math.PI / 4 + (owner === 1 ? Math.PI : 0);
   await run(sc, COLLAPSE_MS, (t) => {
-    const e = E.inQuad(t);
-    top.draw({ q: qSlerp(cq, endQ, e), w: TOP_W + (FLAT_W - TOP_W) * e, h: TOP_H + (FLAT_H - TOP_H) * e, z: TOP_ZC * (1 - e), hole: 6 - Math.round(e * 2), crack: 1, split: Math.round(1 + 2 * e) });
+    const r = (Math.PI / 4) * (1 - E.outCubic(seg(t, 0, 0.45)));
+    const phi = (Math.PI / 2) * E.inQuad(t);
+    const psi = psiEnd * E.outQuad(t);
+    const w = TOP_W + (FLAT_W - TOP_W) * E.inQuad(t);
+    const h = TOP_H + (FLAT_H - TOP_H) * E.inQuad(t);
+    const tq = toppleQ(r, phi, psi);
+    const z = (tq.uz * w + tq.vz * h) / 2 + (1 - t);
+    top.draw({ q: tq.q, w, h, z, light: -0.12 * Math.sin(Math.PI * t), hole: 6 - Math.round(t * 2), crack: 1, split: Math.round(1 + 2 * t) });
   });
   // the SLAP on the tile: the pieces bounce one pixel apart more, dust, the scorch spiral burns in under them
   playV3('e_augerSlap', { volume: 0.9, pan });
