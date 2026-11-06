@@ -1,6 +1,7 @@
 // Uçurum Büyücüsü (abyss_magus) — the v3 card picture (src/art/cardart-v3/abyss_magus.ts): the v3 sprite's own pixels 1:1
 // in a card pose, both sizes hand-made (no blind reduction), inside the style sheet's budgets (docs/v3/KART_RESIMLERI.md §10),
-// deterministic, living by the light layer only (flame, orb heart, motes), and wired: the v3 card-face registry (lane-e.ts)
+// deterministic, living by the light layer only (flame, orb heart, motes, eye glint), one picture in two crops (same
+// pose, the abyss rift in both), and wired: the v3 card-face registry (lane-e.ts)
 // and the v3 sprite's `portrait` (under V3_CARDS) paint the 44×34 picture; without the v3 faces the v1 close-up stays.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import card from '../../src/art/cardart-v3/abyss_magus';
@@ -75,7 +76,7 @@ describe('abyss_magus card picture', () => {
       // the violet cloth / horns / orb are the big mass, the slate armour a clear second
       expect(count(l.subject, VOID) / area, l.size).toBeGreaterThan(0.12);
       expect(count(l.subject, SLATE) / area, l.size).toBeGreaterThan(0.08);
-      // the DARK recipe (one step quiet): the eclipse's void1 / void2 corona rings the head in both sizes
+      // the DARK recipe: the eclipse's void1 / void2 / void3 corona rings the head in both sizes
       expect(count(l.backdrop, [PAL.void1, PAL.void2]) / area, l.size).toBeGreaterThan(l.size === 'big' ? 0.1 : 0.06);
       // the visor slit: white pixels right at the focus
       let white = 0;
@@ -86,36 +87,73 @@ describe('abyss_magus card picture', () => {
     }
   });
 
-  it('reads at 1×: the horned helm is the lightest broad shape, the corona stays under the subject\'s lit planes', () => {
+  it('reads at 1×: the dark horned helm cuts against the lit corona, the head keeps its lit planes, the robe no rim', () => {
     const r = renderArt(card, 0);
     const luma = (c: number) => ((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11;
+    const DARK_HORN: readonly number[] = [PAL.ink, PAL.night0, PAL.night1];
     for (const [l, focus] of [
       [r.big, card.focus],
       [r.small, card.focusSmall!],
     ] as const) {
-      // the eclipse is the quiet DARK recipe: nothing in the backdrop reaches void3 (the subject's rim / horn body)
-      expect(count(l.backdrop, [PAL.void3, PAL.void4, PAL.white, PAL.mist, PAL.steel]), l.size).toBe(0);
-      // white is the visor's alone: every white pixel of the picture sits on the eye row
       const pic = l.size === 'big' ? r.bigPx : r.smallPx;
+      // the full DARK eclipse: a lit void3 ring in the backdrop (KART_RESIMLERI §4: the silhouette reads against light)
+      expect(count(l.backdrop, [PAL.void3]) / (pic.w * pic.h), l.size).toBeGreaterThan(0.04);
+      // the horned helm's dark silhouette stands IN FRONT of that ring: dark subject pixels over void3 backdrop pixels
+      // above the visor (the horns crossing the ring)
+      let cut = 0;
+      for (let y = 0; y < focus[1]; y++)
+        for (let x = 0; x < pic.w; x++)
+          if (l.backdrop.get(x, y) === PAL.void3 && DARK_HORN.includes(l.subject.get(x, y) ?? -1)) cut++;
+      expect(cut, l.size).toBeGreaterThanOrEqual(l.size === 'big' ? 12 : 8);
+      // the cloak and robe never hold a void3 rim: the rim is lit only on the helm (above the shoulders)
+      for (let y = focus[1] + 9; y < pic.h; y++)
+        for (let x = 0; x < focus[0] - 8; x++) expect(l.subject.get(x, y), `${l.size} rim ${x},${y}`).not.toBe(PAL.void3);
+      // white is the visor's alone: every white pixel of the picture sits on the eye row
       for (let y = 0; y < pic.h; y++)
         for (let x = 0; x < pic.w; x++) if (pic.get(x, y) === PAL.white) expect(Math.abs(y - focus[1]), `${l.size} white ${x},${y}`).toBeLessThanOrEqual(1);
-      // value order: the head band (above the visor) is lighter on average than the body under the pauldrons
-      const k = l.size === 'big' ? 1 : 0.5;
-      const mean = (y0: number, y1: number) => {
-        let s = 0;
-        let n = 0;
-        for (let y = Math.max(0, y0); y < Math.min(l.subject.h, y1); y++)
-          for (let x = 0; x < l.subject.w; x++) {
-            const c = l.subject.get(x, y);
-            if (c === null || c === PAL.ink) continue;
-            s += luma(c);
-            n++;
-          }
-        return n ? s / n : 0;
-      };
-      const head = mean(focus[1] - Math.round(16 * k), focus[1]);
-      const body = mean(focus[1] + Math.round(14 * k), l.subject.h);
-      expect(head, l.size).toBeGreaterThan(body * 1.3);
+      // value order: the head (horns, helm, visor; above the eye row) holds lit planes of its own
+      let headLight = 0;
+      for (let y = 0; y <= focus[1]; y++)
+        for (let x = 0; x < pic.w; x++) {
+          const c = l.subject.get(x, y);
+          if (c !== null && luma(c) > luma(PAL.night4) + 1) headLight++;
+        }
+      expect(headLight, l.size).toBeGreaterThan(l.size === 'big' ? 20 : 15);
+      // the cloak sail is one step down: no steel left on it (its lit edge is night4 at most)
+      for (let y = focus[1] + 14; y < pic.h; y++)
+        for (let x = 0; x < Math.max(0, focus[0] - 20); x++) expect(l.subject.get(x, y), `${l.size} cloak ${x},${y}`).not.toBe(PAL.steel);
+    }
+  });
+
+  it('is ONE picture: the small is a 1:1 crop of the big pose (same staff), and both carry the abyss rift', () => {
+    const r = renderArt(card, 0);
+    // the small's subject sits inside the big's at a fixed offset (sprite crops (4, 10) and (35, 14)): same pose
+    let same = 0;
+    let n = 0;
+    for (let y = 0; y < r.small.subject.h - 1; y++)
+      for (let x = 0; x < r.small.subject.w; x++) {
+        const a = r.small.subject.get(x, y);
+        const b = r.big.subject.get(x + 31, y + 4);
+        if (a === null && b === null) continue;
+        n++;
+        if (a === b) same++;
+      }
+    expect(same / n).toBeGreaterThan(0.9);
+    // the rift: the floor splits under the magus — void2 lips and void0 depth below the horizon, in both sizes
+    for (const [l, hz] of [
+      [r.big, 48],
+      [r.small, 30],
+    ] as const) {
+      let lip = 0;
+      let depth = 0;
+      for (let y = hz + 1; y < l.backdrop.h; y++)
+        for (let x = 0; x < l.backdrop.w; x++) {
+          const c = l.backdrop.get(x, y);
+          if (c === PAL.void2) lip++;
+          if (c === PAL.void0) depth++;
+        }
+      expect(lip, l.size).toBeGreaterThanOrEqual(l.size === 'big' ? 30 : 6);
+      expect(depth, l.size).toBeGreaterThanOrEqual(l.size === 'big' ? 40 : 4);
     }
   });
 
