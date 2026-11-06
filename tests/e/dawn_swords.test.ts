@@ -152,3 +152,16 @@ describe('e_dawn* sounds', () => {
     });
   }
 });
+
+describe('old look card art', () => {
+  it('keeps the pre-lane-E picture (the ring of blades) pixel for pixel', async () => {
+    const { PixelCanvas } = await import('../../src/art/pixel');
+    const oldLook = (await import('../../src/art/cardart/dawn_swords')).default;
+    const p = new PixelCanvas(44, 34);
+    oldLook.draw(p);
+    let h = 0x811c9dc5;
+    for (const v of p.data) h = Math.imul(h ^ v, 0x01000193) >>> 0;
+    // FNV-1a of the RGBA bytes, taken from the original src/art/cardart-v3/dawn_swords.ts before the cage repaint
+    expect(h.toString(16)).toBe('fc7303d4');
+  });
+});

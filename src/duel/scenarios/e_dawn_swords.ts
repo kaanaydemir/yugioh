@@ -100,6 +100,18 @@ const PACK: Record<string, Scenario> = {
     stage: { zones: 5, active: 1, p0: { spellTraps: sts(N, lock(2)), monsters: mons('stone_sentinel') }, p1: { hand: ['ember_wolf'], monsters: mons(N, N, 'crystal_wyrm') } },
     steps: [(D) => ({ type: 'normalSummon', player: 1, uid: D.uid('ember_wolf', 1), zone: 1 }) as Action],
   },
+  /** Two bots (open with &mode=demo, WITHOUT --fresh: the bots run on real timers). The P2 bot is behind on board, casts
+   *  dawn_swords from its hand, the P1 bot is locked for its turns, the counter ticks, the duel goes on. */
+  eDawnCpu: {
+    desc: 'Bilgisayar (&mode=demo ile): geride kalan P2 botu Şafak Kılıçları açar, P1 botu kafeste bekler, düello sürer',
+    stage: {
+      zones: 5,
+      active: 1,
+      p0: { monsters: mons(N, 'magma_titan', N, 'ember_wolf'), deck: ['reed_heron', 'kite_fencer', 'stone_sentinel', 'reed_heron', 'kite_fencer', 'stone_sentinel'] },
+      p1: { hand: ['dawn_swords'], monsters: mons(N, N, 'stone_sentinel'), deck: ['reed_heron', 'kite_fencer', 'stone_sentinel', 'reed_heron', 'kite_fencer', 'stone_sentinel'] },
+    },
+    steps: [],
+  },
 };
 
 export default PACK;
