@@ -133,15 +133,25 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
   void FOG_BANK_KEY;
   void FOG_WISP_KEY;
 
-  // 1. back layer: around the hologram plinths (behind the stage)
-  addFog(lightFrame.fogBack(0), -60, 96, false, NT_DEPTH.holo + 0.6, 6, 2, 9200, 0);
-  addFog(lightFrame.fogBack(1), 490, 106, true, NT_DEPTH.holo + 0.6, -6, 2, 9800, 2400);
-  // 2. mid layer: low banks on the hall floor beside the stage
-  addFog(lightFrame.fogFront(0), -70, 210, false, NT_DEPTH.platform - 0.18, 7, 2, 10600, 1500);
-  addFog(lightFrame.fogFront(1), 460, 214, true, NT_DEPTH.platform - 0.18, -7, 2, 11200, 4100);
-  // 3. thin wisps gliding over the low banks
-  addFog(lightFrame.fogWisp(0), 6, 252, false, NT_DEPTH.platform - 0.12, 10, 2, 8600, 2100);
-  addFog(lightFrame.fogWisp(1), 486, 246, true, NT_DEPTH.platform - 0.12, -10, 2, 9000, 4900);
+  // arena v3 "Fog" (hedef-gorunum-3): low cumulus streaks (art/arena-nt/lights.ts FOG_BANKS) lying on the hall floor at
+  // both edges, under the stage's depth (never over the board), clear of the brazier pools; each one sways slowly on its
+  // own period (big banks slow, thin wisps a little faster) so the layers slide past each other.
+  // [bank, x, y, flipX, ampX, ampY, period ms, phase ms]
+  const BANKS: readonly [number, number, number, boolean, number, number, number, number][] = [
+    // left edge, back to front
+    [3, -30, 160, false, 5, 1, 17000, 0],
+    [1, -40, 196, false, 7, 1, 21000, 5200],
+    [2, -24, 238, false, 6, 1, 15000, 9100],
+    [5, 18, 278, false, 9, 0, 12000, 3300],
+    // right edge
+    [3, 556, 172, true, -5, 1, 18000, 7400],
+    [0, 530, 208, true, -7, 1, 22000, 1800],
+    [2, 566, 262, true, -6, 1, 16000, 11800],
+    [4, 504, 288, true, -9, 0, 12500, 6100],
+  ];
+  BANKS.forEach(([i, x, y, flip, ax, ay, period, phase], k) =>
+    addFog(lightFrame.fogBank(i), x, y, flip, NT_DEPTH.platform - 0.18 + k * 0.001, ax, ay, period, phase),
+  );
 
   // 4. mounted torches (wall sconces / post braziers) with an ordered-dither warm glow behind them
   const torches: TorchLight[] = TORCH_SPOTS.map((spot) => {
