@@ -590,18 +590,20 @@ export function drawLeash(r: Raster, a: XY, b: XY, L: LeashLook, clip?: Clip): v
  */
 export function drawBond(back: Raster, floor: Raster, hook: XY, ground: XY, card: XY, L: LeashLook, facingLeft: boolean, front?: Raster, ring?: XY, halfW = 10): void {
   const foot = { x: R(hook.x), y: R(ground.y) };
-  const f = facingLeft ? 1 : -1;
-  // the corner out at the back side, a few px in front of the feet
+  // the hanging part is on the back side; on the floor it turns toward the card's side, out IN FRONT of the
+  // feet, and arcs to the card through the open floor in front of the row (a body between them never hides it)
+  const fb = facingLeft ? 1 : -1;
+  const f = Math.abs(card.x - foot.x) > halfW ? Math.sign(card.x - foot.x) : fb;
   const corner = { x: R(foot.x + f * (halfW * 0.6 + 6)), y: foot.y + 5 };
-  const end = { x: R(card.x + f * 10), y: R(card.y) };
-  const ctrl = { x: R(corner.x + f * 22), y: R((corner.y + end.y) / 2) };
+  const end = { x: R(card.x - f * 10), y: R(card.y) };
+  const ctrl = { x: R((corner.x + end.x) / 2), y: R(Math.max(corner.y, end.y) + 10) };
   const fl1 = quadPath(end, ctrl, corner);
   const fl2 = quadPath(corner, { x: R((corner.x + foot.x) / 2), y: corner.y }, foot).slice(1);
   const fl = [...fl1, ...fl2];
   const vert: XY[] = [];
   for (let y = foot.y - 1; y >= R(hook.y); y--) vert.push({ x: foot.x, y });
   const stub: XY[] = [];
-  if (front && ring) for (let k = 3; k >= 1; k--) stub.push({ x: ring.x + f * k, y: ring.y + (k >= 2 ? 1 : 0) });
+  if (front && ring) for (let k = 3; k >= 1; k--) stub.push({ x: ring.x + fb * k, y: ring.y + (k >= 2 ? 1 : 0) });
   const n = fl.length + vert.length + stub.length;
   const pulseAt = L.pulse >= 0 ? R(L.pulse * (n - 1)) : -99;
   // the slow bead: every 1500 ms a light runs the whole bond in 700 ms
@@ -614,10 +616,10 @@ export function drawBond(back: Raster, floor: Raster, hook: XY, ground: XY, card
     const p = part === 0 ? fl[i] : part === 1 ? vert[i - fl.length] : stub[i - fl.length - vert.length];
     const r = part === 0 ? floor : part === 1 ? back : front!;
     // the underline axis: under it on the floor, beside it on the hanging part
-    const wx = part === 1 ? -f : 0;
+    const wx = part === 1 ? -fb : 0;
     const wy = part === 1 ? 0 : 1;
     let c: number = i % 3 === 0 ? PAL.gold3 : PAL.void4;
-    let under: number = PAL.void2;
+    let under: number = PAL.void3;
     const db = i - beadAt;
     if (db <= 0 && db > -3) c = db === 0 ? PAL.white : PAL.gold4;
     if (L.hot) {
@@ -637,7 +639,7 @@ export function drawBond(back: Raster, floor: Raster, hook: XY, ground: XY, card
       if (L.pulseColor === PAL.leaf3 && d > -5) r.px(p.x - wx, p.y - wy, PAL.leaf2);
     }
     r.px(p.x + wx, p.y + wy, under);
-    if (part === 0 && !L.hot) r.px(p.x, p.y + 2, PAL.ink);
+    if (part === 0 && !L.hot) r.px(p.x, p.y + 2, PAL.void1);
     r.px(p.x, p.y, c);
   }
 }
@@ -703,7 +705,7 @@ export function planRoute(from: XY, to: XY, obstacles: readonly Obstacle[], mask
       if (px + mx1 < o.x0 || px + mx0 > o.x1 || py < o.y0 || py + my0 > o.y1) continue;
       let hits = 0;
       for (const m of mask) if (o.has(px + m.x, py + m.y)) hits++;
-      s += (hits / area) * (py >= o.y ? 4 : 1);
+      s += (hits / area) * 4;
     }
     return s;
   };

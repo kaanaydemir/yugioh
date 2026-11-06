@@ -11,7 +11,7 @@
 //   e_leashThrow      the strap whips out to the victim: an air sweep, a thin high link run, the strap's crack
 //   e_leashWeave      the collar wraps round the neck: a leather groan, four stud ticks, the buckle's click
 //   e_leashTear       the shadow tears off its body: a soft crackling rip falling in pitch + a low "hoo" drawn in
-//   e_leashShadowStep a shadow step: a soft boggy pat, an audible ~800 Hz puff, a breath (6–8 dB under the body)
+//   e_leashShadowStep a shadow step: no sub, a breathy white puff banded at 900–1400 Hz (6–8 dB under the body)
 //   e_leashBodyStep   a body step, one beat behind: a dull sub thump + a 250–500 Hz scuff + a leather creak
 //   e_leashTurn       the shadow turns round on its new side: a dark swish and a low murmur
 //   e_leashMerge      the body walks into its shadow: a swelling suck that stops dead into a soft thud
@@ -60,7 +60,7 @@ function latch(v: Voice, f: number, t: number, g: number): void {
   v.tone('sine', f * 1.53, { t, g: perc(g * 0.5, 0.02, 0.0004) });
 }
 
-/** A soft boggy pat (the shadow's foot). */
+/** A soft boggy pat (the freed shadow's light foot on its way home). */
 function pat(v: Voice, t: number, g: number): void {
   puff(v, t, g, 0.07, 520, { kind: 'pink', att: 0.006 });
   v.tone('sine', [[0, 95], [0.06, 70, 'e']], { t, g: perc(g * 0.55, 0.06, 0.004) });
@@ -125,14 +125,15 @@ export const RECIPES = {
   e_leashShadowStep: {
     cap: 4,
     gap: 0.05,
-    verb: 0.35,
+    verb: 0.4,
     vary: 0.05,
     play(v) {
-      // a soft boggy pat with an audible middle (a low-passed pink puff around 800 Hz) and a tiny breath
-      pat(v, 0, 0.5);
-      puff(v, 0, 1.1, 0.035, 850, { kind: 'pink', att: 0.002 });
-      v.noise('pink', { t: 0.002, g: perc(0.35, 0.04, 0.003), to: v.filt('bandpass', 650, 1.4) });
-      v.noise('white', { t: 0.004, g: perc(0.1, 0.05, 0.004), to: v.filt('bandpass', 1800, 3) });
+      // airy and weightless: no sub at all — a breathy white puff banded at 900–1400 Hz, a soft pink "fff" over
+      // it and a tiny high brush; it sits 6–8 dB under the body's THUD and an octave and more above it
+      const band = v.filt('bandpass', [[0, 1400], [0.07, 950, 'e']], 1.6);
+      v.noise('white', { g: [[0, 0], [0.008, 1.1], [0.09, 0.0001, 'e']], to: band });
+      v.noise('pink', { t: 0.002, g: perc(0.7, 0.06, 0.006), to: v.filt('bandpass', 1150, 2.2) });
+      v.noise('white', { t: 0.004, g: perc(0.05, 0.035, 0.003), to: v.filt('highpass', 3200, 0.8) });
     },
   },
   e_leashBodyStep: {
@@ -178,13 +179,17 @@ export const RECIPES = {
     verb: 0.5,
     duck: 0.3,
     play(v) {
-      // leather first: the strap pulled tight with a thwack (the 1.4 kHz leather formant, 40 ms) …
-      leatherSlap(v, 0, 0.65);
-      leather(v, 0, 0.07, 140, 120, 0.07);
-      // … then the small brass buckle: a two-tone latch, "kla-k" (2.6 kHz tongue, 3.3 kHz frame, 14 ms apart)
-      latch(v, 2600, 0.035, 0.42);
-      latch(v, 3300, 0.049, 0.34);
-      crack(v, 0.035, 0.12, { hp: 4500, lp: 11000, dec: 0.003 });
+      // leather first: the strap pulled tight with a thwack (the 1.4 kHz leather formant, 40 ms) and a body
+      // under it (a short drop thump: the soul pulled up short) …
+      leatherSlap(v, 0, 1.5);
+      leather(v, 0, 0.07, 140, 120, 0.12);
+      thump(v, 0, 140, 62, 0.7, 0.12, { drive: 1.5 });
+      // … then the small brass buckle: a two-tone latch, "kla-k" (2.6 kHz tongue, 3.3 kHz frame, 14 ms apart),
+      // with a short low brass clank (~760 Hz, 70 ms) giving the latch a body — still small, not big metal
+      clank(v, 760, 0.035, 0.28, 0.08, { ratio: 1.5, index: 1.8, click: 1.2 });
+      latch(v, 2600, 0.035, 1.0);
+      latch(v, 3300, 0.049, 0.7);
+      crack(v, 0.035, 0.26, { hp: 4000, lp: 11000, dec: 0.004 });
       // two small links settle under it
       link(v, 3900, 0.12, 0.03, 0.04);
       link(v, 3500, 0.17, 0.022, 0.04);
@@ -213,7 +218,7 @@ export const RECIPES = {
     play(v) {
       // the heartbeat (two soft sub beats) …
       thump(v, 0, 70, 44, 0.3, 0.12);
-      thump(v, 0.17, 66, 42, 0.22, 0.12);
+      thump(v, 0.13, 66, 42, 0.22, 0.12);
       // … and the soft bell (D5, a fifth and an octave over it, slow attack: never struck metal)
       const f = midiHz(74);
       for (const [r, g, d] of [
@@ -229,7 +234,7 @@ export const RECIPES = {
     gap: 0.3,
     verb: 0.5,
     play(v) {
-      sweep(v, 0, 0.42, [600, 2400, 4200], 0.045, { kind: 'white', q: 2.2, peakAt: 0.7 });
+      sweep(v, 0, 0.36, [600, 2400, 4200], 0.045, { kind: 'white', q: 2.2, peakAt: 0.7 });
       // three leaf chimes rising (E5 G♯5 B5)
       [76, 80, 83].forEach((m, i) => v.tone('sine', midiHz(m), { t: 0.08 + i * 0.1, g: [[0, 0], [0.01, 0.045], [0.45, 0.0001, 'e']] }));
       v.tone('sine', midiHz(88), { t: 0.36, g: [[0, 0], [0.01, 0.02], [0.5, 0.0001, 'e']] });

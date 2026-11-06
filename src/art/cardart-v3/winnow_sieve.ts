@@ -104,8 +104,14 @@ function paintSieve(p: P, k: number, f: number): void {
         const dash = Math.floor((x + (row % 2)) / 2) % 2 === 0;
         const band = y < my - 2 ? 0 : y < my + gry - 3 ? 1 : 2;
         c = band === 0 ? (dash ? PAL.gold4 : PAL.gold3) : band === 1 ? (dash ? PAL.gold3 : PAL.gold2) : dash ? PAL.gold2 : PAL.gold1;
-      } else c = y < my ? PAL.gold4 : PAL.gold3;
-      if (!crest && k === 1 && y > my + gry - 1) c = PAL.gold2;
+      } else {
+        // small (round 2): a gold3 body with a few gold4 crest grains near the top, a gold2 shadow row at its foot
+        // (no flat cream lens)
+        c = y < my - 1 && (x * 2 + y) % 5 === 0 ? PAL.gold4 : PAL.gold3;
+        if (dx > 0.55) c = PAL.gold2;
+      }
+      if (!crest && k === 1 && y >= my + gry - 1) c = PAL.gold2;
+      if (crest && k === 1 && Math.abs(dx) > 0.7) c = PAL.gold3;
       p.set(x, y, c);
     }
   // the near rim and the bent-wood band (covers the heap's foot)
@@ -153,43 +159,91 @@ function paintCard(p: P, cx: number, cy: number, w: number, h: number, a: number
     }
 }
 
-/** A ribbon of straw stalks blowing off to the right, out of the frame: 2-px straws with a lit ear (BIG geometry). */
+/**
+ * Straw blowing off to the right on a gust (round 2): 3–4 SEPARATE short bent straws, each a body, a knee and a wheat
+ * ear with side grains, spaced along a rising arc (never a connected zigzag — that read as a lightning bolt). BIG
+ * geometry; the small art draws three, 1 px.
+ */
 function paintStraw(p: P, k: number, f: number): void {
+  // x, y (tail), body length, ear direction: 0 = up-right, 1 = right (big px)
   const stalks: readonly (readonly [number, number, number, number])[] = [
-    // x, y (tail), dx, dy (big px; the straw runs from the tail to its ear)
-    [66, 33, 7, -3],
-    [73, 26, 7, -2],
-    [79, 20, 6, -3],
-    [70, 40, 6, -1],
-    [84, 13, 5, -2],
+    [67, 37, 6, 1],
+    [75, 29, 5, 0],
+    [79, 19, 5, 1],
+    [70, 24, 4, 0],
   ];
   const n0 = k === 2 ? stalks.length : 3;
   for (let s = 0; s < n0; s++) {
-    const [x, y, dx, dy] = stalks[s];
+    const [x, y, len, up] = stalks[s];
     const drift = (f + s) % 4 < 2 ? 0 : 1;
     const x0 = q(x + drift * 2, k);
     const y0 = q(y - drift, k);
-    const n = Math.max(2, q(Math.max(Math.abs(dx), Math.abs(dy)), k) + (k === 1 ? 1 : 0));
-    for (let i = 0; i <= n; i++) {
-      const px = x0 + Math.round((q(dx, k) * i) / n);
-      const py = y0 + Math.round((q(dy, k) * i) / n);
-      const ear = i >= n - (k === 2 ? 2 : 0);
-      p.set(px, py, ear ? PAL.gold4 : PAL.gold3);
-      // the straw's second, shaded row (big only): 2 px thick
-      if (k === 2) p.set(px, py + 1, ear ? PAL.gold3 : PAL.gold2);
+    if (k === 1) {
+      // hand-placed at 1 px: three separate short straws (a 2-px body, a lit ear one step up), gaps between them
+      const SMALL: readonly (readonly [number, number])[] = [
+        [33, 20],
+        [37, 14],
+        [40, 8],
+      ];
+      const [sx, sy] = SMALL[s];
+      const dr = (f + s) % 4 < 2 ? 0 : 1;
+      p.set(sx + dr, sy, PAL.gold2);
+      p.set(sx + 1 + dr, sy, PAL.gold3);
+      p.set(sx + 2 + dr, sy - 1, PAL.gold4);
+      continue;
     }
-    // the ear's side grains
-    if (k === 2) {
-      const ex = x0 + q(dx, k);
-      const ey = y0 + q(dy, k);
-      p.set(ex - 1, ey - 1, PAL.gold4);
-      p.set(ex - 2, ey + 2, PAL.gold3);
+    // the body runs right, then bends up at the knee (2 px thick: a lit top over a shaded row)
+    let px = x0;
+    let py = y0;
+    for (let i = 0; i < len; i++) {
+      p.set(px, py, i === len - 1 ? PAL.gold3 : PAL.gold4);
+      p.set(px, py + 1, PAL.gold2);
+      px++;
+      if (i === len - 3) py--;
+    }
+    // the ear: 3 grains along the stalk's end direction, side grains alternating
+    // (an 'up' ear stands straight up off the knee, a 'right' ear runs on; side grains on alternate grains only, so
+    //  no 2×2 checker forms against the ink outline)
+    for (let i = 0; i < 3; i++) {
+      const gx = up ? px - 1 : px + i;
+      const gy = up ? py - 1 - i : py;
+      p.set(gx, gy, i === 2 ? PAL.gold4 : PAL.gold3);
+      if (i === 1) {
+        if (up) {
+          p.set(gx - 1, gy, PAL.gold4);
+          p.set(gx + 1, gy, PAL.gold2);
+        } else {
+          p.set(gx, gy - 1, PAL.gold4);
+          p.set(gx, gy + 1, PAL.gold2);
+        }
+      }
     }
   }
 }
 
 /** Daylight over the threshing floor: a warm sky and a big stepped sun glow rising behind the sieve. */
-const DAYLIGHT: BackdropRecipe = { kind: 'SPELL', shape: 'sun', tones: [PAL.gold1, PAL.gold2], sky: [PAL.night1, PAL.earth1], split: 26, floor: PAL.night0, horizonLine: PAL.gold1, rim: PAL.gold2 };
+const DAYLIGHT: BackdropRecipe = { kind: 'SPELL', shape: 'sun', tones: [PAL.gold1, PAL.gold2], sky: [PAL.night1, PAL.night2], split: 26, floor: PAL.night0, horizonLine: PAL.gold1, rim: PAL.gold2 };
+
+/** The sun's centre (BIG px): up left, clear of the cards, so it reads as a SUN (a disc in a ring), not a dome. */
+const SUN = [15, 13] as const;
+
+/**
+ * The one light shape, drawn here (round 2): a clear gold3 disc with a gold4 lit core, a night gap, then a 2-px
+ * gold1 halo ring (big; 1 px small) — a sun in a dusk sky instead of the kit's brown stepped dome.
+ */
+function paintSun(p: P, k: number): void {
+  const cx = q(SUN[0], k);
+  const cy = q(SUN[1], k);
+  const r = k === 2 ? 7 : 3;
+  const ring = k === 2 ? 11 : 5;
+  for (let y = cy - ring - 1; y <= cy + ring + 1; y++)
+    for (let x = cx - ring - 1; x <= cx + ring + 1; x++) {
+      if (x < 0 || y < 0 || x >= p.w || y >= p.h) continue;
+      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+      if (d <= r) p.set(x, y, d <= r * 0.5 && x <= cx && y <= cy ? PAL.gold4 : PAL.gold3);
+      else if (d > ring - (k === 2 ? 2 : 1.5) && d <= ring) p.set(x, y, PAL.gold1);
+    }
+}
 
 // ---------------------------------------------------------------- the light
 
@@ -244,7 +298,8 @@ function paintLight(l: P, k: number, f: number): void {
 // ---------------------------------------------------------------- the painters
 
 function paint(l: ArtLayers, f: number, k: 1 | 2): void {
-  paintBackdrop(l.backdrop, DAYLIGHT, { focus: [FOCUS[0], FOCUS[1] - 14], radius: 30 });
+  paintBackdrop(l.backdrop, DAYLIGHT, { focus: [FOCUS[0], FOCUS[1] - 14], radius: 30, shape: false });
+  paintSun(l.backdrop, k);
   const s = l.subject;
   paintSieve(s, k, f);
   // three cards flicked up out of the grain, fanning toward the sky

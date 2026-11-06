@@ -58,22 +58,27 @@ function paintHound(p: PixelCanvas, ox: number, oy: number, k: number, stride: n
   return { neck: [X(35), Y(7)], eye: [X(41), Y(3)] };
 }
 
-/** The body stands one beat back (smaller, farther, left); the shadow strides in front (right). */
+/**
+ * The body stands one step back — the SAME hound at the same size, up and to the left (farther), its head and
+ * hind quarters clear of the shadow; the shadow strides in front (right, lower: nearer).
+ */
 const CFG: Readonly<Record<Size, { k: number; kb: number; body: P; shadow: P; horizon: number }>> = {
-  big: { k: 1.3, kb: 0.62, body: [0, 29], shadow: [21, 26], horizon: 48 },
-  small: { k: 0.65, kb: 0.31, body: [0, 15], shadow: [10, 13], horizon: 24 },
+  big: { k: 1.12, kb: 1.12, body: [1, 11], shadow: [21, 17], horizon: 46 },
+  small: { k: 0.56, kb: 0.56, body: [0, 5], shadow: [10, 8], horizon: 23 },
 };
 
 /** The picture's focus (the collar's buckle) in BIG px — derived from the shadow's neck. */
 const FOCUS = [CFG.big.shadow[0] + Math.round(35 * CFG.big.k), CFG.big.shadow[1] + Math.round(7 * CFG.big.k) + 2] as const;
 const FOCUS_SMALL = [CFG.small.shadow[0] + Math.round(35 * CFG.small.k), CFG.small.shadow[1] + Math.round(7 * CFG.small.k) + 1] as const;
+/** A small moon: the SPELL recipe's tones as a stepped disc small in the upper right over the chain's way in (no portal well). */
+const MOON = [77, 11] as const;
 
 function paint(size: Size, l: ArtLayers, f: number): void {
   const C = CFG[size];
   const big = size === 'big';
   const k = C.k;
   // 1. backdrop: the spell's portal behind the collar, the floor
-  paintBackdrop(l.backdrop, 'SPELL', { focus: [FOCUS[0] - 4, FOCUS[1]], horizon: C.horizon * (big ? 1 : 2), radius: 26 });
+  paintBackdrop(l.backdrop, 'SPELL', { focus: MOON, horizon: C.horizon * (big ? 1 : 2), radius: 12, as: 'sun' });
   // 2. subject: the floor ribbon, the body (behind, left), then the shadow (ahead)
   const bf: P = [C.body[0] + Math.round(20 * C.kb), C.body[1] + Math.round(29 * C.kb)];
   const sf: P = [C.shadow[0] + Math.round(20 * k), C.shadow[1] + Math.round(29 * k)];
@@ -84,15 +89,30 @@ function paint(size: Size, l: ArtLayers, f: number): void {
   const bp = paintHound(body, C.body[0], C.body[1], C.kb, -1, false, { base: PAL.stone2, far: PAL.stone1 });
   litEdge(body, 1, { only: (c) => c === PAL.stone2 });
   ink(body);
-  rim(body, PAL.void3);
+  if (big) rim(body, PAL.void3);
   // empty eyes: a dark socket, no light in it
   body.set(bp.eye[0], bp.eye[1], PAL.stone0);
   if (big) body.set(bp.eye[0] - 1, bp.eye[1], PAL.stone1);
   const shadow = new PixelCanvas(l.subject.w, l.subject.h);
   const sp = paintHound(shadow, C.shadow[0], C.shadow[1], k, f % 2, true, { base: PAL.void0, far: PAL.void0 });
-  if (big) litEdge(shadow, 1, { only: (c) => c === PAL.void0 });
-  ink(shadow);
-  rim(shadow, PAL.void3);
+  if (big) {
+    litEdge(shadow, 1, { only: (c) => c === PAL.void0 });
+    ink(shadow);
+    rim(shadow, PAL.void3);
+  } else {
+    // small, by hand: the legs are 2-px void1 bars with the ink outline OUTSIDE and one void3 highlight at the
+    // top of the near legs (no purple rim round them: it read as furniture); the back keeps a void3 rim
+    for (let y = 0; y < shadow.h; y++) for (let x = 0; x < shadow.w; x++) if (shadow.get(x, y) === PAL.void0 && y >= sp.neck[1] + 4) shadow.set(x, y, PAL.void1);
+    ink(shadow);
+    for (let x = 0; x < shadow.w; x++)
+      for (let y = 0; y < sp.neck[1] + 3; y++) {
+        const c = shadow.get(x, y);
+        if (c === PAL.void0 || c === PAL.void1) {
+          shadow.set(x, y, PAL.void3);
+          break;
+        }
+      }
+  }
   l.subject.blit(floor, 0, 0);
   l.subject.blit(body, 0, 0);
   l.subject.blit(shadow, 0, 0);

@@ -74,36 +74,39 @@ const PI = Math.PI;
 // ================================================================ timings (scene ms)
 
 export const PAGE_T = Object.freeze({
-  formMs: 120,
-  open: 150,
+  /** the birth: ink outline → gold caps + spine → leather from the spine outward (10 steps) */
+  formMs: 280,
+  open: 330,
   openMs: 170,
-  gather: 330,
+  gather: 510,
   gatherGap: 62,
   /** the other side starts this much behind the caster */
   gatherLag: 35,
   flyMs: 300,
   inhaleAfter: 60,
-  inhaleMs: 110,
+  inhaleMs: 140,
   slamMs: 80,
   /** the PAT's contact hold */
-  stop: 90,
-  riffleAfter: 150,
+  stop: 70,
+  riffleAfter: 130,
   riffleOpenMs: 90,
   flipMs: 130,
   leafMs: 520,
   inkAfter: 520,
-  foldAfter: 600,
+  foldAfter: 700,
   foldGap: 72,
   foldLag: 36,
   /** the fold's 4 steps (flat, corners, sides, press); the deal flight takes over on the last */
-  foldMs: 200,
+  foldMs: 240,
   /** the folded card's flight to its hand (kept under the hand's own 360-ms draw flight) */
   dealMs: 250,
   /** short deck: a starved page lifts, crumples and flops */
   fizzleMs: 300,
   closeAfter: 160,
   closeMs: 150,
-  runesMs: 320,
+  /** the peel: 4 bands this far apart, each row of fragments → runes rising */
+  peelGap: 60,
+  runesMs: 520,
   /** both hands empty: the blank spread holds only this long, then searches its pages */
   bareHold: 0,
   /** both hands empty: the lazy search — three slow page turns this far apart, each this long */
@@ -195,7 +198,7 @@ function paintHalf(p: PixelCanvas, side: -1 | 1, spine: number, stack: number, l
       p.set(x, y, c);
     }
     // the page block under it: stacked sheet edges
-    for (let k = 0; k < stack; k++) p.set(x, bot + k, k % 2 === 0 ? PAPER_M : PAPER_D);
+    for (let k = 0; k < stack; k++) p.set(x, bot + k, k % 2 === 0 ? PAPER : PAPER_D);
   }
   if (print) {
     const cx = spine + side * (PW / 2 + 2);
@@ -207,6 +210,56 @@ function paintHalf(p: PixelCanvas, side: -1 | 1, spine: number, stack: number, l
         if (c !== null && c !== PAPER) p.set(x0 + x, y0 + y, c);
       }
   }
+}
+
+/**
+ * One turning page's tone at column i (0 = spine … n−1 = free edge), row r (0 = the crest … H): a lit 1-px crest
+ * edge, a shade band at the spine, the free edge a tone down, faint sepia print lines on the side you see (the
+ * front: the text block; the back: the next page's lines, fainter). Edge-on (n ≤ 2) it is a lit sliver.
+ */
+function leafTone(i: number, n: number, r: number, H: number, front: boolean): number {
+  if (n <= 2) return r < 2 ? PAL.white : i === 0 ? PAPER_M : PAPER;
+  if (r === 0) return i >= n * 0.35 ? (front ? PAL.white : PAPER) : PAPER_M;
+  if (i === 0) return PAPER_D;
+  if (i < 3 && n > 6) return PAPER_M;
+  if (i === n - 1) return front ? PAPER_M : PAPER_D;
+  // print: ruled lines every 4 rows in the page's middle (word gaps), a picture block at the top of the front
+  const body = i >= 4 && i <= n - 4;
+  if (body && front && n > 12 && r >= 6 && r <= 17 && i <= n - 6) return r === 6 || r === 17 || i === 4 || i === n - 6 ? PAPER_M : (r + i) % 4 === 0 ? PAPER_M : PAPER;
+  if (body && r >= 22 && r <= H - 6 && r % 4 === 2 && (i * 3 + r) % 11 !== 0 && (front || i % 2 === 0)) return front ? PAPER_D : PAPER_M;
+  return PAPER;
+}
+
+/**
+ * The tooled leather of the board's outside at column i (0 = spine side … ncol−1 = fore-edge), row r (0 … H): a raised
+ * spine band with gold bands, an embossed inset border (a dark groove with a lit lip under it), gold corner caps on
+ * the fore-edge corners. `full`: the board is wide enough to carry the tooling (else plain leather).
+ */
+function coverTone(i: number, r: number, ncol: number, H: number, full: boolean): number {
+  if (!full) return r === 0 ? PAL.earth2 : r >= H ? PAL.earth0 : PAL.earth1;
+  const fe = ncol - 1 - i; // columns from the fore-edge
+  // gold corner caps (triangles on the fore-edge corners)
+  const rr = Math.min(r, H - r);
+  if (fe + rr <= 6) return fe + rr <= 1 || fe === 0 || rr === 0 ? PAL.gold3 : fe + rr === 6 ? PAL.gold1 : PAL.gold2;
+  if (r === 0) return PAL.earth2;
+  if (r >= H) return PAL.earth0;
+  // the spine band: rounded (lit ridge, shaded sides) with three raised gold bands
+  if (i < 5) {
+    const band = [7, (H >> 1) - 1, H - 8].some((b) => r === b || r === b + 1);
+    if (band) return r % 2 === [7, (H >> 1) - 1, H - 8].find((b) => r === b || r === b + 1)! % 2 ? PAL.gold3 : PAL.gold1;
+    return i === 0 || i === 4 ? PAL.earth0 : i === 2 ? PAL.earth2 : PAL.earth1;
+  }
+  // the inset tooled border: a groove (earth0) with a lit lip (earth2) just inside it
+  const bi = i - 8;
+  const bo = fe - 4;
+  const br = r - 4;
+  const bb = H - 4 - r;
+  if (bi >= 0 && bo >= 0 && br >= 0 && bb >= 0) {
+    const m = Math.min(bi, bo, br, bb);
+    if (m === 0) return PAL.earth0;
+    if (m === 1 && (br === 1 || bo === 1)) return PAL.earth2;
+  }
+  return PAL.earth1;
 }
 
 /**
@@ -226,43 +279,50 @@ function paintLeaf(out: PixelCanvas, scratch: PixelCanvas, spine: number, th: nu
   for (let i = 0; i < ncol; i++) {
     const u = Math.min(1, i / Math.max(1, n));
     const x = spine + s * (i + 1);
-    const off = R(L * u);
+    // a single page CURLS: its free edge lifts further than the straight hinge line while it is up in the air
+    const curl = slab ? 0 : 5 * Math.sin(th) * Math.max(0, (u - 0.62) / 0.38) ** 2;
+    const off = R(L * u + curl);
     for (let y = t0 - off; y <= t1 - off; y++) {
       const r = y + off - t0;
       let c: number;
       if (slab && !front) {
-        // the board's outside: tooled leather, gold caps, the rune boss in the middle
-        const edge = i >= ncol - 3 && (r <= 2 || r >= t1 - t0 - 2);
-        const band = i < 3 && n > 12 && (r % 12 === 4 || r % 12 === 5);
-        if (edge) c = r === 0 || i === ncol - 1 ? PAL.gold3 : PAL.gold2;
-        else if (band) c = r % 12 === 4 ? PAL.gold3 : PAL.gold2;
-        else if (i < 3 && n > 12) c = i === 1 ? PAL.earth2 : PAL.earth0;
-        else if (r === 0) c = PAL.earth2;
-        else if (r >= t1 - t0) c = PAL.earth0;
-        else if ((r === 3 || r === t1 - t0 - 3) && i > 2 && i < ncol - 3 && n > 12) c = PAL.earth2;
-        else if (i === ncol - 4 && r > 3 && r < t1 - t0 - 3 && n > 12) c = PAL.earth2;
-        else c = PAL.earth1;
+        c = coverTone(i, r, ncol, t1 - t0, n > 20);
       } else if (slab) {
         // the inside of the board: leather lip round a paper page
         const lip = r < 2 || r > t1 - t0 - 2 || i >= n;
         c = lip ? (r < 2 ? PAL.earth2 : PAL.earth1) : i < 3 ? PAPER_M : PAPER;
-      } else {
-        c = front ? (i === n - 1 ? PAPER_M : PAPER) : i < 2 ? PAPER_D : PAPER_M;
-        if (n <= 2) c = PAPER_D;
-      }
+      } else c = leafTone(i, n, r, t1 - t0, front);
       scratch.set(x, y, c);
     }
   }
-  // the boss on the board's outside: a gold-framed teal stone (focus of the shut tome)
   if (slab && !front && n > 20) {
+    // the boss on the board's outside: a gold-framed teal stone inside a tooled lozenge (focus of the shut tome)
     const bx = spine - R(n / 2) - 1;
     const by = R((t0 + t1) / 2);
-    for (let dy = -4; dy <= 4; dy++)
-      for (let dx = -4; dx <= 4; dx++) {
+    for (let dy = -9; dy <= 9; dy++)
+      for (let dx = -9; dx <= 9; dx++) {
         const a = Math.abs(dx) + Math.abs(dy);
-        if (a > 4) continue;
-        scratch.set(bx + dx, by + dy, a === 4 ? PAL.gold2 : a === 3 ? PAL.gold3 : a === 0 ? PAL.teal4 : a === 1 && dx <= 0 && dy <= 0 ? PAL.teal4 : PAL.teal3);
+        if (a === 8) scratch.set(bx + dx, by + dy, PAL.earth0);
+        else if (a === 9 && dy > 0) scratch.set(bx + dx, by + dy, PAL.earth2);
+        if (a > 5) continue;
+        scratch.set(bx + dx, by + dy, a === 5 ? PAL.gold1 : a === 4 ? PAL.gold2 : a === 3 ? PAL.gold3 : a === 0 ? PAL.teal4 : a === 1 && dx <= 0 && dy <= 0 ? PAL.teal4 : a <= 1 ? PAL.teal3 : dx < 0 && dy <= 0 ? PAL.teal3 : PAL.teal2);
       }
+    // the strap and its clasp across the fore-edge (it pokes 2 px past the edge)
+    const cy = by;
+    for (let i = ncol - 9; i < ncol + 2; i++) {
+      const x = spine + s * (i + 1);
+      const u = Math.min(1, i / Math.max(1, n));
+      const off = R(L * u);
+      for (let r = -3; r <= 3; r++) {
+        const y = cy + r - off;
+        let c: number = r === -3 ? PAL.earth2 : r === 3 ? PAL.earth0 : PAL.earth1;
+        const k = i - (ncol - 6);
+        if (k >= 0 && k <= 4) c = k === 0 || k === 4 || r === -3 || r === 3 ? (r === -3 || k === 0 ? PAL.gold3 : PAL.gold1) : k === 2 && r === 0 ? PAL.earth0 : PAL.gold2;
+        scratch.set(x, y, c);
+      }
+    }
+    // a lit pin on the clasp
+    scratch.set(spine + s * (ncol - 4 + 1), cy - 2 - R(L), PAL.gold4);
   }
   scratch.outline(PAL.ink);
   out.blit(scratch, 0, 0);
@@ -279,28 +339,52 @@ function paintBook(p: PixelCanvas, scratch: PixelCanvas, s: BookState): void {
   // the spine's valley
   for (let y = TOP + 1; y <= TOP + PH + 3 + Math.max(s.stackL, s.stackR); y++) p.set(spine, y, PAL.earth0);
   p.outline(PAL.ink);
-  // ink stars on the open pages
+  // ink stars on the open pages: a night2 ink drop blooms over 3 frames into a 7-px four-point star with a white core,
+  // then twinkles
   if (!shut && s.cover < 0.5)
     for (const st of s.stars) {
       const age = s.el - st.born;
       if (age < 0) continue;
       const x = spine + st.x;
       const y = st.y;
-      if (age < 70) {
-        p.set(x, y, PAL.night1);
-        continue;
-      }
-      const tw = Math.floor((age + st.x * 37) / 140) % 3;
-      const core = tw === 0 ? PAL.white : st.violet ? PAL.void4 : PAL.teal4;
-      const arm = st.violet ? PAL.void3 : PAL.teal3;
-      p.set(x, y, core);
-      const len = tw === 1 ? 3 : 2;
-      for (let k = 1; k <= len; k++) {
-        const c = k >= 2 ? (st.violet ? PAL.void2 : PAL.teal2) : arm;
-        p.set(x - k, y, c);
-        p.set(x + k, y, c);
-        p.set(x, y - k, c);
-        p.set(x, y + k, c);
+      const v = st.violet;
+      const r4 = v ? PAL.void4 : PAL.teal4;
+      const r3 = v ? PAL.void3 : PAL.teal3;
+      const r2 = v ? PAL.void2 : PAL.teal2;
+      const arms = (len: number, tones: readonly number[]) => {
+        for (let k = 1; k <= len; k++) {
+          const c = tones[Math.min(tones.length - 1, k - 1)];
+          p.set(x - k, y, c);
+          p.set(x + k, y, c);
+          p.set(x, y - k, c);
+          p.set(x, y + k, c);
+        }
+      };
+      if (age < 35) {
+        // the drop lands: a 2×2 blot of ink
+        p.set(x, y, PAL.night2);
+        p.set(x + 1, y, PAL.night2);
+        p.set(x, y + 1, PAL.night2);
+        p.set(x + 1, y + 1, PAL.night1);
+      } else if (age < 70) {
+        // it spreads: a 3×3 blot, the first glint in the middle
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) p.set(x + dx, y + dy, Math.abs(dx) + Math.abs(dy) === 2 ? PAL.night1 : PAL.night2);
+        p.set(x, y, r2);
+      } else if (age < 105) {
+        // it opens: short arms, a bright core
+        arms(2, [r3, r2]);
+        p.set(x, y, r4);
+      } else if (age < 175) {
+        // full bloom: 9-px arms, a white core, diagonal glints
+        arms(4, [PAL.white, r4, r3, r2]);
+        p.set(x, y, PAL.white);
+        for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) p.set(x + dx, y + dy, r2);
+      } else {
+        // twinkle: a steady 7-px star whose arms flare to 9 px every third beat
+        const tw = Math.floor((age + st.x * 37) / 140) % 3;
+        arms(tw === 1 ? 4 : 3, tw === 1 ? [r4, r4, r3, r2] : [r4, r3, r2]);
+        p.set(x, y, tw === 2 ? r4 : PAL.white);
+        if (tw === 1) for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) p.set(x + dx, y + dy, r2);
       }
     }
   // ink being written on fresh pages: four lines a page, drawn left to right, a teal nib at the head
@@ -335,27 +419,50 @@ function paintBook(p: PixelCanvas, scratch: PixelCanvas, s: BookState): void {
   if (s.cover > 0.001) paintLeaf(p, scratch, spine, s.cover, true);
 }
 
-/** Post passes: materialising (teal silhouette from the middle), the white rim, dissolving (top down), squash. */
+/** Rows of the shut tome the peel removes (local): its top lip … its page block. */
+const PEEL_TOP = TOP - 4;
+const PEEL_BOT = TOP + PH + 9;
+
+/**
+ * Post passes: the BIRTH (constructed, never a filled silhouette: a teal ink line draws the cover's outline from
+ * the top centre down both sides, then the gold caps, clasp and spine bands appear, then the leather fills in from
+ * the spine outward), the white rim, the peel (rows above the cut are gone), the contact squash.
+ */
 function finishBook(p: PixelCanvas, s: BookState, out: PixelCanvas): void {
   out.clear();
   const sq = s.squash;
-  const top = TOP - 20;
-  const bottom = TOP + PH + 10;
-  const cutY = s.erase > 0 ? top + Math.floor((bottom - top) * Math.min(1, s.erase)) : -1;
-  const half = (bottom - top) / 2;
+  const cutY = s.erase > 0 ? PEEL_TOP + Math.floor((PEEL_BOT - PEEL_TOP) * Math.min(1, s.erase)) : -1;
+  // birth stages (form 0..1)
+  const f = s.form;
+  const uLine = Math.min(1, f / 0.36);
+  const gold = f >= 0.36;
+  const spineOn = f >= 0.46;
+  const uFill = Math.max(0, Math.min(1, (f - 0.52) / 0.48));
+  const sp = spineAt(s.cover);
+  const bx0 = sp - PW - 4;
+  const bcx = (bx0 + sp) / 2;
+  const bcy = (PEEL_TOP + PEEL_BOT) / 2;
   for (let y = 0; y < p.h; y++)
     for (let x = 0; x < p.w; x++) {
       let c = p.get(x, y);
       if (c === null) continue;
-      if (s.form < 1) {
-        const k = Math.abs(y + 0.5 - (CY + 2)) / half;
-        if (k > s.form) continue;
-        c = c === PAL.ink ? PAL.teal4 : k > s.form - 0.18 ? PAL.teal4 : PAL.teal2;
+      if (f < 1) {
+        if (c === PAL.ink) {
+          // the outline inks itself from the top centre down both sides: angle from the top, 0..1 at the bottom
+          const a = Math.abs(Math.atan2(x + 0.5 - bcx, -(y + 0.5 - bcy))) / PI;
+          if (a > uLine) continue;
+          c = a > uLine - 0.12 && uLine < 1 ? PAL.white : uFill > 0 && Math.abs(x - sp) / (PW + 4) < uFill ? PAL.ink : PAL.teal3;
+        } else {
+          const isGold = c === PAL.gold1 || c === PAL.gold2 || c === PAL.gold3 || c === PAL.gold4;
+          const isSpine = x > sp - 6 && (c === PAL.earth0 || c === PAL.earth2 || c === PAL.earth1);
+          if (isGold) {
+            if (!gold) continue;
+          } else if (isSpine) {
+            if (!spineOn) continue;
+          } else if (Math.abs(x - sp) / (PW + 4) >= uFill) continue;
+        }
       }
-      if (cutY >= 0) {
-        if (y < cutY) continue;
-        if (y < cutY + 2) c = PAL.teal4;
-      }
+      if (cutY >= 0 && y < cutY) continue;
       if (s.white > 0 && c === PAL.ink) c = PAL.white;
       // squash: the rows above the floor line press down sq px (drop the top rows), the tome widens 1 px a side
       const yy = sq > 0 && y < CY ? y + sq : y;
@@ -378,6 +485,8 @@ interface Book {
   /** World crest of the turning page at the vertical (where leaves leave). */
   crest(): XY;
   floor: XY;
+  /** The last painted frame of the book (local px) — the peel cuts its fragments from it. */
+  pixels(): PixelCanvas;
   alive(): boolean;
   stop(): void;
 }
@@ -401,6 +510,7 @@ function makeBook(sc: Phaser.Scene, at: XY, floorY: number): Book {
     page: (pl) => ({ x: ox() + spineAt(s.cover) + (pl === 0 ? -1 : 1) * (PW / 2 + 2), y: oy() + TOP + PH / 2 }),
     crest: () => ({ x: ox() + spineAt(s.cover), y: oy() + TOP - LIFT }),
     alive: () => ras.alive,
+    pixels: () => fin,
     stop() {
       stopFrame();
       ras.destroy();
@@ -412,7 +522,8 @@ function makeBook(sc: Phaser.Scene, at: XY, floorY: number): Book {
     s.el = el;
     paintBook(layer, scratch, s);
     finishBook(layer, s, fin);
-    if (dt > 0 && s.white > 0) s.white--;
+    // the white rim is counted in FRAMES (it also ticks through a hit-stop: 1–2 frames, never a held bracket)
+    if (s.white > 0) s.white--;
     if (dt > 0 && s.flashSide !== 0) s.flashSide = 0;
     ras.moveTo(ox(), oy());
     ras.begin();
@@ -433,14 +544,29 @@ function makeBook(sc: Phaser.Scene, at: XY, floorY: number): Book {
 
 // ================================================================ runes (birth: converging; end: rising)
 
+/** Runes, 4 × 5 (stroke X): drawn with a 1-px rim around the strokes so they read over leather, paper and floor. */
 const GLYPHS: readonly (readonly string[])[] = [
-  ['X.X', '.X.', 'X.X', '.X.'],
-  ['XXX', 'X..', 'XX.', 'X..'],
-  ['.X.', 'XXX', '.X.', 'X.X'],
-  ['X..', 'XX.', 'X.X', 'X..'],
-  ['XXX', '.X.', '.X.', 'XXX'],
-  ['X.X', 'XXX', 'X.X', '..X'],
+  ['X...', 'XX..', 'X.X.', 'XX..', 'X.X.'],
+  ['XXXX', '.X..', '..X.', '.X..', 'XXXX'],
+  ['X..X', '.XX.', '.XX.', 'X..X', 'X..X'],
+  ['.X..', 'XXX.', '.X.X', '.X..', '.X..'],
+  ['X.X.', 'XXXX', 'X.X.', 'X.X.', '..X.'],
+  ['XXX.', 'X..X', 'XXX.', 'X.X.', 'X..X'],
+  ['.XX.', 'X..X', '.XX.', 'X..X', '.XX.'],
+  ['X..X', 'X.X.', 'XX..', 'X.X.', 'X..X'],
 ];
+
+/** Draw glyph g centred on (x, y) (whole px) into a canvas-like `set`: rim first, then the strokes. */
+function drawGlyph(set: (x: number, y: number, c: number) => void, x: number, y: number, g: number, stroke: number, rimTone: number | null): void {
+  const G = GLYPHS[((g % GLYPHS.length) + GLYPHS.length) % GLYPHS.length];
+  const x0 = x - 2;
+  const y0 = y - 2;
+  const on = (gx: number, gy: number) => gy >= 0 && gy < 5 && gx >= 0 && gx < 4 && G[gy][gx] === 'X';
+  if (rimTone !== null)
+    for (let gy = -1; gy <= 5; gy++)
+      for (let gx = -1; gx <= 4; gx++) if (!on(gx, gy) && (on(gx - 1, gy) || on(gx + 1, gy) || on(gx, gy - 1) || on(gx, gy + 1))) set(x0 + gx, y0 + gy, rimTone);
+  for (let gy = 0; gy < 5; gy++) for (let gx = 0; gx < 4; gx++) if (on(gx, gy)) set(x0 + gx, y0 + gy, stroke);
+}
 
 interface Rune {
   x0: number;
@@ -452,26 +578,38 @@ interface Rune {
   g: number;
 }
 
-/** Glyphs travelling from (x0,y0) to (x1,y1) on whole pixels, dimming through the teal ramp (or brightening in). */
-function runeRun(sc: Phaser.Scene, runes: Rune[], inward: boolean): Promise<void> {
+/**
+ * The birth's glyph ring: runes fly in from a wide ring and SNAP onto the cover's outline (accelerating), brightening
+ * as they come (teal1 → teal4, a white stroke on the snap frame), then vanish into the inked line.
+ */
+function runeRun(sc: Phaser.Scene, runes: Rune[]): Promise<void> {
   const xs = runes.flatMap((r) => [r.x0, r.x1]);
   const ys = runes.flatMap((r) => [r.y0, r.y1]);
-  const bx = Math.floor(Math.min(...xs)) - 4;
+  const bx = Math.floor(Math.min(...xs)) - 6;
   const by = Math.floor(Math.min(...ys)) - 6;
-  const ras = new Raster(sc, bx, by, Math.ceil(Math.max(...xs)) - bx + 8, Math.ceil(Math.max(...ys)) - by + 10, DEPTH.FX + 3);
-  const total = Math.max(...runes.map((r) => r.delay + r.ms));
-  const ramp = [PAL.teal4, PAL.teal3, PAL.teal2, PAL.teal1];
+  const ras = new Raster(sc, bx, by, Math.ceil(Math.max(...xs)) - bx + 12, Math.ceil(Math.max(...ys)) - by + 12, DEPTH.FX + 3);
+  const total = Math.max(...runes.map((r) => r.delay + r.ms + 40));
+  const stroke = [PAL.teal2, PAL.teal3, PAL.teal4, PAL.white];
+  const set = (x: number, y: number, c: number) => ras.px(x, y, c);
   return run(sc, total, (_t, el) => {
     ras.begin();
     for (const r of runes) {
       const u = (el - r.delay) / r.ms;
-      if (u < 0 || u > 1) continue;
-      const e = inward ? u * u : 1 - (1 - u) * (1 - u);
+      if (u < 0 || u > 1.25) continue;
+      if (u > 1) {
+        // the snap: a 1-frame white tick on the outline, then it is the line
+        if (u < 1.12) {
+          ras.px(R(r.x1), R(r.y1), PAL.white);
+          ras.px(R(r.x1) - 1, R(r.y1), PAL.teal4);
+          ras.px(R(r.x1) + 1, R(r.y1), PAL.teal4);
+        }
+        continue;
+      }
+      const e = u * u * u;
       const x = R(r.x0 + (r.x1 - r.x0) * e);
       const y = R(r.y0 + (r.y1 - r.y0) * e);
-      const tone = ramp[Math.min(3, Math.floor((inward ? 1 - u : u) * 4))];
-      const g = GLYPHS[r.g % GLYPHS.length];
-      for (let gy = 0; gy < g.length; gy++) for (let gx = 0; gx < 3; gx++) if (g[gy][gx] === 'X') ras.px(x + gx - 1, y + gy - 2, tone);
+      const tone = stroke[Math.min(3, Math.floor(u * 4))];
+      drawGlyph(set, x, y, r.g, tone, u < 0.5 ? PAL.teal0 : PAL.teal1);
     }
     ras.end();
   }).then(() => ras.destroy());
@@ -644,9 +782,10 @@ function leafFlight(sc: Phaser.Scene, o: { from: XY; to: XY; face: PixelCanvas; 
 }
 
 /**
- * A fresh page lifts off its page and folds into a card in 4 steps (flat, corners in, sides in, the white press);
- * `onStep(f)` fires as each step shows (the crease / press sounds); resolves with its world centre, where the deal
- * flight takes over at once with the card back (no card ever parks on the page).
+ * A fresh page lifts off its page and folds into a card in 5 steps: flat (a centre crease), the two top corners fold
+ * down (triangular flaps across real diagonals), the long sides fold in (the silhouette narrows to an envelope), a
+ * sideways squash, the white press. `onStep(f)` fires as each step shows (the crease / press sounds); resolves with
+ * its world centre, where the deal flight takes over at once with the card back (no card ever parks on the page).
  */
 function foldPage(sc: Phaser.Scene, at: () => XY, player: PlayerId, ms: number, onStep: (f: number) => void): Promise<XY> {
   const BOX = 56;
@@ -656,8 +795,11 @@ function foldPage(sc: Phaser.Scene, at: () => XY, player: PlayerId, ms: number, 
   const rimTone = PLAYER_RAMP[player][3];
   let last = { x: p0.x, y: p0.y };
   let shown = -1;
+  const W = 26;
+  const H = 34;
+  const C = 10;
   return run(sc, ms, (t) => {
-    const f = Math.min(3, Math.floor(t * 4));
+    const f = Math.min(4, Math.floor(t * 5));
     if (f !== shown) {
       shown = f;
       onStep(f);
@@ -669,36 +811,66 @@ function foldPage(sc: Phaser.Scene, at: () => XY, player: PlayerId, ms: number, 
     pc.clear();
     const cx = BOX >> 1;
     const cy = BOX >> 1;
-    // the lifted sheet's shadow on its page (a tone down, offset by the lift, clipped under the sheet)
+    // the lifted sheet's shadow on its page (a tone down, offset by the lift, peeking out under the sheet)
     if (f <= 3) {
-      const sy = cy - 17 + Math.min(lift, 10);
-      for (let y = 0; y < 34; y++) for (let x = 0; x < 26; x++) if (sy + y > cy + 17 && y > 33 - Math.min(lift, 10) + 1) pc.set(cx - 13 + x, sy + y, PAPER_M);
+      const sh = Math.min(lift, 10);
+      for (let y = 0; y < sh; y++) for (let x = 2; x < W - 2; x++) pc.set(cx - (W >> 1) + x, cy + (H >> 1) + y, PAPER_M);
     }
-    if (f <= 2) {
-      // the sheet (26×34), corners folding in (f1), the sides folding in (f2)
-      const w = f === 2 ? 24 : 26;
-      const h = 34;
-      const x0 = cx - (w >> 1);
-      const y0 = cy - (h >> 1);
-      pc.rect(x0, y0, w, h, PAPER);
-      // f1: the two top corners fold down (the back of the paper, a crease lit along it)
-      const C = 9;
-      if (f >= 1)
-        for (let k = 0; k < C; k++) {
-          for (let j = 0; j < C - k; j++) {
-            pc.set(x0 + j, y0 + k, j === C - 1 - k ? PAL.white : PAPER_D);
-            pc.set(x0 + w - 1 - j, y0 + k, j === C - 1 - k ? PAL.white : PAPER_D);
+    const x0 = cx - (W >> 1);
+    const y0 = cy - (H >> 1);
+    if (f === 0) {
+      // flat: the sheet with a centre crease
+      pc.rect(x0, y0, W, H, PAPER);
+      for (let y = y0 + 1; y < y0 + H - 1; y++) if (y % 3 !== 0) pc.set(cx, y, PAPER_M);
+      for (let x = x0; x < x0 + W; x++) pc.set(x, y0, PAL.white);
+      pc.outline(PAL.ink);
+    } else if (f === 1) {
+      // the top corners fold DOWN across their diagonals: the silhouette loses its corners (the outline runs on
+      // the diagonal), the flaps lie on the sheet as triangles (paper back, earth4) with a shade band under them
+      pc.rect(x0, y0, W, H, PAPER);
+      for (let y = y0 + 1; y < y0 + H - 1; y++) if (y % 3 !== 0) pc.set(cx, y, PAPER_M);
+      for (let k = 0; k < C; k++)
+        for (let j = 0; j < C; j++) {
+          for (const side of [0, 1]) {
+            const x = side ? x0 + W - 1 - j : x0 + j;
+            const y = y0 + k;
+            if (j + k < C - 1) pc.erase(x, y);
+            else if (j + k === C - 1) pc.set(x, y, PAL.white);
+            else if (j + k <= C + 1 && j < C - 1 && k < C - 1) pc.set(x, y, PAPER_M);
+            else if (j + k <= C + 3 && j < C && k < C) pc.set(x, y, PAPER_D);
           }
         }
-      // f2: the long sides fold in (two shaded strips, a crease line each), a centre crease
-      if (f === 2)
-        for (let y = y0 + C; y < y0 + h; y++) {
-          for (let x = 0; x < 4; x++) {
-            pc.set(x0 + x, y, x === 3 ? PAL.white : PAPER_D);
-            pc.set(x0 + w - 1 - x, y, x === 3 ? PAL.white : PAPER_D);
-          }
-          if (y % 2 === 0) pc.set(x0 + (w >> 1), y, PAPER_M);
+      pc.outline(PAL.ink);
+    } else if (f === 2) {
+      // the long sides fold in: an envelope, narrower, a peaked top, side flaps (earth4) with a crease line each
+      const w = 18;
+      const xa = cx - (w >> 1);
+      for (let y = y0; y < y0 + H; y++)
+        for (let x = xa; x < xa + w; x++) {
+          const dx = Math.min(x - xa, xa + w - 1 - x);
+          const dy = y - y0;
+          if (dx + dy < 7) continue;
+          let col: number = PAPER;
+          if (dx + dy === 7) col = PAL.white;
+          else if (dx < 3) col = dx === 2 ? PAPER_D : PAPER_M;
+          else if (x === cx && y % 3 !== 0) col = PAPER_M;
+          pc.set(x, y, col);
         }
+      pc.outline(PAL.ink);
+    } else if (f === 3) {
+      // the squash: the folded card pressed sideways (wider, shorter) — the beat before the press
+      const w = 22;
+      const h = 28;
+      const xa = cx - (w >> 1);
+      const ya = cy - (h >> 1) + 3;
+      pc.rect(xa, ya, w, h, PAPER);
+      for (let x = xa; x < xa + w; x++) pc.set(x, ya, PAL.white);
+      for (let y = ya + 1; y < ya + h; y++) {
+        pc.set(xa, y, PAPER_M);
+        pc.set(xa + w - 1, y, PAPER_D);
+        if (y % 3 !== 0) pc.set(cx, y, PAPER_M);
+      }
+      for (let x = xa; x < xa + w; x++) pc.set(x, ya + h - 1, PAPER_D);
       pc.outline(PAL.ink);
     } else {
       // the press: a white card silhouette with the player's rim
@@ -857,77 +1029,303 @@ function sheetBurst(sc: Phaser.Scene, src: { x: number; y: number; vx: number; v
   }).then(() => ras.destroy());
 }
 
-/** Two frames of a horizontal paper-white shock arc blown out of a closing edge (dir −1 left, 1 right). */
-function shockArc(sc: Phaser.Scene, at: XY, dir: -1 | 1, size: number, stepMs: number): Promise<void> {
-  const ras = new Raster(sc, at.x - 50, at.y - 50, 101, 101, DEPTH.FX + 5);
-  return run(sc, stepMs * 2, (t) => {
-    const step = t < 0.5 ? 0 : 1;
-    const rx = R(size * (0.45 + 0.3 * step));
-    const ry = R(size * (0.95 + 0.25 * step));
-    const thick = step === 0 ? 3 : 2;
-    const tone = step === 0 ? PAL.white : PAPER;
-    ras.begin();
-    for (let a = -64; a <= 64; a += 2) {
-      const r = (a * PI) / 180;
-      for (let k = 0; k < thick; k++) {
-        const x = R(at.x + dir * ((rx - k) * Math.cos(r) - rx * 0.55));
-        const y = R(at.y + ry * Math.sin(r));
-        ras.px(x, y, Math.abs(a) > 50 ? PAPER_M : tone);
+// ================================================================ air: paper motes, the gust plume, gust arcs, floor dust
+
+interface Mote {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  age: number;
+  life: number;
+  ph: number;
+}
+
+/**
+ * Paper motes: tiny SHEETS (3×2 with a tone band: a lit top row, a shaded bottom row) that tumble as they fly —
+ * 3×2 face-on, 2×2 turning, 1×3 edge-on (a lit sliver), 2×3 the other way — on whole pixels, with air drag, a slow
+ * fall and a sideways flutter. One raster for the whole scene.
+ */
+class Motes {
+  private list: Mote[] = [];
+  private ras: Raster;
+  private stopFn: () => void;
+  private released = false;
+  constructor(sc: Phaser.Scene, depth: number) {
+    this.ras = new Raster(sc, 0, 0, 640, 360, depth);
+    this.stopFn = onFrame(sc, (dt) => {
+      if (!this.ras.alive) return false;
+      const s = dt / 1000;
+      this.ras.begin();
+      this.list = this.list.filter((m) => {
+        m.age += dt;
+        if (m.age >= m.life) return false;
+        m.vx *= Math.exp(-s * 3.2);
+        m.vy = m.vy * Math.exp(-s * 2.6) + 90 * s;
+        m.x += (m.vx + Math.sin((m.age / 90) * PI + m.ph) * 14) * s;
+        m.y += m.vy * s;
+        const k = m.age / m.life;
+        const lit = k < 0.6 ? PAPER : PAPER_M;
+        const mid = k < 0.6 ? PAPER_M : PAPER_D;
+        const x = R(m.x);
+        const y = R(m.y);
+        const shape = Math.floor(m.age / 55 + m.ph) % 4;
+        const px = (dx: number, dy: number, c: number) => this.ras.px(x + dx, y + dy, c);
+        if (shape === 0) {
+          px(0, 0, k < 0.3 ? PAL.white : lit);
+          px(1, 0, lit);
+          px(2, 0, lit);
+          px(0, 1, mid);
+          px(1, 1, mid);
+          px(2, 1, PAPER_D);
+        } else if (shape === 1) {
+          px(0, 0, lit);
+          px(1, 0, mid);
+          px(0, 1, mid);
+          px(1, 1, PAPER_D);
+        } else if (shape === 2) {
+          px(0, -1, k < 0.3 ? PAL.white : lit);
+          px(0, 0, lit);
+          px(0, 1, mid);
+        } else {
+          px(0, -1, lit);
+          px(1, -1, mid);
+          px(0, 0, lit);
+          px(1, 0, mid);
+          px(0, 1, mid);
+          px(1, 1, PAPER_D);
+        }
+        return true;
+      });
+      this.ras.end();
+      if (this.released && this.list.length === 0) {
+        this.ras.destroy();
+        return false;
       }
-    }
-    ras.end();
-  }).then(() => ras.destroy());
-}
-
-// ================================================================ air: paper motes, wind streaks, floor dust
-
-function paperBurst(sp: PxSparks, at: XY, n: number, rnd: () => number, spread = 40, up = 60): void {
-  for (let i = 0; i < n; i++)
-    sp.add({ x: at.x + R((rnd() - 0.5) * spread), y: at.y + R((rnd() - 0.5) * 8), vx: (rnd() - 0.5) * 120, vy: -(20 + rnd() * up), ay: 120, drag: 2, life: 260 + rnd() * 260, colors: [PAL.white, PAPER, PAPER_M, PAPER_D], shape: rnd() < 0.3 ? 'streak' : 'px', fadeAt: 0.7 });
-}
-
-/** Wind streaks blowing right → left across the book during the riffle. */
-function windStreaks(sc: Phaser.Scene, book: Book, ms: number, seed: number): Promise<void> {
-  const rnd = fxRng(seed);
-  const ras = new Raster(sc, book.floor.x - 90, book.world(0, TOP - 30).y, 180, 90, DEPTH.FX + 4);
-  const lines = Array.from({ length: 9 }, (_, i) => ({ y: 6 + R(rnd() * 70), d: i * (ms / 12) + rnd() * 40, len: 10 + R(rnd() * 14), v: 0.32 + rnd() * 0.12 }));
-  return run(sc, ms + 200, (_t, el) => {
-    ras.begin();
-    for (const l of lines) {
-      const a = el - l.d;
-      if (a < 0) continue;
-      const hx = R(180 - a * l.v);
-      if (hx + l.len < 0) continue;
-      const y = l.y + R(Math.sin((a / 120) * PI) * 2);
-      for (let k = 0; k < l.len; k++) {
-        const x = hx + k;
-        if (x < 0 || x >= 180) continue;
-        ras.px(ras.x + x, ras.y + y, k < 2 ? PAL.white : k < l.len * 0.5 ? PAL.mist : PAL.steel);
-      }
-      // a hooked curl at the head
-      ras.px(ras.x + hx - 1, ras.y + y - 1, PAL.white);
-      ras.px(ras.x + hx - 1, ras.y + y - 2, PAL.mist);
-    }
-    ras.end();
-  }).then(() => ras.destroy());
-}
-
-function dustRing(sc: Phaser.Scene, at: XY, ms = 300, big = 1): Promise<void> {
-  const ras = new Raster(sc, at.x - 80, at.y - 26, 161, 53, DEPTH.TILE_FX + 4);
-  const ramp: readonly [number, number][] = [
-    [PAL.white, PAPER],
-    [PAPER, PAPER_M],
-    [PAPER_M, PAPER_D],
-    [PAPER_D, PAL.earth2],
-  ];
-  return run(sc, ms, (t) => {
-    ras.draw((g) => {
-      const r = (20 + 52 * (1 - (1 - t) * (1 - t))) * big;
-      const [a, b] = ramp[Math.min(3, Math.floor(t * 4))];
-      const th = t < 0.5 ? 3 : 2;
-      // a thick ring: the outer rows lit, the inner row a tone down
-      for (let k = 0; k < th; k++) g.ring(at.x + 0.5, at.y + 0.5, r - k, (r - k) / 2.4, k === th - 1 ? b : a);
+      return true;
     });
+  }
+  burst(at: XY, n: number, rnd: () => number, o: { spread?: number; up?: number; side?: number; speed?: number } = {}): void {
+    const spread = o.spread ?? 30;
+    const up = o.up ?? 60;
+    const sp = o.speed ?? 110;
+    for (let i = 0; i < n; i++) {
+      const vx = o.side ? o.side * (sp * 0.5 + rnd() * sp) : (rnd() - 0.5) * sp * 2;
+      this.list.push({ x: at.x + (rnd() - 0.5) * spread, y: at.y + (rnd() - 0.5) * 8, vx, vy: -(20 + rnd() * up), age: 0, life: 360 + rnd() * 300, ph: Math.floor(rnd() * 4) });
+    }
+  }
+  release(): void {
+    this.released = true;
+  }
+  destroy(): void {
+    this.stopFn();
+    this.ras.destroy();
+  }
+}
+
+/**
+ * THE PAT's air: the breath squeezed out between the slamming boards leaves each page edge as a GUST PLUME of
+ * stepped paper-sheet slivers (2-px sheets: a lit top row, a shaded under row, ink outlined) — 4 steps: three short
+ * slivers at the edge, stretched and pushed out, thinned to 1-px dashes, a last few shaded dashes. `dir` −1 left.
+ */
+function gustPlume(sc: Phaser.Scene, at: XY, dir: -1 | 1, size: number, stepMs: number): Promise<void> {
+  const W = 120;
+  const ras = new Raster(sc, at.x - W / 2, at.y - 30, W, 60, DEPTH.FX + 5);
+  const pc = new PixelCanvas(W, 60);
+  const ox = W / 2;
+  const oy = 30;
+  const rows = [-14, -5, 4, 13];
+  const lens = [0.7, 1, 0.85, 0.6];
+  return run(sc, stepMs * 4, (t) => {
+    const step = Math.min(3, Math.floor(t * 4));
+    pc.clear();
+    rows.forEach((ry, i) => {
+      const L = R(size * lens[i] * [0.45, 0.9, 1.05, 0.8][step]);
+      const push = R(size * [0.05, 0.3, 0.7, 1.05][step]) + (i % 2) * 2;
+      const y = oy + ry + (step >= 2 ? (ry < 0 ? -1 : 1) * (step - 1) : 0);
+      for (let k = 0; k < L; k++) {
+        const x = ox + dir * (push + k);
+        if (step <= 1) {
+          pc.set(x, y, k < 2 && step === 0 ? PAL.white : PAPER);
+          pc.set(x, y + 1, PAPER_M);
+        } else if (step === 2) {
+          if ((k + i) % 6 < 4) pc.set(x, y, k < L * 0.4 ? PAPER : PAPER_M);
+        } else if ((k + i) % 7 < 3) pc.set(x, y, PAPER_D);
+      }
+    });
+    if (step <= 1) pc.outline(PAL.ink);
+    ras.begin();
+    ras.pc.blit(pc, 0, 0);
+    ras.end();
+  }).then(() => ras.destroy());
+}
+
+/**
+ * The PAT's floor answer: a LOW FLAT PUFF of dust rolling out along the book's floor shadow (earth tones, both ways),
+ * rounded lumps that swell, slide out and thin — never a ring.
+ */
+function floorPuff(sc: Phaser.Scene, at: XY, ms: number, big: number, rnd: () => number): Promise<void> {
+  const ras = new Raster(sc, at.x - 90, at.y - 20, 181, 32, DEPTH.TILE_FX + 4);
+  const lumps = Array.from({ length: 14 }, (_, i) => ({ dir: i % 2 ? 1 : -1, d0: 8 + rnd() * 18, d1: 34 + rnd() * 34, dy: R((rnd() - 0.5) * 8), w: 4 + R(rnd() * 4), delay: rnd() * 0.15 }));
+  return run(sc, ms, (t) => {
+    ras.begin();
+    for (const l of lumps) {
+      const u = Math.max(0, Math.min(1, (t - l.delay) / (1 - l.delay)));
+      if (u <= 0) continue;
+      const e = 1 - (1 - u) * (1 - u);
+      const cx = R(at.x + l.dir * (l.d0 + (l.d1 - l.d0) * e) * big);
+      const cy = at.y + l.dy - R(u * 3);
+      const w = R(l.w * (0.8 + u * 0.7));
+      const h = u < 0.6 ? 3 : u < 0.85 ? 2 : 1;
+      const top = u < 0.35 ? PAL.earth3 : u < 0.7 ? PAL.earth2 : PAL.earth1;
+      const body = u < 0.35 ? PAL.earth2 : PAL.earth1;
+      for (let y = 0; y < h; y++)
+        for (let x = -w; x <= w; x++) {
+          const edge = Math.abs(x) >= w - (y === 0 ? 1 : 0);
+          if (edge && h > 1 && y === 0) continue;
+          if (u > 0.85 && (x + R(u * 10)) % 3 === 0) continue;
+          ras.px(cx + x, cy + y - h + 1, y === 0 ? top : body);
+        }
+    }
+    ras.end();
+  }).then(() => ras.destroy());
+}
+
+/**
+ * The riffle's GUST: long curved streak arcs that sweep over the spine WITH the turning pages (one for every third
+ * page, on its own turn's rhythm): each follows an ellipse round the spine from the right page over the top to the
+ * left, its head white, the body mist, the tail steel, broken into dashes.
+ */
+function gustArcs(sc: Phaser.Scene, book: Book, times: readonly number[], flipMs: number): Promise<void> {
+  const ras = new Raster(sc, book.floor.x - 110, book.world(0, TOP - 60).y, 220, 120, DEPTH.FX + 4);
+  const arcs = times.filter((_, k) => k % 3 === 1).map((t0, i) => ({ t0, rx: PW + 4 + (i % 2) * 8, ry: LIFT + 6 + (i % 3) * 5, cy: TOP + 18 + (i % 2) * 12 }));
+  const len = times[times.length - 1] + flipMs * 1.6;
+  return run(sc, len, (_t, el) => {
+    ras.begin();
+    for (const a of arcs) {
+      const u = (el - a.t0) / (flipMs * 1.5);
+      if (u <= 0 || u >= 1.25) continue;
+      const head = PI * Math.min(1.15, u < 0.5 ? 2 * u * u * 1.15 : 1.15 - 2 * (1 - u) * (1 - u) * 1.15);
+      const tail = Math.max(0, head - 1.1);
+      const c = book.world(spineAt(book.s.cover), a.cy);
+      const n = 40;
+      for (let i = 0; i <= n; i++) {
+        const ph = tail + ((head - tail) * i) / n;
+        if (u > 1 && i < n * (u - 1) * 4) continue;
+        const k = i / n;
+        if (k < 0.85 && i % 5 === 4) continue;
+        const x = R(c.x + a.rx * Math.cos(ph));
+        const y = R(c.y - a.ry * Math.sin(ph));
+        // 2 px thick: a lit top row and a cool under row, so it reads over the cream paper AND the dark wall
+        ras.px(x, y, k > 0.9 ? PAL.white : k > 0.45 ? PAL.mist : PAL.steel);
+        ras.px(x, y + 1, k > 0.45 ? PAL.steel : PAL.night4);
+        if (k > 0.94) ras.px(x, y - 1, PAL.white);
+      }
+    }
+    ras.end();
+  }).then(() => ras.destroy());
+}
+
+// ================================================================ the end: the tome peels into runes
+
+/**
+ * The tome comes apart band by band (4 bands, top first, `gap` apart): each band is cut from the book's last frame
+ * into a row of glyph-sized LEATHER FRAGMENTS (6 px wide) that lift and part for a beat, then each turns into a rune
+ * (4×5, a 1-px teal rim) rising on a stepped arc and dimming over its last 4 steps. Where the clasp was, a short gold
+ * glint flares when its band goes. `onBand(b)` fires as band b peels.
+ */
+function peelRun(sc: Phaser.Scene, book: Book, gap: number, ms: number, rnd: () => number, onBand: (b: number) => void): Promise<void> {
+  const S = book.s;
+  const o0 = book.world(0, 0);
+  const ras = new Raster(sc, o0.x - 10, o0.y - 70, BW + 20, BH + 70, DEPTH.FX + 3);
+  interface Frag {
+    px: [number, number, number][];
+    x: number;
+    y: number;
+    cx: number;
+    cy: number;
+    born: number;
+    g: number;
+    drift: number;
+    side: number;
+  }
+  const frags: Frag[] = [];
+  const bandH = Math.ceil((PEEL_BOT - PEEL_TOP) / 4);
+  let peeled = 0;
+  let claspAt = -1;
+  const claspLocal = { x: spineAt(PI) - PW - 3, y: CY };
+  let clasp: XY = book.world(claspLocal.x, claspLocal.y);
+  const bookCx = spineAt(PI) - PW / 2 - 2;
+  const stroke = [PAL.white, PAL.teal4, PAL.teal4, PAL.teal3, PAL.teal2, PAL.teal1];
+  const rimT = [PAL.teal2, PAL.teal1, PAL.teal1, PAL.teal1, PAL.teal0, null];
+  return run(sc, ms, (_t, el) => {
+    // peel the next band(s) when due: cut its rows out of the book's frame into fragments
+    while (peeled < 4 && el >= peeled * gap) {
+      const b = peeled++;
+      const pix = book.pixels();
+      const y0 = PEEL_TOP + b * bandH;
+      const y1 = Math.min(PEEL_BOT, y0 + bandH);
+      const org = book.world(0, 0);
+      // fragments a rune wide and a band tall, staggered (odd bands shifted half a fragment: no grid)
+      const FW = 11;
+      for (let x0 = (b % 2) * 5 - 5; x0 < BW; x0 += FW) {
+        const px: [number, number, number][] = [];
+        for (let y = y0; y < y1; y++)
+          for (let x = Math.max(0, x0); x < x0 + FW; x++) {
+            const c = pix.get(x, y);
+            if (c !== null) px.push([x - x0, y - y0, c]);
+          }
+        if (px.length < 24) continue;
+        const side = x0 + FW / 2 < bookCx ? -1 : 1;
+        frags.push({ px, x: org.x + x0, y: org.y + y0, cx: org.x + x0 + 5, cy: org.y + y0 + 6, born: el + R(rnd() * 50), g: Math.floor(rnd() * 8), drift: side * (1 + R(rnd() * 2)), side });
+      }
+      if (claspLocal.y >= y0 && claspLocal.y < y1) {
+        claspAt = el;
+        clasp = book.world(claspLocal.x, claspLocal.y);
+      }
+      S.erase = (b + 1) / 4;
+      onBand(b);
+    }
+    ras.begin();
+    const set = (x: number, y: number, c: number) => ras.px(x, y, c);
+    for (const f of frags) {
+      const a = el - f.born;
+      if (a < 90) {
+        // the leather fragment lifts and parts from its neighbours (whole px), crumbling at its edges
+        const st = Math.max(0, Math.floor(a / 30)) + 1;
+        for (const [dx, dy, c] of f.px) {
+          if (st >= 3 && (dx + dy * 3) % 5 === 0) continue;
+          ras.px(f.x + dx + f.side * st, f.y + dy - st * 2, c);
+        }
+        continue;
+      }
+      const step = Math.floor((a - 90) / 40);
+      if (step >= 6) continue;
+      // the rune rises on a stepped arc away from the book's middle
+      const x = R(f.cx + f.side * 3 + f.drift * step * 2);
+      const y = R(f.cy - 6 - step * 4 - (step * step) / 2);
+      drawGlyph(set, x, y, f.g, stroke[step], rimT[step]);
+    }
+    // the clasp's gold glint
+    if (claspAt >= 0) {
+      const a = el - claspAt;
+      const st = Math.floor(a / 40);
+      const len = [1, 3, 4, 3, 2, 1][st];
+      if (len) {
+        const x = R(clasp.x);
+        const y = R(clasp.y);
+        for (let k = 1; k <= len; k++) {
+          const c = k === 1 ? PAL.gold4 : k === len ? PAL.gold2 : PAL.gold3;
+          ras.px(x - k, y, c);
+          ras.px(x + k, y, c);
+          ras.px(x, y - k, c);
+          ras.px(x, y + k, c);
+        }
+        if (st >= 1 && st <= 2) for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) ras.px(x + dx, y + dy, PAL.gold3);
+        ras.px(x, y, st <= 2 ? PAL.white : PAL.gold4);
+      }
+    }
+    ras.end();
   }).then(() => ras.destroy());
 }
 
@@ -978,11 +1376,23 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   relax(ctx, 300);
   // runes start converging while the orb is still on its way
   const rnd = fxRng(spot.x * 7 + player * 31 + nPages * 3);
+  // the glyph ring: runes fly in from a wide ring and SNAP onto the shut cover's outline as the ink line draws it
+  const shutL = { x0: spineAt(PI) - PW - 4, x1: spineAt(PI) + 1, y0: TOP - 3, y1: TOP + PH + 7 };
   const birthRunes: Rune[] = Array.from({ length: 12 }, (_, i) => {
     const a = (i / 12) * PI * 2 + rnd() * 0.3;
-    return { x0: spot.x + R(Math.cos(a) * 58), y0: spot.y + R(Math.sin(a) * 30), x1: spot.x + R(Math.cos(a) * 10), y1: spot.y + R(Math.sin(a) * 8), delay: R(rnd() * 60), ms: 200, g: i };
+    // the point of the outline in that direction (the rectangle's edge, from its centre)
+    const cxl = (shutL.x0 + shutL.x1) / 2;
+    const cyl = (shutL.y0 + shutL.y1) / 2;
+    const hw = (shutL.x1 - shutL.x0) / 2;
+    const hh = (shutL.y1 - shutL.y0) / 2;
+    const k = Math.min(hw / Math.max(0.001, Math.abs(Math.cos(a))), hh / Math.max(0.001, Math.abs(Math.sin(a))));
+    const ex = spot.x - SX + cxl + Math.cos(a) * k;
+    const ey = spot.y - CY + cyl + Math.sin(a) * k;
+    // a rune lands where the ink line passes (top first, the bottom last)
+    const fromTop = Math.abs(Math.atan2(Math.cos(a), -Math.sin(a))) / PI;
+    return { x0: spot.x + R(Math.cos(a) * 70), y0: spot.y + R(Math.sin(a) * 40), x1: R(ex), y1: R(ey), delay: R(fromTop * 90), ms: 230, g: i };
   });
-  bg(runeRun(sc, birthRunes, true));
+  bg(runeRun(sc, birthRunes));
   await op.release({ x: spot.x, y: spot.y }, { path: 'arc', lift: 18, ms: 170, size: 2 });
 
   // ---- BIRTH
@@ -991,7 +1401,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   const pool = lightPool(sc, spot.x, floorY - 6, { color: PAL.gold3, radius: 46, floorY, intensity: 0, anim: 'breathe', fadeIn: 0 });
   pool.setIntensity(0.6, 240);
   void lightFlash(sc, spot.x, spot.y, PAL.teal4, 40, 260, { floorY, intensity: 0.8 });
-  sfx('e_pageBirth');
+  sfx('e_pageInkline');
   let el = 0;
   const at = async (ms: number) => {
     if (ms > el) await wait(sc, ms - el);
@@ -999,8 +1409,11 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   };
   bg(
     run(sc, T.formMs, (t) => {
-      S.form = Math.min(1, Math.ceil(t * 6) / 6);
-      S.dy = t < 1 ? 3 - R(t * 3) : 0;
+      const f = Math.min(1, Math.ceil(t * 10) / 10);
+      // the leather starts filling: the tome takes its weight (the board drop lands as the fill completes)
+      if (f >= 0.52 && S.form < 0.52) sfx('e_pageBirth');
+      S.form = f;
+      S.dy = t < 0.5 ? 0 : t < 1 ? 3 - R((t - 0.5) * 6) : 0;
     }).then(() => {
       S.form = 1;
       S.white = 2;
@@ -1008,6 +1421,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     }),
   );
   const air = new PxSparks(sc, DEPTH.FX + 3.5);
+  const motes = new Motes(sc, DEPTH.FX + 3.6);
   // a slow hover bob through the whole scene (whole pixels)
   let bobOn = true;
   let bobOff = 0;
@@ -1035,7 +1449,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   sfx('e_pageBoard');
   el += T.openMs;
   pool.setIntensity(0.8, 200);
-  paperBurst(air, book.world(SX + 30, TOP + 4), 4, rnd, 20, 30);
+  motes.burst(book.world(SX + 30, TOP + 4), 4, rnd, { spread: 20, up: 30 });
 
   // ---- GATHER: both hands fly in as pages (caster first)
   const hand = ctx.views.hand;
@@ -1089,7 +1503,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
         S.flashSide = q === 0 ? -1 : 1;
         const pg = book.page(q);
         sfx('e_pageBind', { pitch: 1 + (q === player ? 0 : 0.08) + (idx[q] % 3) * 0.04, pan: panAt(pg.x) });
-        paperBurst(air, { x: pg.x, y: pg.y + 10 }, 5, rnd, 26, 40);
+        motes.burst({ x: pg.x, y: pg.y + 10 }, 5, rnd, { spread: 26, up: 40 });
         // a soft glow spills on the floor under the page (not on its face: the paper stays in palette)
         void lightFlash(sc, pg.x, floorY - 4, PAL.gold4, 22, 200, { floorY, intensity: 0.3 });
       }),
@@ -1142,8 +1556,9 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   await at(el + (nPages === 0 ? 0 : T.inhaleAfter));
   sfx('e_pageInhale');
   await run(sc, T.inhaleMs, (t) => {
-    S.lid = Math.min(3, Math.floor(t * 4));
-    bobOff = t > 0.5 ? 1 : 0;
+    // both outer edges lift (1, 2, 4 px) and HOLD at the top for the last two steps — the anticipation
+    S.lid = [1, 2, 4, 4, 4][Math.min(4, Math.floor(t * 5))];
+    bobOff = t > 0.4 ? 1 : 0;
   });
   el += T.inhaleMs;
   S.lid = 0;
@@ -1156,12 +1571,12 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   S.cover = PI;
   const bare = nPages === 0 && nDraws === 0;
   S.squash = bare ? 1 : 2;
-  S.white = bare ? 1 : 3;
+  S.white = bare ? 1 : 2;
   S.dy = 0;
   sfx('e_pagePat', { volume: bare ? 0.6 : 1 });
   void shake(sc, 110, bare ? 1 : 2);
   void lightFlash(sc, spot.x, floorY - 4, PAL.gold4, 64, 300, { floorY, intensity: bare ? 0.5 : 0.9 });
-  bg(dustRing(sc, { x: spot.x, y: floorY }, 320, bare ? 0.7 : 1));
+  bg(floorPuff(sc, { x: spot.x, y: floorY }, 420, bare ? 0.7 : 1, rnd));
   // the contact frame's big shape: loose sheets blast out of the closing edges, a paper-white shock arc leaves the
   // fore-edge (and a smaller one the spine), motes burst
   {
@@ -1169,7 +1584,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     const spineW = book.world(SX + PW / 2 + 2, CY);
     const topW = book.world(SX, TOP - 2);
     const sheets: { x: number; y: number; vx: number; vy: number }[] = [];
-    const nS = bare ? 4 : 10;
+    const nS = bare ? 4 : 8;
     for (let i = 0; i < nS; i++) {
       const side = i % 5 === 4 ? 0 : i % 2 === 0 ? -1 : 1;
       const o = side === 0 ? topW : side < 0 ? fore : spineW;
@@ -1178,13 +1593,12 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
       sheets.push({ x: o.x, y: o.y + R((rnd() - 0.5) * PH * 0.6), vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 30 });
     }
     bg(sheetBurst(sc, sheets, bare ? 380 : 520));
-    if (!bare) {
-      bg(shockArc(sc, fore, -1, 34, 45));
-      bg(shockArc(sc, spineW, 1, 22, 45));
-    }
-    paperBurst(air, fore, 8, rnd, 6, 70);
-    paperBurst(air, spineW, 6, rnd, 6, 70);
-    paperBurst(air, topW, 6, rnd, 40, 50);
+    // the breath squeezed out of both page edges: stepped paper-sheet slivers (a gust plume each side)
+    bg(gustPlume(sc, fore, -1, bare ? 22 : 34, 30));
+    bg(gustPlume(sc, spineW, 1, bare ? 16 : 24, 30));
+    motes.burst(fore, bare ? 4 : 9, rnd, { spread: 4, up: 50, side: -1, speed: 120 });
+    motes.burst(spineW, bare ? 3 : 7, rnd, { spread: 4, up: 50, side: 1, speed: 100 });
+    motes.burst(topW, bare ? 3 : 6, rnd, { spread: 40, up: 60 });
   }
   await freeze(sc, T.stop);
   bg(wait(sc, 50).then(() => (S.squash = 1)));
@@ -1224,7 +1638,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     // the gust bed runs under the riffle and stops on its last page; every page's flap is fired by the page itself
     const gust = startV3('e_pageGust', { volume: 0.9, pan });
     const riffleLen = RIFFLE_TIMES[RIFFLE_TIMES.length - 1] + T.flipMs;
-    bg(windStreaks(sc, book, riffleLen, spot.y));
+    bg(gustArcs(sc, book, RIFFLE_TIMES, T.flipMs));
     pool.setIntensity(1, 160);
     // which turning page carries which leaf: spread over the riffle, caster's and the other's alternating
     const leaves: { q: PlayerId; d: DiscardEv }[] = [];
@@ -1300,9 +1714,9 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     await at(r0 + T.inkAfter - 0);
     sfx('e_pageInk', { volume: 0.8 });
     const stars: Star[] = [];
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < 12; i++) {
       const side = i % 2 === 0 ? -1 : 1;
-      stars.push({ x: side * (8 + R(rnd() * (PW - 14))), y: TOP + 6 + R(rnd() * 28), born: S.el + i * 20, violet: i % 3 === 0 });
+      stars.push({ x: side * (8 + R(rnd() * (PW - 14))), y: TOP + 6 + R(rnd() * 28), born: S.el + i * 14, violet: i % 3 === 0 });
     }
     S.stars = stars;
     bg(run(sc, 360, (t) => (S.write = Math.ceil(t * 16) / 16)));
@@ -1356,7 +1770,8 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
           S.stars = S.stars.filter((st) => Math.sign(st.x) !== side || rnd() < 0.7);
           const end = await foldPage(sc, origin, q, T.foldMs, (f) => {
             if (f === 1 || f === 2) sfx('e_pageCrease', { ...fp, pitch: fp.pitch * (f === 1 ? 1 : 1.12) });
-            else if (f === 3) sfx('e_pagePress', fp);
+            else if (f === 3) sfx('e_pageCrease', { ...fp, pitch: fp.pitch * 0.8, volume: 0.6 });
+            else if (f === 4) sfx('e_pagePress', fp);
           });
           void lightFlash(sc, end.x, floorY - 4, PLAYER_RAMP[q][3], 18, 180, { floorY, intensity: 0.3 });
           // ---- DEAL: the card back leaves the page at once for its hand (our own whole-pixel flight)
@@ -1425,25 +1840,30 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     bg(Promise.all(deals));
   }
 
-  // ---- RUNES: the tome comes apart from the top down, glyphs rise; the spent card leaves for the graveyard
-  await wait(sc, 30);
+  // ---- RUNES: the tome peels apart band by band (top first): each band a row of leather fragments that turn into
+  // rising runes; the clasp leaves a gold glint; the spent card leaves for the graveyard
   sfx('e_pageRunes', { volume: 0.85 });
   void pool.fadeOut(T.runesMs + 120);
-  const top = book.world(SX + PW / 2 + 1, TOP - 4);
-  const endRunes: Rune[] = Array.from({ length: 14 }, (_, i) => {
-    const x = top.x - PW / 2 + R(((i + 0.5) / 14) * PW);
-    const y = top.y + R(((i * 7) % 11) * 4);
-    return { x0: x, y0: y, x1: x + R((rnd() - 0.5) * 16), y1: y - 22 - R(rnd() * 12), delay: R((i / 14) * T.runesMs * 0.6), ms: 260, g: i + 2 };
+  let claspFlash = false;
+  const peel = peelRun(sc, book, T.peelGap, T.runesMs, rnd, (b) => {
+    sfx('e_pageTear', { pitch: 1 + b * 0.07, volume: 0.8 - b * 0.08 });
+    if (!claspFlash && PEEL_TOP + (b + 1) * Math.ceil((PEEL_BOT - PEEL_TOP) / 4) > CY) {
+      claspFlash = true;
+      const c = book.world(spineAt(PI) - PW - 3, CY);
+      sfx('e_pageGlint', { pan: panAt(c.x) });
+      void lightFlash(sc, c.x, c.y, PAL.gold3, 20, 260, { floorY, intensity: 0.6 });
+    }
   });
-  bg(runeRun(sc, endRunes, false));
   const g = evAt(ctx, gi, 'toGraveyard');
   let send: Promise<void> = Promise.resolve();
   if (g && !ctx.isConsumed(gi)) {
     ctx.consumeAt(gi);
     send = cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from: { x: spot.x, y: spot.y + 8 }, delay: R(T.runesMs * 0.5) });
   }
-  await run(sc, T.runesMs, (t) => (S.erase = Math.ceil(t * 4) / 4));
+  await wait(sc, T.peelGap * 4 + 20);
   book.stop();
+  await peel;
   air.release();
+  motes.release();
   await send;
 });

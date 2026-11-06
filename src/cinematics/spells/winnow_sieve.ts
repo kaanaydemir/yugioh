@@ -7,32 +7,34 @@
 //  taneler hafifçe kayar → seçilen 2 kart elekte samana dönüşür ve bir rüzgar onları sap saman hâlinde mezarlığa
 //  savurur."
 //
-// BEAT LIST (scene ms at 1×; × 1.35 in game time with the v3 tempo). Activation signature ≈ 2.0 s after the opening,
+// BEAT LIST (scene ms at 1×; × 1.35 in game time with the v3 tempo). Activation signature ≈ 1.8 s after the opening,
 // the discard ≈ 1.3 s after the choice (§7: 3.0 s + the choice; the owner allows the card its own lengths).
 //   0      common v3 spell opening (spells/_kit): the hand card flies beside its owner (a set card stands up on its
 //          own tile), "HARMAN ELEĞİ" plate, short hover (hold 220)
-//   ~380   RELEASE: the card pours into a golden orb that drops to the sieve's floor point — near the middle of the
-//          caster's side (P1: its middle spell/trap tile; P2: between its middle spell/trap and monster tiles), a set
-//          card's orb flows there from its own tile; the hand is never covered
-//   S+0    LAND: a wide gold ring runs out on the floor, the warm light pool comes on — e_sieveWeave
-//   S+0    THE HOOP (a GIANT sieve, ~100 px across) bends itself round from the front in 8 stepped arcs, lashings pop on
+//   ~380   RELEASE: the card pours into a golden orb that drops to the sieve's floor point — the middle spell/trap
+//          tile of the caster's BACK row (both players), a set card's orb flows there from its own tile
+//   S+0    LAND: a wide gold ring runs out on the floor, the warm pool comes on (one whole stepped-light step: flat,
+//          no dither) — e_sieveWeave
+//   S+0    THE HOOP (a GIANT sieve, ~100 px across) bends itself round from the front in 8 stepped arcs
 //   S+90   THE MESH weaves itself in from the back rim to the front, row by row (a basket weave of straw strands)
 //   S+150  THE POUR: a golden column of wheat falls into the bowl, the heap swells in 4 steps — e_sievePour; the sieve
 //          rises to its working height (24 px over its opaque shadow) with a 1-px overshoot
 //   S+320  THE SHAKE: 4 cycles at 6 Hz (12 stepped offsets each, ±6 px) with a 1-frame squash at each stroke's end;
-//          the heap lags and piles up against the rim it is thrown to, grains fly over that side, chaff sifts through
-//          the mesh as a golden curtain lit by the pool, three card backs WORK THEIR WAY UP out of the grain —
-//          e_sieveShake on EVERY cycle (hard-panned left / right strokes)
-//   S+1040 TOSS 1 / S+1220 TOSS 2: the sieve dips 3 px and flicks up 4 px, the rim flashes gold, a golden burst
-//          (40–48 grains, 2-px crest grains among 1-px ones) leaves the grain; the card tumbles end over end, hops
-//          ~20 px and falls along ONE parabola toward the hand, growing through native sizes 8×11 → 24×34 with grains
-//          riding behind it; it is handed to the hand's own sprite only ~40 px over its slot (the hand sprite starts
-//          at that very size) — e_sieveToss; the deck pile gives a card up each time
-//   S+1440 TOSS 3, the climax: a deeper 5-px dip with a squash, a 6-px flick, a hit-stop, the rim flashes WHITE, a
-//          70-grain burst, grains over both sides — e_sieveTossBig
-//   ~S+1600 the grains rain back — e_sieveFall; the spent spell card is born on the floor beside the sieve and
+//          the heap (gold4 crest band with a highlight that trails the slosh, gold3 body, earth3 at the rim shadow)
+//          lags and piles up against the rim it is thrown to, grains fly over that side, chaff sifts through the mesh,
+//          three card backs (lit rim + player emblem) WORK THEIR WAY UP out of the grain — e_sieveShake every cycle
+//   S+821  TOSS 1 (under the 4th shake cycle) / S+1000 TOSS 2: the sieve dips 3 px and flicks up 4 px, the rim flashes
+//          gold, a golden burst leaves the grain; the card hops ~30 px straight UP out of the bowl, then falls along
+//          one curve toward the hand, tumbling (face-flat from 62 %), growing one native size per fifth of the
+//          flight (8×11 → 24×34); handed to the hand's own sprite ~40 px over its slot — e_sieveToss; as it lands in
+//          the fan, e_sieveCatch; the deck pile gives a card up each time
+//   S+1190 TOSS 3, the climax: a deeper 5-px dip with a 2-px squash, a 6-px flick, the whole rim WHITE, a white→gold
+//          ring breaking outward from the rim + a gold floor ring, a 96-grain fountain twice as tall, a 90 ms hit-stop,
+//          a 3-px recoil, the card hopping 40 px with a gold trail — e_sieveTossBig (pitched 0.92, a 70 Hz sub, a long
+//          grain-shower tail; ~4.5 LU over a toss)
+//   ~S+1250 the grains rain back — e_sieveFall; the spent spell card is born on the floor just outside the sieve and
 //          leaves for the graveyard (cardLeaves)
-//   S+1700 SETTLE: the sieve sinks to its waiting height (7 px), the heap flattens — e_sieveSettle
+//   S+1420 SETTLE (while the last card is still flying): the sieve sinks to its waiting height (7 px) — e_sieveSettle
 //   WAIT   (the choice, unbounded): the sieve hangs low; its grains slide slowly side to side, a glint wanders over
 //          them, motes float up in the pool; e_sieveIdle at each turn of the slide (very quiet)
 // THE DISCARD (registerEvent 'discard', only while this sieve waits for that player):
@@ -46,14 +48,16 @@
 //          graveyard; the cards break into hand-drawn 2-px bent straws with wheat ears that tumble in 45° steps and
 //          ride it into the pile, shedding a chaff cloud that thins along the way; the pile takes each card when its
 //          last stalk lands — e_sieveGustR / L (panned from the sieve to the graveyard), e_sieveGrave
-//   D+1060 UNRAVEL: the mesh rows pull out from the front back, the hoop opens into loose strands blown after the
-//          gust; the light fades — e_sieveEnd
+//   D+900  UNRAVEL (mid-gust): the last grain drains through the mesh, the hoop opens from the back in 6 arcs, each
+//          arc PEELING OFF as a bent 1-px strand that tumbles downwind after the straw (an e_sieveEnd pluck each),
+//          the mesh rows fall from the front as short loose fibres that settle on the floor; the light fades
 // EDGES — the first draw completes the five seals (or a draw is missing): no choice follows, the remaining tosses
 // are skipped and the sieve unravels at once. A choice that never comes (surrender, a new duel): any other event
 // dismisses the waiting sieve.
-// P2: the sieve stands on P2's side (upper right); cards fly to whichever hand shows the draws.
+// P2: the sieve stands on P2's back row (upper right); cards fly to whichever hand shows the draws.
 // No camera move, no full-screen wash; every crisp thing on whole pixels, palette only (no alpha on the shadow or
-// the grains). The sieve draws above the units' stat plates (FX_TOP), under the hand and the HUD.
+// the grains). DEPTH (round 2): the sieve is sorted with the units by its floor y (a unit in front of it covers it,
+// every stat plate stays over it); the flying things (cards, grains, pour, straw, strands) draw at FX / FX_TOP.
 
 import type Phaser from 'phaser';
 import type { CardId } from '../../data/cards';
@@ -463,7 +467,7 @@ function makeSieve(sc: Phaser.Scene, floor: XY, player: PlayerId, seed: number):
     shadow.begin();
     if (s.hoop > 0) {
       const kk = Math.max(0.5, 1 - s.hgt / 80);
-      const g = Math.min(1, s.hoop * 1.5) * (1 - s.undo * 0.6);
+      const g = Math.min(1, s.hoop * 1.5) * (1 - s.undo * 0.92);
       const rx = R(RX * kk * g);
       const ry = Math.max(1, R(RY * kk * g));
       const sx = RX + 4 + R(s.sx * 0.5);
@@ -944,6 +948,8 @@ interface Loose {
   len: number;
   t0: number;
   life: number;
+  /** a fibre comes to rest on the floor at this y */
+  floor: number;
 }
 
 /**
@@ -961,7 +967,7 @@ async function unravel(sc: Phaser.Scene, rig: Sieve, pool: LightHandle, pan: num
   void pool.fadeOut(ms + 120);
   const rnd = fxRng(rig.floor.x * 3 + rig.floor.y);
   const m0 = rig.mesh();
-  const FLY = 520;
+  const FLY = 440;
   const bx = R(m0.x) - RX - 40 + (windDir > 0 ? 0 : -150);
   const by = R(m0.y) - 90;
   const ras = new Raster(sc, bx, by, 2 * RX + 230, 170, D_AIR + 1);
@@ -977,7 +983,7 @@ async function unravel(sc: Phaser.Scene, rig: Sieve, pool: LightHandle, pan: num
     const x = m.x + side * RX * Math.sin(a);
     const y = m.y - HOOP - RY * Math.cos(a) + 3;
     const tdir = Math.round((Math.atan2(RY * Math.sin(a), side * RX * Math.cos(a)) / TAU) * 8 + 8) % 8;
-    loose.push({ x, y, vx: windDir * (55 + rnd() * 60) + side * 14, vy: -(30 + rnd() * 34), ay: 70, strand: true, dir: tdir, spin: windDir * (3 + Math.floor(rnd() * 4)), bend: rnd() < 0.5 ? 1 : -1, len: 9 + Math.floor(rnd() * 5), t0: clock, life: FLY + rnd() * 120 });
+    loose.push({ x, y, vx: windDir * (110 + rnd() * 80) + side * 10, vy: -(34 + rnd() * 34), ay: 90, strand: true, dir: tdir, spin: windDir * (3 + Math.floor(rnd() * 4)), bend: rnd() < 0.5 ? 1 : -1, len: 9 + Math.floor(rnd() * 5), t0: clock, life: FLY + rnd() * 120, floor: Infinity });
   };
   let sieveGone: () => void = () => undefined;
   const gonePromise = new Promise<void>((res) => (sieveGone = res));
@@ -1004,9 +1010,10 @@ async function unravel(sc: Phaser.Scene, rig: Sieve, pool: LightHandle, pan: num
       while (meshGone < gone) {
         const ry = RYI - meshGone;
         const half = RXI * Math.sqrt(Math.max(0, 1 - (ry / RYI) * (ry / RYI)));
-        for (let i = 0; i < Math.max(1, Math.floor(half / 9)); i++) {
+        for (let i = 0; i < Math.max(1, Math.floor(half / 14)); i++) {
           const x = m.x + (rnd() - 0.5) * 2 * half;
-          loose.push({ x, y: m.y + ry, vx: windDir * (10 + rnd() * 30), vy: -(rnd() * 20), ay: 280, strand: false, dir: 0, spin: 0, bend: 1, len: 3 + Math.floor(rnd() * 3), t0: clock, life: 260 + rnd() * 160 });
+          const y = m.y + ry;
+          loose.push({ x, y, vx: windDir * (10 + rnd() * 30), vy: -(rnd() * 20), ay: 280, strand: false, dir: 0, spin: 0, bend: 1, len: 3 + Math.floor(rnd() * 3), t0: clock, life: 260 + rnd() * 160, floor: rig.floor.y + ry * 0.6 + R((rnd() - 0.5) * 6) });
         }
         meshGone += 2;
       }
@@ -1019,14 +1026,19 @@ async function unravel(sc: Phaser.Scene, rig: Sieve, pool: LightHandle, pan: num
     for (const L of loose) {
       const a = (el - L.t0) / 1000;
       if (a < 0 || a * 1000 > L.life) continue;
-      const x = R(L.x + L.vx * a);
-      const y = R(L.y + L.vy * a + 0.5 * L.ay * a * a);
+      // a fibre that reached the floor lies still there (it stops drifting) until it is gone
+      const fall = L.vy * a + 0.5 * L.ay * a * a;
+      // the time it lands: y + vy·a + ay·a²/2 = floor
+      const dy = L.floor - L.y;
+      const land = L.floor === Infinity ? Infinity : (-L.vy + Math.sqrt(Math.max(0, L.vy * L.vy + 2 * L.ay * dy))) / L.ay;
+      const x = R(L.x + L.vx * Math.min(a, land));
+      const y = Math.min(R(L.floor), R(L.y + fall));
       if (L.strand) {
         const dir = (((L.dir + Math.floor(((a * 1000) / L.life) * L.spin)) % 8) + 8) % 8;
         ras.pc.blit(strandSprite(dir, L.bend, L.len), x - ras.x - STALK_BOX / 2, y - ras.y - STALK_BOX / 2);
       } else {
-        for (let i = 0; i < L.len; i++) ras.px(x + i * windDir, y, i === 0 ? PAL.earth4 : PAL.earth3);
-        ras.px(x, y + 1, PAL.ink);
+        const late = a * 1000 > L.life * 0.7;
+        for (let i = 0; i < L.len - (late ? 1 : 0); i++) ras.px(x + i * windDir, y, i === 0 ? PAL.earth4 : late ? PAL.earth2 : PAL.earth3);
       }
     }
     ras.end();

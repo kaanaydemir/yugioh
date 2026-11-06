@@ -24,7 +24,7 @@ import type { ArtLayers, CardArtV3 } from './_types';
 
 const FRAMES = 4;
 /** The focus: the turning page's crest glint, BIG px. */
-const FOCUS = [45, 18] as const;
+const FOCUS = [50, 18] as const;
 
 type P = PixelCanvas;
 
@@ -39,19 +39,38 @@ const TOP = 31;
 const PW = 25;
 const PH = 18;
 
-/** The open tome: boards, page blocks, the two pages (big geometry, density k). */
+/** One size's book geometry in its own pixels. */
+interface Geo {
+  sx: number;
+  top: number;
+  pw: number;
+  ph: number;
+  lip: number;
+  stack: number;
+  /** gutter bow width (columns) */
+  gut: number;
+  /** turning page: projected width and crest lift */
+  tw: number;
+  tl: number;
+}
+
+const BIG: Geo = { sx: SX, top: TOP, pw: PW, ph: PH, lip: 2, stack: 4, gut: 8, tw: 11, tl: 13 };
+/**
+ * SMALL, composed natively for 44×34 (not a halving): a 33-px-wide spread lifted 2 px (the book is the card), the
+ * turning page more upright so its crest — the focus and the brightest pixels — sits at (25, 8).
+ */
+const SMALL: Geo = { sx: 21, top: 13, pw: 14, ph: 10, lip: 1, stack: 2, gut: 4, tw: 5, tl: 6 };
+const geo = (k: number): Geo => (k === 2 ? BIG : SMALL);
+
+/** The open tome: boards, page blocks, the two pages. */
 function paintBook(p: P, k: number): void {
-  const sx = q(SX, k);
-  const top = q(TOP, k);
-  const pw = q(PW, k);
-  const ph = q(PH, k);
-  const lip = k === 2 ? 2 : 1;
-  const stack = k === 2 ? 4 : 2;
+  const g = geo(k);
+  const { sx, top, pw, ph, lip, stack } = g;
   for (const side of [-1, 1] as const) {
     for (let d = 0; d <= pw + lip; d++) {
       const x = sx + side * (1 + d);
       // the pages bow down into the gutter, and their outer edges lift a touch (the spread is open wide)
-      const gut = d < q(8, k) ? Math.floor((q(8, k) - d) / (k === 2 ? 2 : 2)) : 0;
+      const gut = d < g.gut ? Math.floor((g.gut - d) / 2) : 0;
       const lift = d > pw - q(6, k) ? 1 : 0;
       const t = top + gut - lift;
       const b = t + ph;
@@ -75,7 +94,7 @@ function paintBook(p: P, k: number): void {
   }
   // the spine valley
   for (let y = top + 1; y <= top + ph + stack + lip; y++) p.set(sx, y, PAL.earth0);
-  // ink lines written on the left page (big only; the small gets its own two dashes by hand)
+  // ink lines written on the left page
   if (k === 2)
     for (let ln = 0; ln < 4; ln++) {
       const y = top + 5 + ln * 3;
@@ -83,19 +102,21 @@ function paintBook(p: P, k: number): void {
       for (let i = 0; i < len; i++) if ((i + ln * 3) % 7 !== 6) p.set(sx - 22 + i, y, PAL.night3);
     }
   else
-    for (let ln = 0; ln < 2; ln++) {
-      const y = top + 3 + ln * 3;
-      for (let i = 0; i < (ln ? 5 : 8); i++) if (i % 4 !== 3) p.set(sx - 10 + i, y, PAL.earth3);
-    }
+    // small: three crisp night3 lines (word gaps hand-placed) and a little picture block above them
+    for (const [y, x0, x1, gap] of [
+      [top + 3, sx - 12, sx - 4, sx - 8],
+      [top + 5, sx - 12, sx - 4, sx - 6],
+      [top + 7, sx - 12, sx - 7, -1],
+    ] as const)
+      for (let x = x0; x <= x1; x++) if (x !== gap) p.set(x, y, PAL.night3);
 }
 
 /** The page turning up off the right side: a leaf hinged on the spine, its free edge raised (frame bob). */
 function paintTurningPage(p: P, k: number, f: number): void {
-  const sx = q(SX, k);
-  const top = q(TOP, k);
-  const ph = q(PH, k);
-  const w = q(11, k); // projected width (the page is past 60°)
-  const lift = q(13, k) + (k === 2 ? [0, 1, 1, 0][f] : 0);
+  const g = geo(k);
+  const { sx, top, ph } = g;
+  const w = g.tw;
+  const lift = g.tl + [0, 1, 1, 0][f];
   for (let i = 0; i < w; i++) {
     const u = (i + 1) / w;
     const off = Math.round(lift * u);
@@ -108,11 +129,19 @@ function paintTurningPage(p: P, k: number, f: number): void {
     }
   }
   // its shadow falls on the right page beside it (a band a tone down)
-  for (let i = 0; i < (k === 2 ? 3 : 1); i++)
+  for (let i = 0; i < (k === 2 ? 3 : 2); i++)
     for (let y = top + 1; y < top + ph; y++) {
       const x = sx + 1 + w + i;
       if (p.get(x, y) === PAL.skin4) p.set(x, y, PAL.earth4);
     }
+}
+
+/** The turning page's crest pixel (the focus glint) for frame f. */
+function crestOf(k: number, f: number): [number, number] {
+  const g = geo(k);
+  const lift = g.tl + [0, 1, 1, 0][f];
+  const i = g.tw - 2;
+  return [g.sx + 1 + i, g.top - Math.round((lift * (i + 1)) / g.tw)];
 }
 
 /** A card back turned by `a` round (cx, cy) (w × h), or a folding page (`page`). */
@@ -151,8 +180,10 @@ function paintCards(p: P, k: number, f: number): void {
     paintCard(p, 72, 11 - bob, 9, 13, -0.3, false);
     paintCard(p, 27, 15 + bob, 7, 10, -0.45, false);
   } else {
-    // small: the turning page and ONE flying card carry the silhouette
-    paintCard(p, 33.5, 7.5 + (bob ? 1 : 0), 7, 9, -0.3, false);
+    // small: a folding page and a card back leave the right page high, a second card back rises on the left
+    paintCard(p, 32, 10 + bob, 6, 8, 0.38, true);
+    paintCard(p, 36.5, 5.5 - bob, 6, 8, -0.3, false);
+    paintCard(p, 9.5, 6.5 + bob, 5, 7, -0.42, false);
   }
 }
 
@@ -170,35 +201,47 @@ function star(l: P, x: number, y: number, len: number, arm: number, tip: number,
 }
 
 function paintLight(l: P, k: number, f: number): void {
-  // the focus: a white glint on the turning page's crest (its lifted top corner)
-  const fx = q(FOCUS[0], k);
-  const fy = q(FOCUS[1], k) - (k === 2 ? [0, 1, 1, 0][f] : 0);
-  l.set(fx, fy, PAL.white);
+  // the focus: a white glint on the turning page's crest (its lifted top corner) — the brightest pixels of the picture
+  const [fx, fy] = crestOf(k, f);
+  l.set(fx, fy - 1, PAL.white);
+  l.set(fx + 1, fy - 1, PAL.white);
+  l.set(fx, fy - 2, PAL.teal4);
+  l.set(fx - 1, fy - 1, PAL.teal4);
   if (k === 2) {
-    l.set(fx - 1, fy, PAL.teal4);
-    l.set(fx, fy - 1, PAL.teal4);
+    l.set(fx + 2, fy - 1, PAL.teal4);
+    l.set(fx, fy - 3, PAL.teal3);
   }
-  // ink stars round the book (they twinkle: arms grow and shrink by frame)
-  const stars: readonly (readonly [number, number, boolean, number])[] = [
-    [14, 22, false, 0],
-    [55, 10, true, 1],
-    [70, 31, false, 2],
-    [32, 25, true, 3],
-    [83, 21, false, 1],
-    [10, 8, true, 2],
-  ];
+  // ink stars round the book (they twinkle: arms grow and shrink by frame); white cores only near the crest
+  const stars: readonly (readonly [number, number, boolean, number])[] =
+    k === 2
+      ? [
+          [14, 22, false, 0],
+          [55, 10, true, 1],
+          [70, 31, false, 2],
+          [32, 25, true, 3],
+          [83, 21, false, 1],
+          [10, 8, true, 2],
+        ]
+      : [
+          [4, 13, false, 0],
+          [17, 4, true, 1],
+          [40, 14, false, 2],
+          [28, 3, false, 3],
+        ];
   stars.forEach(([x, y, violet, ph]) => {
     const big = (f + ph) % 4 === 0;
     const len = k === 2 ? (big ? 2 : 1) : big ? 1 : 0;
     const arm = violet ? PAL.void3 : PAL.teal3;
-    star(l, q(x, k), q(y, k), len, arm, arm, (f + ph) % 2 ? PAL.white : PAL.teal4);
+    const sx = k === 2 ? x : x;
+    const sy = y;
+    const near = Math.abs(sx - fx) + Math.abs(sy - fy) < (k === 2 ? 20 : 8);
+    star(l, sx, sy, len, arm, arm, (f + ph) % 2 && (k === 2 || near) ? PAL.white : PAL.teal4);
   });
   // the nib at the end of the writing (blinks)
   if (f % 2 === 0) {
-    const sx = q(SX, k);
-    const top = q(TOP, k);
-    if (k === 2) l.set(sx - 22 + 11, top + 5 + 9, PAL.teal4);
-    else l.set(sx - 5, top + 6, PAL.teal4);
+    const g = geo(k);
+    if (k === 2) l.set(g.sx - 22 + 11, g.top + 5 + 9, PAL.teal4);
+    else l.set(g.sx - 6, g.top + 7, PAL.teal4);
   }
 }
 
@@ -207,8 +250,9 @@ function paintLight(l: P, k: number, f: number): void {
 function paint(l: ArtLayers, f: number, k: 1 | 2): void {
   // the spell's light sits BEHIND the whole spread as a wide, low ring (only its lit rim arches over the book: it reads
   // as the tome's glow, never as a shape of its own); the small picture drops it entirely (the page + one card read)
+  // (big coordinates: the small one is the same light at its own spine, a tighter ring)
   if (k === 2) paintBackdrop(l.backdrop, 'SPELL', { focus: [SX, TOP + 8], radius: 34, as: 'eclipse' });
-  else paintBackdrop(l.backdrop, 'SPELL', { shape: false });
+  else paintBackdrop(l.backdrop, 'SPELL', { focus: [SMALL.sx * 2, SMALL.top * 2 + 10], radius: 30, as: 'eclipse' });
   const s = l.subject;
   paintBook(s, k);
   paintTurningPage(s, k, f);

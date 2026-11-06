@@ -74,6 +74,20 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
 - Ölçüm (oyun ms): eSieve etkinleştirme 3,92 sn + atma 1,77 sn; kamera 0. eSieveSeal'in 1f/38px kamerası ortak
   kazanma sahnesidir (eWellPailSeal de aynı: 1f/38px). Ses ayrımı (LSD): savurma ↔ e_strawGust 15,6 dB, ↔ e_galeSweep
   25,8, ↔ e_galeStir 18,0; sallama ↔ e_wellShake 11,1; atış ↔ e_wellLeap 10,6, büyük atış ↔ e_wellLeap 10,3.
+- Düzeltme turu 3 (eleştirmen 6/10): elek artık birimlerle zemin y'sine göre sıralanır (UNIT + y; önündeki birim
+  onu örter, ATK/DEF plakaları hep üstte), iki oyuncuda da arka sıranın orta büyü/tuzak karosunda durur; ışık havuzu
+  tek tam basamak (yoğunluk 1, 'steady': dama deseni yok); yığın 3 ton bandı + sallanmayı izleyen parıltı, tanedeki
+  kart sırtları açık kenar + oyuncu amblemi; atış kartı önce ~30-40 px DİKEY zıplar, sonra ele kıvrılır, boyutlar
+  uçuşun beşte birinde bir adım (pop yok), %62'de yüzü düz; 1. atış 4. sallama devrinin altında; 3. atış: tüm kenar
+  BEYAZ, kenardan dışa kırılan beyaz→altın halka + zemin halkası, 2× yüksek 96 taneli fıskiye, 3 px geri tepme, altın
+  izli kart; sesi 0,92 perdede, 70 Hz alt vuruş, uzun tane yağmuru (atıştan ~4,5 LU yüksek). Çözülme: tane süzülür,
+  çember arkadan 6 yay hâlinde 1 px'lik eğik şeritler olarak soyulup rüzgarla uçar, ızgara sıraları zemine düşen
+  liflere dönüşür. Yeni ses `e_sieveCatch` (kart ele oturunca kâğıt tıkı); `e_sieveStraw` 0,20 sn; `e_sieveShake`
+  −5,7 dBFS tepe, ağırlık merkezi ~2,4 kHz. Resim: güneş net disk + halka, gök gece tonlarında, saman ayrı ayrı
+  başaklı saplar (şimşek okuması yok), küçük resimde tane tepesi + gölge sırası.
+  Ölçüm: eSieve bitiş 6050 ms (900 ms senaryo beklemesi dahil; önce 6600), seçim istemi ~3,2 sn'de (önce 3,96).
+  Kanıt: `shots/e/winnow_sieve/r3/` (p1.png, p1toss.png, toss1c.png, p2.png, p2z.png, p2disc.png, pool.png,
+  disc.png, unravel2.png, set.png, sealp2.png, art/, measure.json), ses `shots/e/winnow_sieve/r3sfx/`.
 
 ### S9 Saman Korkuluklar (`straw_decoys`)
 - Resim: `src/art/cardart-v3/straw_decoys.ts` (88×68 + elle çizilmiş 44×34, 4 kare yaşayan resim: alacakaranlık
