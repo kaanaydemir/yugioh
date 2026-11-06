@@ -35,6 +35,20 @@ const PACK: Record<string, Scenario> = {
   eDieSetP2: { desc: 'Talih Zarı kapalıdan (P2): 4 gelir', stage: stage(1, 1, { set: true }), steps: [die(1)] },
   eDieSolo: { desc: 'Talih Zarı (P1): 5 gelir — tek açık canavar (kapalı olan güçlenmez)', stage: stage(0, 2, { mine: SOLO }), steps: [die(0)] },
   eDieTwo: { desc: 'Talih Zarı (P1): 2 gelir', stage: stage(0, 9), steps: [die(0)] },
+  // ---- the CPU casts it on its own (engine/bot.ts tryDie: +300 lets its 1600 axeman beat the 1700 wolf), then
+  //      attacks and ends its turn. Film WITHOUT --fresh (a fresh restart is always hot-seat):
+  //      node tools/shot.mjs "?dev=duel&s=eDieCpu&look=v3&mode=vsBot" --film 30 --every 400 --cols 6 --out ...
+  eDieCpu: {
+    desc: 'Talih Zarı (P2 = bilgisayar; --fresh olmadan &mode=vsBot ile): bot zarı kendisi atar, saldırır, tur sürer',
+    stage: {
+      zones: 5,
+      rng: 14,
+      active: 1,
+      p1: { hand: ['lucky_die'], deck: ['tide_golem', 'kite_fencer', 'stone_sentinel', 'reed_heron', 'ember_wolf'], monsters: [null, 'crag_axeman', 'reed_heron', null, null] },
+      p0: { monsters: [null, null, 'ember_wolf', null, null], deck: ['tide_golem', 'kite_fencer', 'stone_sentinel', 'reed_heron', 'ember_wolf'] },
+    },
+    steps: [],
+  },
   // a person plays it with the mouse (the hand fan, the hover, then the card)
   eDiePlay: { desc: 'Talih Zarı (P1): elle oyna (6 gelir)', stage: stage(0, 12345), steps: [] },
 };

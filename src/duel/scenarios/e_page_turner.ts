@@ -47,6 +47,21 @@ function bare(p: PlayerId): Scenario['stage'] {
   return stage(p, { hand: ['page_turner'], deck: MY_DECK }, { hand: [], deck: THEIR_DECK, monsters: mons(null, 'ember_wolf') });
 }
 
+/**
+ * The viewer is NOT the caster (a vsBot duel where the bot casts): the screen keeps player 1's hand, so player 2's
+ * cards leave from / land in the mini-hand while P1's fan is bound and dealt. Same trick as e_well_pail.
+ */
+const viewAsP1: Step = (D) => {
+  const q = D as unknown as { views?: { info?: { mode: string; cpu: Set<PlayerId> }; hand?: { setOwner(p: PlayerId, faceDown?: boolean): Promise<void> } } };
+  const info = q.views?.info;
+  if (info) {
+    Object.defineProperty(info, 'mode', { value: 'vsBot', configurable: true, writable: true });
+    info.cpu.add(1);
+  }
+  void q.views?.hand?.setOwner(0, false);
+  return null;
+};
+
 const PACK: Record<string, Scenario> = {
   ePage: { desc: 'Sayfa Çeviren (P1, elden): 3 + 5 kart kitaba ciltlenir, PAT, mezarlıklara; 3 + 5 yeni kart', stage: hand(0), steps: [book(0)] },
   ePageP2: { desc: 'Sayfa Çeviren (P2, elden): aynalı', stage: hand(1), steps: [book(1)] },
@@ -56,6 +71,20 @@ const PACK: Record<string, Scenario> = {
   ePageLoneP2: { desc: 'Sayfa Çeviren (P2): elde yalnız kitap', stage: lone(1), steps: [book(1)] },
   ePageShort: { desc: 'Sayfa Çeviren (P1): rakibin destesinde 2 kart — 5 atar, 2 çeker', stage: short(0), steps: [book(0)] },
   ePageBare: { desc: 'Sayfa Çeviren (P1): iki el de boş — kitap boş sayfalarla açılıp kapanır', stage: bare(0), steps: [book(0)] },
+  ePageBot: { desc: 'Sayfa Çeviren (P2 = bot, ekran P1 elinde): P1 yelpazesi ciltlenir, P2 mini eli', stage: hand(1), steps: [viewAsP1, { ui: 'wait', ms: 700 }, book(1)] },
+  // ---- the CPU casts it on its own (engine/bot.ts tryPageTurner: my hand ≤ 2 besides the book, theirs ≥ 4).
+  //      Film WITHOUT --fresh (a fresh restart is always hot-seat):
+  //      node tools/shot.mjs "?dev=duel&s=ePageCpu&look=v3&mode=vsBot" --film 30 --every 400 --cols 6 --out ...
+  ePageCpu: {
+    desc: 'Sayfa Çeviren (P2 = bilgisayar; --fresh olmadan &mode=vsBot ile): bot kitabı kendisi açar, tur sürer',
+    stage: {
+      zones: 5,
+      active: 1,
+      p1: { hand: ['page_turner', 'ember_wolf'], deck: THEIR_DECK, monsters: mons(null, 'crag_axeman') },
+      p0: { hand: THEIR_HAND, deck: MY_DECK, monsters: mons(null, null, 'stone_sentinel') },
+    },
+    steps: [],
+  },
   ePagePlay: { desc: 'Sayfa Çeviren (P1): elle oyna', stage: hand(0), steps: [] },
 };
 
