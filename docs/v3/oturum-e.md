@@ -28,6 +28,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
 | well_pail (Kuyu Kovası) | büyük + elle yapılmış küçük (daha sıkı kırpım); 0 palet dışı, mürekkep çizgisi 1,00, ton 19/20 | tamam: kova, makara cırcırı, iki kart çekme; el ~4,9 sn, bot 4,73 sn; kamera sabit; HP plakası parlama hatası düzeltildi; CPU senaryosu eWellPailCpu | tamam: 15 e_well tarifi, her vuruşta ses, 330 Hz cırcır imzası | 5,5 / 7 / 7,5 | shots/e/well_pail/ |
 | void_eye (Boşluk Gözü) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı, mürekkep 1,00, dama sınırda | tamam: gece örtüsü, göz açılışı, toplu yutuş, kapanış; yalnız göz ~5,43 sn (kabul ~5,4); Tılsım kılıcı kurtarmada sessizce kalkar; CPU senaryosu eVoidCpu | tamam: 16 e_void tarifi, hepsi sahnede çalıyor | 6 / 6 / 7 | shots/e/void_eye/ |
 | winnow_sieve (Harman Eleği) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı, 15 ton | tamam: üç kart çekme, iki atma seçimi, saman süpürülür; eSieve 3,37 + 2,22 = 5,59 sn (sınır 5,3, süre sınırı yok kararıyla kabul); CPU senaryosu eSieveCpu | tamam: 18 e_sieve tarifi, her vuruşta ses; e_sieveStraw Saman Korkuluklar'dan ayrışıyor | 5,5 / 6 / 6,5 | shots/e/winnow_sieve/dod/ |
+| sweeping_gale (Süpürge Rüzgarı) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı, dama sınırın çok altında; büyük doluluk 0,82 (rüzgâr yayı kasıtlı taşıyor) | tamam: tüm rakip büyü/tuzakları süpürür; eGale 4,60 sn, eGaleP2 4,75 sn (≤5,03); söndürmedeki ekran karartması palcheck'i bozuyordu, lightDimFor ile değiştirildi; CPU senaryosu eGaleCpu | tamam: 16 e_gale tarifi, hepsi sahnede çalıyor | 6 / 6,5 / 7,2 | shots/e/sweeping_gale/dod/ |
 | (doldurulacak) | | | | | |
 
 ### S3 Boşluk Gözü (`void_eye`)
@@ -254,3 +255,10 @@ kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe aç�
 - eSieveSeal ve eSieveSealP2: 4400 ms'de 1 karelik 38 px kamera kayması; ortak oyun sonu (mühür zaferi) sahnesinden geliyor (eWellPailSeal'de de var), kartın değil.
 - palcheck tüm karelerde FAIL: 600 ms'de +1,03 sıçrama (ortak büyü açılışı) ve seçimde %1,4'e kadar beyaz (seçim yazısı). Eleğin kendi pikselleri palette.
 - Resim aracı: büyük resim özne doluluğu 0,86 (hedef 0,6–0,75; elek kasıtlı alttan taşıyor); küçük resmin parlak alanı odak noktasına 10,5 px (~8 üstüne bak diyor).
+
+### sweeping_gale
+- Büyük resim özne doluluğu 0,82 (KART_RESIMLERI §10 hedefi 0,60–0,75); rüzgâr yayı kasıtlı olarak kenarlardan taşıyor, sahip onayı gerekli.
+- Ekran geneli karartma katmanı kaldırıldı; söndürme sonrası "karanlık nefes" artık yalnız ışık katmanı karartmasından geliyor, daha yumuşak. Volkan filminde okunuyor; Gelgit Körfezi, Gölge Mağarası ve Festival Meydanı kare kare yeniden çekilmedi.
+- palcheck eGale ve eGaleVolcano'da süpürme sonrası +2,5–2,9 puan değişimle hâlâ FAIL; maske boşalan kart yuvaları, canavar gölgeleri ve arena heykellerini gösteriyor, kartın kendi pikselleri değil.
+- tests/art'ta cloud_hatchling, hollow_ogre, mudgrasp_spirit bilinen taban listesinde değil ama düşüyor; bu kartla ilgisiz, temiz checkout ile karşılaştırılmadı.
+- eGaleCpu --fresh olmadan ve &mode=vsBot ile çekilmeli (eWellPailCpu gibi).
