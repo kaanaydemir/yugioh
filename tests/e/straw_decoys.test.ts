@@ -8,6 +8,7 @@ import { apply, type Action, type GameEvent, type GameState } from '../../src/en
 import { buildStage, uidOf } from '../../src/duel/scenario';
 import PACK from '../../src/duel/scenarios/e_straw_decoys';
 import { isUiStep } from '../../src/duel/scenarios';
+import { chooseAction } from '../../src/engine/bot';
 import type { CardId } from '../../src/data/cards';
 import type { PlayerId } from '../../src/engine/types';
 import art from '../../src/art/cardart-v3/straw_decoys';
@@ -59,6 +60,27 @@ describe('e_straw_decoys stages', () => {
     expect(t && t.type === 'target' && t.targets[0]).toEqual({ player: 1, zone: 'monster', index: 1 });
     const b = batches[2].find((e) => e.type === 'battle');
     expect(b && b.type === 'battle' && b.targetZone).toBe(1);
+  });
+});
+
+describe('eStrawCpu: the bot answers a big direct attack with the decoys and plays on', () => {
+  it('P2 bot responds with straw_decoys, the attacking bot picks a decoy, the turn ends (no stall)', () => {
+    let s = buildStage(PACK.eStrawCpu.stage);
+    const acts: Action[] = [];
+    for (let i = 0; i < 30 && s.winner === null && acts.length < 30; i++) {
+      const a = chooseAction(s, i);
+      acts.push(a);
+      s = apply(s, a).state;
+      if (a.type === 'endTurn') break;
+    }
+    const r = acts.findIndex((a) => a.type === 'respond' && a.uid !== null);
+    expect(r).toBeGreaterThan(0);
+    const atk = acts[r - 1];
+    expect(atk.type === 'attack' && atk.targetZone === null).toBe(true);
+    const pk = acts[r + 1];
+    expect(pk.type === 'chooseTarget' && pk.player === 0).toBe(true);
+    expect(acts[acts.length - 1].type).toBe('endTurn');
+    expect(s.activePlayer).toBe(1);
   });
 });
 

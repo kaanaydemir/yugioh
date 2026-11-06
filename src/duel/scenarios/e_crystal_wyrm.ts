@@ -22,6 +22,10 @@ const PACK: Record<string, Scenario> = {
   eWyrmHandP2: { desc: 'Kristal Ejder (P2): elde v3 kart resmi — aynalı', stage: stage(1), steps: [] },
   eWyrmSummon: { desc: 'Kristal Ejder (P1): iki kurbanla çağrı — kart yüzü uçuşta', stage: stage(0), steps: [summon(0)] },
   eWyrmSummonP2: { desc: 'Kristal Ejder (P2): iki kurbanla çağrı', stage: stage(1), steps: [summon(1)] },
+  // ---- the CPU plays it on its own (P2 = bot): two tributes, the card face in flight, then it plays on and ends
+  //      its turn. Film WITHOUT --fresh (a fresh restart is always hot-seat):
+  //      node tools/shot.mjs "?dev=duel&s=eWyrmCpu&look=v3&mode=vsBot" --film 30 --every 400 --cols 6 --out ...
+  eWyrmCpu: { desc: 'Kristal Ejder (P2 = bilgisayar; --fresh olmadan &mode=vsBot ile): bot ejderi kendisi çağırır, tur sürer', stage: { active: 1, p1: { hand: ['crystal_wyrm'], monsters: ['stone_sentinel', null, 'lumen_sprite'] }, p0: { monsters: [null, 'tide_golem', null] } }, steps: [] },
 };
 
 export default PACK;

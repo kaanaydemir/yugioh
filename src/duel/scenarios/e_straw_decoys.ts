@@ -125,6 +125,18 @@ const S: Record<string, Scenario> = {
     },
     steps: [summon('steppe_spiralhorn', 2, 0), respond(1)],
   },
+  /** The CPU (8): with &mode=demo both sides are the bot — P1's Magma Titan (2100) swings directly, the bot P2
+   *  answers with its set Saman Korkuluklar, the attacker's bot picks a decoy, the duel plays on (no stall).
+   *    node tools/shot.mjs "?dev=duel&s=eStrawCpu&look=v3&mode=demo" (no --fresh: the bots run on real timers) --film 30 --every 200 --cols 6 --out ... */
+  eStrawCpu: {
+    desc: 'Bilgisayar (&mode=demo ile): P1 botu doğrudan saldırır, P2 botu kapalı Saman Korkuluklar ile yanıtlar, düello sürer',
+    stage: {
+      zones: 5,
+      p0: { monsters: five(N, 'magma_titan'), deck: ['reed_heron', 'kite_fencer', 'stone_sentinel', 'reed_heron'] },
+      p1: { spellTraps: fiveST(N, N, 'straw_decoys'), deck: ['reed_heron', 'kite_fencer', 'stone_sentinel', 'reed_heron'] },
+    },
+    steps: [],
+  },
 };
 
 export default S;
