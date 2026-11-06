@@ -116,8 +116,8 @@ export const V3_POLAR_SOVEREIGN_RECIPES = {
     verb: 0.5,
     duck: 0.7,
     play(v) {
-      thump(v, 0, 120, 32, 0.6, 0.4, { drive: 1.8 });
-      gong(v, 0, 0.42, 2.2);
+      thump(v, 0, 120, 32, 0.5, 0.4, { drive: 1.8 });
+      gong(v, 0, 0.34, 2.2);
       chord(v, 0.02, [[0, 0], [0.04, 0.22], [1.6, 0.0001, 'e']]);
       puff(v, 0, 0.3, 0.6, 1800, { kind: 'pink' });
       sweep(v, 0.02, 0.7, [900, 3200, 1200], 0.12, { kind: 'white', q: 1.4, peakAt: 0.25 });
@@ -190,9 +190,9 @@ export const V3_POLAR_SOVEREIGN_RECIPES = {
     verb: 0.3,
     duck: 0.4,
     play(v) {
-      sweep(v, 0, 0.35, [500, 2600, 900], 0.3, { kind: 'pink', q: 1.8, pan: [-0.2, 0.6], peakAt: 0.35 });
+      sweep(v, 0, 0.35, [500, 2600, 900], 0.45, { kind: 'pink', q: 1.8, pan: [-0.2, 0.6], peakAt: 0.35 });
       v.tone('sawtooth', [[0, A3 * 2], [0.3, A3 * 4, 'e']], { g: [[0, 0], [0.04, 0.05], [0.32, 0.0001, 'e']], to: v.filt('bandpass', 1800, 3) });
-      thump(v, 0, 160, 60, 0.2, 0.1);
+      thump(v, 0, 160, 60, 0.32, 0.1);
     },
   },
   /** The rose closes round the target: two FM sweeps of opposite pitch (fire falling, water rising) meeting. */
@@ -232,9 +232,9 @@ export const V3_POLAR_SOVEREIGN_RECIPES = {
     verb: 0.3,
     duck: 0.3,
     play(v) {
-      sweep(v, 0, 0.28, [1200, 600, 2400], 0.14, { kind: 'pink', q: 2.4, pan: [0.6, -0.1], peakAt: 0.8 });
+      sweep(v, 0, 0.28, [1200, 600, 2400], 0.22, { kind: 'pink', q: 2.4, pan: [0.6, -0.1], peakAt: 0.8 });
       v.tone('square', [[0, 220], [0.26, 660, 'e']], { g: [[0, 0], [0.05, 0.04], [0.27, 0.0001, 'e']], to: v.filt('lowpass', 2000, 1) });
-      clank(v, 760, 0.27, 0.12, 0.3, { ratio: 1.41, index: 2, click: 0.8 });
+      clank(v, 760, 0.27, 0.18, 0.3, { ratio: 1.41, index: 2, click: 0.8 });
     },
   },
   /** Death start: cracks run along the joints — dry splits with a hum faltering. */
