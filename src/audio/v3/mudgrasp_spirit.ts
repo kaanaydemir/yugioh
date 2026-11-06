@@ -324,12 +324,13 @@ export const MUDGRASP_SPIRIT_RECIPES = {
     verb: 0.35,
     duck: 0.5,
     play(v) {
+      // FIX r3 (critic: "buried under mgClamp / mgRoar"): the four cups ≈ +3.5 dB, each knock fuller
       [0, 0.075, 0.14, 0.215].forEach((t, i) => {
-        slop(v, t, 0.5 - i * 0.05, { d: 0.045 + i * 0.008, f: SLOP * (1 - i * 0.035), pan: (i % 2 ? 0.35 : -0.35) * (1 - i * 0.15) });
+        slop(v, t, 0.95 - i * 0.08, { d: 0.05 + i * 0.008, f: SLOP * (1 - i * 0.035), pan: (i % 2 ? 0.35 : -0.35) * (1 - i * 0.15) });
         // each cup seats with a short low knock (the grip closing on the foot)
-        thump(v, t + 0.05 + i * 0.008, 150 - i * 10, 70, 0.16, 0.06);
+        thump(v, t + 0.05 + i * 0.008, 150 - i * 10, 70, 0.34, 0.07);
       });
-      squelch(v, 0.02, 0.4, 0.035, { f: [300, 450, 260], rate: 44 });
+      squelch(v, 0.02, 0.55, 0.035, { f: [300, 450, 260], rate: 44 });
       puff(v, 0, 0.2, 0.2, 800, { kind: 'brown' });
       pats(v, 0.05, 0.35, 9, 0.1);
     },
@@ -446,17 +447,19 @@ export const MUDGRASP_SPIRIT_RECIPES = {
   mgGlk: {
     cap: 1,
     gap: 0.2,
-    verb: 0.5,
-    duck: 0.35,
+    verb: 0.3,
+    duck: 0.4,
     play(v) {
       // the mask going under: a last suction, lower than the şlop
-      slop(v, 0, 0.12, { d: 0.09, f: SLOP * 0.62 });
-      // the glk: a thick bubble, pitch up, choked
-      v.tone('sine', [[0, 140], [0.03, 420, 'e']], { t: 0.12, g: [[0, 0], [0.004, 0.32], [0.028, 0.18], [0.034, 0.0001, 'e']] });
-      v.noise('brown', { t: 0.12, g: perc(0.3, 0.03, 0.002), to: v.filt('lowpass', 600, 1) });
+      slop(v, 0, 0.2, { d: 0.09, f: SLOP * 0.62 });
+      // the glk (FIX r3: louder, DRIER — the last punctuation): a thick bubble, pitch up, choked short, with a
+      // dry wet click on its top
+      v.tone('sine', [[0, 140], [0.03, 440, 'e']], { t: 0.12, g: [[0, 0], [0.003, 0.6], [0.024, 0.3], [0.03, 0.0001, 'e']] });
+      v.tone('triangle', [[0, 900], [0.012, 520, 'e']], { t: 0.145, g: perc(0.22, 0.012, 0.001) });
+      v.noise('brown', { t: 0.12, g: perc(0.45, 0.025, 0.002), to: v.filt('lowpass', 700, 1) });
       // the cracks seal: a soft low close and a faint hollow ring
-      thump(v, 0.16, 70, 40, 0.22, 0.25);
-      v.tone('sine', [[0, 220], [0.5, 210, 'e']], { t: 0.18, g: perc(0.03, 0.5, 0.02) });
+      thump(v, 0.17, 70, 40, 0.3, 0.22);
+      v.tone('sine', [[0, 220], [0.5, 210, 'e']], { t: 0.19, g: perc(0.03, 0.45, 0.02) });
     },
   },
   /** Revive: the drain backwards — the mud gathers up out of the cracks (sustained; faded at land). */

@@ -142,26 +142,38 @@ function ripple(sc: Phaser.Scene, at: XY, rx: number, ms: number): void {
 
 // ================================================================ summon: the climb out of the vortex
 
-/** Two fat wet hands bursting up out of the vortex at the sprite's own wrists (drawn over its thinner arms). */
+/**
+ * Two fat wet hands bursting up out of the vortex (drawn over the sprite's thinner arms). FIX r3 (critic: "two
+ * posts"): each forearm LEANS out from near the vortex's centre (its elbow bowed), the fingers splay and claw, then
+ * over the second half the hands REACH out and down toward the tile's outer corners (the summon f3 wrists), ready to
+ * slap onto the rim. No upright column.
+ */
 function burstHands(sc: Phaser.Scene, u: MonsterUnit, surfaceY: number, ms: number, seed: number): Promise<void> {
   const R = rng(seed);
-  const W = 110;
+  const W = 120;
   const H = 64;
-  const r = new Raster(sc, Math.round(u.home.x) - W / 2, surfaceY - 52, W, H, u.sprite.depth + 0.2);
+  const hx = Math.round(u.home.x);
+  const r = new Raster(sc, hx - W / 2, surfaceY - 52, W, H, u.sprite.depth + 0.2);
   const mk = new MudMask(r.x, r.y, r.w, r.h);
   const ph = [R(), R()];
+  const up2 = [rint(pointOf(u, 'summon', 2, 'hand')), rearWrist(u, -20, -15)];
+  const out3 = [rint(pointOf(u, 'summon', 3, 'hand')), rearWrist(u, -27, -8)];
   return animate(sc, ms, (t, el) => {
-    const up = t < 0.25 ? Math.round((t / 0.25) * 3) / 3 : 1;
+    const up = t < 0.2 ? Math.round((t / 0.2) * 3) / 3 : 1;
+    const reach = t < 0.5 ? 0 : Math.round(clamp((t - 0.5) / 0.4, 0, 1) * 3) / 3;
     r.begin();
     mk.clear();
     const bases: XY[] = [];
-    [rint(pointOf(u, 'summon', 2, 'hand')), rearWrist(u, -25, -13)].forEach((w, i) => {
-      const base = { x: w.x - 2, y: surfaceY };
+    [0, 1].forEach((i) => {
+      const w = { x: lerp(up2[i].x, out3[i].x, reach), y: lerp(up2[i].y, out3[i].y, reach) };
+      const side = Math.sign(w.x - hx) || (i === 0 ? 1 : -1);
+      // the arm leaves the mud nearer the centre than its wrist: it leans out
+      const base = { x: Math.round(hx + (w.x - hx) * 0.45), y: surfaceY };
       bases.push(base);
       const flex = Math.sin(el / 45 + ph[i] * 6);
       const tip = { x: Math.round(lerp(base.x, w.x + flex * 0.6, up)), y: Math.round(lerp(base.y, w.y + 2, up)) };
-      // fingers splay and claw at the air (open ↔ half-curled), a drip forming under each palm
-      wetHand(mk, base, tip, { w: 2.8, open: 0.88 + 0.12 * flex, cup: i === 0 ? 1 : -1, drip: (el / 260 + ph[i]) % 1, bend: (i === 0 ? 1 : -1) * 1.5, collar: 1.5 });
+      // fingers splay and claw at the air, opening wide on the reach; a drip forming under each palm
+      wetHand(mk, base, tip, { w: 2.8, open: reach > 0 ? 1 : 0.85 + 0.15 * flex, cup: side, drip: (el / 260 + ph[i]) % 1, bend: side * (2 + 2 * reach), collar: 1.5 });
     });
     mk.wet(r, { tones: WET_HAND, seepY: surfaceY + 1, phase: Math.floor(el / 60) });
     for (const b of bases) seepAt(r, b, 2.6, el / 1000);
@@ -189,7 +201,7 @@ async function climbV3(S: Stage): Promise<void> {
   fadeSnd(['summonCharge'], 160);
   if (!u.has('summon')) return;
   const n = u.frameCount('summon');
-  const LAND = u.markFrame('summon', 'land', 7);
+  const LAND = u.markFrame('summon', 'land', 10);
   // ---- the tile softens: a glossy whirlpool opens under the sprite's own puddle, its violet pit lights the floor
   const vortex = S.own(mudVortex(sc, { x: home.x, y: home.y + 1 }, 30, DEPTH.SHADOW + 0.5, S.ev.uid * 5 + 1));
   vortex.speed = 3;
@@ -209,7 +221,7 @@ async function climbV3(S: Stage): Promise<void> {
   // f2: two fat hands BURST up out of the mud and claw at the air (held: the hook of the climb)
   atFrame(u, 'summon', 2, () => {
     play('mgBurst', { volume: 0.95, pan });
-    void burstHands(sc, u, home.y - 1, Math.max(120, u.frameMs('summon', 2) - 10), S.ev.uid * 3 + 5);
+    void burstHands(sc, u, home.y - 1, Math.max(160, u.rangeMs('summon', 2, 4) - 10), S.ev.uid * 3 + 5);
     const a = rint(pointOf(u, 'summon', 2, 'hand'));
     const b = rint(pointOf(u, 'summon', 2, 'claw'));
     clods(sc, { x: a.x, y: home.y - 1 }, home.y, 7, R, { up: 1.3, spread: 0.6 });
@@ -218,13 +230,13 @@ async function climbV3(S: Stage): Promise<void> {
     void lightFlash(sc, home.x, home.y - 4, PAL.void3, 40, 300, { floorY: home.y, air: 0.7, intensity: 1 });
     vortex.ripple();
   }, { late: false });
-  // f3: the palms SLAM onto the tile's edges and the fingers hook over its lip
+  // f4 (after the f3 reach): the palms SLAM onto the tile's edges and the fingers hook over its lip
   let grips: ReturnType<typeof gripMarks> | null = null;
-  atFrame(u, 'summon', 3, () => {
+  atFrame(u, 'summon', 4, () => {
     play('mgSlap', { volume: 1, pan });
     void shake(sc, 130, 2);
     // the near front hand and the rear hand: one on each side edge of the tile
-    const pts = [rint(pointOf(u, 'summon', 3, 'hand')), rearWrist(u, -29, -1)].map((p) => ({ at: tileLip(home, p.x + Math.sign(p.x - home.x) * 5), side: Math.sign(p.x - home.x) || 1 }));
+    const pts = [rint(pointOf(u, 'summon', 4, 'hand')), rearWrist(u, -28, -1)].map((p) => ({ at: tileLip(home, p.x + Math.sign(p.x - home.x) * 5), side: Math.sign(p.x - home.x) || 1 }));
     grips = gripMarks(sc, pts, u.sprite.depth + 0.15);
     void animate(sc, 90, (t) => {
       if (grips) grips.grip = Math.round(t * 3) / 3;
@@ -236,14 +248,21 @@ async function climbV3(S: Stage): Promise<void> {
     }
     vortex.pit = 1;
   }, { late: false });
-  // f4: the haul — the mask surfaces and the body is dragged up between the gripping hands
-  atFrame(u, 'summon', 4, () => {
+  // f5: the strain — the elbows bend, the hood's crown breaks the surface; the haul's long wet drag starts here
+  atFrame(u, 'summon', 5, () => {
     play('mgHaul', { volume: 0.9, pan });
     vortex.speed = 10;
     vortex.ripple();
+    void shake(sc, 110, 1);
   }, { late: false });
-  atFrame(u, 'summon', 5, () => {
-    clods(sc, rint(pointOf(u, 'summon', 5, 'core')), home.y, 5, R, { up: 0.8, spread: 1.4 });
+  // f7: the strain PAUSE (it trembles half out): the grips squeeze the rim, mud oozes out between the fingers
+  atFrame(u, 'summon', 7, () => {
+    for (const p of [rint(pointOf(u, 'summon', 7, 'hand')), rearWrist(u, -28, -1)]) clods(sc, { x: p.x, y: home.y }, home.y + 2, 3, R, { up: 0.5, spread: 1 });
+    void shake(sc, 140, 1);
+    vortex.ripple();
+  }, { late: false });
+  atFrame(u, 'summon', 8, () => {
+    clods(sc, rint(pointOf(u, 'summon', 8, 'core')), home.y, 5, R, { up: 0.8, spread: 1.4 });
     vortex.ripple();
   }, { late: false });
   // land: out of the mud — the hands let go of the edges, the vortex closes in steps, a wet ripple ring
@@ -342,11 +361,13 @@ async function lobV3(s: StrikeArgs): Promise<void> {
   const g0 = u.home.y;
   const g1 = s.target ? s.target.home.y : s.toGround.y;
   const dist = Math.hypot(to.x - from.x, to.y - from.y);
-  const flight = clamp(Math.round(200 + dist * 0.8), 270, 400);
-  // the arc scales with the HORIZONTAL distance (adjacent tiles: a flat 14–18-px lob that travels forward, never a
-  // vertical toss); the apex is ≈ arc px over the chord's midpoint (the bezier control sits at 2 × arc)
+  // FIX r3 (critic: "it hovers beside the target's head"): short throws are QUICK (≈190–220 ms) and always keep a
+  // visible toss arc (apex ≥ 18 px over the chord); long throws grow to ≈380 ms with a higher arc
+  const flight = clamp(Math.round(120 + dist * 0.9), 175, 380);
+  // the arc scales with the HORIZONTAL distance; the apex is ≈ arc px over the chord's midpoint (the bezier
+  // control sits at 2 × arc)
   const hdx = Math.abs(to.x - from.x);
-  const arc = clamp(Math.round(hdx * 0.26 + 6), 14, 40);
+  const arc = clamp(Math.round(hdx * 0.26 + 12), 22, 42);
   const ctrl = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 - arc * 2 };
   const x0 = Math.floor(Math.min(from.x, to.x) - 28);
   const y0 = Math.floor(Math.min(from.y, to.y) - arc * 1.5 - 24);
@@ -378,9 +399,11 @@ async function lobV3(s: StrikeArgs): Promise<void> {
     shadow.draw((g) => g.ell(fx, fy, sr, sr > 3 ? 2 : 1, PAL.ink));
     if (u.sprite.active && u.frameInfo().frame >= CON) u.sprite.setPosition(sx0, sy0 + ((Math.floor(el / 70) & 1) === 0 ? 0 : 1));
     // it sheds glossy drops on the way
-    if (el - lastDrop > 60 && t < 0.88) {
+    // drops are shed as SEPARATE pixels from the clod's trailing rim (never a tail attached to it)
+    if (el - lastDrop > 40 && t > 0.08 && t < 0.9) {
       lastDrop = el;
-      drops.add({ x: p.x - Math.sign(to.x - from.x) * 4, y: p.y + 3, vx: (R() - 0.5) * 12, vy: 14, ay: 460, floor: fy, bounce: 0, life: 460, colors: MUD_DROPS, shape: 'sq', size: 2, fadeAt: 1 });
+      const L = Math.hypot(vx, vy) || 1;
+      drops.add({ x: Math.round(p.x - (vx / L) * 7), y: Math.round(p.y - (vy / L) * 6 + 1), vx: vx * 0.25 + (R() - 0.5) * 14, vy: vy * 0.2 + 10, ay: 520, floor: fy, bounce: 0, life: 420, colors: MUD_DROPS, shape: R() < 0.5 ? 'sq' : 'px', size: 2, fadeAt: 1 });
     }
   });
   if (u.sprite.active) u.sprite.setPosition(sx0, sy0);
@@ -593,7 +616,7 @@ async function pinV3(ctx: Ctx<'activate'>): Promise<void> {
       sinkPx = t < 0.4 ? 2 : 3;
     });
     // ---- 4. the clamp forces the guard; the pool contracts into the 6-px ring around a violet pit
-    play('mgClamp', { volume: 0.8, pan: aPan });
+    play('mgClamp', { volume: 0.7, pan: aPan });
     void shake(sc, 150, 2);
     clods(sc, feet, feet.y + 2, 6, R, { up: 0.5, spread: 1.8 });
     const guard = pi >= 0 ? forceGuard(ctx, a) : Promise.resolve();
@@ -729,7 +752,8 @@ async function liquidDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
       void animate(sc, span, (t) => {
         cr.flow = Math.min(1, Math.round(t * 2.2 * 8) / 8);
         cr.drain = clamp(Math.round(((t - 0.45) / 0.55) * 6) / 6, 0, 1);
-        cr.puddle = t < 0.4 ? 0 : Math.round(lerp(26, 18, (t - 0.4) / 0.6));
+        // the pool shrinks as the tongues run off into the seams
+        cr.puddle = t < 0.25 ? 0 : Math.round(lerp(28, 14, (t - 0.25) / 0.75));
       });
       violetMotes(sc, home, 5, R, DEPTH.FX);
     }, { late: false });
@@ -757,7 +781,7 @@ async function liquidDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
     play('mgSeal', { volume: 0.85, pan });
     await animate(sc, 220, (t) => {
       const step = Math.min(4, Math.floor(t * 5));
-      cr.puddle = [20, 14, 9, 4, 0][step];
+      cr.puddle = [14, 10, 7, 3, 0][step];
       cr.close = Math.min(3, Math.max(0, step - 1));
     });
     cr.close = 3;

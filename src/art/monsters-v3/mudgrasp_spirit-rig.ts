@@ -154,7 +154,7 @@ export const NEUTRAL: Pose = {
   nc: 0,
   nd: -1,
   ndh: 0,
-  fx: 33,
+  fx: 29,
   fy: -3,
   fc: 0.2,
   aa: -100,
@@ -270,7 +270,9 @@ export function skeleton(o: Pose): Skel {
   const maskO: Pt = o.maskFree > 0 ? [AX + o.mx, GY + o.my] : [rnd(head[0]) - 5 + o.mx, rnd(head[1]) - 10 + o.my];
   // climb (summon): the arms come straight up out of the mud under their hands; melt (death): the elbows sag
   const cl = clamp(o.climb, 0, 1);
-  const under = (sh: Pt, w: Pt): Pt => [sh[0] + (w[0] - 3 - sh[0]) * cl, sh[1] + (GY + 10 - sh[1]) * cl];
+  // FIX r3: the roots sit between the wrist and the body's centre (arms LEAN out of the vortex toward the tile's
+  // edges — never upright posts)
+  const under = (sh: Pt, w: Pt): Pt => [sh[0] + (w[0] + (AX - w[0]) * 0.4 - sh[0]) * cl, sh[1] + (GY + 10 - sh[1]) * cl];
   const sag = (el: Pt): Pt => [el[0], el[1] + (GY - 2 - el[1]) * m];
   const straight = (el: Pt, sh: Pt, w: Pt): Pt => [el[0] + ((sh[0] + w[0]) / 2 - el[0]) * cl, el[1] + ((sh[1] + w[1]) / 2 - el[1]) * cl];
   const s85 = sp(0.82);
@@ -510,34 +512,53 @@ function drawPuddle(f: Frame): PixelCanvas {
       }
     q.ellipse(cx, cy, 4, 1, PAL.void0);
   }
-  // melting (death): the body has run down into the pool as round, glossy, SAGGING lobes that spread outward over
-  // the frames (wet slumps — never sticks); each lobe a dark wet belly, a lit crest and one hot catch
+  // melting (death) — FIX r3 (critic: "a pile of rubble / potatoes"): the body has run down into ONE continuous glossy
+  // sheet of liquid mud that spreads and THINS over the frames — a low wet dome with an ink edge, a lit wet rim
+  // along its top, a travelling ripple band, a dark wet skirt where it meets the pool and violet light leaking
+  // through its thinnest edge. No separate lobes. The mask floats on it (drawn after) and sinks last.
   if (o.melt > 0.45 && o.sink > 10) {
     const k = clamp((o.melt - 0.45) / 0.55, 0, 1);
-    const lobes: [number, number, number][] = [[-20, 5, 4], [-5, 7, 6], [10, 6, 5], [22, 4, 3]];
-    lobes.forEach(([dx, lrx, lry], i) => {
-      const x = cx + rnd(dx * (0.8 + 0.35 * k)); // silhouette identical for P1 / P2 (only the shading is relit)
-      const fade = o.mask > 0 ? 1 : 0.45; // the last frame: the lobes have drained flat (only the pool is left)
-      const rr = Math.max(2, rnd(lrx * fade * (1 - 0.25 * k * (i === 1 ? 0.3 : 1))));
-      const ry = Math.max(1, rnd(lry * fade * (1 - 0.3 * k)));
-      const y = cy - ry + 2;
-      // a dark wet crease where the lobe sits on the pool (separates the slumps from each other and the pool)
-      for (let yy = y - ry - 1; yy <= y + ry + 1; yy++)
-        for (let xx = x - rr - 1; xx <= x + rr + 1; xx++) {
-          const e = ((xx - x) / (rr + 1)) ** 2 + ((yy - y) / (ry + 1)) ** 2;
-          if (e <= 1 && yy <= GY && yy >= y - 1 && q.isOpaque(xx, yy)) q.set(xx, yy, PAL.ink);
-        }
-      for (let yy = y - ry; yy <= y + ry; yy++)
-        for (let xx = x - rr; xx <= x + rr; xx++) {
-          const ex = (xx - x) / rr;
-          const ey = (yy - y) / Math.max(1, ry);
-          if (ex * ex + ey * ey > 1 || yy > GY) continue;
-          const top = ey < -0.35;
-          q.set(xx, yy, top ? (ex * -light.side > 0.1 ? PAL.earth3 : PAL.earth2) : ey > 0.4 ? PAL.earth0 : PAL.earth1);
-        }
-      const hx = x + light.lx(-rnd(rr * 0.4));
-      if (q.isOpaque(hx, y - ry + 1)) q.set(hx, y - ry + 1, PAL.earth4);
-    });
+    const gone = o.mask > 0 ? 0 : 1;
+    // a soft dome under the mask (not a full-width bar): it widens a little and slumps lower every frame
+    const srx = rnd((15 + 7 * k) * (1 - 0.2 * gone));
+    const sry = gone ? 1 : Math.max(2, rnd(6.5 - 2.2 * k - Math.max(0, o.sink - 25) * 0.4));
+    const sx = cx + rnd(6 + 2 * k); // centred under the floating mask (P2 mirrors it with the sheet)
+    const by = cy + 1;
+    const inS = (x: number, y: number) => {
+      if (y > by) return false;
+      const ex = (x - sx) / srx;
+      const ey = (y - by) / sry;
+      return ex * ex + ey * ey <= 1;
+    };
+    // ink edge (over the pool), then the sheet
+    for (let y = by - sry - 1; y <= by; y++)
+      for (let x = sx - srx - 1; x <= sx + srx + 1; x++)
+        if (!inS(x, y) && (inS(x - 1, y) || inS(x + 1, y) || inS(x, y + 1)) && y < by) q.set(x, y, PAL.ink);
+    const rip = (o.t * 3 + k) % 1;
+    for (let y = by - sry; y <= by; y++)
+      for (let x = sx - srx; x <= sx + srx; x++) {
+        if (!inS(x, y)) continue;
+        const top = !inS(x, y - 1);
+        const ex = (x - sx) / srx;
+        let c: number = PAL.earth1;
+        if (y === by) c = PAL.earth0;
+        else if (top) c = ex * -light.side > 0.15 ? PAL.earth3 : PAL.earth2;
+        else if (!inS(x, y - 2) && ((x + y) & 1) === 0) c = PAL.earth2;
+        // the ripple band: a lighter wet ring running outward through the sheet
+        if (!top && y < by && Math.abs(Math.abs(ex) - rip) < 0.05) c = PAL.earth2;
+        q.set(x, y, c);
+      }
+    // hot wet catches on the rim toward the light (one long, one short)
+    const hx = sx + light.lx(-rnd(srx * 0.45));
+    for (let i = 0; i < 3; i++) {
+      const x = hx + i - 1;
+      for (let y = by - sry; y <= by; y++) if (inS(x, y)) { q.set(x, y, i === 1 ? PAL.earth4 : PAL.earth3); break; }
+    }
+    // violet light leaking through the thinnest outer edge (the spirit's light under the ground)
+    for (const d of [-1, 1]) {
+      const x = sx + d * (srx - 2);
+      if (inS(x, by - 1)) q.set(x, by - 1, PAL.void2);
+    }
   }
   f.comp.add(q, Part.puddle, {});
   return q;
@@ -690,6 +711,22 @@ function drawHead(f: Frame): void {
   q.poly([[hx - 3, hy - 13.5], [hx - 9, hy - 15.5], [hx - 13, hy - 12], [hx - 8, hy - 9]], MUD.M);
   blobShade(q, [{ x: cw.x + 0.5, y: cw.y + 0.5, rx: cw.rx + 0.5, ry: cw.ry + 0.5 }, { x: hx + 3.5, y: hy + 6.5, rx: 5.5, ry: 3.5 }], MUD, light, { lit: 0.55, shade: 0.15 });
   despeckle(q, 2);
+  // FIX r3 (idle "bubbles on the back"): a bubble swells on the hood's crown over two frames and POPS (a violet
+  // flash out of it, two wet flecks) — twice per idle loop, on its own rhythm
+  if (f.o.bubK > 0 && f.o.mask > 0 && f.o.melt < 0.3) {
+    const u = (f.o.bub * 2 + 0.15) % 1;
+    const bx = hx - 5;
+    const by = hy - 14;
+    if (u >= 0.3 && u < 0.55) {
+      const r = u < 0.42 ? 1 : 2;
+      q.disc(bx, by - r + 1, r, MUD.L);
+      q.set(bx - (r > 1 ? 1 : 0), by - r * 2 + 1 + (r > 1 ? 1 : 0), GLOSS);
+    } else if (u >= 0.55 && u < 0.68) {
+      (f as Frame & { hoodPop?: Pt }).hoodPop = [bx, by - 1];
+      q.set(bx - 2, by - 3, MUD.L);
+      q.set(bx + 2, by - 4, MUD.L);
+    }
+  }
   // the cavity: void-black, a 2-px ring of it shows around the mask's top and back
   const cav = { x: hx + 2.5, y: hy - 1.5, rx: 8.5, ry: 10.5 };
   for (let y = rnd(cav.y - cav.ry); y <= rnd(cav.y + cav.ry); y++)
@@ -809,12 +846,14 @@ function eyeLight(f: Frame): void {
   const fx0 = EYE_F.x0 + 1;
   const ey = EYE_N.y;
   if (o.lid < 2) {
-    for (let x = nx0; x < nx0 + 3; x++) {
+    // FIX r3 (idle "eyes looking around"): the whole iris slides inside the wide socket with `look` (±1 px), the
+    // void rim opening on the other side — the glance reads at 1×
+    for (let x = nx0 + look; x < nx0 + 3 + look; x++) {
       if (o.lid === 0) put(ox + x, oy + ey, lit);
       put(ox + x, oy + ey + 1, lit);
     }
-    put(ox + nx0 + 1 + look, oy + ey + 1, core);
-    if (o.lid === 0) put(ox + nx0 + 1 + look, oy + ey, core);
+    put(ox + nx0 + 1 + look * 2, oy + ey + 1, core);
+    if (o.lid === 0) put(ox + nx0 + 1 + look * 2, oy + ey, core);
     for (let x = fx0; x < fx0 + 2; x++) {
       if (o.lid === 0) put(ox + x, oy + ey, lit);
       put(ox + x, oy + ey + 1, o.eye > 0.6 ? PAL.void2 : PAL.void1);
@@ -985,6 +1024,12 @@ export function drawMudgrasp(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right
   crackLight(f);
   veinLight(f);
   popLight(f, f.pops ?? []);
+  const hp = (f as Frame & { hoodPop?: Pt }).hoodPop;
+  if (hp) for (const [dx, dy] of [[0, 0], [-1, 0], [1, 0], [0, -1]] as const) {
+    const x = rnd(hp[0]) + dx;
+    const y = rnd(hp[1]) + dy;
+    if (f.comp.id[y * W + x] === Part.head) f.p.set(x, y, dx === 0 && dy === 0 ? PAL.void4 : PAL.void3);
+  }
   eyeLight(f);
   glintLight(f);
 }
