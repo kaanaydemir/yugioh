@@ -18,7 +18,7 @@ export interface AxeNumber {
 }
 
 /** "+N" (heal sheet, green) or "−N" at (x, y): pop, float `rise` px, hold, fade over the last `fadeMs` of `life`. */
-export function axeNumber(scene: Phaser.Scene, x: number, y: number, amount: number, o: { kind?: 'heal' | 'damage'; life?: number; fadeMs?: number; rise?: number; depth?: number } = {}): AxeNumber {
+export function axeNumber(scene: Phaser.Scene, x: number, y: number, amount: number, o: { kind?: 'heal' | 'damage'; life?: number; fadeMs?: number; rise?: number; depth?: number; pop?: number } = {}): AxeNumber {
   buildNumberTextures(scene);
   const kind = o.kind ?? 'heal';
   const life = o.life ?? 820;
@@ -43,7 +43,7 @@ export function axeNumber(scene: Phaser.Scene, x: number, y: number, amount: num
   let resolve!: () => void;
   const done = new Promise<void>((r) => (resolve = r));
   const draw = (): void => {
-    c.setScale(el < BIG_MS ? 2 : 1);
+    c.setScale(el < BIG_MS ? (o.pop ?? 2) : 1);
     const jump = Math.round(Math.min(1, el / 120) * (2 - Math.min(1, el / 120)) * 7);
     const drift = Math.round(Math.min(1, el / life) * rise);
     c.setPosition(x0, y0 - jump - drift);

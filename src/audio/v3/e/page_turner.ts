@@ -56,12 +56,18 @@ function flap(v: Voice, t: number, g: number, o: { f?: number; d?: number; to?: 
  * edge tick, a shorter, higher glide and a firmer pocket.
  */
 function pageFlap(v: Voice, t: number, g: number, stiff = false): void {
-  const tick = stiff ? 7400 : 6500;
-  v.noise('white', { t, g: perc(g * 0.9, 0.0016, 0.0002), to: v.filt('bandpass', tick, 3.2, { t }) });
-  if (stiff) v.noise('white', { t: t + 0.004, g: perc(g * 0.6, 0.0014, 0.0002), to: v.filt('bandpass', tick * 0.86, 3.2, { t }) });
-  const [f0, f1, d] = stiff ? [6000, 2400, 0.015] : [5000, 1800, 0.02];
-  v.noise('white', { t: t + 0.001, g: [[0, 0], [0.0015, g * 0.75], [d, g * 0.18, 'e'], [d + 0.012, 0.0001, 'e']], to: v.filt('bandpass', [[0, f0], [d, f1, 'e']], 4.5, { t: t + 0.001 }) });
-  v.tone('sine', [[0, stiff ? 125 : 115], [0.03, stiff ? 95 : 88, 'e']], { t: t + 0.003, g: perc(g * (stiff ? 0.32 : 0.22), 0.03, 0.002) });
+  // the edge tick sits ABOVE the card-handling band (cardFlip / shuffle live at 1.5–5.5 kHz): a hard, narrow 9–10 kHz snap
+  const tick = stiff ? 10400 : 9400;
+  v.noise('white', { t, g: perc(g * 1.5, 0.0018, 0.0002), to: v.filt('bandpass', tick, 5, { t }) });
+  if (stiff) v.noise('white', { t: t + 0.004, g: perc(g * 0.7, 0.0016, 0.0002), to: v.filt('bandpass', tick * 0.9, 5, { t }) });
+  // the thwip: a NARROW resonant band gliding high → low (the sheet cutting the air), kept above 3 kHz
+  const [f0, f1, d] = stiff ? [9000, 4200, 0.016] : [8200, 3600, 0.022];
+  v.noise('white', { t: t + 0.001, g: [[0, 0], [0.0015, g * 1.0], [d, g * 0.2, 'e'], [d + 0.01, 0.0001, 'e']], to: v.filt('bandpass', [[0, f0], [d, f1, 'e']], 7, { t: t + 0.001 }) });
+  // the AIR POCKET: the page slapping the air flat — a strong, 40-ms low push (115 → 80 Hz) with a soft breath on it
+  v.tone('sine', [[0, stiff ? 128 : 115], [0.042, stiff ? 88 : 80, 'e']], { t: t + 0.003, g: [[0, 0], [0.004, g * (stiff ? 0.8 : 0.62)], [0.042, 0.0001, 'e']] });
+  v.noise('pink', { t: t + 0.003, g: perc(g * 0.35, 0.04, 0.003), to: v.filt('lowpass', 170, 1.2, { t: t + 0.003 }) });
+  // stiff: the leather spine answers — a dull, dry, low "tock" (the board block, low and short)
+  if (stiff) thump(v, t + 0.006, 150, 95, g * 0.55, 0.045);
 }
 
 /** The dull board of a leather cover meeting something: a low, short, non-ringing knock. */
@@ -107,10 +113,10 @@ export const RECIPES = {
     verb: 0.35,
     play(v) {
       // the book gathers out of the orb: a short breath in (rising air) …
-      sweep(v, 0, 0.16, [700, 1800, 2600], 0.16, { q: 1.2, kind: 'pink', peakAt: 0.85 });
+      sweep(v, 0, 0.16, [700, 1800, 2600], 0.11, { q: 1.2, kind: 'pink', peakAt: 0.85 });
       // … and the heavy tome takes its weight: a dull board drop, a leather settle
-      board(v, 0.15, 0.5, { f: 120 });
-      puff(v, 0.16, 0.18, 0.12, 900);
+      board(v, 0.15, 0.35, { f: 120 });
+      puff(v, 0.16, 0.13, 0.12, 900);
       // a warm low hum of the spell under it (two sines a fifth apart, soft)
       v.tone('sine', 196, { t: 0.12, g: [[0, 0], [0.05, 0.05], [0.4, 0.0001, 'e']] });
       v.tone('sine', 294, { t: 0.14, g: [[0, 0], [0.06, 0.03], [0.36, 0.0001, 'e']] });
@@ -170,22 +176,25 @@ export const RECIPES = {
     play(v) {
       // PAT — a heavy BOOK clapping shut, not a hand clap: the energy sits LOW and DRY. The room answer is a short,
       // dark, boxy slap-back (30 ms, low-passed) — no bright glass / wood ring.
-      const room = v.echo(0.03, 0.16, { wet: 0.3, tone: 1100 });
+      const room = v.echo(0.03, 0.28, { wet: 0.42, tone: 1100 });
       // everything runs through a dark lowpass: a leather board has no bright slap band
-      const dark = v.filt('lowpass', 1500, 0.7);
-      const dark2 = v.filt('lowpass', 1500, 0.7, { to: dark });
+      const dark = v.filt('lowpass', 2100, 0.7);
+      const dark2 = v.filt('lowpass', 2100, 0.7, { to: dark });
       dark.connect(room);
       // the two boards meeting: a dense 250–600 Hz board body (two layers, the far board 4 ms late) …
-      v.noise('white', { g: perc(4.2, 0.09, 0.0005), to: v.filt('bandpass', 520, 1.4, { to: dark2 }) });
-      v.noise('white', { t: 0.004, g: perc(2.0, 0.06, 0.0005), to: v.filt('bandpass', 380, 1.6, { to: dark2 }) });
-      v.noise('pink', { t: 0.001, g: perc(1.6, 0.05, 0.0005), to: v.filt('bandpass', 640, 1.8, { to: dark2 }) });
+      v.noise('white', { g: perc(6.0, 0.15, 0.0005), to: v.filt('bandpass', 520, 1.4, { to: dark2 }) });
+      v.noise('white', { t: 0.004, g: perc(3.0, 0.11, 0.0005), to: v.filt('bandpass', 380, 1.6, { to: dark2 }) });
+      v.noise('pink', { t: 0.001, g: perc(2.5, 0.05, 0.0005), to: v.filt('bandpass', 640, 1.8, { to: dark2 }) });
+      // … the pages' block pressed home a beat later (the far board seats: a second, softer body, ~1 kHz grip) …
+      v.noise('white', { t: 0.024, g: perc(2.6, 0.09, 0.0005), to: v.filt('bandpass', 760, 1.3, { to: dark2 }) });
+      v.noise('pink', { t: 0.024, g: perc(1.2, 0.05, 0.0005), to: v.filt('bandpass', 1300, 1.6, { to: dark2 }) });
       // … the sheets' air squeezed out of the fore-edge: a short, high, papery "ffft" (above 5 kHz only, ~40 ms) …
-      v.noise('white', { t: 0.002, g: [[0, 0], [0.004, 0.32], [0.045, 0.0001, 'e']], to: v.filt('bandpass', [[0, 7200], [0.045, 5200, 'e']], 2.2) });
+      v.noise('white', { t: 0.002, g: [[0, 0], [0.004, 0.5], [0.045, 0.0001, 'e']], to: v.filt('bandpass', [[0, 7200], [0.045, 5200, 'e']], 2.2) });
       // … the trapped air bursting out of the page edges: a low, wide air puff …
-      puff(v, 0.003, 1.3, 0.13, 800, { kind: 'pink', att: 0.002, to: dark });
+      puff(v, 0.003, 2.0, 0.21, 800, { kind: 'pink', att: 0.002, to: dark });
       // … and the weight of the closed tome: a quick, dull low drop, slightly driven (no ring)
-      thump(v, 0, 330, 200, 0.55, 0.08, { drive: 2.2, to: dark });
-      thump(v, 0.002, 520, 380, 0.4, 0.04, { to: dark });
+      thump(v, 0, 330, 200, 0.85, 0.08, { drive: 2.2, to: dark });
+      thump(v, 0.002, 520, 380, 0.62, 0.04, { to: dark });
       // the paper inside settles a beat later (a soft low riffle, under 2 kHz)
       flap(v, 0.08, 0.08, { f: 900, d: 0.06, to: dark });
     },
@@ -255,8 +264,8 @@ export const RECIPES = {
     verb: 0.3,
     play(v) {
       // the swung cover board lands flat (fired when the board reaches the table: synced at every speed)
-      board(v, 0, 0.42, { f: 135 });
-      flap(v, 0.004, 0.14, { f: 2400, d: 0.04 });
+      board(v, 0, 0.3, { f: 135 });
+      flap(v, 0.004, 0.1, { f: 2400, d: 0.04 });
     },
   },
   e_pageStrain: {
@@ -265,7 +274,7 @@ export const RECIPES = {
     verb: 0.22,
     play(v) {
       // the shut tome strains: one dull leather knock of the board against its clasp (pitch rises per knock)
-      board(v, 0, 0.36, { f: 160 });
+      board(v, 0, 0.28, { f: 160 });
       v.noise('white', { t: 0.002, g: perc(0.06, 0.012, 0.0005), to: v.filt('bandpass', 1800, 2) });
     },
   },
@@ -395,9 +404,9 @@ export const RECIPES = {
     vary: 0.03,
     play(v) {
       // one band of the leather cover peels off: a short leather creak-tear and a dry ink tick (pitch per band)
-      creak(v, 0, 0.055, 0.24, 300, 540, 90);
-      v.noise('white', { t: 0.004, g: perc(0.1, 0.006, 0.0003), to: v.filt('bandpass', 4600, 2) });
-      puff(v, 0.01, 0.08, 0.05, 900);
+      creak(v, 0, 0.07, 0.62, 300, 540, 90);
+      v.noise('white', { t: 0.004, g: perc(0.26, 0.006, 0.0003), to: v.filt('bandpass', 4600, 2) });
+      puff(v, 0.01, 0.2, 0.06, 900);
     },
   },
   e_pageGlint: {

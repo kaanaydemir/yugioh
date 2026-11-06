@@ -28,23 +28,22 @@
 //          The haft QUIVERS (±1 px, 6 frames).
 //   +560   the chains fall slack and coil round two iron pegs on the far side (real links: _spite_axe_chain.ts)
 //   +640   VEIN PULSE (the haft beats, the cracks flare, an ember ring breathes) — e_axePulse
-//   +830   THE REACH: the wielder takes its reach pose (its strike toward a front bite, its flinch toward a back one)
-//          and steps 2 → 4 → 6 px toward the haft, a 1-px crouch on the first steps
-//   +1040  THE GRIP (contact frame: the haft's top in its hand) — e_axeGrip; a 1-px fire-ramp VEIN climbs from the
-//          hand up the body's near edge to the head (≈320 ms, stepped; then it beats)
-//   +1360  THE WRENCH: three ESCALATING tugs (230 ms each: yank → strain → give) — the wielder leans back 4 → 7 → 10
-//          px from the reach with a 1-px heave, the haft TILTS toward it in 15° drawings so its top stays in the hand,
-//          lifting 1 → 3 → 5 px out of the bite; every yank: the floor cracks step up a band (fire2 → fire3 → fire4), a
-//          short ember light pulse, a dirt (flat earth rings + 2-px clods) and ember puff, a 1–2 px shake; the third
-//          tug shivers the whole body; a 40 ms catch at full strain before the snap — e_axeWrench (0.92 s)
-//   +2050  SNAP: the chains break (a white star at each break, links FLUNG spinning), hit-stop 60 ms; the axe TEARS
-//          OUT (dirt clods + embers, the slit), white-cored for the stop; the wielder recoils in its pull pose —
-//          e_axeSnap; then it settles back through −5 → −3 → −1 → 0 px (overshoot)
-//   +2110  the axe arcs over its shoulder to its back (6 turn drawings), the torn chain ends trailing, into the slung
-//          small axe (two white-cored frames)
-//   +2350  THE OATH: the vein flares white → fire4 and cools out, the EYES IGNITE (authored eye anchors per monster:
-//          _spite_axe_aura.ts EYE_ANCHORS; white, then ember; a 4-ray star), the body's edge flares ember — e_axeIgnite;
-//   +2500  then "+800" pops BESIDE the body on its front side (never over the face; _spite_axe_number.ts), the badge
+//   +830   THE REACH: the wielder CROUCHES and LEANS (a crisp pixel double, _spite_axe_grip.ts BodyDouble: rows fold
+//          at the knee, the upper body shears toward the haft) and steps in until its HAND (an authored anchor per
+//          monster: a fist, a jaw, a claw, a tail) lies ON the haft. The plan is built round that hand: the haft is drawn
+//          long enough (scale ≥ 1) for its top to stand over the hand, the bite never lands on the axe card's own tile
+//   +1040  THE GRIP (contact frame): the hand's own tones wrap the haft as knuckles (in front of it) — e_axeGrip; a
+//          1-px fire-ramp VEIN climbs from the hand up the body's near edge to the head (stepped; then it beats)
+//   +1360  THE WRENCH: three ESCALATING tugs (230 ms each: yank → strain → give) — the body leans back AWAY, the haft
+//          tilts toward it and lifts 1 → 3 → 5 px out of the bite; the body hangs on the haft (its hand stays on the
+//          haft's station at the hand's height); cracks step up a band, dirt + embers, shakes — e_axeWrench
+//   +2050  SNAP: the chains break (white stars, links FLUNG), hit-stop 60 ms; the axe TEARS OUT in the fist, white-
+//          cored; the body jerks back with it — e_axeSnap
+//   +2110  THE HEAVE: the axe swings up ROUND THE HAND (its station locked in the fist, 15° drawings, never through the
+//          floor), the hand choking up the haft, the body rising out of its lean; slung onto the back (two hot frames)
+//   +2350  THE OATH: the vein flares white → fire4 and cools out, the EYES IGNITE and LEAD (≈290 ms: a white frame, then a
+//          2-px ember core with a shrinking 4-px flare on an ink backing), the body's edge flares later, soft — e_axeIgnite;
+//   +2640  then "+800" (no oversize pop) BESIDE the body on its front side, or over its shoulder when a neighbour stands there, the badge
 //          rolls; the persistent aura starts (AxeAura)
 //   +3040  the number has faded out; the input returns
 // DESTROYED (hook 'destroyed', the axe's card leaves its spell zone): the card flares ember, a crack runs across it,
@@ -88,7 +87,8 @@ import { LP_ROLL_MAX_MS } from '../_v3/budget';
 import { fx, registerCardHook, registerEvent, registerObserver, type CinematicContext } from '../api';
 import { registerLaneE, type LaneECtx } from '../b2e/dispatch';
 import { bg, evAt, idxOf, lightFlash, lightPool, relax, setTileOf, spellOpening, type ActCtx, type AnyCtx } from './_kit';
-import { type AxeOpts, axeAngle, axeKey, axeOffset } from './_spite_axe_motif';
+import { type AxeOpts, type AxeSize, axeAngle, axeKey, axeOffset } from './_spite_axe_motif';
+import { BodyDouble, handAnchor, handTones } from './_spite_axe_grip';
 import { AURAS, AxeAura, DETACHED, FALLEN, LAST, type AxePose, drawEyes, eyesOf, holdAt, holdPose } from './_spite_axe_aura';
 
 const ID: CardId = 'spite_axe';
@@ -410,71 +410,9 @@ function edgeX(s: Phaser.GameObjects.Sprite, name: string, y0: number, y1: numbe
   return best;
 }
 
-interface Pose {
-  anim: 'attack' | 'hit' | 'idle';
-  frame: number;
-}
-const frameName = (p: Pose): string => `${p.anim}:${p.frame}`;
-
-/** Opaque bottom row and the outermost column toward `side` within the body's middle band, of a frame (frame px). */
-function frameReach(m: FrameMask, side: number, flip: boolean): { bottom: number; reach: number } | null {
-  let top = -1;
-  let bottom = -1;
-  for (let y = 0; y < m.H; y++)
-    for (let x = 0; x < m.W; x++)
-      if (m.data[(y * m.W + x) * 4 + 3] > 0) {
-        if (top < 0) top = y;
-        bottom = y;
-        break;
-      }
-  if (top < 0) return null;
-  const y0 = Math.round(top + (bottom - top) * 0.3);
-  const y1 = Math.round(top + (bottom - top) * 0.75);
-  let reach = -Infinity;
-  for (let y = y0; y <= y1; y++)
-    for (let x = 0; x < m.W; x++) {
-      if (m.data[(y * m.W + x) * 4 + 3] === 0) continue;
-      const wx = flip ? m.W - 1 - x : x;
-      reach = Math.max(reach, side > 0 ? wx : -wx);
-    }
-  return { bottom, reach };
-}
-
-/**
- * The REACH pose toward the bite (side) and the PULL pose away from it: chosen among the monster's own frames (its
- * idle, the attack frames up to the impact, the flinch frames) — only GROUNDED ones (feet within 2 px of the idle
- * drawing's: a leaper's mid-air strike frame never holds the axe) — the one reaching furthest toward the bite, and
- * the one leaning furthest away.
- */
-function poses(u: MonsterUnit, side: number): { reach: Pose; wrench: Pose } {
-  const s = u.sprite;
-  const cands: Pose[] = [{ anim: 'idle', frame: 0 }];
-  if (u.has('attack')) for (let f = 0; f <= Math.min(u.frameCount('attack') - 1, u.impactFrame); f++) cands.push({ anim: 'attack', frame: f });
-  if (u.has('hit')) for (let f = 0; f < u.frameCount('hit'); f++) cands.push({ anim: 'hit', frame: f });
-  const idle = frameMask(s, 'idle:0');
-  const base = idle ? frameReach(idle, side, s.flipX) : null;
-  let reach: Pose = cands[0];
-  let wrench: Pose = cands[0];
-  let rMax = base?.reach ?? 0;
-  let rMin = base?.reach ?? 0;
-  for (const c of cands) {
-    const m = frameMask(s, frameName(c));
-    const r = m ? frameReach(m, side, s.flipX) : null;
-    if (!r || !base || Math.abs(r.bottom - base.bottom) > 2) continue;
-    if (r.reach > rMax) {
-      rMax = r.reach;
-      reach = c;
-    }
-    if (r.reach < rMin) {
-      rMin = r.reach;
-      wrench = c;
-    }
-  }
-  return { reach, wrench };
-}
-
-/** The planted drawing for a bite on screen side `side` of the body: the blade fans away, the haft leans in. */
-const plantFor = (side: number): { angle: number; mirror: boolean } => (side > 0 ? { angle: 75, mirror: true } : { angle: 105, mirror: false });
+/** The planted drawing for a bite on screen side `side` of the body, its haft leaning `lean` 15° steps further in
+ *  toward the body (0: the plain 75° plant): the blade fans away, the haft leans in. */
+const plantFor = (side: number, lean = 0): { angle: number; mirror: boolean } => (side > 0 ? { angle: 75 - 15 * lean, mirror: true } : { angle: 105 + 15 * lean, mirror: false });
 
 interface BitePlan {
   side: number;
@@ -484,8 +422,13 @@ interface BitePlan {
   plantO: XY;
   angle: number;
   mirror: boolean;
-  reach: Pose;
-  wrench: Pose;
+  /** The axe drawing's exact scale (≥ 1: a tall wielder gets a longer haft so its hand finds it). */
+  scale: number;
+  /** The wielder's gripping hand (idle:0 frame px, see _spite_axe_grip.ts) and where it is at rest (world). */
+  hand: XY;
+  handW: XY;
+  /** The haft station (lg units along the haft, −31 … −10) at the hand's height. */
+  gripU: number;
   /** The axe's depth while planted (in front of the wielder, and of any neighbour it overlaps). */
   depth?: number;
   /** Opposing bodies' boxes (the chain pegs keep clear of them). */
@@ -493,15 +436,39 @@ interface BitePlan {
 }
 
 const REACH_PX = 6;
-const GAP_PX = 5;
+const SCALES = [1, 1.1, 1.2, 1.3, 1.4, 1.5] as const;
+
+/** The haft station u (−31 … −10, half steps) whose point lies nearest world row `y` for an axe with origin O. */
+function stationAt(o: AxeOpts, O: XY, y: number): number {
+  let best = -20;
+  let bd = Infinity;
+  for (let u = -31; u <= -10; u += 0.5) {
+    const d = Math.abs(O.y + axeOffset(o, u, 0).y - y);
+    if (d < bd - 0.01) {
+      bd = d;
+      best = u;
+    }
+  }
+  return best;
+}
+
+/** World pixel of idle:0 frame point fp for the sprite at its current position. */
+function frameWorld(s: Phaser.GameObjects.Sprite, fp: XY): XY {
+  const W = s.frame.realWidth;
+  return { x: Math.round(s.x - s.displayOriginX) + (s.flipX ? W - 1 - fp.x : fp.x), y: Math.round(s.y - s.displayOriginY) + fp.y };
+}
 
 /**
  * Where the axe bites: beside the body on the side whose ground is FREE (no other monster's body over the axe's
- * footprint), the front first; the haft's top 5 px off the body's edge at grip height, so the reach (6 px) closes on
- * it. Both sides taken: the front corner of its own tile (nearer the camera).
+ * footprint, never on the axe card's own tile), the front first. The plan is built round the wielder's HAND (an
+ * authored anchor per monster): the haft is long enough (the drawing's scale) for its top to stand above the hand,
+ * the station at the hand's height stands REACH_PX off the hand, and the haft never cuts into the body (the bite
+ * moves out; the haft leans a step further in when that leaves the hand too far). Both sides taken: the front corner
+ * of its own tile (nearer the camera).
  */
 function planBite(ctx: EquipCtx, u: MonsterUnit): BitePlan {
   const s = u.sprite;
+  const ev = ctx.ev;
   const home = { x: R(u.home.x), y: R(u.home.y) };
   const facing = u.flipX ? -1 : 1;
   const others: { l: number; r: number; t: number; b: number; d: number; foe: boolean }[] = [];
@@ -512,40 +479,78 @@ function planBite(ctx: EquipCtx, u: MonsterUnit): BitePlan {
       const sil = o && o.sprite.active && o.sprite.visible ? silhouetteOf(o.sprite) : null;
       if (sil) others.push({ l: sil.left, r: sil.right, t: sil.top, b: sil.bottom, d: o!.sprite.depth, foe: o!.player !== u.player });
     }
-  const build = (side: number, floorY: number): BitePlan & { box: { l: number; r: number; t: number; b: number } } => {
+  // the axe card's own tile (lying on its spell zone): the bite never lands on it (the cracks read on clean floor)
+  const own = ctx.views.field.tileAt(ev.player, 'spellTrap', ev.spellZone);
+  const ownAt = own ? { x: R(own.home.x), y: R(own.home.y) } : zoneXY(ev.player, 'spellTrap', ev.spellZone);
+  const onOwnTile = (q: XY): boolean => Math.abs(q.x - ownAt.x) / 30 + Math.abs(q.y - ownAt.y) / 16 < 1.25;
+  type Plan = BitePlan & { box: { l: number; r: number; t: number; b: number }; miss: number };
+  const build = (side: number, floorY: number): Plan => {
     const front = side === facing;
-    const ps = poses(u, side);
-    const pp = plantFor(side);
-    const lg: AxeOpts = { size: 'lg', angle: pp.angle, mirror: pp.mirror };
-    const toe = axeOffset(lg, 9, 11);
-    const pom = axeOffset(lg, -31, 0);
-    const oy = floorY - toe.y + 3;
-    const gy = oy + pom.y;
-    const sil = silhouetteOf(s);
-    const e = edgeX(s, frameName(ps.reach), gy - 4, gy + 4, side) ?? edgeX(s, frameName(ps.reach), gy - 14, gy + 14, side) ?? (sil ? (side > 0 ? sil.right - 1 : sil.left) : home.x + side * 16);
-    const ox = e + side * GAP_PX - pom.x;
-    const plantO = { x: R(ox), y: R(oy) };
-    const bite = { x: R(ox + toe.x), y: floorY };
-    const xs = [plantO.x + pom.x, bite.x, plantO.x + axeOffset(lg, -2, 15).x];
-    const box = { l: Math.min(...xs) - 3, r: Math.max(...xs) + 3, t: plantO.y + pom.y, b: floorY + 2 };
-    return { side, front, bite, floorY, plantO, angle: pp.angle, mirror: pp.mirror, reach: ps.reach, wrench: ps.wrench, box };
+    const hand = handAnchor(u, side);
+    const handW = frameWorld(s, hand);
+    const handH = floorY - handW.y;
+    let best: Plan | null = null;
+    for (const lean of [0, 1]) {
+      const pp = plantFor(side, lean);
+      // the haft's top stands ≥ 5 px above the hand
+      let scale: number = SCALES[SCALES.length - 1];
+      for (const k of SCALES) {
+        const o: AxeOpts = { size: 'lg', angle: pp.angle, mirror: pp.mirror, scale: k };
+        const oy = floorY - axeOffset(o, 9, 11).y + 3;
+        if (floorY - (oy + axeOffset(o, -31, 0).y) >= handH + 5) {
+          scale = k;
+          break;
+        }
+      }
+      const lg: AxeOpts = { size: 'lg', angle: pp.angle, mirror: pp.mirror, scale };
+      const toe = axeOffset(lg, 9, 11);
+      const oy = floorY - toe.y + 3;
+      const gripU = stationAt(lg, { x: 0, y: oy }, handW.y + 1);
+      const g = axeOffset(lg, gripU, 0);
+      // the station at the hand's height stands REACH_PX off the hand…
+      let ox = handW.x + side * REACH_PX - g.x;
+      // …and no part of the haft / cheek may cut into the body at rest: the bite moves out until it clears
+      let push = 0;
+      for (let uu = -31; uu <= 3; uu += 1)
+        for (const vv of [-3, 3]) {
+          const q = axeOffset(lg, uu, vv);
+          const x = ox + q.x;
+          const y = oy + q.y;
+          const e = edgeX(s, 'idle:0', y, y, side);
+          if (e === null) continue;
+          push = Math.max(push, (e + side * 2 - x) * side);
+        }
+      ox += side * Math.max(0, push);
+      const miss = REACH_PX + Math.max(0, push);
+      const plantO = { x: R(ox), y: R(oy) };
+      const bite = { x: R(ox + toe.x), y: floorY };
+      const xs = [plantO.x + axeOffset(lg, -31, 0).x, bite.x, plantO.x + axeOffset(lg, -2, 15).x];
+      const box = { l: Math.min(...xs) - 3, r: Math.max(...xs) + 3, t: plantO.y + axeOffset(lg, -31, 0).y, b: floorY + 2 };
+      const plan: Plan = { side, front, bite, floorY, plantO, angle: pp.angle, mirror: pp.mirror, scale, hand, handW, gripU, box, miss };
+      if (!best || miss < best.miss - 3) best = plan;
+    }
+    return best!;
   };
   // an OPPOSING body counts with a wide margin (an axe biting right beside the enemy reads as the enemy's): its box
   // grows by 40 px sideways and 8 px down, so the axe keeps to the wielder's own side whenever it can
-  const overlap = (b: { l: number; r: number; t: number; b: number }): number =>
-    others.reduce((a, o) => {
+  const overlap = (pl: Plan): number => {
+    const b = pl.box;
+    const bodies = others.reduce((a, o) => {
       const m = o.foe ? 40 : 1;
       return a + Math.max(0, Math.min(b.r, o.r + m) - Math.max(b.l, o.l - m)) * Math.max(0, Math.min(b.b, o.b + (o.foe ? 8 : 0)) - Math.max(b.t, o.t + 4));
     }, 0);
+    // its own card's tile under the bite: as bad as a body; a long reach (a big step out) a little worse than none
+    return bodies + (onOwnTile(pl.bite) || onOwnTile(pl.plantO) ? 1e6 : 0) + Math.max(0, pl.miss - 10) * 8;
+  };
   // the front first, then the back; then the same a little nearer / farther from the camera: the least covered wins
   const foes = others.filter((o) => o.foe).map((o) => ({ l: o.l, r: o.r, t: o.t, b: o.b }));
-  let best: (BitePlan & { box: { l: number; r: number; t: number; b: number } }) | null = null;
+  let best: Plan | null = null;
   let bestA = Infinity;
   // dy 16: the front corner of its own tile, nearer the camera than any neighbour's feet (the crowded fallback)
-  for (const dy of [5, 10, 0, 16])
+  for (const dy of [5, 10, 0, 16, -4, 22])
     for (const side of [facing, -facing]) {
       const plan = build(side, home.y + dy);
-      const a = overlap(plan.box);
+      const a = overlap(plan);
       if (a < bestA) {
         bestA = a;
         best = plan;
@@ -564,7 +569,7 @@ const HIDDEN_BADGES = new Set<MonsterUnit>();
 
 /** Hide every visible ATK/DEF badge whose rectangle overlaps the planted axe (head, haft and grip). */
 function hideBadgesOver(ctx: EquipCtx, plan: BitePlan): MonsterUnit[] {
-  const lg: AxeOpts = { size: 'lg', angle: plan.angle, mirror: plan.mirror };
+  const lg: AxeOpts = { size: 'lg', angle: plan.angle, mirror: plan.mirror, scale: plan.scale };
   const pts = [axeOffset(lg, -31, 0), axeOffset(lg, 9, 11), axeOffset(lg, -2, 15), axeOffset(lg, 6, -10)].map((d) => ({ x: plan.plantO.x + d.x, y: plan.plantO.y + d.y }));
   const l = Math.min(...pts.map((q) => q.x)) - 4 - REACH_PX;
   const r = Math.max(...pts.map((q) => q.x)) + 4 + REACH_PX;
@@ -642,6 +647,91 @@ const VEIN = [PAL.white, PAL.fire4, PAL.fire4, PAL.fire3, PAL.fire3, PAL.fire3, 
 
 // ---------------------------------------------------------------- the scene
 
+/**
+ * Where the oath's "+800" stands: beside the body on its FRONT side when that is clear of every other body, else
+ * over its shoulder (above the head, on the front half), never over its face or a neighbour's head.
+ */
+function oathNumberAt(ctx: EquipCtx, u: MonsterUnit): { x: number; y: number; rise: number } {
+  const s = u.sprite;
+  const sil = silhouetteOf(s);
+  const front = u.player === 0 ? 1 : -1;
+  const home = { x: R(u.home.x), y: R(u.home.y) };
+  const midY = sil ? R(sil.top + (sil.bottom - sil.top) * 0.42) : R(home.y - 24);
+  const edge = sil ? (front > 0 ? sil.right : sil.left) : home.x + front * 14;
+  const boxes: { l: number; r: number; t: number; b: number }[] = [];
+  for (const p of ctx.state.players)
+    for (const m of p.monsters) {
+      if (!m || m.uid === u.uid) continue;
+      const o = ctx.unit(m.uid);
+      const os = o && o.sprite.active && o.sprite.visible ? silhouetteOf(o.sprite) : null;
+      if (os) boxes.push({ l: os.left, r: os.right, t: os.top, b: os.bottom });
+    }
+  // the number's box (5 glyphs ≈ 34 × 14 px round its centre, + the jump and the rise above it)
+  const clear = (x: number, y: number): boolean => !boxes.some((b) => x + 19 > b.l && x - 19 < b.r && y + 8 > b.t && y - 20 < b.b) && x > 22 && x < 618;
+  const side = { x: R(edge + front * 17), y: numberUnderBar(midY).y };
+  if (clear(side.x, side.y)) return { ...side, rise: Math.min(8, numberUnderBar(midY).rise) };
+  const top = sil ? sil.top : home.y - 50;
+  const cx = sil ? R((sil.left + sil.right) / 2 + front * 6) : home.x;
+  const over = numberUnderBar(top - 12);
+  return { x: cx, y: over.y, rise: Math.min(6, over.rise) };
+}
+
+/**
+ * Where the axe appears for its dive: high over the bite, a little out on its blade side — the first candidate whose
+ * whole dive line keeps off the duelists' portraits and the HUD panels (P2's dive came down through its portrait):
+ * then a diagonal in from the board side.
+ */
+function skyFor(ctx: EquipCtx, plantO: XY, side: number): XY {
+  const boxes: { l: number; r: number; t: number; b: number }[] = [];
+  for (const pl of [0, 1] as const) {
+    try {
+      const spr = ctx.views.duelists?.get(pl)?.sprite;
+      if (spr && spr.active && spr.visible) {
+        const bb = spr.getBounds();
+        boxes.push({ l: bb.left - 6, r: bb.right + 6, t: bb.top - 6, b: bb.bottom + 4 });
+      }
+    } catch {
+      /* no duelists */
+    }
+    const pr = panelRect(pl);
+    boxes.push({ l: pr.x - 6, r: pr.x + pr.w + 6, t: pr.y - 6, b: pr.y + pr.h + 6 });
+  }
+  const cost = (sk: XY): number => {
+    let n = 0;
+    for (let i = 0; i <= 24; i++) {
+      const x = lerp(sk.x, plantO.x, i / 24);
+      const y = lerp(sk.y, plantO.y, i / 24);
+      // the axe drawing is ~ 24 px round its head
+      if (boxes.some((b) => x + 14 > b.l && x - 14 < b.r && y + 14 > b.t && y - 14 < b.b)) n++;
+    }
+    return n;
+  };
+  const cands: XY[] = [];
+  for (const [dx, h] of [
+    [side * 30, 160],
+    [side * 30, 130],
+    [side * 30, 104],
+    [-side * 30, 130],
+    [side * 70, 120],
+    [-side * 70, 120],
+    [side * 110, 100],
+    [-side * 110, 100],
+    [0, 90],
+  ] as const)
+    cands.push({ x: R(Math.max(16, Math.min(624, plantO.x + dx))), y: R(Math.max(-12, plantO.y - h)) });
+  let best = cands[0];
+  let bc = Infinity;
+  for (const c of cands) {
+    const k = cost(c);
+    if (k === 0) return c;
+    if (k < bc) {
+      bc = k;
+      best = c;
+    }
+  }
+  return best;
+}
+
 async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void> {
   const ev = ctx.ev;
   const sc = ctx.scene;
@@ -652,7 +742,7 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   const side = plan.side;
   const bite = plan.bite;
   const plantO = plan.plantO;
-  const lgPlant: AxeOpts = { size: 'lg', angle: plan.angle, mirror: plan.mirror, heat: 2 };
+  const lgPlant: AxeOpts = { size: 'lg', angle: plan.angle, mirror: plan.mirror, heat: 2, scale: plan.scale };
   const st = evAt(ctx, ci, 'statChange');
   const tile = ctx.views.field.tileAt(ev.player, 'spellTrap', ev.spellZone);
   const from: XY = (ctx.hints.from as XY | undefined) ?? (tile ? { x: tile.home.x, y: tile.home.y } : zoneXY(ev.player, 'spellTrap', ev.spellZone));
@@ -668,19 +758,12 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   // the ATK/DEF badges that would cover the haft and the grip (the wielder's own, a crowded neighbour's) step aside
   // for the beat and come back before the +800 rolls (restored in axeScene's caller's finally too)
   const hidden = hideBadgesOver(ctx, plan);
-  /** The wielder: a pose and an offset toward the bite (stepped, whole pixels). */
-  const body = (p: Pose | null, dx: number, dy = 0): void => {
-    if (!alive()) return;
-    if (p) u.pose(p.anim, p.frame);
-    s.setPosition(rest.x + R(dx) * side, rest.y + R(dy));
-  };
-
   // ---- OMEN: the card's ember spark leaves for the sky over the bite point; a target cross on the floor
   playV3('e_axeOmen', { volume: 0.9, pan: panAt(bite.x) });
   if (tile && tile.active) bg(tile.pulse(PAL.fire3, 200));
   void lightFlash(sc, from.x, from.y, PAL.fire3, 12, 110, { floorY: from.y, intensity: 0.5 });
   // it drops from high over its blade side, a steep line, head first
-  const sky: XY = { x: R(plantO.x + side * 30), y: R(Math.max(-12, plantO.y - 160)) };
+  const sky = skyFor(ctx, plantO, side);
   const sparkTop: XY = { x: sky.x, y: Math.max(8, sky.y + 10) };
   await run(sc, T.omenMs, (t) => {
     const k = E.outCubic(t);
@@ -870,32 +953,80 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   bg(pulse(0));
   await wait(sc, T.pulseEvery);
 
-  // ---- THE REACH: it bends to the axe — the pose, 2 → 4 → 6 px toward the haft, a 1-px crouch
-  const grip = (): XY => axe.pt(-31, 0);
-  const eyeAt = (): XY | null => {
-    const e = alive() ? eyesOf(s) : [];
-    return e.length ? e[0] : null;
+  // ---- THE REACH: it CROUCHES and LEANS to the axe (a crisp pixel double: rows fold at the knee, the upper body
+  // shears toward the haft) and steps in, until its hand lies on the haft — the contact frame
+  const dbl = new BodyDouble(sc, u, rest);
+  const pl = { ox: 0, oy: 0, crouch: 0, lean: 0 };
+  /** The hand (world) under body params q. */
+  const handAt = (q: typeof pl): XY => dbl.map(plan.hand.x, plan.hand.y, q);
+  /** Put the body so its hand lies on world x `x` (crouch / lean given): returns the offset used. */
+  const bodyTo = (x: number | null, crouch: number, lean: number, oy = 0): void => {
+    if (!alive()) return;
+    const q = { ox: 0, oy, crouch, lean };
+    if (x !== null) q.ox = x - handAt(q).x;
+    else q.ox = pl.ox;
+    Object.assign(pl, q);
+    if (dbl.ok) dbl.set(pl.ox, pl.oy, pl.crouch, pl.lean);
+    else s.setPosition(rest.x + pl.ox, rest.y + pl.oy);
   };
-  for (const [dx, dy] of [
-    [2, 1],
-    [4, 1],
-    [REACH_PX, 0],
+  // the haft's station under the hand for the axe as it stands now (origin O, angle a)
+  let gripU = plan.gripU;
+  const axeO = (): AxeOpts => ({ size: 'lg', angle: axe.o.angle, mirror: axe.o.mirror, scale: plan.scale });
+  const station = (uu: number): XY => axe.pt(uu, 0);
+  const handLean = (k: number): number => side * k; // + toward the haft
+  // the hand's rest x and the haft's x at its row: the gap the reach closes (2 → 4 → all of it)
+  const gap0 = station(gripU).x - handAt(pl).x;
+  for (const [f, crouch, lean] of [
+    [0.3, 1, 1],
+    [0.65, 2, 2],
   ] as const) {
-    body(plan.reach, dx, dy);
+    const lq = { ox: 0, oy: 0, crouch, lean: handLean(lean) };
+    bodyTo(handAt(lq).x + R(gap0 * f), crouch, handLean(lean));
     await wait(sc, T.reachStep);
   }
+  // the contact: the hand ON the haft (its station re-read at the crouched hand's height)
+  const cq = { ox: 0, oy: 0, crouch: 2, lean: handLean(3) };
+  gripU = stationAt(axeO(), { x: axe.img.x, y: axe.img.y }, handAt(cq).y);
+  bodyTo(station(gripU).x, 2, handLean(3));
+  await wait(sc, T.reachStep);
+  // the FINGERS: the hand's own tones wrapped over the haft at the grip (in front of the axe): the hold reads
+  const tones = handTones(u, plan.hand);
+  const fist = new Raster(sc, 0, 0, 640, 360, depthAxe + 0.3);
+  let fistOn = true;
+  const drawFist = (hot = false): void => {
+    fist.begin();
+    if (fistOn && alive()) {
+      const g = station(gripU);
+      const dir = axeOffset(axeO(), -10, 0);
+      const vert = Math.abs(dir.y) >= Math.abs(dir.x);
+      // knuckles across the haft: 3 × 3 (fill, fill, shade), an ink rim round them
+      for (let i = -2; i <= 2; i++)
+        for (let j = -2; j <= 2; j++) {
+          const [x, y] = vert ? [g.x + i, g.y + j] : [g.x + j, g.y + i];
+          const rim = Math.abs(i) === 2 || Math.abs(j) === 2;
+          if (rim && Math.abs(i) === 2 && Math.abs(j) === 2) continue;
+          fist.px(x, y, rim ? PAL.ink : hot && i === 0 && j === -1 ? PAL.fire3 : j === 1 ? tones.shade : tones.fill);
+        }
+    }
+    fist.end();
+  };
+  drawFist();
   // ---- THE GRIP (contact frame): an ember spark at the hand, the vein starts up the arm
-  playV3('e_axeGrip', { volume: 0.95, pan: panAt(grip().x) });
+  playV3('e_axeGrip', { volume: 0.95, pan: panAt(station(gripU).x) });
   bg(pulse(1));
-  sparks.add({ x: grip().x, y: grip().y, life: 110, colors: [PAL.white, PAL.fire4, PAL.fire3], shape: 'star', fadeAt: 1 });
+  sparks.add({ x: station(gripU).x, y: station(gripU).y, life: 110, colors: [PAL.white, PAL.fire4, PAL.fire3], shape: 'star', fadeAt: 1 });
   let veinK = 0;
   let veinHot = 0;
   let veinOn = true;
   const drawVein = (): void => {
     veinR.begin();
     if (veinOn && alive()) {
-      const g = grip();
-      const path = veinPath(s, { x: g.x - side, y: g.y }, side, eyeAt());
+      // the path on the UNDEFORMED body at the current offset (the sprite stands there), then onto the double
+      const flat = { ...pl, crouch: 0, lean: 0 };
+      const h = dbl.map(plan.hand.x, plan.hand.y, flat);
+      const eyes = eyesOf(s);
+      const raw = veinPath(s, { x: h.x - side, y: h.y }, side, eyes.length ? eyes[0] : null);
+      const path = dbl.ok ? raw.map((q) => dbl.warp(q)) : raw;
       const n = Math.min(path.length, Math.ceil(path.length * veinK));
       for (let i = 0; i < n; i++) {
         const back = n - 1 - i;
@@ -911,50 +1042,38 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
   };
   const veinStop = onFrame(sc, () => {
     drawVein();
+    drawFist();
     return veinOn;
   });
   await run(sc, T.veinMs, (t) => {
     veinK = quant(t, 8);
-    // the hand holds: one pixel of squeeze on every other step
-    body(null, REACH_PX - (Math.floor(t * 8) % 2 === 1 ? 1 : 0), 0);
+    // the hand holds: the upper body squeezes a pixel lower on every other step (the knuckles stay on the haft)
+    const sq = Math.floor(t * 8) % 2 === 1 ? 3 : 2;
+    bodyTo(station(gripU).x, sq, handLean(3));
   });
   veinK = 1;
-  body(null, REACH_PX, 0);
+  bodyTo(station(gripU).x, 2, handLean(3));
 
-  // ---- THE WRENCH: three tugs — it leans back against the taut chains, the haft tilting toward it, rising
+  // ---- THE WRENCH: three ESCALATING tugs. The body leans back AWAY from the bite (the shear reverses), the haft
+  // TILTS toward it a 15° drawing a tug and lifts 1 → 3 → 5 px out of the bite; the hand never leaves the haft: the
+  // body is placed so the hand lies on the haft's station at the hand's own height (the hand slides up the haft as it
+  // tilts) — the axe leads, the body follows its pull
   playV3('e_axeWrench', { volume: 1, pan: panAt(bite.x) });
-  // per tug: how far the body leans back (px, toward the bite is +) — ESCALATING (a lean of 4 → 7 → 10 px from the
-  // reach, the haft lifting 1 → 3 → 5 px out of its bite); the haft TILTS toward the body so the hand never lets go
   const tugs = [
-    { dx: REACH_PX - 4, lift: 1 },
-    { dx: REACH_PX - 7, lift: 3 },
-    { dx: REACH_PX - 10, lift: 5 },
+    { tilt: 1, lift: 1, lean: -2, crouch: 1 },
+    { tilt: 1, lift: 3, lean: -4, crouch: 1 },
+    { tilt: 2, lift: 5, lean: -5, crouch: 0 },
   ];
-  const holdName = frameName(plan.reach);
-  /** The haft tilt (15° steps toward the body) that keeps its top in the hand at body offset dx. */
-  const tiltFor = (dx: number, lift: number): number => {
-    let best = 0;
-    let bd = Infinity;
-    for (let k = 0; k <= 4; k++) {
-      const a = plan.angle - side * 15 * k;
-      const pom = axeOffset({ size: 'lg', angle: a, mirror: plan.mirror }, -31, 0);
-      const px = plantO.x + pom.x;
-      const py = plantO.y - lift + pom.y;
-      const e = edgeX(s, holdName, py - 2, py + 2, side, rest.x + dx * side - R(s.x));
-      if (e === null) continue;
-      const d = Math.abs(px - (e - side)) + k * 0.6;
-      if (d < bd) {
-        bd = d;
-        best = k;
-      }
-    }
-    return best;
+  /** The axe at a tilt / lift (+ a sideways jitter), the body hung on its station. */
+  const hang = (tilt: number, up: number, jx: number, lean: number, crouch: number, heat: number, pulseK: number): void => {
+    axe.set({ angle: plan.angle - side * 15 * tilt, heat, pulse: pulseK }).at(plantO.x + jx, plantO.y - up).bury(bite.y);
+    const q = { ox: pl.ox, oy: 0, crouch, lean: handLean(lean) };
+    gripU = stationAt(axeO(), { x: axe.img.x, y: axe.img.y }, handAt(q).y);
+    bodyTo(station(gripU).x, crouch, handLean(lean));
   };
   const tugRing = Raster.around(sc, bite.x, bite.y, 72, 36, DEPTH.TILE_FX + 2);
   for (let i = 0; i < tugs.length; i++) {
     const tg = tugs[i];
-    const tilt = tiltFor(tg.dx, tg.lift);
-    const a = plan.angle - side * 15 * tilt;
     // the YANK lands: the crack glow steps up a band, an ember light pulse, a dirt + ember puff out of the bite
     cracks.glow(Math.min(4, 2 + i));
     cracks.grow(1);
@@ -968,30 +1087,27 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
     }
     bg(dirtRing(sc, tugRing, bite, 6 + i * 3, 3 + i));
     await run(sc, T.tugMs, (t, el, dt) => {
-      // YANK (the first frames: the full lean, a 1-px heave up, the haft at its lift +1 overshoot), STRAIN (held,
-      // trembling), GIVE (a pixel back) — every tug further than the last
+      // YANK (the first frames: the full lean, the haft at its lift +1 overshoot), STRAIN (held, trembling), GIVE (a
+      // pixel back) — every tug further than the last
       const ph = t < 0.18 ? 0 : t < 0.7 ? 1 : 2;
-      const shiver = i === 2 && ph === 1 && Math.floor(el / 34) % 2 === 0 ? 1 : 0;
-      body(plan.reach, ph === 2 ? tg.dx + 1 : tg.dx - shiver, ph === 0 ? -1 : 0);
       const f = Math.floor(el / 34);
       const amp = i === 2 ? 2 : 1;
       const up = ph === 0 ? tg.lift + 1 : ph === 2 ? tg.lift - 1 : tg.lift;
-      axe
-        .set({ angle: a, heat: ph === 0 ? 4 : t > 0.5 ? 3 : 2, pulse: f % 4 })
-        .at(plantO.x + (ph === 1 ? (f % 2 === 0 ? amp : -amp) * (f % 3 === 2 ? 0 : 1) : 0), plantO.y - up)
-        .bury(bite.y);
+      const jx = ph === 1 ? (f % 2 === 0 ? amp : -amp) * (f % 3 === 2 ? 0 : 1) : 0;
+      const lean = ph === 2 ? tg.lean + 1 : tg.lean - (i === 2 && ph === 1 && f % 2 === 0 ? 1 : 0);
+      hang(tg.tilt, up, jx, lean, ph === 0 ? tg.crouch + 1 : tg.crouch, ph === 0 ? 4 : t > 0.5 ? 3 : 2, f % 4);
       drawChains(1, 1, el + i * 200, i === 2 ? 1 + (f % 2) : ph === 1 ? 1 : 0);
       if (dt > 0 && rnd() < 0.3 + i * 0.2) sparks.add({ x: bite.x + (rnd() - 0.5) * 10, y: bite.y, vx: (rnd() - 0.5) * 30, vy: -30 - rnd() * 40, ay: 200, life: 240, colors: rnd() < 0.5 ? EMBER_DOWN : [PAL.earth2, PAL.earth1], shape: rnd() < 0.3 ? 'sq' : 'px', fadeAt: 1 });
     });
   }
-  const lastTilt = tiltFor(tugs[2].dx, tugs[2].lift);
   // a 40 ms catch just before the snap: everything holds at full strain
-  body(plan.reach, tugs[2].dx, -1);
+  hang(2, 5, 0, -6, 1, 3, -1);
   cracks.glow(4);
   await freeze(sc, 40);
   bg(wait(sc, 400).then(() => tugRing.destroy()));
 
-  // ---- SNAP: the chains break (links flung, spinning); the axe TEARS OUT (dirt clods, the slit); the wielder recoils
+  // ---- SNAP: the chains break (links flung, spinning); the axe TEARS OUT (dirt clods, the slit); the wielder jerks
+  // back with it — the hand never lets go
   playV3('e_axeSnap', { volume: 0.85, pan: panAt(bite.x) });
   pegs.forEach((peg, ci2) => {
     const a0 = axe.pt(wraps[ci2], 0);
@@ -1008,58 +1124,83 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
     const clod = i % 2 === 0;
     sparks.add({ x: bite.x + (rnd() - 0.5) * 8, y: bite.y - 1, vx: Math.cos(a) * v, vy: Math.sin(a) * v, ay: 460, drag: 0.8, life: 320 + rnd() * 260, colors: clod ? [PAL.earth2, PAL.earth1, PAL.earth0] : EMBER, shape: clod ? 'sq' : 'px', size: clod ? 2 : 1, floor: bite.y + 3 + rnd() * 8, bounce: 0.25, fadeAt: 1 });
   }
-  const ripA = plan.angle - side * 15 * Math.min(3, lastTilt + 1);
-  axe.set({ heat: 4, angle: ripA }).at(plantO.x - side * 2, plantO.y - 6).bury(null);
   cracks.slit(true);
   void shake(sc, 120, 2);
-  body(plan.wrench, -4, 0);
+  // the body jerks back a further 3 px, leaning hard away; the axe comes out with the hand (hung on it, white-hot)
+  const ripA = plan.angle - side * 15 * 3;
+  const jerk = { ox: pl.ox - side * 3, oy: 0, crouch: 0, lean: handLean(-6) };
+  bodyTo(handAt(jerk).x, 0, handLean(-6));
+  /** The axe hung on the hand by its station (rotating round the hand). */
+  let heaveScale: number = plan.scale;
+  const hangOnHand = (angle: number, mirror: boolean, heat: number, size: AxeSize = 'lg'): void => {
+    const o: AxeOpts = { size, angle, mirror, scale: size === 'lg' ? heaveScale : undefined };
+    const h = handAt(pl);
+    const d = axeOffset(o, gripU, 0);
+    axe.set({ angle, mirror, heat, scale: o.scale, size }).at(h.x - d.x, h.y - d.y).bury(null);
+  };
+  hangOnHand(ripA, plan.mirror, 4);
   await freeze(sc, T.snapStop);
-  axe.set({ heat: 3 });
   bg(cracks.cool(520).then(() => cracks.destroy()));
 
-  // ---- the arc up over its shoulder to its back, turning to the slung pose; the wielder settles from the recoil
+  // ---- THE HEAVE: the axe swings UP round the hand (its station locked in the fist, 15° drawings) over the
+  // shoulder, the body rising out of its lean; then the hand slings it onto the back (two hot frames, the small axe)
   const hp = holdPose(u.player);
   const a0 = ripA;
-  const dA = turn(a0, hp.angle);
-  const start = { x: plantO.x - side * 2, y: plantO.y - 6 };
-  const ctrl = { x: R(lerp(start.x, home.x, 0.5)), y: Math.min(start.y, u.worldPoint('top').y) - 18 };
-  bg(
-    (async () => {
-      // one frame of the yank pose, then its own idle again, overshooting back past rest and settling (stepped)
-      await wait(sc, 50);
-      if (alive()) u.settle();
-      for (const dx of [-5, -3, -1, 0]) {
-        body(null, dx, 0);
-        await wait(sc, 50);
-      }
-    })(),
-  );
-  await run(sc, T.pullMs, (t, _el, dt) => {
-    const hold = holdAt(u);
-    const k = E.outCubic(t);
-    const p = qbez(start, ctrl, hold, k);
-    const a = a0 + dA * quant(k, 6);
-    axe.set({ angle: a, mirror: t < 0.5 ? plan.mirror : hp.mirror, heat: 2 }).at(p.x, p.y);
-    axe.img.setDepth(t < 0.6 ? depthAxe : s.depth - 0.4);
+  // the turn that never swings the head down through the floor (90°) — the shorter one when both or neither do
+  const cw = (((hp.angle - a0) % 360) + 360) % 360;
+  const ccw = cw - 360;
+  const through = (d: number, at: number): boolean => {
+    for (let k = 15; k < Math.abs(d); k += 15) if (axeAngle(a0 + Math.sign(d) * k) === at) return true;
+    return false;
+  };
+  const dA = through(cw, 90) && !through(ccw, 90) ? ccw : through(ccw, 90) && !through(cw, 90) ? cw : Math.abs(cw) <= Math.abs(ccw) ? cw : ccw;
+  const nSteps = Math.max(1, Math.round(Math.abs(dA) / 15));
+  const heaveLean = [-6, -5, -3, -1, 0, 1, 1];
+  const gu0 = gripU;
+  await run(sc, T.pullMs + 80, (t, _el, dt) => {
+    const k = E.inOutSine(t);
+    const st2 = Math.floor(k * nSteps);
+    const a = a0 + Math.sign(dA) * 15 * st2;
+    const li = Math.min(heaveLean.length - 1, Math.floor(t * heaveLean.length));
+    // the body comes back under the swing: offset toward rest, the lean through upright into a pixel of follow-through
+    pl.ox = R(jerk.ox * (1 - quant(t, 4)));
+    bodyTo(null, t < 0.3 ? 1 : 0, handLean(heaveLean[li]));
+    // the hand CHOKES UP the haft as it heaves (its station slides toward the head): a tight swing round the fist,
+    // never a wide arc across the neighbours
+    gripU = lerp(gu0, -13, quant(t, 4));
+    // a long haft (a tall wielder's) shortens back to the plain drawing as it comes up (0.1 steps)
+    heaveScale = Math.round((plan.scale + (1 - plan.scale) * quant(t, 3)) * 10) / 10;
+    hangOnHand(a, t < 0.5 ? plan.mirror : hp.mirror, t < 0.15 ? 3 : 2);
+    axe.img.setDepth(depthAxe);
     // the torn chain ends trail from the haft
     chainR.begin();
     bag.clear();
     const w = axe.pt(-20, 0);
-    chainLinks(bag, [w, { x: w.x + side * 3, y: w.y + 9 }]);
+    chainLinks(bag, [w, { x: w.x - side * 3, y: w.y + 9 }]);
     bag.flush(chainR);
     chainR.end();
-    light.setPosition(p.x, p.y + 6, u.home.y);
+    const hd = axe.pt(-2, 6);
+    light.setPosition(hd.x, hd.y + 6, u.home.y);
     light.setIntensity(0.5, 0);
-    if (dt > 0 && rnd() < 0.8) sparks.add({ x: p.x, y: p.y + 4, vx: (rnd() - 0.5) * 20, vy: 10, ay: 120, life: 220, colors: EMBER_DOWN, shape: 'px', fadeAt: 1 });
+    if (dt > 0 && rnd() < 0.8) sparks.add({ x: hd.x, y: hd.y + 4, vx: (rnd() - 0.5) * 20, vy: 10, ay: 120, life: 220, colors: EMBER_DOWN, shape: 'px', fadeAt: 1 });
   });
   chainR.begin();
   chainR.end();
-  // into the slung small axe: two white-cracked frames (the drawing, not a silhouette)
+  // the sling: the fist lets go over the shoulder, the axe settles onto the back (two hot frames, small drawing)
+  fistOn = false;
+  drawFist();
+  bodyTo(null, 0, 0);
+  dbl.destroy();
+  if (alive()) s.setPosition(rest.x, rest.y);
   const hold = holdAt(u);
-  axe.set({ size: 'sm', angle: hp.angle, mirror: hp.mirror, heat: 4 }).at(hold.x, hold.y);
+  const hh = handAt({ ox: 0, oy: 0, crouch: 0, lean: 0 });
+  axe.set({ size: 'sm', angle: hp.angle, mirror: hp.mirror, heat: 4, scale: undefined }).at(R((hold.x + hh.x) / 2), R((hold.y + hh.y) / 2) - 3);
   axe.img.setDepth(s.depth - 0.4);
-  await frames(sc, 2);
+  await frames(sc, 1);
+  axe.at(hold.x, hold.y);
+  await frames(sc, 1);
   axe.destroy();
+  fist.destroy();
   bg((async () => {
     light.setIntensity(0.25, 0);
     await wait(sc, 120);
@@ -1075,41 +1216,48 @@ async function axeScene(ctx: EquipCtx, u: MonsterUnit, ci: number): Promise<void
     const aura = new AxeAura(sc, u, ev.spellUid, { eyeLvl: 3 });
     u.setAura('equip', aura);
     const eyes = aura.eyes();
+    const back = u.player === 0 ? -1 : 1;
+    // the IGNITION leads (≈ 290 ms scene, ≈ 390 ms game): one white frame (a 2-px core and a 4-px flare each side on
+    // an ink backing), then the ember core holds while the flare shrinks 4 → 3 → 2 → 1 and cools fire4 → fire3 → fire2
     if (eyes.length) {
       const e0 = eyes[0];
-      const star = Raster.around(sc, e0.x, e0.y, 24, 24, s.depth + 0.7);
+      const star = Raster.around(sc, e0.x, e0.y, 32, 16, s.depth + 0.7);
+      const FL = [4, 4, 4, 3, 3, 2, 2, 1, 1, 0];
       bg(
-        run(sc, 220, (t) => {
-          const r = [2, 4, 5, 3, 1][Math.min(4, Math.floor(t * 5))];
+        run(sc, 290, (t, el) => {
+          const white = el < 34;
+          const i = Math.min(FL.length - 1, Math.floor(t * FL.length));
+          const fl = FL[i];
+          const fc = white ? PAL.white : i < 3 ? PAL.fire4 : i < 6 ? PAL.fire3 : PAL.fire2;
           star.begin();
-          for (let i = 1; i <= r; i++) {
-            const c = i <= 1 ? PAL.white : i <= 3 ? PAL.fire4 : PAL.fire3;
-            star.px(e0.x + i, e0.y, c);
-            star.px(e0.x - i, e0.y, c);
-            if (i <= r - 2) {
-              star.px(e0.x, e0.y + i, c);
-              star.px(e0.x, e0.y - i, c);
-            }
+          // the dark backing first (one ink row over and under the flare), so the ember reads on any body colour
+          for (let d = -fl - 1; d <= fl + 1; d++) {
+            star.px(e0.x + d, e0.y - 1, PAL.ink);
+            star.px(e0.x + d, e0.y + 1, PAL.ink);
           }
+          for (let d = 1; d <= fl; d++) {
+            const c = d >= fl - 1 && !white ? (fc === PAL.fire4 ? PAL.fire3 : PAL.fire2) : fc;
+            star.px(e0.x + d, e0.y, c);
+            star.px(e0.x - d, e0.y, c);
+          }
+          // the 2-px core (on every eye pixel, and one beside the first toward the back)
+          for (const e of eyes) star.px(e.x, e.y, white ? PAL.white : PAL.fire4);
+          star.px(e0.x + back, e0.y, white ? PAL.white : PAL.fire4);
+          if (!white && i < 4) star.px(e0.x, e0.y, PAL.white);
           star.end();
         }).then(() => star.destroy()),
       );
     }
-    bg(wait(sc, 260).then(() => (aura.eyeLvl = 2)));
-    bg(rimFlash(sc, s, { ramp: [PAL.fire4, PAL.fire3, PAL.fire3, PAL.fire2, PAL.crim2], hold: 2 }));
-    void lightFlash(sc, home.x, home.y - 20, PAL.fire3, 20, 360, { floorY: home.y, intensity: 0.6 });
+    bg(wait(sc, 290).then(() => (aura.eyeLvl = 2)));
+    // the body's ember edge follows the eyes (soft, late): the eyes lead
+    bg(wait(sc, 150).then(() => (alive() ? rimFlash(sc, s, { ramp: [PAL.fire3, PAL.fire2, PAL.fire2, PAL.crim2], hold: 1 }) : undefined)));
+    void lightFlash(sc, home.x, home.y - 20, PAL.fire3, 16, 320, { floorY: home.y, intensity: 0.45 });
     if (st) {
-      // the eyes ignite FIRST (white star → ember, read on their own); the number follows ~150 ms later from beside
-      // the body on its FRONT side (away from the slung axe and the eye anchor), so it never covers the face
-      await wait(sc, 150);
+      await wait(sc, 290);
       const delta = Math.abs(st.atk - st.prevAtk);
-      const sil = alive() ? silhouetteOf(s) : null;
-      const front = u.player === 0 ? 1 : -1;
-      const edge = sil ? (front > 0 ? sil.right : sil.left) : home.x + front * 14;
-      const midY = sil ? R(sil.top + (sil.bottom - sil.top) * 0.42) : R(home.y - 24);
-      const nb = numberUnderBar(midY);
       if (delta > 0 && alive()) {
-        oathNum = axeNumber(sc, R(edge + front * 15), nb.y, delta, { kind: st.atk >= st.prevAtk ? 'heal' : 'damage', life: 540, fadeMs: 140, rise: Math.min(8, nb.rise) });
+        const at = oathNumberAt(ctx, u);
+        oathNum = axeNumber(sc, at.x, at.y, delta, { kind: st.atk >= st.prevAtk ? 'heal' : 'damage', life: 560, fadeMs: 140, rise: at.rise, pop: 1 });
       }
       void u.setStats(st.atk, st.def, true);
     }
@@ -1155,9 +1303,46 @@ function ensureAuras(ctx: AnyCtx): void {
     }
 }
 
+/**
+ * The axe's card is OURS to break, whoever breaks it: another card's scene that releases its tile (Yıldırım Hükmü's
+ * equip break, a battle's rule destroy, the default destroy) gets nothing back — the tile crumbles to embers right
+ * then (crumbleTile, e_axeCard), never the generic teal / white card break. Our own releases bypass it.
+ */
+let ownRelease = 0;
+const PATCHED = new WeakSet<object>();
+let lastCtx: AnyCtx | null = null;
+type ReleaseFn = (uid: Uid) => { tile: TileCard | null; unit: MonsterUnit | null };
+function claimTiles(ctx: AnyCtx): void {
+  lastCtx = ctx;
+  const field = ctx.views.field as unknown as { release: ReleaseFn };
+  if (PATCHED.has(field)) return;
+  PATCHED.add(field);
+  const orig: ReleaseFn = field.release.bind(field);
+  field.release = (uid: Uid) => {
+    const r = orig(uid);
+    const c = lastCtx;
+    if (ownRelease > 0 || !LOOK_V3 || !c || !r.tile || !r.tile.active) return r;
+    if ((r.tile.cardId ?? c.state.cards[uid]?.cardId) !== ID) return r;
+    const tile = r.tile;
+    LAST_ZONE.set(uid, { player: tile.player, zone: -1, at: { x: R(tile.home.x), y: R(tile.home.y) } });
+    bg(crumbleTile(c.scene, tile, uid, ID));
+    return { tile: null, unit: r.unit };
+  };
+}
+/** field.release for this card's own scenes (bypasses the claim). */
+function releaseOwn(ctx: AnyCtx, uid: Uid): { tile: TileCard | null; unit: MonsterUnit | null } {
+  ownRelease++;
+  try {
+    return ctx.views.field.release(uid);
+  } finally {
+    ownRelease--;
+  }
+}
+
 registerObserver((_ev, ctx) => {
   if (!LOOK_V3) return;
   try {
+    claimTiles(ctx);
     ensureAuras(ctx);
   } catch (e) {
     console.error('[spite_axe] aura', e);
@@ -1302,7 +1487,7 @@ registerCardHook(ID, 'destroyed', async (ctx: DestroyCtx) => {
   const ev = ctx.ev;
   if (ev.location !== 'spellTrap') return ctx.base();
   const field = ctx.views.field;
-  const { tile } = field.release(ev.uid);
+  const { tile } = releaseOwn(ctx, ev.uid);
   if (tile && tile.active) {
     LAST_ZONE.set(ev.uid, { player: ev.player, zone: ev.zone, at: { x: R(tile.home.x), y: R(tile.home.y) } });
     await crumbleTile(ctx.scene, tile, ev.uid, ev.cardId);
@@ -1329,7 +1514,7 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
   const rnd = fxRng(ev.uid * 17 + 3);
   const di = ctx.findType('damage', (e) => e.sourceUid === ev.uid && e.player === owner);
   // a card tile still on the field (its destroy was presented by someone who left it): it crumbles to embers too
-  const left = field.release(ev.uid).tile;
+  const left = releaseOwn(ctx, ev.uid).tile;
   const leftAt = left && left.active ? { x: R(left.home.x), y: R(left.home.y) } : null;
   if (left && left.active) bg(crumbleTile(sc, left, ev.uid, ev.cardId));
   field.forget(ev.uid);
@@ -1513,8 +1698,9 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
   // ---- THE LASH: a red-hot chain whips out of the pile in an S-wave and CRACKS on the owner's LP panel
   const lp = lpPoint(ctx, owner);
   const pr = panelRect(owner);
-  // it strikes the panel's top frame over the LP digits (the crack reads on the dark rim, not on the white numbers)
-  const tip: XY = { x: R(lp.x), y: R(pr.y + 1) };
+  // it strikes the LP NUMBER's left edge (where the drain starts), never the name label over it
+  const lpLeft = pr.x + (pr.w > 140 ? 22 : 16);
+  const tip: XY = { x: R(lpLeft - 1), y: R(lp.y) };
   const root: XY = { x: R(deck.x), y: R(deck.y - 6) };
   const whip = new Raster(sc, 0, 0, 640, 360, DEPTH.HUD + 6);
   const starR = new Raster(sc, 0, 0, 640, 360, DEPTH.HUD + 7);
@@ -1607,18 +1793,19 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
   };
   drawWhip(chainAt(1, 0, 0, tip), 2);
   starR.begin();
-  crackStar(starR, tip, 8);
+  crackStar(starR, tip, 6);
   starR.end();
   // CONTACT: the −500 and the LP drain start on this very frame (the number pops through the crack's hold); on P2's
   // top panel it lands BELOW the panel (mirroring P1's above-the-panel number), clear of the counter row
   let dmg: Promise<void> = Promise.resolve();
   if (di >= 0 && !ctx.isConsumed(di)) {
     const dev = ctx.events[di] as Extract<GameEvent, { type: 'damage' }>;
-    if (owner === 1) {
-      // P2's panel is the top one: the shared number (over-the-panel offset, floating up) would land in its counter
-      // row and float behind it. Presented here instead: under the panel, over the HUD, a short float
+    {
+      // presented here (never the shared number: on P1's panel it covered the name label, on P2's top panel it landed
+      // in the counter row): P1 ABOVE its panel's top edge, P2 UNDER its panel — over the HUD, a short float
       ctx.consumeAt(di);
-      const num = axeNumber(sc, R(lp.x), R(pr.y + pr.h + 19), dev.amount, { kind: 'damage', depth: DEPTH.HUD + 20, rise: 4, life: 1300, fadeMs: 280 });
+      const ny = owner === 1 ? R(pr.y + pr.h + 19) : R(pr.y - 12);
+      const num = axeNumber(sc, R(lp.x), ny, dev.amount, { kind: 'damage', depth: DEPTH.HUD + 20, rise: 4, life: 1300, fadeMs: 280, pop: 1 });
       try {
         const d = ctx.views.duelists?.get(owner);
         if (d) {
@@ -1631,7 +1818,7 @@ async function returnScene(ctx: DeckCtx): Promise<void> {
       if (dev.lpAfter <= 1000) ctx.music.setIntensity(1);
       void num;
       dmg = ctx.views.hud.setLp(owner, dev.lpAfter, true, { maxMs: LP_ROLL_MAX_MS }).then(() => undefined);
-    } else dmg = ctx.play(di, { delivered: true });
+    }
   }
   try {
     ctx.views.hud.shake(owner, 2, 200);

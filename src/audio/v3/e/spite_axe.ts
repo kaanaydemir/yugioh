@@ -107,16 +107,23 @@ export const RECIPES = {
     verb: 0.42,
     duck: 0.5,
     play(v) {
-      // the floor takes it: a deep thump, a heavy crack, the head's dark ring
-      thump(v, 0, 96, 34, 0.95, 0.42, { drive: 2.2 });
-      crack(v, 0, 0.55, { hp: 900, lp: 7000, n: 3, gap: 0.009, dec: 0.02 });
-      iron(v, 0.004, 152, 0.4, 0.9);
-      // dirt and stone chips
-      puff(v, 0.01, 0.32, 0.3, 900, { kind: 'brown' });
-      v.crackle({ t: 0.03, d: 0.35, n: 16, g: 0.12, f: 2600, q: 1.2, dec: 0.008, curve: 1.8 });
-      // the haft quivers: a low twang with a fast decaying vibrato
-      const tw = v.tone('triangle', 118, { t: 0.02, g: perc(0.16, 0.5, 0.003) });
-      v.lfo(tw.osc.detune, 21, [[0, 60], [0.5, 4, 'e']], { t: 0.02, d: 0.55 });
+      // the blade CHUNKS into soil (not a slam on stone): a gritty brown-noise body whose band falls 300 → 120 Hz
+      // as the head sinks, a soft-attack low body under it (no hard thump transient), the soil's rasp
+      v.noise('brown', { g: [[0, 0], [0.008, 1.5], [0.12, 0.7], [0.5, 0.0001, 'e']], to: v.filt('bandpass', [[0, 300], [0.4, 120, 'e']], 1.6) });
+      v.noise('pink', { t: 0.004, g: [[0, 0], [0.006, 0.5], [0.22, 0.0001, 'e']], to: v.filt('bandpass', [[0, 900], [0.2, 380, 'e']], 2.2) });
+      thump(v, 0, 70, 44, 0.5, 0.5, { att: 0.012 });
+      // grit: dirt grains rasping against the blade as it goes in (dense, low, fast-thinning)
+      v.crackle({ t: 0.005, d: 0.42, n: 28, g: 0.1, f: 1300, q: 1.4, dec: 0.006, curve: 2.2 });
+      // the black iron head rings under the soil, damped, its ring throbbing on the drone's 41 / 42.6 Hz beat
+      iron(v, 0.006, 148, 0.26, 1.2, 2.4);
+      const ring = v.tone('triangle', [[0, 148], [1.1, 141, 'e']], { t: 0.01, g: [[0, 0], [0.02, 0.07], [1.15, 0.0001, 'e']], to: v.filt('lowpass', 900, 2) });
+      v.lfo(ring.osc.detune, 1.6, 22, { t: 0.01, d: 1.1 });
+      ironDrone(v, 0, 1.15, 0.2, { lp: 380 });
+      // the haft quivers: a low wooden twang with a fast decaying vibrato
+      const tw = v.tone('triangle', 118, { t: 0.04, g: perc(0.13, 0.55, 0.004) });
+      v.lfo(tw.osc.detune, 21, [[0, 60], [0.5, 4, 'e']], { t: 0.04, d: 0.6 });
+      // a few clods pattering back down
+      v.bursts([0.16, 0.22, 0.27, 0.33], [0.16, 0.12, 0.09, 0.06], { dec: 0.025, f: 380, q: 1, kind: 'brown' });
     },
   },
   e_axeChain: {
@@ -312,19 +319,20 @@ export const RECIPES = {
     verb: 0.36,
     duck: 0.35,
     play(v) {
-      // the whip: a rising swish as the chain unrolls (links rattling dark along it), then the CRACK (a hard
-      // broadband transient with a fast falling chirp — the tip breaking the air) landing as a HIT (a 100 Hz body)
-      sweep(v, 0, 0.2, [260, 700, 8000], 0.6, { q: 1.6, peakAt: 0.92, pan: [-0.3, 0.3] });
-      ironLinks(v, 0.02, 0.17, 7, 0.1, { f0: 420, f1: 720, curve: 0.8, pan: 0.5, index: 1.3 });
+      // the whip of BLACK IRON: a dense run of dark iron links jangling as the chain unrolls (the pre-roll), a low
+      // heavy swish under it, then the CRACK (a lower, iron-coloured transient) landing as an iron CLANK on the panel
+      ironLinks(v, 0, 0.19, 16, 0.12, { f0: 380, f1: 820, curve: 0.75, pan: 0.6, index: 2.6, body: 1.1 });
+      sweep(v, 0, 0.2, [180, 520, 1600], 0.5, { q: 1.4, peakAt: 0.9, kind: 'pink', pan: [-0.3, 0.3] });
+      ironDrone(v, 0, 0.6, 0.12, { lp: 420 });
       const T0 = 0.2;
-      v.noise('white', { t: T0, g: perc(2.0, 0.01, 0.0001), to: v.filt('highpass', 2500, 0.7) });
-      // the air the tip tore: a bright hiss tail (well above the bind's range)
-      v.noise('white', { t: T0 + 0.006, g: [[0, 1.8], [0.14, 0.0001, 'e']], to: v.filt('bandpass', [[0, 10500], [0.14, 7000, 'e']], 0.9, { t: T0 + 0.006 }) });
-      v.tone('square', [[0, 6200], [0.012, 900, 'e']], { t: T0, g: perc(0.22, 0.018, 0.0002), to: v.filt('lowpass', 9000) });
-      crack(v, T0 + 0.004, 1.4, { hp: 3000, lp: 12000, n: 3, gap: 0.006, dec: 0.014 });
-      thump(v, T0, 96, 62, 1.8, 0.18, { drive: 2 });
-      // the links jangle down the chain after the hit, dark
-      ironLinks(v, T0 + 0.03, 0.26, 7, 0.14, { f0: 420, f1: 720, curve: 1.3, pan: 0.5, index: 1.3 });
+      v.noise('white', { t: T0, g: perc(1.3, 0.01, 0.0001), to: v.filt('highpass', 1200, 0.7) });
+      crack(v, T0 + 0.004, 0.9, { hp: 1200, lp: 6500, n: 3, gap: 0.007, dec: 0.016 });
+      // the hit: an iron clank with weight (dark FM ~130 Hz + its 100 Hz body), not a whip into cloth
+      iron(v, T0, 132, 0.6, 0.55, 3.2);
+      iron(v, T0 + 0.012, 205, 0.32, 0.35, 2.2);
+      thump(v, T0, 100, 58, 1.1, 0.24, { drive: 1.6 });
+      // the links jangle down the chain after the hit, dark and settling
+      ironLinks(v, T0 + 0.03, 0.3, 9, 0.13, { f0: 380, f1: 700, curve: 1.3, pan: 0.5, index: 2 });
     },
   },
 } satisfies Record<string, Recipe>;

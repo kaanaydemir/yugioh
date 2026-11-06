@@ -121,11 +121,23 @@ function lineDist(u: number, v: number, pts: readonly UV[]): number {
   return d;
 }
 
-/** The floor row where the blade enters (BIG px): every blade row under it is IN the floor. */
-const BITE_Y = 51;
-/** Where the edge crosses the floor line: the bite's two ends (BIG px x) and its middle. */
-const BITE_X0 = 29;
-const BITE_X1 = 47;
+/** The picture's horizon (BIG px): a deep floor of flagstones in front, the bite well inside it. */
+const HORIZON = 41;
+/** The floor row where the blade enters (BIG px): every blade row under it is IN the floor (its lower ~4 px buried
+ *  under the near lip of the cut). */
+const BITE_Y = 47;
+/** Where the blade crosses the floor line: the bite's two ends (BIG px x), measured from the blade polygon. */
+const [BITE_X0, BITE_X1] = ((): [number, number] => {
+  let a = Infinity;
+  let b = -Infinity;
+  for (let x = 0; x < 88; x++) {
+    const [u, v] = L(x + 0.5, BITE_Y + 0.5);
+    if (!inPoly(u, v, BLADE)) continue;
+    a = Math.min(a, x);
+    b = Math.max(b, x);
+  }
+  return [a + 1, b - 1];
+})();
 const BITE: [number, number] = [Math.round((BITE_X0 + BITE_X1) / 2), BITE_Y];
 
 /** The focus: the main crack's white core (BIG px). */
@@ -149,7 +161,7 @@ const DIMS: Readonly<Record<1 | 2, Dims>> = {
 /** Links along a polyline (subject layer, before the outline): big — rings (3×2 rim + ink hole) and bars; small —
  *  alternating lit / dark single pixels (a ring's lit rim, a bar's shade), so the chain never reads as a rod. */
 function chainArt(s: PixelCanvas, pts: readonly { x: number; y: number }[], k: 1 | 2): void {
-  const pitch = k === 2 ? 2.6 : 1.3;
+  const pitch = k === 2 ? 3.4 : 1.6;
   let acc = 0;
   let n = 0;
   for (let i = 0; i + 1 < pts.length; i++) {
@@ -161,25 +173,41 @@ function chainArt(s: PixelCanvas, pts: readonly { x: number; y: number }[], k: 1
     while (acc <= len) {
       const x = Math.round(a.x + ((b.x - a.x) / len) * acc);
       const y = Math.round(a.y + ((b.y - a.y) / len) * acc);
-      if (k === 1) s.set(x, y, n % 2 === 0 ? PAL.stone4 : PAL.stone1);
-      else if (n % 2 === 0) {
-        // a ring face-on: lit rim top / left, shade bottom / right, ink hole
-        if (hor) {
-          s.set(x - 1, y - 1, PAL.stone4);
-          s.set(x, y - 1, PAL.stone4);
-          s.set(x - 1, y, PAL.stone3);
-          s.set(x, y, PAL.ink);
-          s.set(x + 1, y, PAL.stone2);
-          s.set(x, y + 1, PAL.stone2);
-        } else {
-          s.set(x - 1, y - 1, PAL.stone4);
-          s.set(x - 1, y, PAL.stone4);
-          s.set(x, y - 1, PAL.stone3);
-          s.set(x, y, PAL.ink);
-          s.set(x, y + 1, PAL.stone2);
-          s.set(x + 1, y, PAL.stone2);
-        }
-      } else s.set(x, y, PAL.stone2);
+      if (k === 1) {
+        // a link 2 px long: lit end + shade end (never a 1-px bead)
+        s.set(x, y, n % 2 === 0 ? PAL.stone4 : PAL.stone2);
+        if (hor) s.set(x + 1, y, n % 2 === 0 ? PAL.stone3 : PAL.stone1);
+        else s.set(x, y + 1, n % 2 === 0 ? PAL.stone3 : PAL.stone1);
+      } else if (n % 2 === 0) {
+        // a ring face-on: a 4 × 3 oval, lit rim top / left, shade bottom / right, a 2-px ink hole
+        const ring: readonly (readonly [number, number, number])[] = hor
+          ? [
+              [-1, -1, PAL.stone4],
+              [0, -1, PAL.stone4],
+              [-2, 0, PAL.stone3],
+              [-1, 0, PAL.ink],
+              [0, 0, PAL.ink],
+              [1, 0, PAL.stone2],
+              [-1, 1, PAL.stone2],
+              [0, 1, PAL.stone1],
+            ]
+          : [
+              [-1, -1, PAL.stone4],
+              [-1, 0, PAL.stone4],
+              [0, -2, PAL.stone3],
+              [0, -1, PAL.ink],
+              [0, 0, PAL.ink],
+              [0, 1, PAL.stone2],
+              [1, -1, PAL.stone2],
+              [1, 0, PAL.stone1],
+            ];
+        for (const [dx, dy, c] of ring) s.set(x + dx, y + dy, c);
+      } else {
+        // a link edge-on: a 2-px bar (lit + shade)
+        s.set(x, y, PAL.stone3);
+        if (hor) s.set(x + 1, y, PAL.stone2);
+        else s.set(x, y + 1, PAL.stone2);
+      }
       n++;
       acc += pitch;
     }
@@ -243,7 +271,7 @@ function paintAxe(s: PixelCanvas, lt: PixelCanvas, f: number, k: 1 | 2): void {
   // real links, alternating a face-on ring (light rim, ink hole) and an edge-on bar (one dark pixel)
   const [ax, ay] = W(WRAPS[1], dm.haft + 1);
   const p0 = { x: ax * sc, y: ay * sc };
-  const p1 = { x: 74 * sc, y: 60 * sc };
+  const p1 = { x: 68 * sc, y: 58 * sc };
   const sagY = Math.max(p0.y, p1.y) + 6 * sc;
   const pts: { x: number; y: number }[] = [];
   for (let i = 0; i <= 24; i++) {
@@ -251,10 +279,10 @@ function paintAxe(s: PixelCanvas, lt: PixelCanvas, f: number, k: 1 | 2): void {
     pts.push({ x: (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * ((p0.x + p1.x) / 2) + t * t * p1.x, y: (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * sagY + t * t * p1.y });
   }
   // the coil on the floor: a flat loop to the right and back
-  const cx = p1.x + 5 * sc;
-  for (let i = 1; i <= 12; i++) {
-    const an = Math.PI + (i / 12) * Math.PI * 2;
-    pts.push({ x: cx + Math.cos(an) * 5 * sc, y: p1.y + 1 * sc + Math.sin(an) * 2 * sc });
+  const cx = p1.x + 4 * sc;
+  for (let i = 1; i <= 10; i++) {
+    const an = Math.PI + (i / 10) * Math.PI * 2;
+    pts.push({ x: cx + Math.cos(an) * 4 * sc, y: p1.y + 1 * sc + Math.sin(an) * 2 * sc });
   }
   chainArt(s, pts, k);
   s.outline(PAL.ink);
@@ -304,14 +332,122 @@ function paintAxe(s: PixelCanvas, lt: PixelCanvas, f: number, k: 1 | 2): void {
   else lt.set(Math.round(F_BIG[0] / 2), Math.round(F_BIG[1] / 2), beat ? PAL.white : PAL.fire4);
 }
 
+/**
+ * The floor as worn FLAGSTONES (backdrop, flat tone bands, no dither): ink joints in a running bond, each slab's near
+ * edge lit one step (night1), the joints converging a little toward the horizon; the slab the axe bit is split by
+ * a broken joint running out of the cut.
+ */
+function flagstones(p: PixelCanvas, k: 1 | 2): void {
+  const sc = k / 2;
+  const X = (x: number): number => Math.round(x * sc);
+  const Y = (y: number): number => Math.round(y * sc);
+  const rows = [HORIZON + 5, HORIZON + 13, HORIZON + 24];
+  const set = (x: number, y: number, c: number): void => {
+    if (x >= 0 && y >= 0 && x < p.w && y < p.h) p.set(x, y, c);
+  };
+  // the horizontal joints (a lit slab edge just under each one)
+  rows.forEach((ry) => {
+    for (let x = 0; x < p.w; x++) {
+      const bx = x / sc;
+      // the joint breaks where the bite's slab is split (a gap round the cut)
+      if (Math.abs(bx - BITE[0]) < 14 && Math.abs(ry - BITE_Y) < 6) continue;
+      set(x, Y(ry), PAL.ink);
+      set(x, Y(ry) + 1, PAL.night2);
+    }
+  });
+  // the vertical joints, a running bond (offset every row), slanting toward the vanishing point over the bite
+  const bands: [number, number, readonly number[]][] = [
+    [HORIZON + 1, rows[0], [8, 30, 62, 80]],
+    [rows[0] + 1, rows[1], [18, 50, 74]],
+    [rows[1] + 1, rows[2], [4, 32, 66]],
+    [rows[2] + 1, 68, [20, 54, 84]],
+  ];
+  for (const [y0, y1, xs] of bands)
+    for (const x0 of xs)
+      for (let y = y0; y < y1; y++) {
+        const lean = Math.round(((x0 - 44) * (y - HORIZON)) / 90);
+        const x = x0 + lean;
+        if (Math.abs(x - BITE[0]) < 10 && Math.abs(y - BITE_Y) < 5) continue;
+        set(X(x), Y(y), PAL.ink);
+      }
+  // the broken joint out of the cut: a jagged ink line toward the near-left slab corner
+  if (k === 2)
+    for (const [x, y] of [
+      [BITE_X0 - 2, BITE_Y + 2],
+      [BITE_X0 - 3, BITE_Y + 3],
+      [BITE_X0 - 4, BITE_Y + 3],
+      [BITE_X0 - 5, BITE_Y + 4],
+      [BITE_X0 - 6, BITE_Y + 5],
+      [BITE_X0 - 6, BITE_Y + 6],
+      [BITE_X0 - 7, BITE_Y + 7],
+    ] as const)
+      set(x, y, PAL.ink);
+}
+
+/**
+ * The cut's NEAR LIP (subject): a 2-px ridge of broken floor in front of the blade (earth, lit crest, ink under), so
+ * the blade's lower pixels read as INSIDE the floor; and three ember-lit rubble chips thrown out of the bite (earth
+ * chips, ink-backed, their face toward the bite catching fire2 / fire3 in the light layer, the near one pulsing).
+ */
+function rubble(s: PixelCanvas, lt: PixelCanvas, f: number, k: 1 | 2): void {
+  const sc = k / 2;
+  const by = Math.round(BITE_Y * sc);
+  const x0 = Math.round(BITE_X0 * sc);
+  const x1 = Math.round(BITE_X1 * sc);
+  for (let x = x0 - 1; x <= x1 + 1; x++) {
+    const m = Math.min(x - x0, x1 - x);
+    s.set(x, by + 1, m > 1 ? PAL.earth2 : PAL.earth1);
+    if (k === 2) {
+      s.set(x, by + 2, PAL.earth1);
+      s.set(x, by + 3, PAL.ink);
+      if (m > 2 && m % 5 === 2) s.set(x, by + 1, PAL.earth3);
+    } else s.set(x, by + 2, PAL.ink);
+  }
+  s.set(x0 - 2, by + 1, PAL.ink);
+  s.set(x1 + 2, by + 1, PAL.ink);
+  const chips: readonly (readonly [number, number, number])[] =
+    k === 2
+      ? [
+          [BITE_X0 - 9, BITE_Y + 7, 1],
+          [BITE_X1 + 7, BITE_Y + 5, -1],
+          [BITE_X0 + 4, BITE_Y + 9, 1],
+        ]
+      : [
+          [BITE_X0 - 8, BITE_Y + 7, 1],
+          [BITE_X1 + 6, BITE_Y + 5, -1],
+        ];
+  chips.forEach(([cx, cy, toward], i) => {
+    const x = Math.round(cx * sc);
+    const y = Math.round(cy * sc);
+    if (k === 2) {
+      s.set(x, y, PAL.earth2);
+      s.set(x + 1, y, PAL.earth1);
+      s.set(x, y + 1, PAL.earth1);
+      s.set(x + 1, y + 1, PAL.earth0);
+      s.set(x - 1, y + 1, PAL.ink);
+      s.set(x + 2, y + 1, PAL.ink);
+      s.set(x, y + 2, PAL.ink);
+      s.set(x + 1, y + 2, PAL.ink);
+      // the face toward the bite catches the glow
+      lt.set(toward > 0 ? x + 1 : x, y, i === 0 && f % 2 === 0 ? PAL.fire3 : PAL.fire2);
+    } else {
+      s.set(x, y, PAL.earth1);
+      s.set(x, y + 1, PAL.ink);
+      lt.set(x + (toward > 0 ? 1 : -1), y, f % 2 === 0 && i === 0 ? PAL.fire3 : PAL.fire2);
+    }
+  });
+}
+
 function paint(l: ArtLayers, f: number, k: 1 | 2): void {
   const sc = k / 2;
   const H = l.backdrop.h;
   const Wd = l.backdrop.w;
-  paintBackdrop(l.backdrop, 'SPELL', { focus: [Math.round(BITE[0]), BITE_Y], radius: 14, horizon: 48, as: 'sigil' });
+  paintBackdrop(l.backdrop, 'SPELL', { focus: [Math.round(BITE[0]), BITE_Y], radius: 14, horizon: HORIZON, as: 'sigil' });
+  flagstones(l.backdrop, k);
   paintAxe(l.subject, l.light, f, k);
   const s = l.subject;
   const lt = l.light;
+  rubble(s, lt, f, k);
   // ---- the floor cracks out of the bite (stepped heat: white at the bite, fire4, fire3, fire2 out)
   const bite = { x: Math.round(BITE[0] * sc), y: Math.round(BITE_Y * sc) };
   const cracks: (readonly [number, number])[][] = [

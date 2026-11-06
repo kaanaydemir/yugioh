@@ -268,7 +268,7 @@ export function axeMotif(o: AxeOpts): Motif {
 /** The drawing's cache key (with its maker) for motifImage / setMotif. */
 export function axeKey(o: AxeOpts): [string, () => Motif] {
   const a = axeAngle(o.angle);
-  const k = `spiteAxe:${o.size}:${a}:${o.mirror ? 1 : 0}:${o.pulse ?? -1}:${o.heat ?? 1}:${o.look ?? 'plain'}:${o.cut ?? '-'}`;
+  const k = `spiteAxe:${o.size}:${a}:${o.mirror ? 1 : 0}:${o.pulse ?? -1}:${o.heat ?? 1}:${o.look ?? 'plain'}:${o.cut ?? '-'}${o.scale !== undefined ? `:s${o.scale}` : ''}`;
   return [k, () => axeMotif({ ...o, angle: a })];
 }
 

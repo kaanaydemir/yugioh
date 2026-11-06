@@ -96,6 +96,43 @@ function paintBook(p: P, k: number): void {
   }
   // the spine valley
   for (let y = top + 1; y <= top + ph + stack + lip; y++) p.set(sx, y, PAL.earth0);
+  // the LEATHER BOARDS under the spread (the tome of the scene): a thick brown band below the page blocks — a lit lip,
+  // the body, a shaded foot — with gold corner caps on both outer corners
+  const bandH = k === 2 ? 5 : 3;
+  const by0 = top + ph + stack + lip + 1;
+  const bx0 = sx - pw - lip - 1;
+  const bx1 = sx + pw + lip + 1;
+  for (let y = by0; y < by0 + bandH; y++)
+    for (let x = bx0; x <= bx1; x++) {
+      const r = y - by0;
+      let c: number = r === 0 ? PAL.earth2 : r === bandH - 1 ? PAL.earth0 : PAL.earth1;
+      const cap = Math.min(x - bx0, bx1 - x);
+      if (cap + (bandH - 1 - r) <= (k === 2 ? 4 : 2)) c = cap === 0 || r === bandH - 1 ? PAL.gold2 : PAL.gold3;
+      // the tooled groove along the band
+      if (k === 2 && r === 2 && cap > 5 && Math.abs(x - sx) > 6 && (x & 1) === 0) c = PAL.earth0;
+      p.set(x, y, c);
+    }
+  // the teal boss in its gold lozenge on the spine end of the board (the scene's boss)
+  const lr = k === 2 ? 4 : 2;
+  const ly = by0 + (bandH >> 1) - (k === 2 ? 1 : 0);
+  for (let dy = -lr - 1; dy <= lr + 1; dy++)
+    for (let dx = -lr - 1; dx <= lr + 1; dx++) {
+      const a = Math.abs(dx) + Math.abs(dy);
+      if (a > lr + 1) continue;
+      let c: number;
+      if (a === lr + 1) c = PAL.earth0;
+      else if (a === lr) c = dy < 0 || (dy === 0 && dx < 0) ? PAL.gold3 : PAL.gold2;
+      else if (k === 2 && a === lr - 1) c = PAL.gold2;
+      else c = a === 0 ? PAL.teal4 : dx <= 0 && dy <= 0 ? PAL.teal3 : PAL.teal2;
+      p.set(sx + dx, ly + dy, c);
+    }
+  // the strap and its gold clasp hanging off the right board's fore-edge
+  const cx0 = sx + pw + lip + 1;
+  const cy0 = top + (ph >> 1) + (k === 2 ? 2 : 1);
+  const sw = k === 2 ? 4 : 2;
+  const shh = k === 2 ? 5 : 3;
+  for (let y = 0; y < shh; y++)
+    for (let x = 0; x < sw; x++) p.set(cx0 + x, cy0 + y, y === 0 || x === sw - 1 ? PAL.gold3 : y === shh - 1 ? PAL.earth0 : x === 1 && y === shh >> 1 && k === 2 ? PAL.teal3 : PAL.gold2);
   // ink lines written on the left page
   if (k === 2)
     for (let ln = 0; ln < 4; ln++) {
@@ -178,14 +215,19 @@ function paintCard(p: P, cx: number, cy: number, w: number, h: number, a: number
 function paintCards(p: P, k: number, f: number): void {
   const bob = [0, 0, 1, 1][f];
   if (k === 2) {
-    paintCard(p, 63, 21 + bob, 12, 16, 0.38, true);
-    paintCard(p, 72, 11 - bob, 9, 13, -0.3, false);
-    paintCard(p, 27, 15 + bob, 7, 10, -0.45, false);
+    // a STREAM of page-cards fluttering out of the turning page: up to the right, then curling back left over the top
+    // of the spread into the empty upper left — each one smaller (further), each one more of a card
+    paintCard(p, 61, 17 + bob, 11, 14, 0.38, true);
+    paintCard(p, 72, 7 - bob, 9, 12, -0.3, false);
+    paintCard(p, 42, 5 + bob, 7, 10, 0.5, false);
+    paintCard(p, 22, 12 - bob, 6, 8, -0.45, false);
+    paintCard(p, 9, 22 + bob, 4, 6, 0.3, false);
   } else {
     // small: a folding page and a card back leave the right page high, a second card back rises on the left
     paintCard(p, 32, 10 + bob, 6, 8, 0.38, true);
     paintCard(p, 36.5, 5.5 - bob, 6, 8, -0.3, false);
-    paintCard(p, 9.5, 6.5 + bob, 5, 7, -0.42, false);
+    paintCard(p, 20.5, 3.5 - bob, 4, 5, 0.45, false);
+    paintCard(p, 8.5, 7.5 + bob, 4, 6, -0.42, false);
   }
 }
 
@@ -217,17 +259,17 @@ function paintLight(l: P, k: number, f: number): void {
   const stars: readonly (readonly [number, number, boolean, number])[] =
     k === 2
       ? [
-          [14, 22, false, 0],
-          [55, 10, true, 1],
-          [70, 31, false, 2],
-          [32, 25, true, 3],
-          [83, 21, false, 1],
-          [10, 8, true, 2],
+          [17, 27, false, 0],
+          [53, 9, true, 1],
+          [73, 28, false, 2],
+          [31, 21, true, 3],
+          [83, 18, false, 1],
+          [30, 6, true, 2],
         ]
       : [
-          [4, 13, false, 0],
-          [17, 4, true, 1],
-          [40, 14, false, 2],
+          [4, 14, false, 0],
+          [14, 5, true, 1],
+          [41, 13, false, 2],
           [28, 3, false, 3],
         ];
   stars.forEach(([x, y, violet, ph]) => {
@@ -247,14 +289,74 @@ function paintLight(l: P, k: number, f: number): void {
   }
 }
 
+// ---------------------------------------------------------------- the backdrop: a library alcove
+
+/**
+ * The tome's room instead of flat bands: a round-topped ALCOVE in a night2 masonry wall (stone courses with offset
+ * joints), its deep night0 inside lined with two shelves of book spines (night2 / night3 / void1 / teal1 silhouettes
+ * of different heights, banded) on both sides of the spread; the spell's light is the book's own (the white crest,
+ * the stars). Flat tone bands only; coordinates in BIG px, scaled for the small canvas.
+ */
+function paintAlcove(b: P, k: number): void {
+  const z = (v: number) => Math.round((v * k) / 2);
+  const W = b.w;
+  const hz = z(48);
+  const ax = z(40);
+  const ar = z(33);
+  const atop = z(36);
+  for (let y = 0; y < hz; y++)
+    for (let x = 0; x < W; x++) {
+      const dx = x + 0.5 - ax;
+      const inside = Math.abs(dx) <= ar && (y >= atop || dx * dx + (y + 0.5 - atop) ** 2 <= ar * ar);
+      if (inside) {
+        b.set(x, y, PAL.night0);
+        continue;
+      }
+      // the wall: night2 stone courses, a night1 joint row every 6 px and staggered joints
+      const course = Math.floor(y / z(6));
+      const jr = y % z(6) === z(6) - 1;
+      const jx = (x + (course % 2) * z(5)) % z(10) === 0;
+      b.set(x, y, jr || jx ? PAL.night1 : PAL.night2);
+      // the arch's lit lip (1 px night3 on the inner edge)
+      const d2 = Math.abs(dx) <= ar + 1 && (y >= atop ? Math.abs(dx) > ar : dx * dx + (y + 0.5 - atop) ** 2 <= (ar + 1.5) ** 2);
+      if (d2) b.set(x, y, PAL.night3);
+    }
+  // two shelves of books on each side of the spread, inside the alcove
+  const SPINES = [PAL.night3, PAL.night2, PAL.night3, PAL.night1, PAL.night3, PAL.night2];
+  for (const sy of [z(20), z(33)]) {
+    for (const [x0, x1] of [
+      [ax - ar + 1, ax - z(24)],
+      [ax + z(27), ax + ar - 1],
+    ] as const) {
+      if (x1 <= x0) continue;
+      // the plank: a lit night3 top row over a night1 body
+      for (let x = x0; x <= x1; x++) {
+        b.set(x, sy, PAL.night3);
+        b.set(x, sy + 1, PAL.night1);
+      }
+      // the spines standing on it
+      let x = x0 + 1;
+      let i = (x0 + sy) % SPINES.length;
+      while (x < x1 - 1) {
+        const w = k === 2 ? 2 + (i % 2) : 1;
+        const h = k === 2 ? 5 + ((i * 3) % 4) : 3 + (i % 2);
+        for (let yy = sy - h; yy < sy; yy++)
+          for (let xx = x; xx < Math.min(x1, x + w); xx++) b.set(xx, yy, yy === sy - h || (k === 2 && yy === sy - 3) ? PAL.night3 : SPINES[i % SPINES.length]);
+        x += w + (i % 3 === 2 ? 1 : 0);
+        i++;
+      }
+    }
+  }
+}
+
 // ---------------------------------------------------------------- the painters
 
 function paint(l: ArtLayers, f: number, k: 1 | 2): void {
   // the spell's light sits BEHIND the whole spread as a wide, low ring (only its lit rim arches over the book: it reads
   // as the tome's glow, never as a shape of its own); the small picture drops it entirely (the page + one card read)
   // (big coordinates: the small one is the same light at its own spine, a tighter ring)
-  if (k === 2) paintBackdrop(l.backdrop, 'SPELL', { focus: [SX, TOP + 8], radius: 34, as: 'eclipse' });
-  else paintBackdrop(l.backdrop, 'SPELL', { focus: [SMALL.sx * 2, SMALL.top * 2 + 10], radius: 30, as: 'eclipse' });
+  paintBackdrop(l.backdrop, 'SPELL', { shape: false });
+  paintAlcove(l.backdrop, k);
   const s = l.subject;
   paintBook(s, k);
   paintTurningPage(s, k, f);

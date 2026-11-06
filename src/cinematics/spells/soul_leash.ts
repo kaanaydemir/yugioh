@@ -366,15 +366,19 @@ function lingerBond(sc: Phaser.Scene, field: FieldView, uid: Uid, leashUid: Uid,
       await wait(sc, 100);
       look.hot = false;
       collar.look.tint = undefined;
-      await wait(sc, 70);
+      await wait(sc, 45);
       beat();
-      // the green runs from the card along the floor, up behind the body, into the collar
+      // the green runs from the card along the floor to the feet (the part behind the body is hidden: it does
+      // not wait there — it climbs the body as a leaf rim flash and lands in the collar at once)
       look.pulseColor = PAL.leaf3;
       look.pulseHead = PAL.white;
-      await run(sc, 240, (k) => {
-        look.pulse = q(k, 16);
-        if (k > 0.35) look.hot = false;
+      const ff = Math.min(1, Math.max(0.3, look.floorFrac ?? 1));
+      await run(sc, 200, (k) => {
+        look.pulse = q(k, 12) * ff;
+        if (k > 0.85) look.hot = false;
       });
+      const wu = field.unit(uid);
+      if (wu && wu.sprite.active) bg(rimFlash(sc, wu.sprite, { ramp: [PAL.leaf4, PAL.leaf3, PAL.leaf2], hold: 1 }));
       look.hot = false;
       look.pulse = -1;
       look.pulseColor = undefined;
@@ -1305,7 +1309,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     index: ev.zone,
     onLand: () => {
       playV3('e_leashLand', { volume: 0.9, pan: panAt(at.x) });
-      void lightFlash(sc, at.x, at.y, PAL.void3, 24, 320, { intensity: 0.8, ring: true });
+      void lightFlash(sc, at.x, at.y, PAL.void3, 20, 320, { intensity: 0.6, ring: true });
     },
   });
   tile.tileFlash(PAL.void3, 240);

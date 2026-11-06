@@ -109,8 +109,8 @@ export const PAGE_T = Object.freeze({
   closeAfter: 120,
   closeMs: 150,
   /** the peel: 4 bands this far apart, each row of fragments → runes rising */
-  peelGap: 60,
-  runesMs: 520,
+  peelGap: 45,
+  runesMs: 420,
   /** both hands empty: the blank spread holds only this long, then searches its pages */
   bareHold: 0,
   /** both hands empty: the lazy search — three slow page turns this far apart, each this long */
@@ -149,6 +149,8 @@ interface BookState {
   cover: number;
   /** single pages turning (riffle), each 0 … π */
   flips: number[];
+  /** the bound print each turning page carries on its front (parallel to flips; null = blank) */
+  flipPrints: (PixelCanvas | null)[];
   stackL: number;
   stackR: number;
   printL: PixelCanvas | null;
@@ -179,7 +181,7 @@ interface BookState {
 const spineAt = (cover: number): number => SX + R((PW / 2 + 1) * Math.min(1, Math.max(0, cover / PI)));
 
 /** Paint one open half of the spread lying flat: leather board, page block edge, the page. */
-function paintHalf(p: PixelCanvas, side: -1 | 1, spine: number, stack: number, lid: number, print: PixelCanvas | null, flash: boolean): void {
+function paintHalf(p: PixelCanvas, side: -1 | 1, spine: number, stack: number, lid: number, print: PixelCanvas | null, flash: boolean, breath = 0): void {
   for (let d = 0; d <= PW + 1; d++) {
     const x = spine + side * (1 + d);
     const gut = d < 6 ? (6 - d) >> 1 : 0;
@@ -194,12 +196,23 @@ function paintHalf(p: PixelCanvas, side: -1 | 1, spine: number, stack: number, l
     }
     if (d >= PW) continue;
     // the page: lit paper, the gutter shading toward the spine, the fore-edge a tone down
+    // (a 2-px dark gutter band, a 3-px mid band; the fore-edge shows its stacked sheet layers; the bottom rows curve
+    // away a tone down)
     for (let y = top; y < bot; y++) {
       let c: number = flash ? PAL.gold4 : PAPER;
       if (d < 2) c = PAPER_D;
       else if (d < 5) c = PAPER_M;
-      else if (d === PW - 1) c = PAPER_M;
+      else if (d === PW - 1) c = (y - top) % 3 === 2 ? PAPER_D : PAPER_M;
+      else if (d === PW - 2) c = (y - top) % 3 === 0 ? PAPER_M : c;
+      else if (y >= bot - 2 && !flash) c = y === bot - 1 ? PAPER_M : (d + y) % 2 === 0 ? PAPER_M : PAPER;
+      else if (y === top && !flash && d > 8) c = PAL.white;
       p.set(x, y, c);
+    }
+    // the page breathes in a hold: its outer top corner curls up 1 px (a lit lip, a shade under it) and settles
+    if (breath > 0 && d >= PW - 5) {
+      p.set(x, top - 1, d >= PW - 3 ? PAL.white : PAPER);
+      p.set(x, top, PAPER_M);
+      if (d >= PW - 2) p.set(x, top + 1, PAPER_D);
     }
     // the page block under it: stacked sheet edges
     for (let k = 0; k < stack; k++) p.set(x, bot + k, k % 2 === 0 ? PAPER : PAPER_D);
@@ -270,7 +283,7 @@ function coverTone(i: number, r: number, ncol: number, H: number, full: boolean)
  * A leaf hinged on the spine at angle th (0 lying right … π lying left): a single page, or the board with its pages
  * (`slab`). Painted on its own canvas and ink-outlined so overlapping leaves keep their edges.
  */
-function paintLeaf(out: PixelCanvas, scratch: PixelCanvas, spine: number, th: number, slab: boolean): void {
+function paintLeaf(out: PixelCanvas, scratch: PixelCanvas, spine: number, th: number, slab: boolean, print: PixelCanvas | null = null): void {
   scratch.clear();
   const w = PW * Math.cos(th);
   const L = LIFT * Math.sin(th);
@@ -295,7 +308,20 @@ function paintLeaf(out: PixelCanvas, scratch: PixelCanvas, spine: number, th: nu
         // the inside of the board: leather lip round a paper page
         const lip = r < 2 || r > t1 - t0 - 2 || i >= n;
         c = lip ? (r < 2 ? PAL.earth2 : PAL.earth1) : i < 3 ? PAPER_M : PAPER;
-      } else c = leafTone(i, n, r, t1 - t0, front);
+      } else {
+        c = leafTone(i, n, r, t1 - t0, front);
+        // a bound card's print rides on the front of its sheet (squeezed with the turn) — the printed pages are the
+        // ones that peel off as pressed leaves
+        if (print && front && n > 6 && i > 0 && i < n - 1 && r > 0) {
+          const d = ((i + 0.5) * PW) / n;
+          const px = Math.floor(1 + d - (PW / 2 + 2) + (print.w >> 1));
+          const pr = r - 8;
+          if (px >= 0 && px < print.w && pr >= 0 && pr < print.h) {
+            const pcol = print.get(px, pr);
+            if (pcol !== null && pcol !== PAPER) c = pcol;
+          }
+        }
+      }
       scratch.set(x, y, c);
     }
   }
@@ -332,19 +358,29 @@ function paintLeaf(out: PixelCanvas, scratch: PixelCanvas, spine: number, th: nu
   out.blit(scratch, 0, 0);
 }
 
+// hand-drawn ink-star motifs (k ink, a/b/c the teal or violet ramp dark → light, w white core)
+const STAR_BLOT2 = ['kk.', 'kk.', '...'];
+const STAR_BLOT3 = ['.k.', 'kak', '.k.'];
+const STAR_BUD5 = ['..k..', '.kbk.', 'kbwbk', '.kbk.', '..k..'];
+const STAR7 = ['...k...', '...b...', '..kck..', 'kbcwcbk', '..kck..', '...b...', '...k...'];
+const STAR9 = ['....k....', '....a....', '...kbk...', '...bcb...', 'kabcwcbak', '...bcb...', '...kbk...', '....a....', '....k....'];
+
 /** Paint the whole book for its state (subject pass, outlined; stars and flashes after the outline). */
 function paintBook(p: PixelCanvas, scratch: PixelCanvas, s: BookState): void {
   p.clear();
   const spine = spineAt(s.cover);
   const shut = s.cover > PI * 0.999;
   // the left half always lies open (under the shut board it is the tome's bottom edge)
-  paintHalf(p, -1, spine, s.stackL, s.lid, shut ? null : s.printL, s.flashSide < 0);
-  if (s.cover <= 0.001) paintHalf(p, 1, spine, s.stackR, s.lid, s.printR, s.flashSide > 0);
+  const holding = s.cover <= 0.001 && s.lid === 0 && s.flips.length === 0 && s.form >= 1;
+  const breath = Math.floor(s.el / 420) % 2;
+  paintHalf(p, -1, spine, s.stackL, s.lid, shut ? null : s.printL, s.flashSide < 0, holding ? breath : 0);
+  if (s.cover <= 0.001) paintHalf(p, 1, spine, s.stackR, s.lid, s.printR, s.flashSide > 0, holding ? 1 - breath : 0);
   // the spine's valley
   for (let y = TOP + 1; y <= TOP + PH + 3 + Math.max(s.stackL, s.stackR); y++) p.set(spine, y, PAL.earth0);
   p.outline(PAL.ink);
-  // ink stars on the open pages: a night2 ink drop blooms over 3 frames into a 7-px four-point star with a white core,
-  // then twinkles
+  // ink stars on the open pages: a night2 ink drop blooms over 3 frames (a 2×2 blot, a 3×3 blot, a 5×5 bud) into a
+  // hand-drawn 7×7 / 9×9 four-point star — ink-outlined tapering arms, a teal (or violet) body, a white core — then
+  // twinkles between the two sizes
   if (!shut && s.cover < 0.5)
     for (const st of s.stars) {
       const age = s.el - st.born;
@@ -352,44 +388,20 @@ function paintBook(p: PixelCanvas, scratch: PixelCanvas, s: BookState): void {
       const x = spine + st.x;
       const y = st.y;
       const v = st.violet;
-      const r4 = v ? PAL.void4 : PAL.teal4;
-      const r3 = v ? PAL.void3 : PAL.teal3;
-      const r2 = v ? PAL.void2 : PAL.teal2;
-      const arms = (len: number, tones: readonly number[]) => {
-        for (let k = 1; k <= len; k++) {
-          const c = tones[Math.min(tones.length - 1, k - 1)];
-          p.set(x - k, y, c);
-          p.set(x + k, y, c);
-          p.set(x, y - k, c);
-          p.set(x, y + k, c);
-        }
+      const tones: Record<string, number> = { k: PAL.night1, a: v ? PAL.void2 : PAL.teal2, b: v ? PAL.void3 : PAL.teal3, c: v ? PAL.void4 : PAL.teal4, w: PAL.white };
+      const stamp = (m: readonly string[]) => {
+        const h = m.length >> 1;
+        for (let dy = 0; dy < m.length; dy++)
+          for (let dx = 0; dx < m[dy].length; dx++) {
+            const ch = m[dy][dx];
+            if (ch !== '.') p.set(x + dx - h, y + dy - h, tones[ch]);
+          }
       };
-      if (age < 35) {
-        // the drop lands: a 2×2 blot of ink
-        p.set(x, y, PAL.night2);
-        p.set(x + 1, y, PAL.night2);
-        p.set(x, y + 1, PAL.night2);
-        p.set(x + 1, y + 1, PAL.night1);
-      } else if (age < 70) {
-        // it spreads: a 3×3 blot, the first glint in the middle
-        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) p.set(x + dx, y + dy, Math.abs(dx) + Math.abs(dy) === 2 ? PAL.night1 : PAL.night2);
-        p.set(x, y, r2);
-      } else if (age < 105) {
-        // it opens: short arms, a bright core
-        arms(2, [r3, r2]);
-        p.set(x, y, r4);
-      } else if (age < 175) {
-        // full bloom: 9-px arms, a white core, diagonal glints
-        arms(4, [PAL.white, r4, r3, r2]);
-        p.set(x, y, PAL.white);
-        for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) p.set(x + dx, y + dy, r2);
-      } else {
-        // twinkle: a steady 7-px star whose arms flare to 9 px every third beat
-        const tw = Math.floor((age + st.x * 37) / 140) % 3;
-        arms(tw === 1 ? 4 : 3, tw === 1 ? [r4, r4, r3, r2] : [r4, r3, r2]);
-        p.set(x, y, tw === 2 ? r4 : PAL.white);
-        if (tw === 1) for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) p.set(x + dx, y + dy, r2);
-      }
+      if (age < 35) stamp(STAR_BLOT2);
+      else if (age < 70) stamp(STAR_BLOT3);
+      else if (age < 105) stamp(STAR_BUD5);
+      else if (age < 175) stamp(STAR9);
+      else stamp(Math.floor((age + st.x * 37) / 140) % 3 === 1 ? STAR9 : STAR7);
     }
   // ink being written on fresh pages: four lines a page, drawn left to right, a teal nib at the head
   if (!shut && s.cover < 0.5 && s.write > 0)
@@ -419,7 +431,7 @@ function paintBook(p: PixelCanvas, scratch: PixelCanvas, s: BookState): void {
     for (let x = x0; x <= spine; x++) p.set(x, TOP + PH + 6, PAL.ink);
   }
   // turning pages over the spread, then the board
-  for (const th of s.flips) paintLeaf(p, scratch, spine, th, false);
+  s.flips.forEach((th, i) => paintLeaf(p, scratch, spine, th, false, s.flipPrints[i] ?? null));
   if (s.cover > 0.001) paintLeaf(p, scratch, spine, s.cover, true);
 }
 
@@ -504,7 +516,7 @@ function makeBook(sc: Phaser.Scene, at: XY, floorY: number): Book {
   const layer = new PixelCanvas(BW, BH);
   const scratch = new PixelCanvas(BW, BH);
   const fin = new PixelCanvas(BW, BH);
-  const s: BookState = { cover: PI, flips: [], stackL: 2, stackR: 2, printL: null, printR: null, dy: 0, dx: 0, squash: 0, form: 0, white: 0, erase: 0, lid: 0, write: 0, flashSide: 0, stars: [], el: 0 };
+  const s: BookState = { cover: PI, flips: [], flipPrints: [], stackL: 2, stackR: 2, printL: null, printR: null, dy: 0, dx: 0, squash: 0, form: 0, white: 0, erase: 0, lid: 0, write: 0, flashSide: 0, stars: [], el: 0 };
   const ox = () => ax - SX + s.dx;
   const oy = () => ay - CY - R(s.dy);
   const book: Book = {
@@ -786,19 +798,27 @@ function leafFlight(sc: Phaser.Scene, o: { from: XY; to: XY; face: PixelCanvas; 
 }
 
 /**
- * A fresh page lifts off its page and folds into a card in 5 steps: flat (a centre crease), the two top corners fold
- * down (triangular flaps across real diagonals), the long sides fold in (the silhouette narrows to an envelope), a
- * sideways squash, the white press. `onStep(f)` fires as each step shows (the crease / press sounds); resolves with
- * its world centre, where the deal flight takes over at once with the card back (no card ever parks on the page).
+ * A fresh page lifts off its page and folds into a card in 5 steps, every step with a real tone band so it reads at 1×:
+ *   0 the sheet peels up (2–3 px higher every frame) with its own shadow on the spread (earth3), a lit top crest;
+ *   1 the two top corners fold DOWN across real diagonals: the flaps' undersides lie on the sheet as PAPER_D triangles
+ *     with an earth3 cast-shadow edge, a white crest on each fold line;
+ *   2 the long sides fold in: an envelope (narrower, a peaked top) with PAPER_D side flaps, white crests, earth3 seams;
+ *   3 a visible sideways SQUASH (wider, shorter, the folds pressed flat);
+ *   4 the POP: the player's card back at full size inside a 1-frame white rim (then the player's tone).
+ * `onStep(f)` fires as each step shows (the crease / press sounds); resolves with its world centre, where the deal
+ * flight takes over at once with the card back (no card ever parks on the page).
  */
 function foldPage(sc: Phaser.Scene, at: () => XY, player: PlayerId, ms: number, onStep: (f: number) => void): Promise<XY> {
-  const BOX = 56;
+  const BOX = 60;
   const p0 = at();
   const ras = new Raster(sc, p0.x - BOX / 2, p0.y - BOX / 2, BOX, BOX, DEPTH.FX_TOP + 10);
   const pc = new PixelCanvas(BOX, BOX);
+  const sheet = new PixelCanvas(BOX, BOX);
+  const back = cardBackCanvas(player);
   const rimTone = PLAYER_RAMP[player][3];
   let last = { x: p0.x, y: p0.y };
   let shown = -1;
+  let popFrames = 0;
   const W = 26;
   const H = 34;
   const C = 10;
@@ -809,78 +829,100 @@ function foldPage(sc: Phaser.Scene, at: () => XY, player: PlayerId, ms: number, 
       onStep(f);
     }
     const c = at();
-    const lift = R(5 + 12 * t);
+    // the sheet rises off the spread in whole steps (its shadow stays on the page and drifts down-right)
+    const lift = [3, 6, 9, 11, 13][f];
     const pos = { x: c.x, y: c.y - lift };
     last = pos;
-    pc.clear();
+    sheet.clear();
     const cx = BOX >> 1;
     const cy = BOX >> 1;
-    // the lifted sheet's shadow on its page (a tone down, offset by the lift, peeking out under the sheet)
-    if (f <= 3) {
-      const sh = Math.min(lift, 10);
-      for (let y = 0; y < sh; y++) for (let x = 2; x < W - 2; x++) pc.set(cx - (W >> 1) + x, cy + (H >> 1) + y, PAPER_M);
-    }
     const x0 = cx - (W >> 1);
     const y0 = cy - (H >> 1);
+    const crease = (ya: number, yb: number) => {
+      for (let y = ya; y < yb; y++) {
+        if (y % 3 === 0) continue;
+        sheet.set(cx, y, PAPER_D);
+        sheet.set(cx - 1, y, PAL.white);
+      }
+    };
     if (f === 0) {
-      // flat: the sheet with a centre crease
-      pc.rect(x0, y0, W, H, PAPER);
-      for (let y = y0 + 1; y < y0 + H - 1; y++) if (y % 3 !== 0) pc.set(cx, y, PAPER_M);
-      for (let x = x0; x < x0 + W; x++) pc.set(x, y0, PAL.white);
-      pc.outline(PAL.ink);
+      // the sheet peels up: lit crest, a shaded fore-edge and foot (its thickness), a centre crease
+      sheet.rect(x0, y0, W, H, PAPER);
+      for (let x = x0; x < x0 + W; x++) sheet.set(x, y0, PAL.white);
+      for (let y = y0 + 1; y < y0 + H; y++) sheet.set(x0 + W - 1, y, PAPER_M);
+      for (let x = x0; x < x0 + W; x++) sheet.set(x, y0 + H - 1, PAPER_M);
+      crease(y0 + 2, y0 + H - 2);
     } else if (f === 1) {
-      // the top corners fold DOWN across their diagonals: the silhouette loses its corners (the outline runs on
-      // the diagonal), the flaps lie on the sheet as triangles (paper back, earth4) with a shade band under them
-      pc.rect(x0, y0, W, H, PAPER);
-      for (let y = y0 + 1; y < y0 + H - 1; y++) if (y % 3 !== 0) pc.set(cx, y, PAPER_M);
+      // the top corners fold DOWN across their diagonals
+      sheet.rect(x0, y0, W, H, PAPER);
+      for (let y = y0 + 1; y < y0 + H; y++) sheet.set(x0 + W - 1, y, PAPER_M);
+      for (let x = x0; x < x0 + W; x++) sheet.set(x, y0 + H - 1, PAPER_M);
+      crease(y0 + C, y0 + H - 2);
       for (let k = 0; k < C; k++)
-        for (let j = 0; j < C; j++) {
+        for (let j = 0; j < 2 * C; j++)
           for (const side of [0, 1]) {
+            if (j >= W >> 1) continue;
             const x = side ? x0 + W - 1 - j : x0 + j;
             const y = y0 + k;
-            if (j + k < C - 1) pc.erase(x, y);
-            else if (j + k === C - 1) pc.set(x, y, PAL.white);
-            else if (j + k <= C + 1 && j < C - 1 && k < C - 1) pc.set(x, y, PAPER_M);
-            else if (j + k <= C + 3 && j < C && k < C) pc.set(x, y, PAPER_D);
+            const s0 = j + k;
+            if (s0 < C - 1) sheet.erase(x, y);
+            else if (s0 === C - 1) sheet.set(x, y, PAL.white); // the fold line's crest
+            else if (s0 <= 2 * C - 3 && j < C && k < C) {
+              // the flap's underside lying on the sheet; its far edge casts a 1-px earth3 shadow
+              sheet.set(x, y, s0 === 2 * C - 3 || j === C - 1 || k === C - 1 ? PAL.earth3 : s0 <= C ? PAPER_M : PAPER_D);
+            } else if (s0 === 2 * C - 2 && j < C + 1 && k < C + 1) sheet.set(x, y, PAPER_M);
           }
-        }
-      pc.outline(PAL.ink);
     } else if (f === 2) {
-      // the long sides fold in: an envelope, narrower, a peaked top, side flaps (earth4) with a crease line each
-      const w = 18;
+      // the long sides fold in: an envelope with a peaked top
+      const w = 20;
       const xa = cx - (w >> 1);
       for (let y = y0; y < y0 + H; y++)
         for (let x = xa; x < xa + w; x++) {
           const dx = Math.min(x - xa, xa + w - 1 - x);
           const dy = y - y0;
-          if (dx + dy < 7) continue;
+          if (dx + dy < 8) continue;
           let col: number = PAPER;
-          if (dx + dy === 7) col = PAL.white;
-          else if (dx < 3) col = dx === 2 ? PAPER_D : PAPER_M;
-          else if (x === cx && y % 3 !== 0) col = PAPER_M;
-          pc.set(x, y, col);
+          if (dx + dy === 8) col = PAL.white;
+          else if (dx < 4) col = dx === 3 ? PAL.earth3 : dx === 0 ? PAPER_M : PAPER_D;
+          else if (dx === 4) col = PAL.white;
+          else if (y === y0 + H - 1) col = PAPER_M;
+          sheet.set(x, y, col);
         }
-      pc.outline(PAL.ink);
+      crease(y0 + 10, y0 + H - 2);
     } else if (f === 3) {
-      // the squash: the folded card pressed sideways (wider, shorter) — the beat before the press
-      const w = 22;
-      const h = 28;
+      // the SQUASH: pressed sideways (wider, shorter), the folds flattened into seams
+      const w = 26;
+      const h = 26;
       const xa = cx - (w >> 1);
-      const ya = cy - (h >> 1) + 3;
-      pc.rect(xa, ya, w, h, PAPER);
-      for (let x = xa; x < xa + w; x++) pc.set(x, ya, PAL.white);
-      for (let y = ya + 1; y < ya + h; y++) {
-        pc.set(xa, y, PAPER_M);
-        pc.set(xa + w - 1, y, PAPER_D);
-        if (y % 3 !== 0) pc.set(cx, y, PAPER_M);
+      const ya = cy - (h >> 1) + 4;
+      sheet.rect(xa, ya, w, h, PAPER);
+      for (let x = xa; x < xa + w; x++) {
+        sheet.set(x, ya, PAL.white);
+        sheet.set(x, ya + h - 1, PAPER_D);
+        sheet.set(x, ya + h - 2, PAPER_M);
       }
-      for (let x = xa; x < xa + w; x++) pc.set(x, ya + h - 1, PAPER_D);
-      pc.outline(PAL.ink);
+      for (let y = ya + 1; y < ya + h - 1; y++) {
+        sheet.set(xa, y, PAPER_M);
+        sheet.set(xa + w - 1, y, PAPER_D);
+        sheet.set(xa + 5, y, PAL.earth3);
+        sheet.set(xa + w - 6, y, PAL.earth3);
+        if (y % 3 !== 0) sheet.set(cx, y, PAPER_M);
+      }
     } else {
-      // the press: a white card silhouette with the player's rim
-      pc.rect(cx - 12, cy - 17, 24, 34, PAL.white);
-      pc.outline(rimTone);
+      // the POP: the card back at full size, a 1-frame white rim, then the player's tone
+      sampleInto(sheet, back, cx - 13, cy - 18, 26, 36);
     }
+    if (f === 4) sheet.outline(popFrames++ < 1 ? PAL.white : rimTone);
+    else sheet.outline(PAL.ink);
+    pc.clear();
+    // the shadow on the spread: the sheet's silhouette, flat earth3, offset down-right by the lift
+    if (f <= 3) {
+      const ox = 1 + (lift >> 2);
+      const oy = lift;
+      for (let y = 0; y < BOX; y++)
+        for (let x = 0; x < BOX; x++) if (sheet.get(x, y) !== null && x + ox < BOX && y + oy < BOX) pc.set(x + ox, y + oy, PAL.earth3);
+    }
+    pc.blit(sheet, 0, 0);
     ras.moveTo(R(pos.x) - BOX / 2, R(pos.y) - BOX / 2);
     ras.begin();
     ras.pc.blit(pc, 0, 0);
@@ -1128,36 +1170,94 @@ class Motes {
 }
 
 /**
- * THE PAT's air: the breath squeezed out between the slamming boards leaves each page edge as a GUST PLUME of
- * stepped paper-sheet slivers (2-px sheets: a lit top row, a shaded under row, ink outlined) — 4 steps: three short
- * slivers at the edge, stretched and pushed out, thinned to 1-px dashes, a last few shaded dashes. `dir` −1 left.
+ * THE PAT's air, drawn as PAPER, never as blocks: the breath squeezed out between the slamming boards leaves the
+ * page edges as thin TAPERED PAPER TONGUES (2 px at the root — a lit white crest over a cream body — thinning to a
+ * 1-px tip) that fan out ALONG the edges (up and down the fore-edge, out of the top and bottom edges near the
+ * corners), never straight out at the neighbours: their horizontal reach stays ≤ 10 px from the book. A 1-px SHOCK
+ * BRACKET leaves the book's outline on contact (top and bottom lines with short corner hooks, white → cream →
+ * shaded, broken into dashes as it grows) — the PAT's wow frame. 4 steps, `stepMs` apart. Local book coordinates:
+ * `box` is the shut tome's bounds (local px), `org` the world point of the local origin.
  */
-function gustPlume(sc: Phaser.Scene, at: XY, dir: -1 | 1, size: number, stepMs: number): Promise<void> {
-  const W = 120;
-  const ras = new Raster(sc, at.x - W / 2, at.y - 30, W, 60, DEPTH.FX + 5);
-  const pc = new PixelCanvas(W, 60);
-  const ox = W / 2;
-  const oy = 30;
-  const rows = [-14, -5, 4, 13];
-  const lens = [0.7, 1, 0.85, 0.6];
+function patBurst(sc: Phaser.Scene, org: XY, box: { x0: number; x1: number; y0: number; y1: number }, size: number, stepMs: number, rnd: () => number): Promise<void> {
+  const PAD = 30;
+  const W = box.x1 - box.x0 + PAD * 2;
+  const H = box.y1 - box.y0 + PAD * 2;
+  const ras = new Raster(sc, org.x + box.x0 - PAD, org.y + box.y0 - PAD, W, H, DEPTH.FX + 5);
+  const pc = new PixelCanvas(W, H);
+  const one = new PixelCanvas(W, H);
+  // local (raster) coordinates of the tome
+  const L = PAD;
+  const Rr = PAD + box.x1 - box.x0;
+  const T0 = PAD;
+  const B0 = PAD + box.y1 - box.y0;
+  // the tongues: [root x, root y, angle (0 = right, y down), length scale]
+  const tongues: [number, number, number, number][] = [];
+  const fore = (k: number, n: number) => T0 + 6 + R(((B0 - T0 - 12) * k) / (n - 1));
+  // the fore-edge (left): fanning up in the top half, down in the bottom half, only 20–45° off the edge
+  for (let k = 0; k < 7; k++) {
+    const y = fore(k, 7);
+    const up = k < 3 ? -1 : k > 3 ? 1 : 0;
+    // the outer ones lie almost along the edge, the inner ones open a little more
+    // (≥ 1.15 rad off the horizontal: a 19-px tongue reaches ≤ 8 px toward the monster standing beside the book)
+    const off = up === 0 ? 0 : 1.15 + Math.abs(k - 3) * 0.06 + rnd() * 0.1;
+    tongues.push([L - 1, y, up === 0 ? PI : PI + up * off * -1, up === 0 ? 0.45 : 1 - Math.abs(k - 3) * 0.06]);
+  }
+  // the top and bottom edges near both corners: tongues fanning out and away along the edge
+  for (const [x, dir] of [
+    [L + 6, -1],
+    [L + 16, -1],
+    [Rr - 10, 1],
+  ] as const) {
+    tongues.push([x, T0 - 1, -PI / 2 + dir * (0.6 + rnd() * 0.3), 0.85]);
+    tongues.push([x + 2, B0 + 1, PI / 2 - dir * (0.6 + rnd() * 0.3), 0.7]);
+  }
+  // the spine side: two small ones
+  tongues.push([Rr + 1, T0 + 10, -0.9, 0.55]);
+  tongues.push([Rr + 1, B0 - 10, 0.9, 0.55]);
+  const LEN = [11, 15, 19, 19];
+  const GAP = [0, 0, 4, 9];
   return run(sc, stepMs * 4, (t) => {
     const step = Math.min(3, Math.floor(t * 4));
     pc.clear();
-    rows.forEach((ry, i) => {
-      const L = R(size * lens[i] * [0.45, 0.9, 1.05, 0.8][step]);
-      const push = R(size * [0.05, 0.3, 0.7, 1.05][step]) + (i % 2) * 2;
-      const y = oy + ry + (step >= 2 ? (ry < 0 ? -1 : 1) * (step - 1) : 0);
-      for (let k = 0; k < L; k++) {
-        const x = ox + dir * (push + k);
-        if (step <= 1) {
-          pc.set(x, y, k < 2 && step === 0 ? PAL.white : PAPER);
-          pc.set(x, y + 1, PAPER_M);
-        } else if (step === 2) {
-          if ((k + i) % 6 < 4) pc.set(x, y, k < L * 0.4 ? PAPER : PAPER_M);
-        } else if ((k + i) % 7 < 3) pc.set(x, y, PAPER_D);
+    // the shock bracket (under the tongues): the tome's outline pushed out 2, 5, 8, 11 px
+    const off = [2, 5, 8, 11][step];
+    const tone = [PAL.white, PAPER, PAPER_M, PAPER_D][step];
+    const hook = [6, 5, 3, 2][step];
+    for (let x = L - off + 2; x <= Rr + off - 2; x++) {
+      if (step >= 2 && (x + step) % 5 >= (step === 2 ? 4 : 3)) continue;
+      // the last step keeps only the corners (it never runs a line under the neighbours' feet)
+      if (step === 3 && x > L - off + 9 && x < Rr + off - 9) continue;
+      pc.set(x, T0 - off, tone);
+      pc.set(x, B0 + off, tone);
+    }
+    for (let k = 0; k < hook; k++)
+      for (const x of [L - off, Rr + off]) {
+        pc.set(x, T0 - off + 1 + k, tone);
+        pc.set(x, B0 + off - 1 - k, tone);
       }
-    });
-    if (step <= 1) pc.outline(PAL.ink);
+    // the tongues: a 2-px root (white crest over cream) tapering to a 1-px tip; detaching and shading as they go
+    one.clear();
+    for (const [rx, ry, a, sc0] of tongues) {
+      const len = Math.max(2, R(LEN[step] * sc0 * size));
+      const g = GAP[step];
+      const cx = Math.cos(a);
+      const cy = Math.sin(a);
+      // the crest side: perpendicular, toward the top of the screen (or left for vertical tongues)
+      const nx = Math.abs(cy) > 0.7 ? -1 : 0;
+      const ny = Math.abs(cy) > 0.7 ? 0 : -1;
+      for (let k = g; k < g + len; k++) {
+        const u = (k - g) / len;
+        const x = R(rx + cx * k);
+        const y = R(ry + cy * k);
+        const body = step <= 1 ? (u < 0.7 ? PAPER : PAPER_M) : step === 2 ? PAPER_M : PAPER_D;
+        if (step === 3 && k % 3 === 2) continue;
+        one.set(x, y, body);
+        // the root half is 2 px: a lit crest
+        if (u < 0.6 && step <= 2) one.set(x + nx, y + ny, step === 0 || u < 0.3 ? PAL.white : PAPER);
+      }
+    }
+    if (step <= 2) one.outline(PAL.ink);
+    pc.blit(one, 0, 0);
     ras.begin();
     ras.pc.blit(pc, 0, 0);
     ras.end();
@@ -1530,7 +1630,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
         if (u <= 0 || u >= 1) return;
         if (!fired.has(k)) {
           fired.add(k);
-          sfx('e_pageFlap', { volume: 0.55, pitch: 0.82 + k * 0.04, pan: pan + (k % 2 ? 0.15 : -0.15) });
+          sfx('e_pageFlap', { volume: 0.45, pitch: 0.82 + k * 0.04, pan: pan + (k % 2 ? 0.15 : -0.15) });
           if (k === 1) {
             sfx('e_pageDust', { volume: 0.8 });
             // dust lifts out of the bare gutter and drifts up over the top edge (earth tones: it reads over the paper)
@@ -1567,8 +1667,10 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   el += T.inhaleMs;
   S.lid = 0;
   bobOn = false;
+  // the slam: four stepped angles accelerating into contact (at the v3 tempo every one shows for a frame or two)
+  const SLAM = [0.3, 0.58, 0.8, 0.94];
   await run(sc, T.slamMs, (t) => {
-    S.cover = Math.min(PI, PI * Math.ceil(t * t * 4) / 4);
+    S.cover = PI * SLAM[Math.min(SLAM.length - 1, Math.floor(t * SLAM.length))];
     S.dy = 1;
   });
   el += T.slamMs;
@@ -1581,28 +1683,25 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   void shake(sc, 110, bare ? 1 : 2);
   void lightFlash(sc, spot.x, floorY - 4, PAL.gold4, 64, 300, { floorY, intensity: bare ? 0.5 : 0.9 });
   bg(floorPuff(sc, { x: spot.x, y: floorY }, 420, bare ? 0.7 : 1, rnd));
-  // the contact frame's big shape: loose sheets blast out of the closing edges, a paper-white shock arc leaves the
-  // fore-edge (and a smaller one the spine), motes burst
+  // the contact frame's big shape: a shock bracket leaves the tome's outline and the breath leaves the page edges as
+  // tapered paper tongues fanning along them; a few loose sheets pop UP out of the top edge (never sideways into the
+  // monsters standing beside the book), motes puff over the top edge
   {
-    const fore = book.world(SX - PW / 2 - 2, CY);
-    const spineW = book.world(SX + PW / 2 + 2, CY);
-    const topW = book.world(SX, TOP - 2);
+    const org = book.world(0, 0);
+    bg(patBurst(sc, org, { x0: spineAt(PI) - PW - 3, x1: spineAt(PI) + 1, y0: TOP - 3, y1: TOP + PH + 7 }, bare ? 0.7 : 1, 30, rnd));
+    const topW = book.world(spineAt(PI) - PW / 2 - 2, TOP - 4);
     const sheets: { x: number; y: number; vx: number; vy: number }[] = [];
-    const nS = bare ? 4 : 8;
+    // three loose sheets, already clear of the edge on the contact frame and at different heights (never a row)
+    const nS = bare ? 2 : 3;
     for (let i = 0; i < nS; i++) {
-      const side = i % 5 === 4 ? 0 : i % 2 === 0 ? -1 : 1;
-      const o = side === 0 ? topW : side < 0 ? fore : spineW;
-      const ang = side === 0 ? -PI / 2 + (rnd() - 0.5) * 0.9 : side < 0 ? PI + (rnd() - 0.65) * 1.1 : (rnd() - 0.35) * -1.1;
-      const sp = (side < 0 ? 170 : 130) + rnd() * 110;
-      sheets.push({ x: o.x, y: o.y + R((rnd() - 0.5) * PH * 0.6), vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 30 });
+      const u = nS === 2 ? i : i / 2;
+      const ang = -PI / 2 + (u - 0.5) * 1.1 + (rnd() - 0.5) * 0.15;
+      const sp = 170 + i * 40;
+      const out = 6 + ((i * 5) % 3) * 5;
+      sheets.push({ x: topW.x + R((u - 0.5) * PW * 0.9 + Math.cos(ang) * out), y: topW.y + R(Math.sin(ang) * out), vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp - 20 });
     }
-    bg(sheetBurst(sc, sheets, bare ? 380 : 520));
-    // the breath squeezed out of both page edges: stepped paper-sheet slivers (a gust plume each side)
-    bg(gustPlume(sc, fore, -1, bare ? 22 : 34, 30));
-    bg(gustPlume(sc, spineW, 1, bare ? 16 : 24, 30));
-    motes.burst(fore, bare ? 4 : 9, rnd, { spread: 4, up: 50, side: -1, speed: 120 });
-    motes.burst(spineW, bare ? 3 : 7, rnd, { spread: 4, up: 50, side: 1, speed: 100 });
-    motes.burst(topW, bare ? 3 : 6, rnd, { spread: 40, up: 60 });
+    bg(sheetBurst(sc, sheets, bare ? 380 : 480));
+    motes.burst(topW, bare ? 5 : 10, rnd, { spread: PW - 10, up: 70, speed: 40 });
   }
   await freeze(sc, T.stop);
   bg(wait(sc, 50).then(() => (S.squash = 1)));
@@ -1616,15 +1715,16 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     // the shut tome strains: it rattles sideways harder and harder until the board bursts open
     await at(pat + T.riffleAfter - 110);
     const RATTLE = [0, 1, 0, -1, 0, 1, -1, 1, -1, 2, -1, 1];
-    // dull leather knocks on the rattle's accelerating beats (steps 1, 5, 8, 10), pitch rising
-    const KNOCK = [1, 5, 8, 10];
+    // dull leather knocks on the rattle's accelerating beats, pitch rising — none in the first ~150 ms (game) after the
+    // PAT, so the clap and its slap-back sit alone
+    const KNOCK = [7, 9, 11];
     let lastStep = -1;
     await run(sc, 110, (t) => {
       const i = Math.min(RATTLE.length - 1, Math.floor(t * RATTLE.length));
       S.dx = RATTLE[i];
       for (let j = lastStep + 1; j <= i; j++) {
         const kn = KNOCK.indexOf(j);
-        if (kn >= 0) sfx('e_pageStrain', { pitch: 1 + kn * 0.08, volume: 0.65 + kn * 0.1, pan: pan + RATTLE[j] * 0.08 });
+        if (kn >= 0) sfx('e_pageStrain', { pitch: 1 + kn * 0.1, volume: 0.55 + kn * 0.12, pan: pan + RATTLE[j] * 0.08 });
       }
       lastStep = i;
     });
@@ -1636,8 +1736,8 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     el += T.riffleOpenMs;
     S.cover = 0;
     sfx('e_pageBoard', { volume: 0.7, pitch: 1.1 });
-    S.printL = null;
-    S.printR = null;
+    // the bound prints stay on the spread: the right one leaves on the first turning sheet, the left one is covered
+    // by the first sheet that lands on it
     const r0 = el;
     // the gust bed runs under the riffle and stops on its last page; every page's flap is fired by the page itself
     const gust = startV3('e_pageGust', { volume: 0.9, pan });
@@ -1655,18 +1755,26 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
     const nf = RIFFLE_TIMES.length;
     const carrier = new Map<number, number>();
     leaves.forEach((_, j) => carrier.set(Math.min(nf - 1, Math.floor(((j + 0.5) * nf) / Math.max(1, leaves.length))), j));
+    // every sheet that carries a leaf shows that card's print on its front; the first sheet at least shows the print
+    // the right page held (so the printed pages are seen turning)
+    const sheetPrint = new Map<number, PixelCanvas>();
+    for (const [k, j] of carrier) sheetPrint.set(k, pagePrint(cardFaceCanvas(leaves[j].d.cardId)));
+    if (!sheetPrint.has(0) && S.printR) sheetPrint.set(0, S.printR);
     const landings: Promise<void>[] = [];
     const startS = { l: S.stackL, r: S.stackR };
     const flapped = new Set<number>();
     let landed = false;
     await run(sc, riffleLen, (_t, e) => {
       const fl: number[] = [];
+      const fp: (PixelCanvas | null)[] = [];
+      if (e >= RIFFLE_TIMES[0]) S.printR = null;
+      if (e >= RIFFLE_TIMES[0] + T.flipMs) S.printL = null;
       RIFFLE_TIMES.forEach((t0, k) => {
         const u = (e - t0) / T.flipMs;
         if (u > 0 && !flapped.has(k)) {
           // this page leaves the block now: its own flap (every third a stiffer leaf), panned with the turn
           flapped.add(k);
-          sfx(k % 3 === 2 ? 'e_pageFlapStiff' : 'e_pageFlap', { pitch: 1 + ((k * 7) % 5) * 0.025, pan: pan + (k % 2 ? 0.25 : -0.25), volume: 0.85 });
+          sfx(k % 3 === 2 ? 'e_pageFlapStiff' : 'e_pageFlap', { pitch: 1 + ((k * 7) % 5) * 0.025, pan: pan + (k % 2 ? 0.25 : -0.25), volume: 0.62 });
         }
         if (k === nf - 1 && u >= 1 && !landed) {
           landed = true;
@@ -1676,6 +1784,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
         // fast through the vertical (whole 1/8 steps of the turn)
         const v = Math.ceil((u < 0.5 ? 2 * u * u : 1 - 2 * (1 - u) * (1 - u)) * 8) / 8;
         fl.push(PI * v);
+        fp.push(sheetPrint.get(k) ?? null);
         if (v >= 0.5 && carrier.has(k)) {
           const j = carrier.get(k)!;
           carrier.delete(k);
@@ -1702,12 +1811,16 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
         }
       });
       S.flips = fl;
+      S.flipPrints = fp;
       // the turned pages move from the right block to the left
       const done = RIFFLE_TIMES.filter((t0) => e - t0 >= T.flipMs).length;
       S.stackR = Math.max(1, startS.r - Math.floor((done * (startS.r - 1)) / nf));
       S.stackL = Math.min(7, startS.l + Math.floor((done * 2) / nf));
     });
     S.flips = [];
+    S.flipPrints = [];
+    S.printL = null;
+    S.printR = null;
     if (!landed) sfx('e_pageLand', { pan: pan - 0.2 });
     gust.stop(90);
     el = r0 + riffleLen;
@@ -1772,9 +1885,10 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
           sfx('e_pageFold', fp);
           // the page it folds from shows a star wink
           S.stars = S.stars.filter((st) => Math.sign(st.x) !== side || rnd() < 0.7);
+          // the origami ticks stay countable: two creases per fold for each side's first three folds, then only the press
+          const creases = k < 3;
           const end = await foldPage(sc, origin, q, T.foldMs, (f) => {
-            if (f === 1 || f === 2) sfx('e_pageCrease', { ...fp, pitch: fp.pitch * (f === 1 ? 1 : 1.12) });
-            else if (f === 3) sfx('e_pageCrease', { ...fp, pitch: fp.pitch * 0.8, volume: 0.6 });
+            if (creases && (f === 1 || f === 2)) sfx('e_pageCrease', { ...fp, pitch: fp.pitch * (f === 1 ? 1 : 1.12) });
             else if (f === 4) sfx('e_pagePress', fp);
           });
           void lightFlash(sc, end.x, floorY - 4, PLAYER_RAMP[q][3], 18, 180, { floorY, intensity: 0.3 });
@@ -1862,7 +1976,9 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   let send: Promise<void> = Promise.resolve();
   if (g && !ctx.isConsumed(gi)) {
     ctx.consumeAt(gi);
-    send = cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from: { x: spot.x, y: spot.y + 8 }, delay: R(T.runesMs * 0.5) });
+    // the spent card drops out of the tome's underside as the peel starts and leaves from the book's floor point on a
+    // high arc (never a flat slide through the monsters standing beside the book)
+    send = cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from: { x: spot.x, y: floorY - 2 }, lift: 30, flash: false });
   }
   await wait(sc, T.peelGap * 4 + 20);
   book.stop();

@@ -259,7 +259,11 @@ export function eyesOf(s: Phaser.GameObjects.Sprite): XY[] {
   return e.map((p) => ({ x: left + (s.flipX ? W - 1 - p.x : p.x), y: top + p.y }));
 }
 
-/** Draw the ember eyes on a raster (fire4 core, a fire3 burn trailing back; `lvl` 0 out … 3 white-hot). */
+/**
+ * Draw the ember eyes on a raster (`lvl` 0 out … 3 white-hot): every eye pixel burns the core tone, and the first
+ * eye carries a 1-px glint in front of it and a 2-px burn trailing back (fire3 → fire2), so the ember reads at 1×
+ * on any body colour; at lvl ≥ 2 a white glint pixel blinks on it every ~1.2 s.
+ */
 export function drawEyes(r: Raster, eyes: readonly XY[], back: number, lvl: number, frame: number): void {
   if (lvl <= 0) return;
   const core = lvl >= 3 ? PAL.white : lvl === 2 ? PAL.fire4 : PAL.fire3;
@@ -267,9 +271,12 @@ export function drawEyes(r: Raster, eyes: readonly XY[], back: number, lvl: numb
   for (const e of eyes) r.px(e.x, e.y, core);
   if (eyes.length) {
     const head = eyes[0];
+    r.px(head.x - back, head.y, lvl >= 2 ? PAL.fire4 : PAL.fire3);
     r.px(head.x + back, head.y, trail);
-    // a slow flicker: every few frames the burn licks one pixel further back
-    if (lvl >= 2 && frame % 9 < 3) r.px(head.x + back * 2, head.y - 1, PAL.fire2);
+    r.px(head.x + back * 2, head.y, PAL.fire2);
+    // a slow flicker: every few frames the burn licks one pixel further back and up
+    if (lvl >= 2 && frame % 9 < 3) r.px(head.x + back * 3, head.y - 1, PAL.fire2);
+    if (lvl >= 2 && frame % 72 < 3) r.px(head.x, head.y, PAL.white);
   }
 }
 
