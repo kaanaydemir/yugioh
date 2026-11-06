@@ -14,7 +14,7 @@ export interface PoolFilter {
 
 export const ELEMENTS: readonly Attribute[] = ['FIRE', 'WATER', 'LIGHT', 'DARK', 'EARTH', 'WIND'];
 export const SORT_KEYS: readonly SortKey[] = ['new', 'level', 'atk', 'name'];
-export const SORT_LABEL: Record<SortKey, string> = { new: 'Yeni', level: 'Seviye', atk: 'ATK', name: 'Ad' };
+export const SORT_LABEL: Record<SortKey, string> = { new: 'New', level: 'Level', atk: 'ATK', name: 'Name' };
 
 export function matches(def: CardDef, f: PoolFilter): boolean {
   if (f.kind !== 'all' && def.kind !== f.kind) return false;
@@ -22,8 +22,8 @@ export function matches(def: CardDef, f: PoolFilter): boolean {
   return true;
 }
 
-/** Turkish-aware name comparison. */
-const collator = new Intl.Collator('tr');
+/** Locale-aware name comparison (card names are English). */
+const collator = new Intl.Collator('en');
 
 /** Spells and traps sort after monsters (level / ATK sorts) in pool order. */
 export function sortPool(defs: readonly CardDef[], key: SortKey): CardDef[] {

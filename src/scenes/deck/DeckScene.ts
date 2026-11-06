@@ -1,4 +1,4 @@
-// DESTE KUR — the deck builder (scene key 'Deck').
+// DECK BUILDER — the deck builder (scene key 'Deck').
 //
 //   left    the game's own inspect panel (big card + Turkish text), a key-help / seal-hint plate under it
 //   middle  the card pool: filter chips (kind, element), sort chips, a scrolling 3-column grid of cells
@@ -61,9 +61,9 @@ const NAME_W = 82;
 const LIST_ROWS = 20;
 const RANGE = `/${DECK_MIN}-${DECK_MAX}`;
 const BTN_Y = DY + DH - 2 * 17 - 1;
-const KIND_LABEL: Record<KindFilter, string> = { all: 'Tümü', monster: 'Canavar', spell: 'Büyü', trap: 'Tuzak' };
+const KIND_LABEL: Record<KindFilter, string> = { all: 'All', monster: 'Monster', spell: 'Spell', trap: 'Trap' };
 const KINDS: readonly KindFilter[] = ['all', 'monster', 'spell', 'trap'];
-const SPELL_WORD: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan', continuous: 'Devamlı', quick: 'Hızlı' };
+const SPELL_WORD: Record<string, string> = { normal: 'Normal', equip: 'Equip', field: 'Field', continuous: 'Cont.', quick: 'Quick' };
 
 /** The polar fusion family (the three pieces + Kutup Hükümdarı). */
 function isMagnetCard(id: CardId): boolean {
@@ -79,16 +79,16 @@ function markTexOf(scene: Phaser.Scene, id: CardId): string | null {
   return null;
 }
 const HELP: readonly (readonly [string, string])[] = [
-  ['ENTER', 'Kopya ekle'],
-  ['DEL', 'Kopya çıkar'],
-  ['TAB', 'Alan değiştir'],
-  ['1-5', 'Deste yuvası'],
-  ['K · N', 'Kaydet · Ad ver'],
-  ['R', 'Rastgele doldur'],
-  ['H · D', 'Hazır · Klasik'],
-  ['X', 'Temizle'],
-  ['F E O', 'Süz/Element/Sıra'],
-  ['ESC', 'Geri'],
+  ['ENTER', 'Add copy'],
+  ['DEL', 'Remove copy'],
+  ['TAB', 'Switch panel'],
+  ['1-5', 'Deck slot'],
+  ['S · N', 'Save · Name'],
+  ['R', 'Random fill'],
+  ['P · D', 'Preset · Classic'],
+  ['X', 'Clear'],
+  ['F E O', 'Filter/Elem./Order'],
+  ['ESC', 'Back'],
 ];
 
 type Zone = 'pool' | 'deck';
@@ -264,7 +264,7 @@ export class DeckScene extends Phaser.Scene {
     // drafts: one working copy per slot (an empty slot starts as an empty deck)
     for (let i = 0; i < SLOT_COUNT; i++) {
       const s = this.store.slot(i);
-      this.drafts.push(s ? { name: s.name, cards: [...s.cards], savedKey: keyOf(s.name, s.cards), missing: s.missing, replaced: s.replaced ?? 0 } : { name: `Deste ${i + 1}`, cards: [], savedKey: keyOf(`Deste ${i + 1}`, []), missing: 0 });
+      this.drafts.push(s ? { name: s.name, cards: [...s.cards], savedKey: keyOf(s.name, s.cards), missing: s.missing, replaced: s.replaced ?? 0 } : { name: `Deck ${i + 1}`, cards: [], savedKey: keyOf(`Deck ${i + 1}`, []), missing: 0 });
     }
     const lastEdit = Number((this.store.last('edit') ?? '').replace('slot:', ''));
     this.slot = this.data0.slot ?? (Number.isInteger(lastEdit) && lastEdit >= 0 && lastEdit < SLOT_COUNT ? lastEdit : 0);
@@ -290,7 +290,7 @@ export class DeckScene extends Phaser.Scene {
     this.ensureVisible();
     this.renderAll();
     this.showInspect();
-    this.say(this.cur.cards.length ? 'Kartlara tıklayarak desteni kur.' : 'Boş deste: bir karta tıkla, ya da Rastgele / Hazır dene.', 'info', true);
+    this.say(this.cur.cards.length ? 'Click cards to build your deck.' : 'Empty deck: click a card, or try Random / Preset.', 'info', true);
 
     const onKey = (e: KeyboardEvent) => {
       if (!this.sys.isActive()) return;
@@ -339,12 +339,12 @@ export class DeckScene extends Phaser.Scene {
   }
 
   private buildHeader(): void {
-    const t = pixelText(this, 10, 6, 'DESTE KUR', { size: 'md', color: PAL.white }).setDepth(10);
+    const t = pixelText(this, 10, 6, 'DECK BUILDER', { size: 'md', color: PAL.white }).setDepth(10);
     t.setTint(PAL.gold4, PAL.gold4, PAL.gold3, PAL.gold3);
-    this.txt(96, 8, `${DECK_MIN}-${DECK_MAX} kart · en çok 3 kopya · Mühür ve tek kopyalık kartlar 1`, PAL.steel);
-    const back = new Button(this, GAME_W - 66, 2, { w: 62, h: 18, label: 'GERİ', size: 'sm', icon: ICON.close, style: 'neutral', depth: 20 });
+    this.txt(96, 8, `${DECK_MIN}-${DECK_MAX} cards · max 3 copies · Seals and single-copy cards: 1`, PAL.steel);
+    const back = new Button(this, GAME_W - 66, 2, { w: 62, h: 18, label: 'BACK', size: 'sm', icon: ICON.close, style: 'neutral', depth: 20 });
     back.onClick = () => void this.leave();
-    back.onHover = (on) => on && this.say('Ana menüye dön (ESC)', 'info');
+    back.onHover = (on) => on && this.say('Back to the main menu (ESC)', 'info');
   }
 
   private chip(x: number, y: number, w: number, label: string, onClick: () => void, icon?: string): Button {
@@ -360,7 +360,7 @@ export class DeckScene extends Phaser.Scene {
     for (const k of KINDS) {
       const w = Math.ceil(measureText(KIND_LABEL[k], 'sm').w) + 10;
       const b = this.chip(x, PY + 4, w, KIND_LABEL[k], () => this.setKind(k));
-      b.onHover = (on) => on && this.say(`Süz: ${KIND_LABEL[k]}`, 'info');
+      b.onHover = (on) => on && this.say(`Filter: ${KIND_LABEL[k]}`, 'info');
       this.kindBtns.push(b);
       x += w + 2;
     }
@@ -372,12 +372,12 @@ export class DeckScene extends Phaser.Scene {
       x += 19;
     }
     // row 2: sort chips
-    this.txt(PX + 6, PY + 23, 'SIRALA', PAL.steel);
+    this.txt(PX + 6, PY + 23, 'SORT', PAL.steel);
     x = PX + 46;
     for (const k of SORT_KEYS) {
       const w = Math.ceil(measureText(SORT_LABEL[k], 'sm').w) + 10;
       const b = this.chip(x, PY + 20, w, SORT_LABEL[k], () => this.setSort(k));
-      b.onHover = (on) => on && this.say(`Sırala: ${SORT_LABEL[k]}`, 'info');
+      b.onHover = (on) => on && this.say(`Sort: ${SORT_LABEL[k]}`, 'info');
       this.sortBtns.push(b);
       x += w + 2;
     }
@@ -386,7 +386,7 @@ export class DeckScene extends Phaser.Scene {
     // grid cells
     for (let r = 0; r < ROWS; r++)
       for (let c = 0; c < COLS; c++) this.cells.push(this.makeCell(r, c));
-    this.emptyHint = pixelText(this, GRID_X + 164, GRID_Y + 110, 'Bu süzgeçte kart yok.', { size: 'md', color: PAL.steel, originX: 0.5, align: 'center' }).setDepth(10).setVisible(false);
+    this.emptyHint = pixelText(this, GRID_X + 164, GRID_Y + 110, 'No cards match this filter.', { size: 'md', color: PAL.steel, originX: 0.5, align: 'center' }).setDepth(10).setVisible(false);
 
     // scrollbar
     this.track = this.add.rectangle(PX + PW - 7, GRID_Y, 3, ROWS * (CELL_H + GAP) - GAP, PAL.night2).setOrigin(0).setDepth(10);
@@ -468,7 +468,7 @@ export class DeckScene extends Phaser.Scene {
     // slot tabs
     for (let i = 0; i < SLOT_COUNT; i++) {
       const b = this.chip(DX + 5 + i * 29, DY + 4, 27, String(i + 1), () => this.selectSlot(i));
-      b.onHover = (on) => on && this.say(`Yuva ${i + 1}: ${this.store.slot(i)?.name ?? 'boş'}`, 'info');
+      b.onHover = (on) => on && this.say(`Slot ${i + 1}: ${this.store.slot(i)?.name ?? 'empty'}`, 'info');
       this.slotBtns.push(b);
       this.slotPips.push(this.add.rectangle(DX + 5 + i * 29 + 21, DY + 4 + 9, 3, 3, PAL.leaf3).setOrigin(0).setDepth(22).setVisible(false));
     }
@@ -565,12 +565,12 @@ export class DeckScene extends Phaser.Scene {
 
     // action buttons (2 columns x 3 rows)
     const defs: { label: string; tip: string; run: () => void }[] = [
-      { label: 'Kaydet', tip: 'Desteyi bu yuvaya kaydet (K)', run: () => this.save() },
-      { label: 'Rastgele', tip: 'Rastgele doldur: kalan yerleri kurallara uygun doldurur (R)', run: () => this.randomFill() },
-      { label: 'Hazır', tip: 'Hazır desteleri sırayla yükle (H)', run: () => this.nextPreset() },
-      { label: 'Sıfırla', tip: 'Klasik desteyi yükle: ilk 20 kart iki kopya, 40 kart (D)', run: () => this.resetClassic() },
-      { label: 'Temizle', tip: 'Destedeki tüm kartları çıkar (X)', run: () => this.clearDeck() },
-      { label: 'Ad Ver', tip: 'Desteye ad ver (N)', run: () => this.setEditing(true) },
+      { label: 'Save', tip: 'Save the deck to this slot (S)', run: () => this.save() },
+      { label: 'Random', tip: 'Random fill: fills the free spaces with legal cards (R)', run: () => this.randomFill() },
+      { label: 'Preset', tip: 'Load the preset decks one by one (P)', run: () => this.nextPreset() },
+      { label: 'Reset', tip: 'Load the Classic deck: the first 20 cards, two copies each, 40 cards (D)', run: () => this.resetClassic() },
+      { label: 'Clear', tip: 'Remove every card from the deck (X)', run: () => this.clearDeck() },
+      { label: 'Rename', tip: 'Name the deck (N)', run: () => this.setEditing(true) },
     ];
     defs.forEach((d, i) => {
       const b = new Button(this, DX + 4 + (i % 3) * 50, BTN_Y + Math.floor(i / 3) * 17, { w: 49, h: 16, label: d.label, size: 'sm', style: i === 0 ? 'gold' : 'neutral', depth: 20 });
@@ -591,7 +591,7 @@ export class DeckScene extends Phaser.Scene {
       this.plate.push(this.txt(x + 44, y + 5 + i * 9, v, PAL.mist));
     });
     // note mode (a seal piece, a polar card or a single-copy card is focused): title, mark, rule, deck count
-    this.noteTitle = this.txt(x + 8, y + 5, 'BEŞ MÜHÜR', PAL.gold3);
+    this.noteTitle = this.txt(x + 8, y + 5, 'FIVE SEALS', PAL.gold3);
     this.noteIcon = this.add.image(x + w - 14, y + 8, chainTex(this)).setOrigin(0.5).setDepth(10);
     this.noteBody = pixelText(this, x + 8, y + 19, '', { size: 'sm', color: PAL.white, maxWidth: w - 16, lineSpacing: -1 }).setDepth(10);
     this.sealCount = pixelText(this, x + 8, y + 56, '', { size: 'sm', color: PAL.mist, maxWidth: w - 16, lineSpacing: -1 }).setDepth(10);
@@ -646,7 +646,7 @@ export class DeckScene extends Phaser.Scene {
     this.deckCursor = 0;
     sfx.play('uiClick', { volume: 0.55, pitch: 1.05 });
     this.renderAll();
-    this.say(`Yuva ${i + 1}: ${this.store.slot(i) ? this.cur.name : 'boş yuva'}`, 'info');
+    this.say(`Slot ${i + 1}: ${this.store.slot(i) ? this.cur.name : 'empty slot'}`, 'info');
   }
 
   /** Cell index of the cursor card -> focus (mouse hover / keys). */
@@ -771,7 +771,7 @@ export class DeckScene extends Phaser.Scene {
     const row = shown - this.deckScroll;
     if (fromIndex >= 0) this.flyTo(fromIndex, row);
     this.flashRow(row);
-    this.say(`${CARDS[id].name} eklendi (x${this.copies(id)}) · ${this.countLabel()}`, 'ok');
+    this.say(`${CARDS[id].name} added (x${this.copies(id)}) · ${this.countLabel()}`, 'ok');
   }
 
   private removeCard(id: CardId): void {
@@ -781,7 +781,7 @@ export class DeckScene extends Phaser.Scene {
     sfx.play('uiClick', { volume: 0.6, pitch: 0.8 });
     this.afterEdit();
     const left = this.copies(id);
-    this.say(`${CARDS[id].name} çıkarıldı${left ? ` (x${left} kaldı)` : ''} · ${this.countLabel()}`, 'info');
+    this.say(`${CARDS[id].name} removed${left ? ` (x${left} left)` : ''} · ${this.countLabel()}`, 'info');
   }
 
   private afterEdit(): void {
@@ -808,8 +808,8 @@ export class DeckScene extends Phaser.Scene {
     this.renderDeck();
     this.pulse(this.nameField);
     const v = validateDeck(d.cards);
-    const where = this.store.persisted ? '' : ' (bu oturumda; tarayıcı kaydetmeye izin vermiyor)';
-    this.say(v.ok ? `Kaydedildi: yuva ${this.slot + 1} · oynanabilir${where}` : `Kaydedildi: yuva ${this.slot + 1} · henüz oynanamaz${where}`, v.ok ? 'ok' : 'gold');
+    const where = this.store.persisted ? '' : ' (this session only; the browser does not allow saving)';
+    this.say(v.ok ? `Saved: slot ${this.slot + 1} · playable${where}` : `Saved: slot ${this.slot + 1} · not playable yet${where}`, v.ok ? 'ok' : 'gold');
   }
 
   private randomFill(): void {
@@ -820,7 +820,7 @@ export class DeckScene extends Phaser.Scene {
     sfx.play('uiConfirm', { volume: 0.55, pitch: 1.2 });
     this.afterEdit();
     this.pulse(this.countText);
-    this.say(this.cur.cards.length > before ? `${this.cur.cards.length - before} kart eklendi: ${this.countLabel()}` : this.cur.cards.length >= DECK_MIN ? 'Deste zaten dolu' : 'Eklenecek uygun kart bulunamadı', this.cur.cards.length > before ? 'ok' : 'bad');
+    this.say(this.cur.cards.length > before ? `${this.cur.cards.length - before} card${this.cur.cards.length - before === 1 ? '' : 's'} added: ${this.countLabel()}` : this.cur.cards.length >= DECK_MIN ? 'The deck is already full' : 'No legal card left to add', this.cur.cards.length > before ? 'ok' : 'bad');
   }
 
   private nextPreset(): void {
@@ -839,12 +839,12 @@ export class DeckScene extends Phaser.Scene {
   private resetClassic(): void {
     if (this.editing) this.setEditing(false);
     this.cur.cards = classicDeck();
-    this.cur.name = 'Klasik Deste';
+    this.cur.name = 'Classic Deck';
     this.presetIdx = -1;
     sfx.play('uiConfirm', { volume: 0.5, pitch: 0.95 });
     this.afterEdit();
     this.renderDeck();
-    this.say('Klasik deste yüklendi: ilk 20 kart, her biri iki kopya (40).', 'info');
+    this.say('Classic deck loaded: the first 20 cards, two copies each (40).', 'info');
   }
 
   private clearDeck(): void {
@@ -853,7 +853,7 @@ export class DeckScene extends Phaser.Scene {
     this.cur.cards = [];
     sfx.play('uiBack', { volume: 0.6 });
     this.afterEdit();
-    this.say('Deste boşaltıldı.', 'info');
+    this.say('Deck cleared.', 'info');
   }
 
   // ---------------------------------------------------------------- name editing
@@ -864,9 +864,9 @@ export class DeckScene extends Phaser.Scene {
     this.nameFresh = on;
     this.caretT = 0;
     sfx.play(on ? 'uiClick' : 'uiConfirm', { volume: 0.45 });
-    if (!on) this.cur.name = this.cur.name.trim() || `Deste ${this.slot + 1}`;
+    if (!on) this.cur.name = this.cur.name.trim() || `Deck ${this.slot + 1}`;
     this.renderDeck();
-    this.say(on ? 'Ad yaz, ENTER ile bitir' : 'Ad güncellendi', 'info');
+    this.say(on ? 'Type a name, ENTER to finish' : 'Name updated', 'info');
   }
 
   private typeName(e: KeyboardEvent): boolean {
@@ -987,12 +987,14 @@ export class DeckScene extends Phaser.Scene {
     }
     if (e.repeat) return false;
     switch (code) {
+      case 'KeyS':
       case 'KeyK':
         this.save();
         return true;
       case 'KeyR':
         this.randomFill();
         return true;
+      case 'KeyP':
       case 'KeyH':
         this.nextPreset();
         return true;
@@ -1037,7 +1039,7 @@ export class DeckScene extends Phaser.Scene {
   private switchZone(z: Zone, _back = false): void {
     if (z === 'deck' && !this.cur.cards.length) {
       sfx.play('uiError', { volume: 0.35 });
-      this.say('Deste boş: önce kart ekle', 'bad');
+      this.say('The deck is empty: add a card first', 'bad');
       return;
     }
     this.zone = z;
@@ -1097,7 +1099,7 @@ export class DeckScene extends Phaser.Scene {
     }
     const first = total ? this.scrollRow * COLS + 1 : 0;
     const last = Math.min(total, (this.scrollRow + ROWS) * COLS);
-    this.footPage.setText(total ? `${first}-${last} / ${total} kart` : '0 kart');
+    this.footPage.setText(total ? `${first}-${last} / ${total} cards` : '0 cards');
   }
 
   private bindCell(cell: Cell, id: CardId): void {
@@ -1114,8 +1116,8 @@ export class DeckScene extends Phaser.Scene {
     if (lines.length > 2) lines = [lines[0], fitText(lines.slice(1).join(' '), nameW, (s) => measureText(s, 'sm').w)];
     cell.name.setText(lines.join('\n')).setTint(PAL.white);
     if (isMonster(d)) {
-      cell.lvl.setText(`Sv${d.level}`);
-      const w = Math.ceil(measureText(`Sv${d.level}`, 'sm').w) - 1;
+      cell.lvl.setText(`Lv${d.level}`);
+      const w = Math.ceil(measureText(`Lv${d.level}`, 'sm').w) - 1;
       cell.lvlBg.setSize(w + 3, 8).setVisible(true).setPosition(46, 37);
       cell.lvl.setPosition(45, 38).setVisible(true).setTint(d.level >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.gold4);
       cell.atk.setText(String(d.atk)).setVisible(true).setPosition(51, 27);
@@ -1126,7 +1128,7 @@ export class DeckScene extends Phaser.Scene {
       cell.lvlBg.setVisible(false);
       cell.atk.setVisible(false);
       cell.def.setVisible(false);
-      cell.word.setText(d.kind === 'spell' ? (d.spellType === 'normal' ? 'Büyü' : (SPELL_WORD[d.spellType] ?? 'Büyü')) : 'Tuzak').setVisible(true).setPosition(51, 27);
+      cell.word.setText(d.kind === 'spell' ? (d.spellType === 'normal' ? 'Spell' : (SPELL_WORD[d.spellType] ?? 'Spell')) : 'Trap').setVisible(true).setPosition(51, 27);
       cell.word.setTint(d.kind === 'spell' ? KIND_RAMP.spell[3] : KIND_RAMP.trap[3]);
     }
     cell.def.setTint(PAL.cyan3);
@@ -1222,11 +1224,11 @@ export class DeckScene extends Phaser.Scene {
       r.chain.setVisible(mark !== null).setX(24 + Math.ceil(measureText(nm, 'sm').w) + 3);
       if (mark) r.chain.setTexture(mark);
       if (isMonster(def)) {
-        r.lvl.setText(`Sv${def.level}`).setTint(def.level >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.gold3);
+        r.lvl.setText(`Lv${def.level}`).setTint(def.level >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.gold3);
         r.atk.setText(String(def.atk)).setTint(PAL.crim3);
       } else {
         r.lvl.setText('');
-        r.atk.setText(def.kind === 'spell' ? 'BÜYÜ' : 'TUZAK').setTint(def.kind === 'spell' ? KIND_RAMP.spell[3] : KIND_RAMP.trap[3]);
+        r.atk.setText(def.kind === 'spell' ? 'SPELL' : 'TRAP').setTint(def.kind === 'spell' ? KIND_RAMP.spell[3] : KIND_RAMP.trap[3]);
       }
     });
     // list scrollbar
@@ -1251,12 +1253,12 @@ export class DeckScene extends Phaser.Scene {
     this.countTexts[1].setText(`${st.spells}`);
     this.countTexts[2].setText(`${st.traps}`);
     // reasons
-    const lost = d.missing > 0 ? [`· Eksik kart: ${d.missing} (oyundan kalktı, çıkarıldı)`] : [];
-    if (d.replaced) lost.push(`· Oyundan kalkan kart: ${d.replaced} kopya benzeriyle değişti`);
+    const lost = d.missing > 0 ? [`· Missing cards: ${d.missing} (removed from the game, dropped)`] : [];
+    if (d.replaced) lost.push(`· Retired cards: ${d.replaced} cop${d.replaced === 1 ? 'y' : 'ies'} swapped for a similar card`);
     if (v.ok && !lost.length) {
-      this.reasons.setTint(PAL.leaf3).setText('Deste hazır. Maçta seçebilirsin.');
+      this.reasons.setTint(PAL.leaf3).setText('Deck ready. You can pick it for a duel.');
     } else if (v.ok) {
-      this.reasons.setTint(PAL.gold3).setText(wrapText(`${lost.join('\n')}\nKaydedince uyarı kalkar.`, 'sm', DW - 16).slice(0, 4).join('\n'));
+      this.reasons.setTint(PAL.gold3).setText(wrapText(`${lost.join('\n')}\nSave to clear this warning.`, 'sm', DW - 16).slice(0, 4).join('\n'));
     } else {
       const text = [...lost, ...v.issues.map((i) => `· ${i.text}`)].join('\n');
       const lines = wrapText(text, 'sm', DW - 16).slice(0, 4);
@@ -1273,19 +1275,19 @@ export class DeckScene extends Phaser.Scene {
     this.noteIcon.setTexture(mark);
     if (isSealCard(id)) {
       const have = SEAL_IDS.filter((s) => this.inDeck(s)).length;
-      this.noteTitle.setText('BEŞ MÜHÜR');
-      this.noteBody.setText('Beş Mühür: 5 parça elde birleşirse kazanırsın');
-      this.sealCount.setText(`Destede: ${have}/${SEAL_IDS.length} parça. ${have === SEAL_IDS.length ? 'Beşi de elinde birleşirse düello biter.' : 'Hepsini toplarsan elde birleştirmek mümkün.'}`);
+      this.noteTitle.setText('FIVE SEALS');
+      this.noteBody.setText('Five Seals: assemble all 5 pieces in your hand to win');
+      this.sealCount.setText(`In deck: ${have}/${SEAL_IDS.length} pieces. ${have === SEAL_IDS.length ? 'All five in hand ends the duel.' : 'Collect them all to assemble them in hand.'}`);
     } else if (isMagnetCard(id)) {
       const have = MAGNET_PIECE_IDS.filter((s) => this.inDeck(s)).length;
       const sov = this.inDeck('polar_sovereign');
-      this.noteTitle.setText('KUTUP');
-      this.noteBody.setText("Kutup parçası: üçü sahandayken Kutup Hükümdarı'nı çağırabilirsin");
-      this.sealCount.setText(`Destede: ${have}/${MAGNET_PIECE_IDS.length} parça, Hükümdar ${sov ? 'var' : 'yok'}.`);
+      this.noteTitle.setText('POLAR');
+      this.noteBody.setText('Polar piece: with all three on your field you can Summon Polar Sovereign');
+      this.sealCount.setText(`In deck: ${have}/${MAGNET_PIECE_IDS.length} pieces, Sovereign: ${sov ? 'yes' : 'no'}.`);
     } else {
-      this.noteTitle.setText('TEK KOPYA');
-      this.noteBody.setText('Bu karttan destede en çok 1 tane olabilir.');
-      this.sealCount.setText(this.inDeck(id) ? 'Destede: 1/1.' : 'Destede yok.');
+      this.noteTitle.setText('SINGLE COPY');
+      this.noteBody.setText('A deck can hold at most 1 copy of this card.');
+      this.sealCount.setText(this.inDeck(id) ? 'In deck: 1/1.' : 'Not in deck.');
     }
   }
 
@@ -1396,11 +1398,11 @@ export class DeckScene extends Phaser.Scene {
     if (dirty && this.time.now - this.exitArmed > 2500) {
       this.exitArmed = this.time.now;
       sfx.play('uiError', { volume: 0.4 });
-      this.say('Kaydedilmemiş değişiklik var. Çıkmak için yine ESC / GERİ.', 'gold');
+      this.say('You have unsaved changes. Press ESC / BACK again to leave.', 'gold');
       return;
     }
     if (this.data0.dev) {
-      this.say('Önizleme: çıkış kapalı', 'info');
+      this.say('Preview: exit disabled', 'info');
       return;
     }
     this.leaving = true;

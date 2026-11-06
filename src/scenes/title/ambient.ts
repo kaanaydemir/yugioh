@@ -3,7 +3,7 @@
 import Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import { mulberry32 } from '../../art/pixel';
-import { pixelText, upper } from '../../ui/text';
+import { pixelText } from '../../ui/text';
 import { TEX, tween } from '../../vfx/core';
 
 interface Mote {
@@ -80,7 +80,7 @@ export class Motes {
 
 const LINE = 64;
 
-/** "— İKİ KİŞİLİK HOLOGRAM KART DÜELLOSU —" under the logo: lines draw out, then the text types on. */
+/** "— HOLOGRAM CARD DUEL —" under the logo: lines draw out, then the text types on. */
 export class Tagline {
   readonly root: Phaser.GameObjects.Container;
   private readonly text: Phaser.GameObjects.BitmapText;
@@ -94,11 +94,11 @@ export class Tagline {
     private readonly scene: Phaser.Scene,
     cx: number,
     y: number,
-    label = 'HOLOGRAM KART DÜELLOSU',
+    label = 'HOLOGRAM CARD DUEL',
     depth = 2000,
   ) {
     this.root = scene.add.container(Math.round(cx), Math.round(y)).setScrollFactor(0).setDepth(depth);
-    this.text = pixelText(scene, 0, 0, upper(label), { size: 'md', align: 'center', originX: 0.5, originY: 0.5 });
+    this.text = pixelText(scene, 0, 0, label.toUpperCase(), { size: 'md', align: 'center', originX: 0.5, originY: 0.5 });
     this.text.setTint(PAL.gold4, PAL.gold4, PAL.gold2, PAL.gold2);
     this.half = Math.ceil(this.text.width / 2) + 8;
     this.left = scene.add.rectangle(-this.half, 0, LINE, 1, PAL.gold2).setOrigin(1, 0.5);

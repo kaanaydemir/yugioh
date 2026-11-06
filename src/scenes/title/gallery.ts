@@ -12,7 +12,7 @@ import { PixelCanvas, mix } from '../../art/pixel';
 import { monsterAnimKey, monsterFrameName, monsterTextureKey } from '../../art/textures';
 import type { MonsterAnim } from '../../art/types';
 import { sfx, type SfxName } from '../../audio/sfx';
-import { pixelText, upper } from '../../ui/text';
+import { pixelText } from '../../ui/text';
 import { unitDepth } from '../../view/layout';
 import { haloTex, panelTex } from '../../view/ui-textures';
 import { safe, tween, wait } from '../../vfx/core';
@@ -35,11 +35,11 @@ const STAGE_X = 498;
 const STAGE_Y = 262;
 
 const ANIMS: { anim: MonsterAnim; label: string }[] = [
-  { anim: 'idle', label: 'Bekleme' },
-  { anim: 'roar', label: 'Kükreme' },
-  { anim: 'attack', label: 'Saldırı' },
-  { anim: 'hit', label: 'Darbe' },
-  { anim: 'guard', label: 'Savunma' },
+  { anim: 'idle', label: 'Idle' },
+  { anim: 'roar', label: 'Roar' },
+  { anim: 'attack', label: 'Attack' },
+  { anim: 'hit', label: 'Hit' },
+  { anim: 'guard', label: 'Guard' },
 ];
 
 const AUTO: MonsterAnim[] = ['idle', 'roar', 'idle', 'attack', 'idle', 'hit', 'guard'];
@@ -53,7 +53,14 @@ const ATTR_SFX: Record<Attribute, SfxName> = {
   WIND: 'windGust',
 };
 
-const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Kuşanma', field: 'Alan', continuous: 'Devamlı' };
+/** Header line: "12 MONSTERS · 5 SPELLS · 3 TRAPS", counted from the gallery's cards. */
+function galleryCounts(ids: CardId[]): string {
+  const n = (k: CardDef['kind']) => ids.filter((id) => CARDS[id].kind === k).length;
+  const part = (c: number, one: string) => `${c} ${one}${c === 1 ? '' : 'S'}`;
+  return [part(n('monster'), 'MONSTER'), part(n('spell'), 'SPELL'), part(n('trap'), 'TRAP')].join(' · ');
+}
+
+const SPELL_TYPE: Record<string, string> = { normal: 'Normal', equip: 'Equip', field: 'Field', continuous: 'Continuous', quick: 'Quick-Play' };
 
 function kindRampOf(def: CardDef): Ramp {
   return KIND_RAMP[def.kind];
@@ -167,7 +174,7 @@ export class GalleryOverlay extends Overlay {
   private readonly initial: CardId | null;
 
   constructor(scene: Phaser.Scene, initial?: string) {
-    super(scene, W, H, 'Kart Galerisi', 'trap');
+    super(scene, W, H, 'Card Gallery', 'trap');
     this.initial = initial && (COLLECTIBLE_CARD_IDS as string[]).includes(initial) ? (initial as CardId) : null;
   }
 
@@ -180,7 +187,7 @@ export class GalleryOverlay extends Overlay {
 
   protected build(): void {
     const s = this.scene;
-    const counts = pixelText(s, 146, Math.round(HEADER_H / 2), '12 CANAVAR · 5 BÜYÜ · 3 TUZAK', { size: 'sm', originY: 0.5, color: PAL.steel });
+    const counts = pixelText(s, 146, Math.round(HEADER_H / 2), galleryCounts(this.ids), { size: 'sm', originY: 0.5, color: PAL.steel });
     this.root.add(counts);
 
     // ---- thumbnails
@@ -235,8 +242,8 @@ export class GalleryOverlay extends Overlay {
     bigZone.on(Phaser.Input.Events.POINTER_DOWN, () => this.playSheen());
 
     // ---- keyboard hints under the big card
-    this.root.add(keyHint(s, 0, 0, '←↑↓→', 'Kart').setPosition(268, by + 82));
-    this.root.add(keyHint(s, 0, 0, 'SPACE', 'Animasyon').setPosition(268, by + 98));
+    this.root.add(keyHint(s, 0, 0, '←↑↓→', 'Card').setPosition(268, by + 82));
+    this.root.add(keyHint(s, 0, 0, 'SPACE', 'Animation').setPosition(268, by + 98));
 
     // ---- stage (world space; the title camera rests at scroll 0,0 while overlays are open)
     this.halo = this.own(
@@ -262,7 +269,7 @@ export class GalleryOverlay extends Overlay {
     ANIMS.forEach((a, k) => {
       const x = cx0 + k * (cw + 3);
       const bg = s.add.image(x, cy, panelTex(s, 'neutral', cw, 16, { chamfer: 2 })).setOrigin(0);
-      const label = pixelText(s, x + cw / 2, cy + 8, upper(a.label), { size: 'sm', originX: 0.5, originY: 0.5, color: PAL.steel });
+      const label = pixelText(s, x + cw / 2, cy + 8, a.label.toUpperCase(), { size: 'sm', originX: 0.5, originY: 0.5, color: PAL.steel });
       this.root.add([bg, label]);
       const zone = this.own(hitZone(s, this.px + x, this.py + cy, cw, 16));
       zone.on(Phaser.Input.Events.POINTER_OVER, () => sfx.play('uiHover', { volume: 0.35 }));
@@ -317,22 +324,22 @@ export class GalleryOverlay extends Overlay {
     this.nameT.setText(def.name);
     this.textT.setText('');
     if (isMonster(def)) {
-      this.tagT.setText(def.ace ? '★ AS KART' : '');
+      this.tagT.setText(def.ace ? '★ ACE CARD' : '');
       this.typeT.setText(`${ATTRIBUTE_NAMES[def.attribute]} / ${def.race}`);
       this.typeT.setTint(mix(ATTRIBUTE_RAMP[def.attribute][3], PAL.white, 0.35));
-      this.starsT.setText(`SVY ${def.level} ` + '★'.repeat(def.level));
+      this.starsT.setText(`LV ${def.level} ` + '★'.repeat(def.level));
       this.statsT.setText(`ATK ${def.atk}  ·  DEF ${def.def}`);
       const tr = tributesFor(def.level);
-      this.ruleT.setText(tr === 0 ? 'Kurbansız çağrılır' : `${tr} kurban gerekir`);
+      this.ruleT.setText(tr === 0 ? 'No Tribute needed' : `Needs ${tr} Tribute${tr > 1 ? 's' : ''}`);
       this.textT.setText(def.text || def.flavor);
       this.textT.setTint(def.text ? PAL.white : PAL.mist);
     } else {
       this.tagT.setText('');
-      this.typeT.setText(def.kind === 'spell' ? `BÜYÜ · ${SPELL_TYPE[def.spellType]}` : 'TUZAK');
+      this.typeT.setText(def.kind === 'spell' ? `SPELL · ${SPELL_TYPE[def.spellType] ?? def.spellType}` : 'TRAP');
       this.typeT.setTint(R[3]);
       this.starsT.setText('');
       this.statsT.setText('');
-      this.ruleT.setText(def.kind === 'trap' ? 'Kapalı konduğu tur açılamaz' : '');
+      this.ruleT.setText(def.kind === 'trap' ? 'Cannot activate the turn it is Set' : '');
       this.textT.setText(def.text);
       this.textT.setTint(PAL.white);
     }
@@ -349,7 +356,7 @@ export class GalleryOverlay extends Overlay {
       c.label.setVisible(isMonster(def));
       if (c.zone.input) c.zone.input.enabled = isMonster(def);
     }
-    this.animLabel.setText(isMonster(def) ? '' : def.kind === 'spell' ? 'BÜYÜ KARTI' : 'TUZAK KARTI');
+    this.animLabel.setText(isMonster(def) ? '' : def.kind === 'spell' ? 'SPELL CARD' : 'TRAP CARD');
     void this.stage(def, first);
   }
 
@@ -436,7 +443,7 @@ export class GalleryOverlay extends Overlay {
       c.bg.setTexture(panelTex(s, on ? 'trap' : 'neutral', 48, 16, { chamfer: 2, dim: !on }));
       c.label.setTint(on ? PAL.white : PAL.steel);
     });
-    this.animLabel.setText(`${spec.frames} KARE · ${spec.fps} FPS${spec.loop ? ' · DÖNGÜ' : ''}`);
+    this.animLabel.setText(`${spec.frames} FRAMES · ${spec.fps} FPS${spec.loop ? ' · LOOP' : ''}`);
     sprite.play(monsterAnimKey(def.id, anim));
     const ramp = ATTRIBUTE_RAMP[def.attribute];
     const frameMs = 1000 / spec.fps;

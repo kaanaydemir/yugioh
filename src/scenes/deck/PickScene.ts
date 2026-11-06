@@ -1,4 +1,4 @@
-// DESTE SEÇ — the compact deck picker that sits between the title menu and a match (scene 'DeckPick').
+// DECK PICK — the compact deck picker that sits between the title menu and a match (scene 'DeckPick').
 //   2 Oyuncu: Oyuncu 1 picks, then Oyuncu 2.   Bilgisayara Karşı: you pick, then the opponent's deck
 //   ("Rastgele" = a seeded-by-the-clock preset, or any preset).
 // The list holds the classic deck, the presets and the saved slots; the default highlight is the
@@ -132,8 +132,8 @@ export class DeckPickScene extends Phaser.Scene {
   }
 
   private get heading(): string {
-    if (this.d.mode === 'hotseat') return this.step === 0 ? 'OYUNCU 1 · DESTENİ SEÇ' : 'OYUNCU 2 · DESTENİ SEÇ';
-    return this.step === 0 ? 'SENİN DESTEN' : 'RAKİBİN DESTESİ';
+    if (this.d.mode === 'hotseat') return this.step === 0 ? 'PLAYER 1 · CHOOSE YOUR DECK' : 'PLAYER 2 · CHOOSE YOUR DECK';
+    return this.step === 0 ? 'YOUR DECK' : 'OPPONENT\'S DECK';
   }
 
   create(): void {
@@ -146,7 +146,7 @@ export class DeckPickScene extends Phaser.Scene {
     this.add.image(20, 12, panelV3(this, this.who === 0 ? 'p1' : 'p2', 600, 336, 20)).setOrigin(0).setDepth(3);
     const head = pixelText(this, 32, 22, this.heading, { size: 'md', color: PAL.white }).setDepth(10);
     head.setTint(PLAYER_COLOR[this.who], PLAYER_COLOR[this.who], PAL.white, PAL.white);
-    const stepNo = this.d.mode === 'hotseat' || this.d.mode === 'vsBot' ? `ADIM ${this.step + 1}/2` : '';
+    const stepNo = this.d.mode === 'hotseat' || this.d.mode === 'vsBot' ? `STEP ${this.step + 1}/2` : '';
     pixelText(this, 608, 24, stepNo, { size: 'sm', color: PAL.steel, originX: 1 }).setDepth(10);
 
     this.buildOptions();
@@ -191,22 +191,22 @@ export class DeckPickScene extends Phaser.Scene {
 
   private describe(r: ResolvedDeck): string {
     const s = r.check.stats;
-    return `${s.size} kart · ${s.monsters} canavar · ${s.spells} büyü · ${s.traps} tuzak`;
+    return `${s.monsters} monsters · ${s.spells} spells · ${s.traps} traps (${s.size})`;
   }
 
   private buildOptions(): void {
     const list: Opt[] = [];
     const cpuStep = this.d.mode === 'vsBot' && this.step === 1;
-    if (cpuStep) list.push({ ref: RANDOM_REF, deck: null, title: 'Rastgele', sub: 'Hazır desteler arasından biri', tag: 'ZAR' });
+    if (cpuStep) list.push({ ref: RANDOM_REF, deck: null, title: 'Random', sub: 'One of the preset decks', tag: 'DICE' });
     for (const o of this.store.options()) {
       if (cpuStep && o.kind === 'slot') continue;
       if (cpuStep && o.kind === 'klasik') {
-        list.push({ ref: o.ref, deck: o, title: o.name, sub: this.describe(o), tag: 'KLASİK' });
+        list.push({ ref: o.ref, deck: o, title: o.name, sub: this.describe(o), tag: 'CLASSIC' });
         continue;
       }
-      const tag = o.kind === 'klasik' ? 'KLASİK' : o.kind === 'preset' ? 'HAZIR' : 'KAYIT';
+      const tag = o.kind === 'klasik' ? 'CLASSIC' : o.kind === 'preset' ? 'PRESET' : 'SAVED';
       const bad = !o.check.ok || o.missing;
-      list.push({ ref: o.ref, deck: o, title: o.name, sub: bad ? (o.missing ? `Eksik kart: ${o.missing}` : o.check.issues[0]?.text ?? 'Oynanamaz') : this.describe(o), tag });
+      list.push({ ref: o.ref, deck: o, title: o.name, sub: bad ? (o.missing ? `Missing cards: ${o.missing}` : o.check.issues[0]?.text ?? 'Not playable') : this.describe(o), tag });
     }
     this.opts = list;
     this.rowH = Math.min(ROW, Math.floor((LIST_BOTTOM - LY + 2) / Math.max(1, list.length)));
@@ -298,7 +298,7 @@ export class DeckPickScene extends Phaser.Scene {
       this.bars.push(this.add.rectangle(bx, 160, 10, 1, PAL.gold2).setOrigin(0, 1).setDepth(10));
       this.curveLabels.push(pixelText(this, bx + 5, 162, b === CURVE_BUCKETS - 1 ? '8+' : String(b + 1), { size: 'sm', color: b + 1 >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.steel, originX: 0.5 }).setDepth(10));
     }
-    this.curveLabels.push(pixelText(this, 506, 178, 'SEVİYE EĞRİSİ', { size: 'sm', color: PAL.night4 }).setDepth(10));
+    this.curveLabels.push(pixelText(this, 506, 178, 'LEVEL CURVE', { size: 'sm', color: PAL.night4 }).setDepth(10));
     this.add.rectangle(RX, 238, 358, 1, PAL.night3).setOrigin(0).setDepth(9);
     this.cap = pixelText(this, RX, 244, '', { size: 'md', color: PAL.white }).setDepth(10);
     this.capType = pixelText(this, RX, 260, '', { size: 'sm', color: PAL.gold3 }).setDepth(10);
@@ -306,14 +306,14 @@ export class DeckPickScene extends Phaser.Scene {
   }
 
   private buildButtons(): void {
-    const back = new Button(this, 32, 322, { w: 78, h: 18, label: 'GERİ', size: 'sm', icon: ICON.close, style: 'neutral', depth: 20 });
+    const back = new Button(this, 32, 322, { w: 78, h: 18, label: 'BACK', size: 'sm', icon: ICON.close, style: 'neutral', depth: 20 });
     back.onClick = () => void this.back();
-    const build = new Button(this, 116, 322, { w: 100, h: 18, label: 'DESTE KUR', size: 'sm', style: 'spell', depth: 20 });
+    const build = new Button(this, 116, 322, { w: 100, h: 18, label: 'DECK BUILDER', size: 'sm', style: 'spell', depth: 20 });
     build.onClick = () => void this.openBuilder();
-    this.okBtn = new Button(this, 470, 322, { w: 138, h: 18, label: this.step === 1 ? 'MAÇA BAŞLA' : 'SEÇ · SIRADAKİ', size: 'sm', style: playerStyle(this.who), depth: 20 });
+    this.okBtn = new Button(this, 470, 322, { w: 138, h: 18, label: this.step === 1 ? 'START DUEL' : 'PICK · NEXT', size: 'sm', style: playerStyle(this.who), depth: 20 });
     this.okBtn.onClick = () => void this.confirm();
     this.okBtn.setAttention(true);
-    pixelText(this, 222, 328, '↑↓ SEÇ · ←→ KART · PGUP/PGDN · ENTER · ESC', { size: 'sm', color: PAL.steel }).setDepth(10);
+    pixelText(this, 222, 328, '↑↓ SELECT · ←→ CARD · PGUP/PGDN · ENTER · ESC', { size: 'sm', color: PAL.steel }).setDepth(10);
   }
 
   // ---------------------------------------------------------------- render
@@ -339,8 +339,8 @@ export class DeckPickScene extends Phaser.Scene {
     this.thumbSel = 0;
     this.curveLabels.forEach((l) => l.setVisible(!!deck));
     if (!deck) {
-      this.title.setText('Rastgele rakip');
-      this.legal.setText('Rakip, hazır desteler arasından rastgele birini seçer:').setTint(PAL.mist);
+      this.title.setText('Random opponent');
+      this.legal.setText('The opponent picks one of the preset decks at random:').setTint(PAL.mist);
       this.entries = [];
       this.pageText.setText('');
       this.thumbs.forEach((t) => {
@@ -363,15 +363,15 @@ export class DeckPickScene extends Phaser.Scene {
     const bad = !deck.check.ok || deck.missing;
     if (bad) {
       const lines = deck.check.issues.map((i) => i.text);
-      this.legal.setText(`Oynanamaz: ${lines.join(' · ')}`).setTint(PAL.crim3);
+      this.legal.setText(`Not playable: ${lines.join(' · ')}`).setTint(PAL.crim3);
     } else if (deck.kind === 'preset') {
       this.legal.setText(presetDecks().find((p) => presetRef(p.id) === deck.ref)?.blurb ?? '').setTint(PAL.mist);
-    } else this.legal.setText(deck.kind === 'klasik' ? 'Oyunun ilk 20 kartı, ikişer kopya (40 kart). Her zaman hazır.' : 'Kayıtlı destin. Hazır.').setTint(PAL.leaf3);
+    } else this.legal.setText(deck.kind === 'klasik' ? 'The game\'s first 20 cards, two copies each (40 cards). Always ready.' : 'Your saved deck. Ready.').setTint(PAL.leaf3);
     this.thumbRow = 0;
     this.entries = [...new Set(deck.cards)].map((id) => ({ id, n: copiesOf(deck.cards, id) }));
     this.paintThumbs();
     const st = deckStats(deck.cards);
-    this.stats.setText(`${st.size} kart\nCanavar ${st.monsters}\nBüyü ${st.spells}\nTuzak ${st.traps}`);
+    this.stats.setText(`${st.size} cards\nMonsters ${st.monsters}\nSpells ${st.spells}\nTraps ${st.traps}`);
     const maxN = Math.max(1, ...st.curve);
     const unit = Math.min(4, 18 / maxN);
     st.curve.forEach((n, b) => this.bars[b].setSize(10, Math.max(1, Math.round(n * unit))).setFillStyle(n === 0 ? PAL.night3 : b + 1 >= DECK_HIGH_LEVEL ? PAL.crim2 : PAL.gold2));
@@ -394,7 +394,7 @@ export class DeckPickScene extends Phaser.Scene {
       }
     });
     const rows = Math.ceil(this.entries.length / T_COLS);
-    this.pageText.setText(rows > T_ROWS ? `${this.thumbRow * T_COLS + 1}-${Math.min(this.entries.length, (this.thumbRow + T_ROWS) * T_COLS)} / ${this.entries.length} tür\nPGUP/PGDN kaydır` : '');
+    this.pageText.setText(rows > T_ROWS ? `${this.thumbRow * T_COLS + 1}-${Math.min(this.entries.length, (this.thumbRow + T_ROWS) * T_COLS)} / ${this.entries.length} kinds\nPGUP/PGDN scroll` : '');
   }
 
   private scrollThumbs(rows: number): void {
@@ -422,10 +422,10 @@ export class DeckPickScene extends Phaser.Scene {
     const d = CARDS[id];
     this.cap.setText(`${d.name}${this.entries[this.thumbSel].n > 1 ? `  x${this.entries[this.thumbSel].n}` : ''}`);
     if (isMonster(d)) {
-      this.capType.setText(`${ATTRIBUTE_NAMES[d.attribute]} / ${d.race} · Sv ${d.level} · ATK ${d.atk} / DEF ${d.def}`);
+      this.capType.setText(`${ATTRIBUTE_NAMES[d.attribute]} / ${d.race} · Lv ${d.level} · ATK ${d.atk} / DEF ${d.def}`);
       this.capText.setText(d.text || `"${d.flavor}"`);
     } else {
-      this.capType.setText(d.kind === 'spell' ? 'Büyü' : 'Tuzak');
+      this.capType.setText(d.kind === 'spell' ? 'Spell' : 'Trap');
       this.capText.setText(d.text);
     }
   }

@@ -90,7 +90,7 @@ export function parseStore(text: string | null): DeckStoreData {
         cards = autoFillDeck(repairDeck([...cards, ...cards]).cards, 0x5a17 + i * 977);
         migrated = true;
       }
-      data.slots[i] = { name: cleanName(s.name, `Deste ${i + 1}`), cards, missing: fixed.missing, ...(fixed.replaced ? { replaced: fixed.replaced } : {}), ...(migrated ? { migrated } : {}) };
+      data.slots[i] = { name: cleanName(s.name, `Deck ${i + 1}`), cards, missing: fixed.missing, ...(fixed.replaced ? { replaced: fixed.replaced } : {}), ...(migrated ? { migrated } : {}) };
     }
   }
   if (o.last && typeof o.last === 'object') {
@@ -162,7 +162,7 @@ export class DeckStore {
 
   setSlot(n: number, deck: { name: string; cards: readonly CardId[] } | null): void {
     if (n < 0 || n >= SLOT_COUNT) return;
-    this.data.slots[n] = deck ? { name: cleanName(deck.name, `Deste ${n + 1}`), cards: [...deck.cards], missing: 0 } : null;
+    this.data.slots[n] = deck ? { name: cleanName(deck.name, `Deck ${n + 1}`), cards: [...deck.cards], missing: 0 } : null;
     this.write();
   }
 
@@ -180,7 +180,7 @@ export class DeckStore {
     if (!ref || ref === REF_CLASSIC) {
       if (ref === undefined) return null;
       const cards = classicDeck();
-      return { ref: REF_CLASSIC, kind: 'klasik', name: 'Klasik Deste', cards, check: validateDeck(cards), missing: 0 };
+      return { ref: REF_CLASSIC, kind: 'klasik', name: 'Classic Deck', cards, check: validateDeck(cards), missing: 0 };
     }
     if (ref.startsWith('preset:')) {
       const p = presetById(ref.slice(7));

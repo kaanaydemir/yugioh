@@ -132,7 +132,7 @@ describe('deck store', () => {
   it('cleans names and clamps them', () => {
     const s = new DeckStore(new FakeKV());
     s.setSlot(0, { name: '   ', cards: DEFAULT_DECK });
-    expect(s.slot(0)!.name).toBe('Deste 1');
+    expect(s.slot(0)!.name).toBe('Deck 1');
     s.setSlot(1, { name: 'x'.repeat(40), cards: DEFAULT_DECK });
     expect(s.slot(1)!.name.length).toBe(NAME_MAX);
     s.setSlot(9, { name: 'out', cards: DEFAULT_DECK }); // out of range: ignored

@@ -53,13 +53,13 @@ const CAM = {
 const LOGO_Y = 22;
 
 const ENTRIES: MenuEntry[] = [
-  { id: 'hotseat', label: '2 Oyuncu (Aynı Ekran)', desc: 'İki oyuncu aynı ekranda sırayla oynar.', icon: TICON.duo, style: 'p1' },
-  { id: 'vsBot', label: 'Bilgisayara Karşı', desc: 'Yapay zekâya karşı düello. Sen Oyuncu 1 olursun.', icon: TICON.bot, style: 'p2' },
-  { id: 'demo', label: 'İzle (Demo)', desc: 'İki bilgisayar oyuncusu düello eder. Arkana yaslan!', icon: TICON.eye, style: 'gold' },
-  { id: 'deck', label: 'Deste Kur', desc: '20 kartlık kendi destenini kur, kaydet ve maçlarda kullan.', icon: TICON.cards, style: 'leaf' },
-  { id: 'howto', label: 'Nasıl Oynanır', desc: 'Aşamalar, çağırma, savaş hesabı ve tuzaklar.', icon: TICON.book, style: 'spell' },
-  { id: 'gallery', label: 'Kart Galerisi', desc: '20 kartın tamamı. Canavarları canlı izle.', icon: TICON.cards, style: 'trap' },
-  { id: 'settings', label: 'Ayarlar', desc: 'Animasyon hızı, ses, müzik ve sıra perdesi.', icon: TICON.gear, style: 'neutral' },
+  { id: 'hotseat', label: '2 Players (Same Screen)', desc: 'Two players take turns on the same screen.', icon: TICON.duo, style: 'p1' },
+  { id: 'vsBot', label: 'Versus CPU', desc: 'Duel against the CPU. You play as Player 1.', icon: TICON.bot, style: 'p2' },
+  { id: 'demo', label: 'Watch (Demo)', desc: 'Two CPU players duel. Sit back and enjoy!', icon: TICON.eye, style: 'gold' },
+  { id: 'deck', label: 'Deck Builder', desc: 'Build your own 20-card deck, save it, use it in duels.', icon: TICON.cards, style: 'leaf' },
+  { id: 'howto', label: 'How to Play', desc: 'Phases, summoning, battle math and traps.', icon: TICON.book, style: 'spell' },
+  { id: 'gallery', label: 'Card Gallery', desc: 'Every card in the game. Watch monsters live.', icon: TICON.cards, style: 'trap' },
+  { id: 'settings', label: 'Settings', desc: 'Animation speed, sound, music, turn curtain.', icon: TICON.gear, style: 'neutral' },
 ];
 
 export class TitleScene extends Phaser.Scene {
@@ -220,7 +220,7 @@ export class TitleScene extends Phaser.Scene {
 
   private buildHints(): Phaser.GameObjects.Container {
     const c = this.add.container(0, 0).setScrollFactor(0).setDepth(2000).setVisible(false);
-    const t = pixelText(this, 320, 348, '↑↓ SEÇ   ·   ENTER ONAYLA   ·   1–7 KISAYOL', { size: 'sm', align: 'center', originX: 0.5, originY: 0.5, color: PAL.steel });
+    const t = pixelText(this, 320, 348, '↑↓ SELECT   ·   ENTER CONFIRM   ·   1–7 SHORTCUT', { size: 'sm', align: 'center', originX: 0.5, originY: 0.5, color: PAL.steel });
     c.add(t);
     return c;
   }
@@ -425,7 +425,7 @@ export class TitleScene extends Phaser.Scene {
       return;
     }
     // the duel scene is not registered yet (dev): say so and come back
-    const msg = pixelText(this, 320, 180, 'DÜELLO SAHNESİ HENÜZ YOK', { size: 'lg', align: 'center', originX: 0.5, originY: 0.5, color: PAL.crim3 })
+    const msg = pixelText(this, 320, 180, 'NO DUEL SCENE YET', { size: 'lg', align: 'center', originX: 0.5, originY: 0.5, color: PAL.crim3 })
       .setScrollFactor(0)
       .setDepth(5100);
     const sub = pixelText(this, 320, 206, `scene.start('Duel', { mode: '${mode}' })`, { size: 'sm', align: 'center', originX: 0.5, originY: 0.5, color: PAL.steel })

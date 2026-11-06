@@ -4,7 +4,7 @@
 import Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import { music, sfx } from '../../audio/sfx';
-import { pixelText, upper } from '../../ui/text';
+import { pixelText } from '../../ui/text';
 import { Button } from '../../view/Button';
 import { UI_RAMP, panelTex, type UiStyle } from '../../view/ui-textures';
 import { tween } from '../../vfx/core';
@@ -54,7 +54,7 @@ export class SettingsOverlay extends Overlay {
   onChange: ((s: Settings) => void) | null = null;
 
   constructor(scene: Phaser.Scene, settings: Settings) {
-    super(scene, W, H, 'Ayarlar', 'neutral');
+    super(scene, W, H, 'Settings', 'neutral');
     this.settings = settings;
   }
 
@@ -63,14 +63,14 @@ export class SettingsOverlay extends Overlay {
     this.focusBar = s.add.rectangle(6, 0, W - 12, ROW_H - 4, PAL.night3, 0.55).setOrigin(0);
     this.root.add(this.focusBar);
     const defs: { kind: RowKind; title: string; sub: string }[] = [
-      { kind: 'speed', title: 'Animasyon hızı', sub: 'Düello animasyonları. Space basılıyken 3×.' },
-      { kind: 'sound', title: 'Ses efektleri', sub: 'Kart, büyü ve darbe sesleri.' },
-      { kind: 'music', title: 'Müzik', sub: 'Menü ve düello müziği.' },
-      { kind: 'curtain', title: 'Sıra perdesi', sub: 'Aynı ekranda oynarken sıra geçişinde eli gizler.' },
+      { kind: 'speed', title: 'Animation speed', sub: 'Duel animations. Hold Space for 3×.' },
+      { kind: 'sound', title: 'Sound effects', sub: 'Card, spell and impact sounds.' },
+      { kind: 'music', title: 'Music', sub: 'Menu and duel music.' },
+      { kind: 'curtain', title: 'Turn curtain', sub: 'Hides the hand between turns in same-screen play.' },
     ];
     defs.forEach((d, i) => {
       const y = HEADER_H + 10 + i * ROW_H;
-      const title = pixelText(s, 18, y + 5, upper(d.title), { size: 'md', color: PAL.white });
+      const title = pixelText(s, 18, y + 5, d.title.toUpperCase(), { size: 'md', color: PAL.white });
       const sub = pixelText(s, 18, y + 20, d.sub, { size: 'sm', color: PAL.steel, maxWidth: 250 });
       this.root.add([title, sub]);
       const zone = hitZone(s, this.px + 6, this.py + y, W - 12, ROW_H - 4);
@@ -95,10 +95,11 @@ export class SettingsOverlay extends Overlay {
       }
       this.rows.push(row);
     });
-    this.root.add(pixelText(s, 18, H - 20, 'Ayarlar otomatik kaydedilir.', { size: 'sm', color: PAL.steel }));
-    this.root.add(keyHint(s, 156, H - 15, '↑↓', 'Seç'));
-    this.root.add(keyHint(s, 206, H - 15, '←→', 'Değiştir'));
-    this.ok = new Button(s, this.px + W - 92, this.py + H - 30, { w: 80, h: 22, label: 'TAMAM', style: 'p1', depth: OV_UI + 5 });
+    this.root.add(pixelText(s, 18, H - 20, 'Settings save automatically.', { size: 'sm', color: PAL.steel }));
+    const selHint = keyHint(s, 156, H - 15, '↑↓', 'Select');
+    this.root.add(selHint);
+    this.root.add(keyHint(s, 156 + selHint.width + 10, H - 15, '←→', 'Change'));
+    this.ok = new Button(s, this.px + W - 92, this.py + H - 30, { w: 80, h: 22, label: 'OK', style: 'p1', depth: OV_UI + 5 });
     this.ok.setScrollFactor(0, 0, true);
     this.ok.onClick = () => void this.close();
     this.refresh(true);
@@ -139,7 +140,7 @@ export class SettingsOverlay extends Overlay {
       const on = r.kind === 'sound' ? st.sound : r.kind === 'music' ? st.music : st.curtain;
       const c = r.chips[0];
       this.chipStyle(c, on ? 'leaf' : 'stone', true);
-      c.label.setText(on ? 'AÇIK' : 'KAPALI');
+      c.label.setText(on ? 'ON' : 'OFF');
       c.label.setTint(on ? PAL.white : PAL.stone3);
       const kx = W - 128 + (on ? c.w - 18 : 4);
       c.label.x = W - 128 + (on ? (c.w - 18) / 2 : 18 + (c.w - 18) / 2);

@@ -4,7 +4,7 @@
 
 import Phaser from 'phaser';
 import { PAL } from '../../art/palette';
-import { pixelText, upper } from '../../ui/text';
+import { pixelText } from '../../ui/text';
 import { GLOW_PAD, ICON, glowTex, panelTex } from '../../view/ui-textures';
 import { tween } from '../../vfx/core';
 
@@ -27,12 +27,12 @@ export class StartPrompt {
     private readonly scene: Phaser.Scene,
     cx: number,
     y: number,
-    label = 'Başlamak için tıkla',
+    label = 'Click to start',
     depth = 2000,
-    subLabel = 'veya bir tuşa bas',
+    subLabel = 'or press any key',
   ) {
     this.root = scene.add.container(Math.round(cx), Math.round(y)).setScrollFactor(0).setDepth(depth);
-    this.text = pixelText(scene, 0, 0, upper(label), { size: 'md', align: 'center', originX: 0.5, originY: 0.5 });
+    this.text = pixelText(scene, 0, 0, label.toUpperCase(), { size: 'md', align: 'center', originX: 0.5, originY: 0.5 });
     const w = Math.ceil(this.text.width) + 34;
     this.half = Math.ceil(w / 2);
     this.glow = scene.add
@@ -44,7 +44,7 @@ export class StartPrompt {
     this.plate = scene.add.image(-this.half, -Math.ceil(PLATE_H / 2), panelTex(scene, 'gold', w, PLATE_H, { alpha: 236 })).setOrigin(0);
     this.caretL = scene.add.image(-this.half - 10, 0, ICON.caret).setTint(PAL.cyan3);
     this.caretR = scene.add.image(this.half + 10, 0, ICON.caret).setTint(PAL.crim3).setFlipX(true);
-    this.sub = pixelText(scene, 0, Math.ceil(PLATE_H / 2) + 8, upper(subLabel), { size: 'sm', align: 'center', originX: 0.5, originY: 0.5, color: PAL.mist });
+    this.sub = pixelText(scene, 0, Math.ceil(PLATE_H / 2) + 8, subLabel.toUpperCase(), { size: 'sm', align: 'center', originX: 0.5, originY: 0.5, color: PAL.mist });
     const subBg = scene.add.rectangle(0, this.sub.y, Math.ceil(this.sub.width) + 12, 9, PAL.ink, 0.6).setOrigin(0.5);
     this.root.add([this.glow, this.plate, subBg, this.sub, this.caretL, this.caretR, this.text]);
     this.root.setAlpha(0);

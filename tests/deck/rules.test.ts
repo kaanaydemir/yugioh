@@ -44,19 +44,19 @@ describe('deck rules (40..80 cards, 3 copies, seals 1)', () => {
     expect(ok(80).ok).toBe(true);
     const over = validateDeck([...spread([...low, ...back], 80, 3), low[0]]);
     expect(over.issues.map((i) => i.code)).toContain('size');
-    expect(over.issues.find((i) => i.code === 'size')!.text).toContain(`en çok ${DECK_MAX}`);
+    expect(over.issues.find((i) => i.code === 'size')!.text).toContain(`at most ${DECK_MAX}`);
   });
 
   it('copy limit: 3 copies pass, a 4th fails; each seal at most 1', () => {
     expect(deckStats(spread(low, 12, 3)).over).toEqual([]);
     const four = validateDeck([...spread([...low, ...back], 36, 1), low[0], low[0], low[0], low[0]]);
     expect(four.issues.some((i) => i.code === 'copies')).toBe(true);
-    expect(four.issues.find((i) => i.code === 'copies')!.text).toMatch(/Çok kopya/);
+    expect(four.issues.find((i) => i.code === 'copies')!.text).toMatch(/Too many copies/);
     const seals = validateDeck([...spread([...low, ...back], 38, 1), 'seal_head', 'seal_head']);
     expect(seals.stats.over).toContain('seal_head');
-    expect(addBlocker(['seal_head'], 'seal_head')).toMatch(/en çok 1/);
+    expect(addBlocker(['seal_head'], 'seal_head')).toMatch(/max 1/);
     expect(addBlocker(['seal_head'], 'seal_arm_r')).toBeNull();
-    expect(addBlocker([low[0], low[0], low[0]], low[0])).toMatch(/en çok 3/);
+    expect(addBlocker([low[0], low[0], low[0]], low[0])).toMatch(/max 3/i);
     expect(addBlocker([low[0], low[0]], low[0])).toBeNull();
   });
 
@@ -68,7 +68,7 @@ describe('deck rules (40..80 cards, 3 copies, seals 1)', () => {
     expect(minMonsters(10)).toBe(16); // judged on at least DECK_MIN
     const noMon = validateDeck(spread(back, 40, 3).slice(0, 40));
     expect(noMon.issues.map((i) => i.code)).toContain('monsters');
-    expect(noMon.issues.find((i) => i.code === 'monsters')!.text).toContain('En az 16 canavar');
+    expect(noMon.issues.find((i) => i.code === 'monsters')!.text).toContain('at least 16 monsters');
     // 80 cards need 32 monsters: 31 monsters + 49 others fails, 32 passes
     const mk = (m: number) => [...spread(low, m, 3), ...spread(back, 80 - m, 3)];
     expect(validateDeck(mk(31)).issues.map((i) => i.code)).toContain('monsters');
@@ -84,8 +84,8 @@ describe('deck rules (40..80 cards, 3 copies, seals 1)', () => {
     expect(d40.length).toBe(40);
     const r = validateDeck(d40);
     expect(r.issues.map((i) => i.code)).toContain('high');
-    expect(r.issues.find((i) => i.code === 'high')!.text).toMatch(/Sv 7\+/);
-    expect(addBlocker(spread(high, 8, 3).concat(spread(low, 8, 1)), high[0])).toMatch(/Sv 7\+|en çok/);
+    expect(r.issues.find((i) => i.code === 'high')!.text).toMatch(/Lv 7\+/);
+    expect(addBlocker(spread(high, 8, 3).concat(spread(low, 8, 1)), high[0])).toMatch(/Lv 7\+|max/i);
     const d80 = [...tribute, ...spread(low, 24, 3), ...spread(back, 44, 3)];
     expect(validateDeck(d80).issues.map((i) => i.code)).not.toContain('high');
   });
@@ -102,7 +102,7 @@ describe('deck rules (40..80 cards, 3 copies, seals 1)', () => {
   it('addBlocker: full deck and empty deck', () => {
     expect(addBlocker([], low[0])).toBeNull();
     const full = spread([...low, ...back], 80, 3);
-    expect(addBlocker(full, low.find((x) => copiesOf(full, x) < 3) ?? back.find((x) => copiesOf(full, x) < 3)!)).toMatch(/dolu|en çok/);
+    expect(addBlocker(full, low.find((x) => copiesOf(full, x) < 3) ?? back.find((x) => copiesOf(full, x) < 3)!)).toMatch(/full|max/i);
   });
 
   it('knows the five seals', () => {
@@ -174,7 +174,7 @@ describe('preset decks', () => {
     expect(presetDecks()).toHaveLength(PRESET_DEFS.length);
     expect(PRESET_DEFS.length).toBe(7);
     expect(new Set(presetDecks().map((p) => p.id)).size).toBe(7);
-    expect(presetById('muhur')?.name).toBe('Karanlık Mühür');
+    expect(presetById('muhur')?.name).toBe('Dark Seal');
   });
 
   it('every pinned card exists in the pool (fails loudly when a card id disappears)', () => {
@@ -262,7 +262,7 @@ describe('retired cards (dusk_sorcerer, owner decision)', () => {
     expect(autoFillDeck([], 3)).not.toContain(R);
   });
   it('the builder refuses it and validateDeck reports it as missing', () => {
-    expect(addBlocker([], R)).toMatch(/artık oyunda yok/);
+    expect(addBlocker([], R)).toMatch(/no longer in the game/);
     const d = autoFillDeck([], 5);
     const withIt = [...d.slice(0, 39), R];
     const v = validateDeck(withIt);

@@ -78,16 +78,16 @@ export function registerFonts(scene: Phaser.Scene): void {
   }
 }
 
-// ---------------------------------------------------------------- Turkish helpers
+// ---------------------------------------------------------------- case helpers (English since the 2026-11 language switch)
 
-/** Turkish-aware uppercase: i → İ, ı → I (use this, never plain toUpperCase()). */
+/** Uppercase with English rules (i → I). Use this rather than ad-hoc casing so the rule lives in one place. */
 export function upper(s: string): string {
-  return s.toLocaleUpperCase('tr');
+  return s.toLocaleUpperCase('en');
 }
 
-/** Turkish-aware lowercase: I → ı, İ → i. */
+/** Lowercase with English rules. */
 export function lower(s: string): string {
-  return s.toLocaleLowerCase('tr');
+  return s.toLocaleLowerCase('en');
 }
 
 const FALLBACK: Record<string, string> = {

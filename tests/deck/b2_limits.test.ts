@@ -37,9 +37,9 @@ describe('single-copy cards', () => {
       const base = [...low.slice(0, 20), ...back.slice(0, 18)];
       const two = validateDeck([...base, id, id]);
       expect(two.issues.map((i) => i.code)).toContain('copies');
-      expect(two.issues.find((i) => i.code === 'copies')!.text).toContain('tek kopyalık kart 1');
+      expect(two.issues.find((i) => i.code === 'copies')!.text).toContain('single-copy card 1');
       expect(validateDeck([...base, id, low[0]]).ok).toBe(true);
-      expect(addBlocker([id], id)).toMatch(/en çok 1/);
+      expect(addBlocker([id], id)).toMatch(/max 1/);
       expect(repairDeck([id, id, id]).cards).toEqual([id]);
     });
 

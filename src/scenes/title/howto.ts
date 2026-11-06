@@ -1,4 +1,4 @@
-// NASIL OYNANIR — a paged rules summary (GAME_DESIGN §2) with a live illustration per page,
+// HOW TO PLAY — a paged rules summary (GAME_DESIGN §2) with a live illustration per page,
 // played with the real game VFX: LP and winning, the turn's phases, tribute summoning, the
 // battle maths (three worked examples), spells & traps, and the controls.
 
@@ -11,7 +11,7 @@ import { PixelCanvas, mix } from '../../art/pixel';
 import { monsterAnimKey, monsterFrameName, monsterTextureKey } from '../../art/textures';
 import { sfx, type SfxName } from '../../audio/sfx';
 import type { PlayerId } from '../../engine/types';
-import { pixelText, upper } from '../../ui/text';
+import { pixelText } from '../../ui/text';
 import { Button } from '../../view/Button';
 import { CardSprite } from '../../view/CardSprite';
 import { DEPTH, LOOK_V3, unitDepth } from '../../view/layout';
@@ -210,7 +210,7 @@ function lpPanel(st: Stage, x: number, y: number, player: PlayerId, lp: number) 
   const s = st.scene;
   const p = st.at(x, y);
   const bg = st.add(s.add.image(p.x, p.y, panelTex(s, player === 0 ? 'p1' : 'p2', 92, 32, { header: 11 })).setDepth(DEPTH.FX_TOP + 40));
-  const name = st.add(pixelText(s, p.x - 41, p.y - 10, upper(`Oyuncu ${player + 1}`), { size: 'sm', originY: 0.5, color: PAL.white }).setDepth(DEPTH.FX_TOP + 41));
+  const name = st.add(pixelText(s, p.x - 41, p.y - 10, `PLAYER ${player + 1}`, { size: 'sm', originY: 0.5, color: PAL.white }).setDepth(DEPTH.FX_TOP + 41));
   const val = st.add(pixelText(s, p.x - 41, p.y + 6, `LP ${lp}`, { size: 'md', originY: 0.5, color: PAL.gold4 }).setDepth(DEPTH.FX_TOP + 41));
   const items = [bg, name, val];
   let cur = lp;
@@ -263,19 +263,19 @@ function pop(st: Stage, t: Phaser.GameObjects.BitmapText, scale = 1): Promise<vo
 const PAGES: Page[] = [
   // ------------------------------------------------------------ 1. goal
   {
-    title: 'Amaç',
+    title: 'Goal',
     lines: [
-      'Her oyuncu 4000 LP ile başlar. Rakibinin LP\'sini 0\'a indiren düelloyu kazanır.',
-      'Deste 20 karttır: 12 canavar, 5 büyü ve 3 tuzak. İki oyuncu da aynı kartları karıştırılmış olarak oynar.',
-      LOOK_V3 ? 'Başlangıç elin 5 kart; sıran gelince 6. kartı çekersin. Kart çekmen gerekirken desten boşsa kaybedersin.' : 'Başlangıç elin 4 kart. Kart çekmen gerekirken desten boşsa kaybedersin.',
-      'Teslim olan oyuncu kaybeder.',
+      'Each player starts with 4000 LP. Bring your opponent\'s LP to 0 to win the duel.',
+      'The standard deck is 20 cards: 12 monsters, 5 Spells and 3 Traps. Both players play the same cards, shuffled.',
+      LOOK_V3 ? 'Your opening hand is 5 cards; on your turn you draw a 6th. If you must draw and your deck is empty, you lose.' : 'Your opening hand is 4 cards. If you must draw and your deck is empty, you lose.',
+      'A player who surrenders loses.',
     ],
     async run(st) {
       const s = st.scene;
       st.tile(78, 214, 0);
       const wyrm = st.monster('crystal_wyrm', 78, 214, 0);
       const lp = lpPanel(st, 214, 60, 1, 4000);
-      const win = st.label(144, 132, 'KAZANAN: OYUNCU 1', PAL.gold3, 'lg').setAlpha(0);
+      const win = st.label(144, 132, 'WINNER: PLAYER 1', PAL.gold3, 'lg').setAlpha(0);
       await st.appear(wyrm, 'LIGHT', 520);
       for (;;) {
         lp.set(4000);
@@ -317,18 +317,18 @@ const PAGES: Page[] = [
 
   // ------------------------------------------------------------ 2. turn flow
   {
-    title: 'Tur Akışı',
+    title: 'Turn Flow',
     lines: [
-      'Her tur dört aşamadan geçer: Çekme → Ana → Savaş → Bitiş.',
-      'Çekme: destenden 1 kart çekersin.',
-      'Ana: canavar çağırır, kart koyar, büyü açarsın.',
-      'Savaş: saldırı pozisyonundaki canavarlarınla saldırırsın.',
-      'Bitiş: elinde en fazla 6 kart kalır, sıra rakibe geçer.',
-      LOOK_V3 ? 'İlk oyuncu da ilk turda kart çeker ama saldıramaz.' : 'İlk oyuncu ilk turda kart çekmez ve saldıramaz.',
+      'Every turn has four phases: Draw → Main → Battle → End.',
+      'Draw: draw 1 card from your deck.',
+      'Main: Summon monsters, Set cards, activate Spells.',
+      'Battle: attack with your monsters in Attack Position.',
+      'End: keep at most 6 cards in hand; the turn passes to your opponent.',
+      LOOK_V3 ? 'The first player also draws on turn 1, but cannot attack.' : 'The first player does not draw on turn 1 and cannot attack.',
     ],
     async run(st) {
       const s = st.scene;
-      const phases = ['ÇEKME', 'ANA', 'SAVAŞ', 'BİTİŞ'];
+      const phases = ['DRAW', 'MAIN', 'BATTLE', 'END'];
       const chips = phases.map((_, i) => st.chip(36 + i * 72, 18, 66, 18, 'neutral', true));
       const labels = phases.map((p, i) => st.label(36 + i * 72, 18, p, PAL.steel, 'md'));
       const marker = st.add(s.add.image(0, 0, ICON.caret).setAngle(90).setTint(PAL.gold3).setDepth(DEPTH.FX_TOP + 60));
@@ -357,7 +357,7 @@ const PAGES: Page[] = [
       for (;;) {
         // ÇEKME
         setPhase(0);
-        note.setText('Destenden 1 kart çek');
+        note.setText('Draw 1 card from your deck');
         await st.wait(300);
         const handP = st.at(236, 200);
         const card = st.add(new CardSprite(s, deckP.x, deckP.y, 'ember_wolf', { faceUp: false }).setDepth(DEPTH.FX + 20));
@@ -366,7 +366,7 @@ const PAGES: Page[] = [
         await st.wait(700);
         // ANA
         setPhase(1);
-        note.setText('Canavar çağır, kart koy, büyü aç');
+        note.setText('Summon, Set cards, activate Spells');
         await st.wait(350);
         const tileP = st.at(156, 168);
         st.sfx('cardSlide', 0.4);
@@ -391,7 +391,7 @@ const PAGES: Page[] = [
         await st.wait(400);
         // SAVAŞ
         setPhase(2);
-        note.setText('Saldırı pozisyonundaki canavarlarla saldır');
+        note.setText('Attack with monsters in Attack Position');
         void tween(s, { targets: red, alpha: { from: 0.35, to: 0 }, duration: 700, ease: 'Quad.Out' });
         st.sfx('attackDeclare', 0.4);
         await st.wait(400);
@@ -408,7 +408,7 @@ const PAGES: Page[] = [
         await st.wait(500);
         // BİTİŞ
         setPhase(3);
-        note.setText('Sıra rakibe geçer');
+        note.setText('The turn passes to your opponent');
         await st.wait(1300);
         await st.vanish(wolf, 'FIRE');
         wolf.destroy();
@@ -418,13 +418,13 @@ const PAGES: Page[] = [
 
   // ------------------------------------------------------------ 3. summoning
   {
-    title: 'Çağırma ve Kurbanlar',
+    title: 'Summons & Tributes',
     lines: [
-      'Ana Aşamada turda 1 kez Normal Çağırma ya da Kapalı Koyma yapabilirsin.',
-      'Seviye 1–4: kurbansız. Seviye 5–6: 1 kurban. Seviye 7 ve üzeri: 2 kurban.',
-      'Kurban verilen canavarlar mezarlığa gider; as kartlar sahaya dev bir sinematikle gelir!',
-      'Kapalı konan canavarı sonraki bir turda çevirerek açabilirsin.',
-      'Pozisyon değiştirme turda 1 kez (yeni gelen ya da saldıran canavar hariç).',
+      'Once per turn in your Main Phase, you can Normal Summon or Set a monster.',
+      'Level 1–4: no Tribute. Level 5–6: 1 Tribute. Level 7 or higher: 2 Tributes.',
+      'Tributed monsters go to the Graveyard; ace cards hit the field with a giant cinematic!',
+      'On a later turn you can Flip a Set monster face-up.',
+      'Change Position once per turn (not a monster that just arrived or attacked).',
     ],
     async run(st) {
       const s = st.scene;
@@ -434,7 +434,7 @@ const PAGES: Page[] = [
       st.tile(L.x, L.y, 0);
       st.tile(R.x, R.y, 0);
       st.tile(C.x, C.y, 'gold');
-      const cap = st.label(144, 22, '★7 KRİSTAL EJDER  =  2 KURBAN', PAL.gold4, 'md');
+      const cap = st.label(144, 22, '★7 CRYSTAL WYRM  =  2 TRIBUTES', PAL.gold4, 'md');
       const capL = st.label(L.x, L.y + 22, '★2', PAL.mist, 'sm');
       const capR = st.label(R.x, R.y + 22, '★3', PAL.mist, 'sm');
       cap.setAlpha(0);
@@ -483,12 +483,12 @@ const PAGES: Page[] = [
 
   // ------------------------------------------------------------ 4. battle maths
   {
-    title: 'Savaş Hesabı',
+    title: 'Battle Math',
     lines: [
-      'Saldırı – Saldırı: yüksek ATK kazanır. Düşük olan yok olur, fark sahibine hasar olarak gider. Eşitse ikisi de yok olur.',
-      'Saldırı – Savunma: ATK > DEF ise savunan yok olur, hasar olmaz. ATK < DEF ise saldıran oyuncu farkı hasar olarak alır.',
-      'Rakibin canavarı yoksa doğrudan saldırırsın.',
-      'Kapalı savunmadaki canavar saldırıya uğrayınca açılır.',
+      'Attack vs Attack: the higher ATK wins. The weaker monster is destroyed and its owner takes the difference as damage. On a tie, both are destroyed.',
+      'Attack vs Defense: if ATK > DEF, the defender is destroyed and no damage is dealt. If ATK < DEF, the attacking player takes the difference as damage.',
+      'If your opponent has no monsters, you attack directly.',
+      'A face-down Defense Position monster is flipped face-up when attacked.',
     ],
     async run(st) {
       const s = st.scene;
@@ -510,7 +510,7 @@ const PAGES: Page[] = [
       };
       for (;;) {
         // A — attack vs attack
-        title.setText('SALDIRI – SALDIRI');
+        title.setText('ATTACK VS ATTACK');
         cap1.setText('');
         cap2.setText('');
         let atk = st.monster('shade_assassin', P1.x, P1.y, 0);
@@ -530,8 +530,8 @@ const PAGES: Page[] = [
                 if (!st.objs.includes(def)) return;
                 void damageNumber(s, st.at(P2.x, P2.y - 40).x, st.at(P2.x, P2.y - 40).y, 200, 'damage', { size: 2 });
                 st.sfx('lpDown', 0.4);
-                cap1.setText('1900 > 1700  →  Kor Kurdu yok olur');
-                cap2.setText('Oyuncu 2 farkı hasar olarak alır: −200 LP');
+                cap1.setText('1900 > 1700  →  Ember Wolf is destroyed');
+                cap2.setText('Player 2 takes the difference: −200 LP');
               });
             },
           }),
@@ -548,7 +548,7 @@ const PAGES: Page[] = [
         b2.destroy();
 
         // B — attack vs defence
-        title.setText('SALDIRI – SAVUNMA');
+        title.setText('ATTACK VS DEFENSE');
         cap1.setText('');
         cap2.setText('');
         atk = st.monster('ember_wolf', P1.x, P1.y, 0);
@@ -569,8 +569,8 @@ const PAGES: Page[] = [
                 if (!st.objs.includes(atk)) return;
                 void damageNumber(s, st.at(P1.x, P1.y - 44).x, st.at(P1.x, P1.y - 44).y, 300, 'damage', { size: 2 });
                 st.sfx('lpDown', 0.4);
-                cap1.setText('1700 < 2000  →  kimse yok olmaz');
-                cap2.setText('Saldıran oyuncu farkı hasar olarak alır: −300 LP');
+                cap1.setText('1700 < 2000  →  nothing is destroyed');
+                cap2.setText('The attacking player takes the difference: −300 LP');
               });
             },
           }),
@@ -583,7 +583,7 @@ const PAGES: Page[] = [
         c2.destroy();
 
         // C — direct attack
-        title.setText('DOĞRUDAN SALDIRI');
+        title.setText('DIRECT ATTACK');
         cap1.setText('');
         cap2.setText('');
         atk = st.monster('storm_hawk', P1.x, P1.y, 0);
@@ -603,8 +603,8 @@ const PAGES: Page[] = [
             },
           }),
         ]);
-        cap1.setText('Rakipte canavar yok: doğrudan saldırı!');
-        cap2.setText('ATK kadar hasar: −1000 LP');
+        cap1.setText('Opponent has no monsters: direct attack!');
+        cap2.setText('Damage equal to ATK: −1000 LP');
         await st.wait(2000);
         await st.vanish(atk, 'WIND');
         atk.destroy();
@@ -616,12 +616,12 @@ const PAGES: Page[] = [
 
   // ------------------------------------------------------------ 5. spells & traps
   {
-    title: 'Büyüler ve Tuzaklar',
+    title: 'Spells & Traps',
     lines: [
-      'Büyüleri Ana Aşamada elden ya da sahadan açarsın (koyduğun tur bile).',
-      'Tuzaklar kapalı konur ve koyulduğu tur açılamaz.',
-      'Tuzak, rakibin hamlesine yanıt olarak açılır: saldırı ilanı (Ayna Kalkanı, Işık Zincirleri) ya da ATK ≥ 1000 bir canavarın çağrılması (Yer Yarığı).',
-      'Pencere açılınca "Aç" ya da "Geç" seçersin.',
+      'Activate Spells in your Main Phase from your hand or the field (even the turn you Set them).',
+      'Traps are Set face-down and cannot be activated the turn they are Set.',
+      'A Trap activates in response to your opponent\'s move: an attack declaration (Mirror Barrier, Chains of Light) or the Summon of a monster with ATK ≥ 1000 (Earth Rift).',
+      'When the prompt opens, choose "Activate" or "Pass".',
     ],
     async run(st) {
       const s = st.scene;
@@ -642,8 +642,8 @@ const PAGES: Page[] = [
       );
       for (;;) {
         // ---- trap
-        title.setText('TUZAK: AYNA KALKANI').setTint(PAL.mag3);
-        cap.setText('Kapalı tuzak, rakip saldırı ilan edince açılır');
+        title.setText('TRAP: MIRROR BARRIER').setTint(PAL.mag3);
+        cap.setText('The Set Trap activates when an attack is declared');
         setCard.setVisible(true);
         const titan = st.monster('magma_titan', P1.x, P1.y, 0);
         await st.appear(titan, 'FIRE');
@@ -660,7 +660,7 @@ const PAGES: Page[] = [
         await st.all([tween(s, { targets: card, y: stp.y - 52, scale: 1, duration: 260, ease: 'Back.Out' })]);
         await st.all([card.flip(true, 240)]);
         card.pulse(PAL.mag3, 320);
-        const tz = st.label(stp.x - st.ox, stp.y - st.oy - 100, 'TUZAK!', PAL.mag3, 'lg');
+        const tz = st.label(stp.x - st.ox, stp.y - st.oy - 100, 'TRAP!', PAL.mag3, 'lg');
         void pop(st, tz);
         await st.wait(380);
         a.destroy();
@@ -676,7 +676,7 @@ const PAGES: Page[] = [
         ]);
         await safe(shatter(s, titan, { monsterId: 'magma_titan', attribute: 'FIRE', push: { x: -1, y: 0.4 } }));
         st.check();
-        cap.setText('Saldıran canavarlar yansıyan ışınla yok olur');
+        cap.setText('The attackers are destroyed by the reflected beam');
         await st.wait(900);
         await st.all([card.dissolve(500)]);
         card.destroy();
@@ -685,8 +685,8 @@ const PAGES: Page[] = [
         await st.wait(300);
 
         // ---- spell
-        title.setText('BÜYÜ: YILDIRIM HÜKMÜ').setTint(PAL.teal3);
-        cap.setText('Büyü kartı açılır, etkisi hemen çözülür');
+        title.setText('SPELL: JUDGMENT BOLT').setTint(PAL.teal3);
+        cap.setText('The Spell activates and resolves at once');
         setCard.setVisible(false);
         const foe = st.monster('shade_assassin', P2.x, P2.y, 1);
         await st.appear(foe, 'DARK');
@@ -707,7 +707,7 @@ const PAGES: Page[] = [
         ]);
         await safe(shatter(s, foe, { monsterId: 'shade_assassin', attribute: 'DARK' }));
         st.check();
-        cap.setText('Rakibin 1 canavarı yok edilir');
+        cap.setText('1 opponent monster is destroyed');
         await st.wait(1400);
         spell.destroy();
         aura.destroy();
@@ -718,14 +718,14 @@ const PAGES: Page[] = [
 
   // ------------------------------------------------------------ 6. controls
   {
-    title: 'Kontroller',
+    title: 'Controls',
     lines: [
-      'Elindeki ya da sahadaki bir karta tıkla: yapabileceğin eylemler açılır. Elin üstündeki satır sıradaki adımı söyler.',
-      'Parlayan alanlar seçilebilir. Esc ya da sağ tık: geri / iptal.',
-      'Bir kartın üstüne gel: ayrıntıları kart panelinde gör.',
-      'Kısayollar: B = Savaş, E = Turu Bitir, 1–6 = eldeki kart, Esc = düello menüsü (teslim ol, ana menü).',
-      'Space ya da basılı tutulan tıklama animasyonları 3× hızlandırır.',
-      'Aynı ekranda oynarken sıra perdesi elini rakibinden gizler (Ayarlar).',
+      'Click a card in your hand or on the field to see what you can do with it. The line above your hand tells you the next step.',
+      'Glowing zones can be selected. Esc or right-click: back / cancel.',
+      'Hover over a card to see its details in the card panel.',
+      'Shortcuts: B = Battle, E = End Turn, 1–6 = card in hand, Esc = duel menu (surrender, main menu).',
+      'Hold Space or the mouse button to speed animations up 3×.',
+      'In same-screen play, the turn curtain hides your hand from your opponent (Settings).',
     ],
     async run(st) {
       const s = st.scene;
@@ -740,12 +740,12 @@ const PAGES: Page[] = [
       st.tile(T.x, T.y, 0);
       const ptr = st.add(s.add.image(0, 0, ICON.pointer).setOrigin(0.2, 0).setDepth(DEPTH.FX_TOP + 70));
       const menuBg = st.add(s.add.image(0, 0, panelTex(s, 'neutral', 70, 34, { chamfer: 2 })).setOrigin(0).setDepth(DEPTH.FX_TOP + 62).setVisible(false));
-      const m1 = st.add(pixelText(s, 0, 0, 'ÇAĞIR', { size: 'sm', color: PAL.white }).setDepth(DEPTH.FX_TOP + 63).setVisible(false));
-      const m2 = st.add(pixelText(s, 0, 0, 'KAPALI KOY', { size: 'sm', color: PAL.mist }).setDepth(DEPTH.FX_TOP + 63).setVisible(false));
+      const m1 = st.add(pixelText(s, 0, 0, 'SUMMON', { size: 'sm', color: PAL.white }).setDepth(DEPTH.FX_TOP + 63).setVisible(false));
+      const m2 = st.add(pixelText(s, 0, 0, 'SET', { size: 'sm', color: PAL.mist }).setDepth(DEPTH.FX_TOP + 63).setVisible(false));
       const hl = st.add(s.add.rectangle(0, 0, 66, 11, PAL.cyan1, 1).setOrigin(0).setDepth(DEPTH.FX_TOP + 62.5).setVisible(false));
       const space = st.chip(232, 30, 54, 16, 'neutral', true);
       const spaceT = st.label(232, 30, 'SPACE', PAL.steel, 'sm');
-      const speedT = st.label(232, 48, '3× HIZ', PAL.gold3, 'md').setAlpha(0);
+      const speedT = st.label(232, 48, '3× SPEED', PAL.gold3, 'md').setAlpha(0);
       const move = (x: number, y: number, ms = 360) => tween(s, { targets: ptr, x, y, duration: ms, ease: 'Sine.InOut' });
       for (;;) {
         hand.forEach((c, i) => {
@@ -825,7 +825,7 @@ export class HowToOverlay extends Overlay {
   private areaFrame!: Phaser.GameObjects.Image;
 
   constructor(scene: Phaser.Scene, page = 0) {
-    super(scene, W, H, 'Nasıl Oynanır', 'spell');
+    super(scene, W, H, 'How to Play', 'spell');
     this.page = Math.max(0, Math.min(PAGES.length - 1, page));
   }
 
@@ -859,7 +859,7 @@ export class HowToOverlay extends Overlay {
     });
     this.pageT = pixelText(s, 16 + 28 + 6 + PAGES.length * 10 + 6 + 28 + 8, fy + 8, '', { size: 'sm', originY: 0.5, color: PAL.steel });
     this.root.add(this.pageT);
-    this.root.add(pixelText(s, TX + TW, fy + 8, '←→ SAYFA', { size: 'sm', originX: 1, originY: 0.5, color: PAL.night4 }));
+    this.root.add(pixelText(s, TX + TW, fy + 8, '←→ PAGE', { size: 'sm', originX: 1, originY: 0.5, color: PAL.night4 }));
     this.show(this.page, 0);
   }
 
@@ -884,7 +884,7 @@ export class HowToOverlay extends Overlay {
     this.content.removeAll(true);
     const R = UI_RAMP.spell;
     const num = pixelText(s, TX, AY + 2, `${i + 1}`, { size: 'lg', color: R[3] });
-    const title = pixelText(s, TX + 22, AY + 8, upper(page.title), { size: 'md', color: PAL.white });
+    const title = pixelText(s, TX + 22, AY + 8, page.title.toUpperCase(), { size: 'md', color: PAL.white });
     title.setTint(R[4], R[4], PAL.white, PAL.white);
     const rule = s.add.rectangle(TX, AY + 26, TW, 1, R[1]).setOrigin(0);
     this.content.add([num, title, rule]);

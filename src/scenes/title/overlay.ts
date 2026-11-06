@@ -11,7 +11,7 @@
 import Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import { sfx } from '../../audio/sfx';
-import { pixelText, upper } from '../../ui/text';
+import { pixelText } from '../../ui/text';
 import { Button } from '../../view/Button';
 import { DEPTH, GAME_H, GAME_W } from '../../view/layout';
 import { GLOW_PAD, ICON, UI_RAMP, glowTex, panelTex, type UiStyle } from '../../view/ui-textures';
@@ -76,7 +76,7 @@ export abstract class Overlay {
       .setBlendMode(Phaser.BlendModes.ADD)
       .setVisible(false);
     this.root = scene.add.container(this.px, this.py).setScrollFactor(0).setDepth(OV_UI).setVisible(false);
-    const head = pixelText(scene, 12, Math.round(HEADER_H / 2), upper(title), { size: 'md', originY: 0.5, color: PAL.white });
+    const head = pixelText(scene, 12, Math.round(HEADER_H / 2), title.toUpperCase(), { size: 'md', originY: 0.5, color: PAL.white });
     head.setTint(R[4], R[4], R[3], R[3]);
     const hint = pixelText(scene, w - 34, Math.round(HEADER_H / 2), 'ESC', { size: 'sm', originX: 1, originY: 0.5, color: PAL.steel });
     this.root.add([head, hint]);
@@ -163,7 +163,7 @@ export function keyHint(scene: Phaser.Scene, x: number, y: number, key: string, 
   const k = pixelText(scene, 3, 0, key, { size: 'sm', originY: 0.5, color: PAL.white });
   const kw = Math.ceil(k.width) + 6;
   const bg = scene.add.image(0, -6, panelTex(scene, 'neutral', kw, 12, { chamfer: 2, scan: false })).setOrigin(0);
-  const l = pixelText(scene, kw + 3, 0, upper(label), { size: 'sm', originY: 0.5, color: PAL.mist });
+  const l = pixelText(scene, kw + 3, 0, label.toUpperCase(), { size: 'sm', originY: 0.5, color: PAL.mist });
   c.add([bg, k, l]);
   c.setSize(kw + 3 + Math.ceil(l.width), 12);
   return c;

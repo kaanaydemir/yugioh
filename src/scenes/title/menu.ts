@@ -6,7 +6,7 @@ import Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import { PixelCanvas, mix } from '../../art/pixel';
 import { sfx } from '../../audio/sfx';
-import { pixelText, revealText, upper } from '../../ui/text';
+import { pixelText, revealText } from '../../ui/text';
 import { GLOW_PAD, ICON, UI_RAMP, glowTex, panelTex, type UiStyle } from '../../view/ui-textures';
 import { TEX, tween, tweenValue, wait } from '../../vfx/core';
 
@@ -97,7 +97,7 @@ export class MainMenu {
       .setTint(PAL.cyan2)
       .setAlpha(0.35);
     this.panel = scene.add.image(0, 0, panelTex(scene, 'neutral', this.w, this.h, { header: HEADER, alpha: 226 })).setOrigin(0);
-    this.header = pixelText(scene, 12, Math.round(HEADER / 2), upper(opts.title ?? 'Ana Menü'), { size: 'md', originY: 0.5, color: PAL.mist });
+    this.header = pixelText(scene, 12, Math.round(HEADER / 2), (opts.title ?? 'Main Menu').toUpperCase(), { size: 'md', originY: 0.5, color: PAL.mist });
     const gem = scene.add.image(this.w - 14, Math.round(HEADER / 2), TEX.spark).setTint(PAL.gold3);
     this.bar = scene.add.image(4, 0, barTex(scene, entries[0]?.style ?? 'p1', this.w - 8, ROW_H - 4)).setOrigin(0);
     this.barFlash = scene.add.image(4, 0, barTex(scene, 'neutral', this.w - 8, ROW_H - 4)).setOrigin(0).setTintFill(PAL.white).setAlpha(0);
@@ -108,7 +108,7 @@ export class MainMenu {
       const ry = HEADER + 4 + i * ROW_H + (i >= 3 ? 4 : 0);
       const cy = ry + Math.floor((ROW_H - 4) / 2);
       const icon = scene.add.image(28, cy, entry.icon).setTint(PAL.steel);
-      const label = pixelText(scene, 40, cy, upper(entry.label), { size: 'md', originY: 0.5, color: PAL.mist });
+      const label = pixelText(scene, 40, cy, entry.label.toUpperCase(), { size: 'md', originY: 0.5, color: PAL.mist });
       const num = pixelText(scene, this.w - 12, cy, String(i + 1), { size: 'sm', originX: 1, originY: 0.5, color: PAL.night4 });
       const zone = scene.add
         .zone(this.x + 4, this.y + ry, this.w - 8, ROW_H - 2)

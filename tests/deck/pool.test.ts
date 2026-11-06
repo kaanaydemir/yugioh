@@ -14,13 +14,13 @@ describe('pool filter / sort', () => {
     for (const a of ELEMENTS) for (const id of visibleIds({ kind: 'all', attr: a }, 'atk')) expect(matches(COLLECTIBLE_CARDS.find((c) => c.id === id)!, { kind: 'all', attr: a })).toBe(true);
   });
 
-  it('sorts by level desc, ATK desc, and name (Turkish)', () => {
+  it('sorts by level desc, ATK desc, and name (English collation)', () => {
     const byLevel = sortPool(COLLECTIBLE_CARDS, 'level').filter(isMonster);
     for (let i = 1; i < byLevel.length; i++) expect(byLevel[i - 1].level).toBeGreaterThanOrEqual(byLevel[i].level);
     const byAtk = sortPool(COLLECTIBLE_CARDS, 'atk').filter(isMonster);
     for (let i = 1; i < byAtk.length; i++) expect(byAtk[i - 1].atk).toBeGreaterThanOrEqual(byAtk[i].atk);
     const names = sortPool(COLLECTIBLE_CARDS, 'name').map((c) => c.name);
-    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'tr')));
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, 'en')));
     // monsters come before spells / traps in the level and ATK sorts
     const kinds = sortPool(COLLECTIBLE_CARDS, 'level').map((c) => c.kind === 'monster');
     expect(kinds.indexOf(false)).toBe(kinds.lastIndexOf(true) + 1);

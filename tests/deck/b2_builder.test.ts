@@ -36,7 +36,7 @@ describe('builder grid with the new cards', () => {
     for (const id of SINGLE_COPY_IDS) {
       expect(isSingleCopy(id)).toBe(true);
       expect(maxCopies(id)).toBe(1);
-      expect(addBlocker([id], id)).toBe('Bu karttan destede zaten var (en çok 1)');
+      expect(addBlocker([id], id)).toBe('This card is already in the deck (max 1)');
     }
     expect(maxCopies('polar_needle')).toBe(3);
     expect(maxCopies('puppet_string')).toBe(3);
