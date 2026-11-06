@@ -25,6 +25,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
 |---|---|---|---|---|---|
 | puppet_string (Kukla İpi) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı piksel, 4 kare | tamam: haç, 5 ip, 3 sarsak sıçrama, End Phase'de ipler kopar ve dönüş; alma 5,22 sn (≤5,3), dönüş ~2,0 sn (≤2,19); CPU senaryosu ePuppetBot | tamam: 14 e_puppet tarifi, her vuruşun sesi var | 5,5 / 6,5 / 7 | shots/e/puppet_string/ |
 | auger_lance (Burgu Mızrağı) | büyük + elle yeniden kurulmuş küçük; §10 dama sınırı içinde (büyük ≤22/26, küçük ≤3/6), x1/x3/x6 bakıldı | tamam: yarık, mızrak, burgu; elden 3566 ms / set 3366 ms (≤3675); set kartı mızrak çıkınca yatırılır; CPU senaryosu eAugerCpu | tamam: 14 e_* tarifi, her vuruşta ses, kırpma yok (tepe ≤ -1,9 dB) | 6 / 7,5 / 7 | shots/e/auger_lance/ |
+| well_pail (Kuyu Kovası) | büyük + elle yapılmış küçük (daha sıkı kırpım); 0 palet dışı, mürekkep çizgisi 1,00, ton 19/20 | tamam: kova, makara cırcırı, iki kart çekme; el ~4,9 sn, bot 4,73 sn; kamera sabit; HP plakası parlama hatası düzeltildi; CPU senaryosu eWellPailCpu | tamam: 15 e_well tarifi, her vuruşta ses, 330 Hz cırcır imzası | 5,5 / 7 / 7,5 | shots/e/well_pail/ |
 | (doldurulacak) | | | | | |
 
 ### S3 Boşluk Gözü (`void_eye`)
@@ -231,3 +232,10 @@ kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe aç�
 - Saldırıya hızlı cevap: temas düz saldırıdan 5,1 sn sonra (açılma 1,1 sn + hedef seçimi + 3,0 sn imza). Sahibin süre sınırı yok kararıyla kabul.
 - palcheck (a5) el filminde t=900'de bir karede Δoff +1,27 pt: yarığın zemindeki ışık havuzu (izinli ışık katmanı).
 - eAugerCpu tools/measure.mjs ile ölçülemez (hot-seat'e yeniden başlar); &mode=vsBot ile, --fresh olmadan filme alın.
+
+### well_pail
+- Süre: el aşamaları ~4,88–4,92 sn (bot 4,73 sn), kabul 4,755 sn'den ~130–170 ms fazla; sahibin süre sınırı yok kararıyla storyboard kısaltılmadı.
+- palcheck (eWellPail, kırpım 120,40,400,300) t=4200–4350'de 2 karede Δoff +1,05 pt: kova düşüşü flaşı / ışık havuzunun zemine karışması (taş tonları). Flaş şiddeti (1,0) düşürülebilir.
+- Kart resmi yumuşak bayraklar: büyük özne doluluğu 0,86 (dawn_swords 0,87), küçük/büyük yerleşim 0,56 (auger_lance da 0,56); küçük ton 20/20 sınırda.
+- Mühür aşamalarında 38 px kamera kayması beş mühür kazanma sekansından, bu karttan değil.
+- `tests/art/cloud_hatchling.test.ts` başarısız: başka kartın işi, ilgisiz.
