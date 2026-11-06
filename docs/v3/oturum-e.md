@@ -33,6 +33,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
 | spite_axe (Hınç Baltası) | büyük 88×68 + elle 44×34 küçük, ikisi de %100 palette, resim aracı bayraksız | tamam: kuşanma +800, dönüşte sahibinin destesine gider, sahibine −500 kırbaç ve −800 ATK (P1/P2); elden 5,35 sn (pay 5,03, süre sınırı yok kararıyla kabul); CPU senaryosu eAxeCpu (&mode=vsBot) | tamam: 14 e_axe tarifi, her biri vuruşunda çalıyor | 5 / 6,5 / 6,5 | shots/e/spite_axe/ |
 | page_turner (Sayfa Çeviren) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı piksel, 4 kare | tamam: kitap, eller bağlanır, sayfa karıştırma, preslenmiş yapraklar iki mezarlığa, yeniden dağıtım, kapanış; ePage 5,70 sn (pay 5,84); kamera sabit; CPU senaryoları ePageBot / ePageCpu | tamam: her vuruşta e_page* tarifi; dağıtımda genel cardDraw susturuluyor | 6 / 6,5 / 7 | shots/e/page_turner/ |
 | lucky_die (Talih Zarı) | büyük 88×68 + elle 44×34 küçük, bayraksız, 0 palet dışı, 13 ton, mürekkep 1,00; küçük/büyük 0,86 | tamam: zar atışı, yüze göre +100×zar ATK/DEF; 1'de sönük e_dieDud, 6'da ikramiye akoru + üç havai fişek; toplam 4,25–5,05 sn (pay 5,03, süre sınırı yok kararıyla kabul); kamera sabit; CPU senaryosu eDieCpu (&mode=vsBot) | tamam: 13 e_die* tarifi, hepsi sahnede çalıyor, ses yüksekliği makul | 6 / 7 / 7 | shots/e/lucky_die/ |
+| crystal_wyrm (Kristal Ejder) | YALNIZ KART RESMİ: büyük 88×68 + elle 44×34 küçük; 0 palet dışı, beyaz yok, mürekkep 1,00; büyük 18 ton / %2,3 tek piksel / 21 kare, küçük 17 ton / %4,9 / 3 kare; yaşayan şeritler iki boyutta | kapsam dışı (kart sinematiği yok); çağrı ~3,5 sn, kamera sabit; v1 filmdiff 17/17 AYNI; CPU senaryosu eWyrmCpu (&mode=vsBot) | kapsam dışı (yeni ses yok) | 6,5 / 6,5 / 7,5 | shots/e/crystal_wyrm/ |
 | (doldurulacak) | | | | | |
 
 ### S3 Boşluk Gözü (`void_eye`)
@@ -290,3 +291,8 @@ kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe aç�
 - eDie ve eDieP2 (zar 6) 5,05 sn sürüyor, pay 5,03 sn — havai fişek kuyruğu yüzünden 0,02 sn fazla; süre sınırı yok kararıyla bırakıldı.
 - Her senaryonun ses listesinde sona doğru 'heronDrop' var: reed_heron'un (başka şerit, src/cinematics/kartc/reed_heron-marsh.ts) ortam sesi, zarın sönüşüyle çakışıyor.
 - tests/art/hollow_ogre ve mudgrasp_spirit tam koşuda yük altında düşüyor, tek başına 20/20 geçiyor; bu karttan kaynaklı değil.
+
+### crystal_wyrm
+- KART_RESIMLERI §10: 2x kart büyük resmi 1:1 göstermeli; inceleme paneli (src/view/v3/inspectV3.ts, başka şerit) hâlâ 1x yüzü büyütüyor, 44×34 resim 2×2 bloklarla görünüyor. Büyük resim LANE_E_ART_BIG'de hazır, ama henüz gösteren yok.
+- Büyük resimde konu çerçevenin 0,89'unu dolduruyor (araç 0,6–0,75 dışını işaretliyor); kasıtlı: kanat ve boyun sol/alt kenardan taşıyor, ashen_drake ile aynı tercih.
+- v3 el yelpazesinde her kartta dönüşten kaynaklı 1 px dikey dikiş var (ember_wolf, judgment_bolt'ta da); sistem geneli, bu karttan değil.
