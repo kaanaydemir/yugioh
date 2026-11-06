@@ -23,6 +23,8 @@
 //                   0.4 s, over a short punch — a drill breaking through, not a hammer
 //   e_augerRetract  the lance pulls back up: "vuuş" — an air swish that dips then rises, a low body, the rotor down
 //   e_augerSlap     the broken card slaps flat on its tile: a dry card slap + a little steel rattle of curls
+//   e_augerSpin     the drilled card spins out flat like a dropped coin: a rattle whose tick rate rises, a last clack
+//   e_augerShards   the broken pieces lift off together for the graveyard: a brittle rustle + loose steel tinkles
 //   e_augerRift     (field spell drilled) cracks run along the floor: a dry crackle running away + a low rumble
 
 import type { Recipe } from '../../sounds';
@@ -54,18 +56,22 @@ export const RECIPES = {
         [0.13, 1500, 'e'],
       ];
       const bp = v.filt('bandpass', [[0, 1200], [0.1, 4200, 'e']], 1.4);
-      v.tone('square', zz, { g: [[0, 0], [0.004, 0.09], [0.11, 0.07], [0.15, 0.0001, 'e']], to: bp });
-      v.tone('sine', zz.map(([t, f, c]) => [t, f * 2, c] as Pt), { g: [[0, 0], [0.004, 0.035], [0.14, 0.0001, 'e']] });
-      crack(v, 0, 0.3, { hp: 3200, n: 2, gap: 0.03 });
+      v.tone('square', zz, { g: [[0, 0], [0.004, 0.13], [0.11, 0.1], [0.15, 0.0001, 'e']], to: bp });
+      v.tone('sine', zz.map(([t, f, c]) => [t, f * 2, c] as Pt), { g: [[0, 0], [0.004, 0.05], [0.14, 0.0001, 'e']] });
+      crack(v, 0, 0.42, { hp: 3200, n: 2, gap: 0.03 });
       // the snap of the card springing upright
-      thump(v, 0.005, 240, 90, 0.22, 0.07, { drive: 1.4 });
+      thump(v, 0.005, 240, 90, 0.32, 0.07, { drive: 1.4 });
+      // round 4: a low BODY under the zap (a turquoise "whumm" kick: square 130 → 65 Hz + a sine sub drop), so
+      // the reveal stands as tall as the trap's opening without copying its stab
+      v.tone('square', [[0, 130], [0.16, 65, 'e']], { t: 0.004, g: [[0, 0], [0.006, 0.11], [0.08, 0.06], [0.2, 0.0001, 'e']], to: v.filt('lowpass', 420, 1.1) });
+      v.tone('sine', [[0, 110], [0.18, 48, 'e']], { t: 0.004, g: [[0, 0], [0.008, 0.3], [0.1, 0.16], [0.24, 0.0001, 'e']] });
       // "ready!": three quick square notes up a fourth-stacked figure (E6, A6, D7) + a glass ping on the top
       [88, 93, 98].forEach((m, i) => {
         const t = 0.12 + i * 0.045;
-        v.tone('square', midiHz(m), { t, g: [[0, 0], [0.003, 0.05], [0.04, 0.03], [0.09, 0.0001, 'e']], to: v.filt('lowpass', 6000, 0.8) });
+        v.tone('square', midiHz(m), { t, g: [[0, 0], [0.003, 0.07], [0.04, 0.042], [0.09, 0.0001, 'e']], to: v.filt('lowpass', 6000, 0.8) });
       });
-      v.bell(midiHz(98), { t: 0.21, g: 0.05, dec: 0.32, ratio: 3.5, index: 0.8 });
-      sweep(v, 0.1, 0.22, [1800, 6200, 3600], 0.06, { kind: 'white', q: 2.5, peakAt: 0.3 });
+      v.bell(midiHz(98), { t: 0.21, g: 0.07, dec: 0.32, ratio: 3.5, index: 0.8 });
+      sweep(v, 0.1, 0.22, [1800, 6200, 3600], 0.085, { kind: 'white', q: 2.5, peakAt: 0.3 });
     },
   },
   /** The revealed quick card lies back down COCKED: a two-stage cocking click and a low teal hum tick. */
@@ -98,7 +104,13 @@ export const RECIPES = {
       crack(v, 0.03, 0.34, { hp: 2600, n: 1, dec: 0.012 });
       thump(v, 0.032, 280, 120, 0.2, 0.035, { drive: 1.5 });
       // the one teal tick: a single short square chirp up (the spark off the top edge)
-      v.tone('square', [[0, 2200], [0.03, 4200, 'e']], { t: 0.05, g: [[0, 0], [0.002, 0.05], [0.035, 0.0001, 'e']], to: v.filt('bandpass', 3400, 2) });
+      v.tone('square', [[0, 2200], [0.03, 4200, 'e']], { t: 0.05, g: [[0, 0], [0.002, 0.08], [0.035, 0.0001, 'e']], to: v.filt('bandpass', 3400, 2) });
+      // round 4: a 2nd transient (the orb leaving: a tight air "tchk" + a low kick) and a short pre-echo of the
+      // lance's whistle (1 → 4 kHz in 0.12 s, the descent's 1 → 8 kHz announced, an octave under it)
+      crack(v, 0.06, 0.4, { hp: 1800, lp: 7000, n: 1, dec: 0.015 });
+      thump(v, 0.06, 200, 80, 0.24, 0.05, { drive: 1.3 });
+      v.tone('sine', [[0, 1000], [0.12, 4000, 'e']], { t: 0.07, g: [[0, 0], [0.02, 0.05], [0.1, 0.04], [0.14, 0.0001, 'e']] });
+      v.noise('white', { t: 0.07, g: [[0, 0], [0.03, 0.12], [0.13, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1000], [0.12, 4000, 'e']], 7, { t: 0.07 }) });
     },
   },
   /** The target is marked: two steel ticks and a short rising glint. */
@@ -244,10 +256,51 @@ export const RECIPES = {
     gap: 0.1,
     verb: 0.35,
     play(v) {
-      v.crackle({ t: 0, d: 0.32, n: 18, g: 0.22, f: 3000, q: 1.2, dec: 0.008, curve: 0.7 });
-      v.tone('sawtooth', [[0, 70], [0.35, 52, 'e']], { g: [[0, 0], [0.03, 0.09], [0.3, 0.05], [0.42, 0.0001, 'e']], to: v.filt('lowpass', 260, 1) });
-      sweep(v, 0, 0.3, [2400, 1400, 600], 0.12, { kind: 'pink', q: 1.4, peakAt: 0.2 });
-      v.tone('sine', [[0, 1800], [0.25, 900, 'e']], { g: [[0, 0], [0.01, 0.02], [0.25, 0.0001, 'e']] });
+      // round 4: +4 dB, and a MID crackle band (stone splitting, 900 Hz – 1.6 kHz) under the dry high one
+      v.crackle({ t: 0, d: 0.32, n: 18, g: 0.5, f: 3000, q: 1.2, dec: 0.008, curve: 0.7 });
+      v.crackle({ t: 0.01, d: 0.34, n: 16, g: 0.9, f: 1300, q: 1.3, dec: 0.016, curve: 0.85, drive: 1.6 });
+      v.tone('sawtooth', [[0, 70], [0.35, 52, 'e']], { g: [[0, 0], [0.03, 0.15], [0.3, 0.08], [0.42, 0.0001, 'e']], to: v.filt('lowpass', 260, 1) });
+      thump(v, 0, 90, 45, 0.18, 0.12, { drive: 1.3 });
+      sweep(v, 0, 0.3, [2400, 1400, 600], 0.19, { kind: 'pink', q: 1.4, peakAt: 0.2 });
+      v.tone('sine', [[0, 1800], [0.25, 900, 'e']], { g: [[0, 0], [0.01, 0.032], [0.25, 0.0001, 'e']] });
+    },
+  },
+  /**
+   * The drilled card SPINS OUT flat like a dropped coin (after the slap): a steel/card rattle whose tick rate
+   * RISES while it fades (Euler's-disk wobble), ending on one dry clack — no rotor, no whistle.
+   */
+  e_augerSpin: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.18,
+    play(v) {
+      const D = 0.46;
+      let t = 0.02;
+      let i = 0;
+      while (t < D) {
+        const k = t / D;
+        // tick period 70 ms → 14 ms; each tick a card edge on the tile (low click) + a thin steel ring
+        const g = 0.2 * (1 - 0.7 * k);
+        v.noise('white', { t, g: perc(g, 0.004, 0.0002), to: v.filt('bandpass', 1300 + 900 * k + (i % 2) * 300, 3) });
+        link(v, 3100 + 1300 * k + (i % 2 ? 260 : 0), t, 0.06 * (1 - 0.6 * k), 0.035);
+        t += 0.07 - 0.056 * Math.pow(k, 0.8);
+        i++;
+      }
+      // the wobble's hum under it (a low triangle rising with the rate), then the last clack
+      v.tone('triangle', [[0, 180], [D, 420, 'e']], { g: [[0, 0], [0.04, 0.035], [D * 0.9, 0.02], [D, 0.0001, 'e']], to: v.filt('lowpass', 900, 1) });
+      thump(v, D, 300, 140, 0.18, 0.03);
+      crack(v, D, 0.22, { hp: 1400, lp: 6000, n: 1, dec: 0.012 });
+    },
+  },
+  /** The broken pieces lift off the tile together (to the graveyard): a brittle rustle and a few loose steel tinkles. */
+  e_augerShards: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0.25,
+    play(v) {
+      puff(v, 0, 0.3, 0.1, 2600, { kind: 'pink' });
+      v.crackle({ t: 0, d: 0.18, n: 9, g: 0.34, f: 2400, q: 1.5, dec: 0.01, curve: 1.2 });
+      [5200, 6100, 4700].forEach((f, i) => link(v, f, 0.02 + i * 0.05, 0.1, 0.08));
     },
   },
 } satisfies Record<string, Recipe>;

@@ -15,9 +15,8 @@
 //              shaft leaves the bore (a white glint on its lit side) and the bore's lip (teal3 / teal4).
 //   backdrop   the kit's SPELL recipe (night0 / night1 sky bands, night0 floor), its light shape laid flat on the
 //              floor as a sigil under the tip.
-// The small picture (44×34) is painted again at 1× by the same composition code, with its own hand-placed pieces:
-// a 3-band diagonal helix (ink groove / mist lip / steel) with a clean stair period, two big hook curls, a
-// 3-flap burr and a 5-px tip star.
+// The small picture (44×34) is its own 1× drawing (paintSmall, round 4): an upright card, a bold 45° auger with
+// 2-px two-tone flute stripes and a sharp point past the card's corner, one big white curl, a tip star.
 // Living art: 4 frames × 110 ms — the flute scrolls (the lance turns), the curls roll, the tip star pulses.
 
 import { PAL } from '../palette';
@@ -88,30 +87,6 @@ const BIG: Geo = {
     { a: 19, side: 1, r: 7, len: 5 },
     { a: 7, side: 1, r: 5, len: 3 },
   ],
-};
-
-const SMALL: Geo = {
-  k: 1,
-  hole: [18, 13],
-  dir: DIR,
-  front: 14,
-  hw: 3,
-  chw: 4,
-  bit: 7,
-  collar: [27, 30],
-  per: 4,
-  cc: [17, 15],
-  chx: 8,
-  chy: 10,
-  roll: -0.16,
-  frame: 2,
-  holeR: 4,
-  cracks: [
-    [-2.2, 7],
-    [2.45, 7],
-  ],
-  burr: [-2.6, -1.3, 2.6],
-  curls: [],
 };
 
 /** A rolled rectangle's corners. */
@@ -332,17 +307,6 @@ const TIP_SMALL: readonly (readonly string[])[] = [
   ['.....', '..t..', '.twt.', '..t..', '.....'],
 ];
 const C_KEY: Readonly<Record<string, number>> = { w: PAL.white, m: PAL.mist, s: PAL.steel };
-// prettier-ignore  — the small's two big curls: hooks rolling off the shaft (root at the left / right edge)
-const HOOK_R: readonly (readonly string[])[] = [
-  ['.mmm.', 'm...m', 'm.w.s', 'ss.s.', 's....'],
-  ['.smm.', 's...m', 'm.w.m', 'mm.s.', 's....'],
-];
-// prettier-ignore
-const HOOK_L: readonly (readonly string[])[] = [
-  ['.mmm.', 'm...m', 's.w.m', '.s.ss', '....s'],
-  ['.mms.', 'm...s', 'm.w.m', '.s.mm', '....s'],
-];
-
 function paint(l: ArtLayers, f: number, g: Geo): void {
   const k = g.k;
   const tip = tipOf(g);
@@ -407,15 +371,108 @@ function paint(l: ArtLayers, f: number, g: Geo): void {
     }
     // the ribbons peel off the flute edges, rolling as the lance turns
     g.curls.forEach((c, i) => ribbon(l.light, g, c.a + (f % 2), c.side, c.r, c.len, f * 0.5 * (i % 2 ? -1 : 1)));
-  } else {
-    // small (hand-made): two big hook curls rolling off the shaft's two sides
-    const nxS = g.dir[1];
-    const nyS = -g.dir[0];
-    const r1: XY = [Math.round(tip[0] - g.dir[0] * 7 + nxS * (g.hw + 3)), Math.round(tip[1] - g.dir[1] * 7 + nyS * (g.hw + 3))];
-    const r2: XY = [Math.round(tip[0] - g.dir[0] * 5 - nxS * (g.hw + 3)), Math.round(tip[1] - g.dir[1] * 5 - nyS * (g.hw + 3))];
-    patch(l.light, HOOK_R[f % 2] as string[], C_KEY, r1[0] - 1, r1[1] - 2);
-    patch(l.light, HOOK_L[(f + 1) % 2] as string[], C_KEY, r2[0] - 3, r2[1] - 2);
   }
+}
+
+// ---------------------------------------------------------------- the small picture (44×34), hand-made
+// Round 4 (critic: the 1× auger read as a "bandaged worm"): a separate, much simpler drawing built for 1×. An
+// upright magenta card (crisp, unrolled), a bold 7-px auger on an exact 45° diagonal (the cleanest stair) coming
+// out of the sky top-left, behind the card, out of a dark bore and on in front of it to a sharp 1-px steel point
+// poking past the card's lower-right corner. The flute: TWO-TONE stripes, 2 px each, slanted across the axis
+// (the helix), with a lit / shaded side; one big white curl; no teal ring (the bore is just dark, ink-rimmed).
+
+/** The small's card: left, top, right, bottom (inclusive) and the bore centre. */
+const SC = { l: 6, t: 3, r: 25, b: 29 } as const;
+const SB: XY = [16, 13];
+/** The lance axis: pixels with x − y = AX lie on it; along = x + y; the tip's along; the shaft's half width. */
+const AX = SB[0] - SB[1];
+const S_TIP = 60;
+const S_HW = 3;
+const S_BIT = 7;
+
+function smallCard(p: PixelCanvas): void {
+  for (let y = SC.t; y <= SC.b; y++)
+    for (let x = SC.l; x <= SC.r; x++) {
+      const edge = x === SC.l || x === SC.r || y === SC.t || y === SC.b;
+      const inner = x === SC.l + 1 || x === SC.r - 1 || y === SC.t + 1 || y === SC.b - 1;
+      let c: number = PAL.night3;
+      if (edge) c = x === SC.l || y === SC.t ? PAL.night4 : PAL.night2;
+      else if (inner) c = PAL.night3;
+      else if (y <= 17) c = y <= 11 ? PAL.mag2 : PAL.mag1;
+      else if (y <= 19) c = PAL.mag0;
+      else c = (y - 21) % 3 === 0 && x > SC.l + 2 && x < SC.r - 6 ? PAL.night4 : PAL.night3;
+      p.set(x, y, c);
+    }
+  // two cracks running from the bore out to the frame (jagged: 2 across, 1 down / up), a lit mag4 lip under each
+  for (const [dx, dy] of [
+    [-1, -1],
+    [-1, 1],
+  ] as const) {
+    let x = SB[0];
+    let y = SB[1];
+    for (let i = 0; i < 40; i++) {
+      if (i % 3 === 2) y += dy;
+      else x += dx;
+      if (x <= SC.l + 1 || x >= SC.r - 1 || y <= SC.t + 1 || y >= SC.b - 1) break;
+      p.set(x, y, PAL.ink);
+    }
+  }
+  // the bore: a 9 × 6 punched hole (night0), its lower lip lit (the torn stock, mag3)
+  for (let y = -3; y <= 3; y++)
+    for (let x = -4; x <= 4; x++) {
+      const d = (x * x) / 20 + (y * y) / 9;
+      if (d <= 1) p.set(SB[0] + x, SB[1] + y, PAL.night0);
+      else if (d <= 1.5 && y > 0) p.set(SB[0] + x, SB[1] + y, PAL.mag0);
+    }
+}
+
+/** The small lance's colour at (x, y), or null. Stripes scroll with the frame (it turns). */
+function smallLance(x: number, y: number, f: number): number | null {
+  const across = x - y - AX;
+  const along = x + y;
+  if (along > S_TIP) return null;
+  const hw = along > S_TIP - S_BIT ? Math.floor((S_TIP - along) / 2) : S_HW;
+  if (Math.abs(across) > hw) return null;
+  if (along === S_TIP && across === 0) return PAL.mist;
+  const lit = across > 0;
+  // the helix: 2-px two-tone stripes slanted across the axis
+  const sIdx = (((Math.floor((along + Math.round(across * 0.5) + f) / 2) % 2) + 2) % 2) as number;
+  if (sIdx === 0) return lit ? PAL.mist : PAL.steel;
+  return lit ? PAL.night4 : PAL.night2;
+}
+
+// prettier-ignore — one big white curl peeling off the shaft's lit edge (root at the bottom-left, 's')
+const CURL_S: readonly (readonly string[])[] = [
+  ['..wwww.', '.w....w', 'w..ww.w', 'w.w..ww', 'w..ww..', '.m.....', 's......'],
+  ['..mwww.', '.w....w', 'w..ww.w', 'm.w..ww', 'w..ww..', '.m.....', 's......'],
+];
+
+function paintSmall(l: ArtLayers, f: number): void {
+  paintBackdrop(l.backdrop, 'SPELL', { focus: [S_TIP + AX, 58], radius: 20, horizon: 52, as: 'sigil' });
+  const card = new PixelCanvas(l.subject.w, l.subject.h);
+  smallCard(card);
+  l.subject.blit(card, 0, 0);
+  const holeAlong = SB[0] + SB[1];
+  for (let y = 0; y < l.subject.h; y++)
+    for (let x = 0; x < l.subject.w; x++) {
+      const c = smallLance(x, y, f);
+      if (c === null) continue;
+      const behind = x + y < holeAlong + 2;
+      const inBore = card.get(x, y) === PAL.night0;
+      if (behind && card.isOpaque(x, y) && !inBore) continue;
+      // inside the bore only the shaft's core shows (the hole's dark edge stays round it)
+      if (behind && inBore && Math.abs(x - y - AX) > 1) continue;
+      // through the bore the steel sinks into shadow
+      l.subject.set(x, y, behind && inBore ? (c === PAL.mist ? PAL.night4 : PAL.night2) : c);
+    }
+  ink(l.subject);
+  // the tip: a pulsing white / teal star on the point
+  const tx = (S_TIP + AX) / 2;
+  const ty = (S_TIP - AX) / 2;
+  const st = TIP_SMALL[f % 2];
+  patch(l.light, st as string[], L_KEY, Math.floor(tx) - 2, Math.floor(ty) + 1 - 2);
+  // the big curl off the lit (upper-right) edge, in front of the card
+  patch(l.light, CURL_S[f % 2] as string[], { ...C_KEY }, 26, 7);
 }
 
 const art: CardArtV3 = {
@@ -424,7 +481,7 @@ const art: CardArtV3 = {
   frames: FRAMES,
   holdMs: 110,
   big: (l, f) => paint(l, f, BIG),
-  small: (l, f) => paint(l, f, SMALL),
+  small: (l, f) => paintSmall(l, f),
 };
 
 export default art;

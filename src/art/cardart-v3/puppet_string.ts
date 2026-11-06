@@ -1,229 +1,41 @@
 // Kukla İpi (puppet_string) — v3 card art (style sheet docs/v3/KART_RESIMLERI.md, contract ./_types.ts).
 //
 // A puppet theatre: the puppeteer's cross hangs across the top of the picture; five gold strings run down from
-// its hook eyes to a horned imp — a MONSTER hung up as a marionette (YENI_KARTLAR §7 S2: "iplerden sarkan canavar
-// silüeti"): one clawed arm yanked up, one knee pulled, the other limbs hanging limp, its spade tail dangling, its
-// head lolling — and in its eye the teal spiral of the spell turns (the focus, the brightest point). A 5 × 4
-// heart of red cord binds the cross where its bars meet.
+// it to a horned imp — a MONSTER hung up as a marionette (YENI_KARTLAR §7 S2: "iplerden sarkan canavar
+// silüeti"): both arms yanked up in a V, legs hanging apart, feet off the floor over its shadow — and in its eye
+// the teal spiral of the spell turns (the focus). A heart of red cord binds the cross where its bars meet.
+// r5: the big is the small's composition at 1 : 1 detail (KART_RESIMLERI §27: one picture in hand and panel).
 //   backdrop  the SPELL recipe's tones painted as a stage SPOTLIGHT (kit `shape: false` + our own stepped cone:
 //             teal0 outer → teal2 inner, clean 1:3 edges) falling straight down on the puppet, its stepped pool on
 //             the floor, and two dark stage curtains (night2, night1 folds) at the sides. 6 tones.
-//   subject   the cross (gold planes: lit top gold3, mid gold2, shadow gold1; a heart knot fire2/3/4), the
-//             imp (void planes: lit void3 edge, void2 body, void1 back limbs; gold1 wooden joint pins), ink
-//             outlined, the recipe's teal3 rim on the shadow side.
-//   light     never outlined: the five strings (gold4, drawn 4-connected: a step corner never makes a 2×2
-//             checker), the star hooks (white heart), the eye spiral (teal4 / teal3 with a white heart), a bead
-//             of light running down the head string.
+//   subject   the cross (gold planes, a heart knot fire2/3/4 framed in ink), the imp (void planes: lit void3
+//             edge, void2 body, void1 shadow edge; gold1 wooden joint pins), ink outlined, a teal3 rim (big).
+//   light     never outlined: the strings (gold4, drawn 4-connected), the star hooks (white heart), the eye
+//             spiral (teal4 with a white heart), a bead of light running down a string.
 // Small (44×34): hand-placed pixel by pixel in paintSmall (r4, KART_RESIMLERI §1 (2)): fewer, clearer parts for
 // the 1× read — three straight 1-px strings at 1 : 3 slopes, a 2-tone puppet with both arms yanked up and the legs
-// hanging apart, a 3 × 3 heart knot framed in ink, the 3 × 3 spiral eye. (CFG.small is the r1–r3 layout, unused.)
-// Living art: 4 frames × 150 ms — the puppet sways 1 px left / right on its strings (the strings follow), the
-// spiral turns a quarter per frame, a bead runs down the head string.
+// hanging apart, a 3 × 3 heart knot framed in ink, the 3 × 3 spiral eye.
+// Living art: 4 frames × 150 ms — the puppet is jerked up 1 px on its strings (the strings shorten), its legs
+// dangle-swing 1 px (big), the spiral turns a quarter per frame, a bead runs down a string.
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
-import { ink, litEdge, paintBackdrop, rim, shape, steppedEllipse } from './_kit';
+import { ink, paintBackdrop, rim, shape, steppedEllipse } from './_kit';
 import type { ArtLayers, CardArtV3 } from './_types';
 
 type Size = 'big' | 'small';
 type P = readonly [number, number];
 
 /** The picture's focus (the spiral eye) in BIG px. */
-const FOCUS = [50, 32] as const;
-
-interface Cfg {
-  /** cross: hand bar y (top row), x0..x1, bar rows; upright x (left col), y0..y1, width; foot bar y, x0..x1 */
-  readonly bar: readonly [number, number, number, number];
-  readonly up: readonly [number, number, number, number];
-  readonly foot: readonly [number, number, number];
-  /** the heart knot (top-left of its 5 × 4 / 7 × 5 stamp) */
-  readonly knot: P;
-  /** the five hook eyes on the cross (string order: left hand, left knee, head, right knee, right hand) */
-  readonly hooks: readonly P[];
-  /** the imp: head centre + radius, torso polygon, limbs (shoulder / hip, elbow / knee, hand / foot), tail */
-  readonly head: readonly [number, number, number];
-  readonly torso: readonly P[];
-  readonly lArm: readonly [P, P, P];
-  readonly rArm: readonly [P, P, P];
-  readonly lLeg: readonly [P, P, P];
-  readonly rLeg: readonly [P, P, P];
-  readonly tail: readonly P[];
-  readonly limbW: number;
-  /** horn strokes (base → tip) */
-  readonly horns: readonly (readonly P[])[];
-  /** claw pixels (relative to nothing: absolute, before the sway) */
-  readonly claws: readonly P[];
-  /** string ends on the puppet (string order) */
-  readonly ends: readonly P[];
-  readonly eye: P;
-  readonly shadow: readonly [number, number, number];
-}
-
-const CFG: Readonly<Record<Size, Cfg>> = {
-  big: {
-    bar: [10, 15, 73, 3],
-    up: [43, 4, 26, 3],
-    foot: [20, 28, 60],
-    knot: [41, 8],
-    hooks: [
-      [16, 13],
-      [29, 23],
-      [44, 27],
-      [59, 23],
-      [72, 13],
-    ],
-    head: [48, 35, 5],
-    torso: [
-      [41, 40],
-      [55, 40],
-      [53, 51],
-      [43, 51],
-    ],
-    lArm: [
-      [41, 41],
-      [35, 47],
-      [32, 54],
-    ],
-    rArm: [
-      [55, 41],
-      [64, 37],
-      [71, 29],
-    ],
-    lLeg: [
-      [44, 51],
-      [38, 56],
-      [40, 63],
-    ],
-    rLeg: [
-      [52, 51],
-      [56, 57],
-      [55, 63],
-    ],
-    tail: [
-      [52, 50],
-      [60, 53],
-      [65, 57],
-      [66, 61],
-    ],
-    limbW: 3,
-    horns: [
-      [
-        [45, 31],
-        [42, 27],
-        [41, 24],
-      ],
-      [
-        [51, 31],
-        [54, 27],
-        [56, 25],
-      ],
-    ],
-    claws: [
-      [30, 56],
-      [32, 57],
-      [34, 56],
-      [70, 26],
-      [73, 27],
-      [69, 27],
-      [38, 64],
-      [42, 64],
-      [53, 64],
-      [57, 64],
-    ],
-    ends: [
-      [32, 54],
-      [38, 56],
-      [47, 30],
-      [56, 57],
-      [71, 29],
-    ],
-    eye: [50, 34],
-    shadow: [48, 64, 11],
-  },
-  small: {
-    bar: [5, 6, 37, 2],
-    up: [21, 2, 12, 2],
-    foot: [11, 10, 31],
-    knot: [19, 4],
-    hooks: [
-      [7, 7],
-      [14, 11],
-      [22, 13],
-      [29, 11],
-      [36, 7],
-    ],
-    head: [24, 17, 3],
-    torso: [
-      [20, 20],
-      [28, 20],
-      [27, 26],
-      [21, 26],
-    ],
-    lArm: [
-      [20, 21],
-      [17, 24],
-      [15, 27],
-    ],
-    rArm: [
-      [28, 21],
-      [32, 18],
-      [35, 14],
-    ],
-    lLeg: [
-      [22, 26],
-      [19, 28],
-      [20, 31],
-    ],
-    rLeg: [
-      [26, 26],
-      [28, 28],
-      [28, 31],
-    ],
-    tail: [
-      [27, 25],
-      [31, 27],
-      [33, 29],
-      [33, 31],
-    ],
-    limbW: 2,
-    horns: [
-      [
-        [22, 14],
-        [21, 12],
-      ],
-      [
-        [26, 14],
-        [27, 12],
-      ],
-    ],
-    claws: [
-      [14, 28],
-      [16, 29],
-      [36, 13],
-      [36, 15],
-    ],
-    ends: [
-      [15, 27],
-      [19, 28],
-      [23, 15],
-      [28, 28],
-      [35, 14],
-    ],
-    eye: [25, 17],
-    shadow: [24, 32, 6],
-  },
-};
-
-/** Sway offset of the puppet per frame (strings follow). */
-const SWAY = [0, 1, 0, -1] as const;
-
-const shift = (p: P, dx: number): P => [p[0] + dx, p[1]];
+const FOCUS = [46, 31] as const;
+/** The stage light's aim (the backdrop recipe; the same for both sizes, as in r1–r4). */
+const STAGE_FOCUS = [50, 32] as const;
 
 /** The stage: SPELL tones as a straight-down spotlight cone + its floor pool, dark curtains at the sides. */
 function paintStage(p: PixelCanvas, size: Size): void {
   const big = size === 'big';
   const hz = 52;
-  paintBackdrop(p, 'SPELL', { focus: FOCUS, horizon: hz, shape: false });
+  paintBackdrop(p, 'SPELL', { focus: STAGE_FOCUS, horizon: hz, shape: false });
   // the cone (BIG px): centre x 46, three steps; edges slope 1:3 (x per y) — clean 3-px runs at 2×
   const cx = 46;
   const tones = [PAL.teal0, PAL.teal1, PAL.teal2];
@@ -243,7 +55,9 @@ function paintStage(p: PixelCanvas, size: Size): void {
     );
   });
   // the horizon line stays (the light meets the stage floor), the pool on the floor under the puppet
-  steppedEllipse(p, cx + 2, hz + 7, 26, 4, [PAL.teal1, PAL.teal2], 8);
+  // (big: lower, so the hanging feet stay clear of it — the pool is BELOW the puppet, not under its soles)
+  if (big) steppedEllipse(p, cx - 1, 63, 26, 3, [PAL.teal1, PAL.teal2], 8);
+  else steppedEllipse(p, cx + 2, hz + 7, 26, 4, [PAL.teal1, PAL.teal2], 8);
   // the curtains: a flat night2 drape at each side, night1 fold lines, gathered toward the floor (a tie-back)
   const curtain = (x0: number, dir: 1 | -1) => {
     // BIG px: 9 wide at the top, narrowing to 5 at the tie (y 40), flaring to 8 at the floor
@@ -269,105 +83,6 @@ function paintStage(p: PixelCanvas, size: Size): void {
   curtain(big ? 87 : 87, -1);
 }
 
-function paintCross(p: PixelCanvas, size: Size): void {
-  const C = CFG[size];
-  const big = size === 'big';
-  const [by, bx0, bx1, rows] = C.bar;
-  const barTones = big ? [PAL.gold3, PAL.gold2, PAL.gold1] : [PAL.gold3, PAL.gold1];
-  for (let r = 0; r < rows; r++) p.hline(bx0, bx1, by + r, barTones[r]);
-  const [ux, uy0, uy1, uw] = C.up;
-  const upTones = big ? [PAL.gold3, PAL.gold2, PAL.gold1] : [PAL.gold3, PAL.gold1];
-  for (let c = 0; c < uw; c++) p.vline(ux + c, uy0, uy1, upTones[c]);
-  p.hline(ux, ux + uw - 1, uy0, PAL.gold4);
-  const [fy, fx0, fx1] = C.foot;
-  p.hline(fx0, fx1, fy, PAL.gold2);
-  if (big) p.hline(fx0, fx1, fy + 1, PAL.gold1);
-  // bar end caps (round knobs: the hook mounts)
-  if (big) {
-    for (const x of [bx0 - 1, bx1 + 1]) {
-      p.vline(x, by - 1, by + rows, PAL.gold2);
-      p.set(x, by - 1, PAL.gold3);
-    }
-    p.rect(bx0, by + rows, 2, 1, PAL.gold1);
-    p.rect(bx1 - 1, by + rows, 2, 1, PAL.gold1);
-    // wood grain: one darker tick per bar segment
-    for (const x of [21, 31, 56, 66]) p.set(x, by + 1, PAL.gold1);
-  } else {
-    p.set(bx0 - 1, by, PAL.gold2);
-    p.set(bx1 + 1, by, PAL.gold2);
-  }
-  // the heart knot (big 7 × 5, small 5 × 4), lit at its top-left lobe
-  const [kx, ky] = C.knot;
-  const heart = big ? ['.##.##.', '#######', '#######', '.#####.', '..###..', '...#...'] : ['.#.#.', '#####', '.###.', '..#..'];
-  heart.forEach((row, y) => [...row].forEach((ch, x) => ch === '#' && p.set(kx + x, ky + y, PAL.fire2)));
-  if (big) {
-    p.set(kx + 1, ky, PAL.fire4);
-    p.set(kx + 2, ky, PAL.fire3);
-    p.set(kx + 1, ky + 1, PAL.fire3);
-    p.set(kx + 2, ky + 1, PAL.fire4);
-    p.set(kx + 4, ky + 1, PAL.fire3);
-  } else {
-    p.set(kx + 1, ky, PAL.fire4);
-    p.set(kx + 1, ky + 1, PAL.fire3);
-  }
-}
-
-function paintPuppet(p: PixelCanvas, size: Size, dx: number): void {
-  const C = CFG[size];
-  const big = size === 'big';
-  const w = C.limbW;
-  const limb = (pts: readonly [P, P, P], tone: number) => {
-    const [a, b, c] = pts.map((q) => shift(q, dx));
-    p.thickLine(a[0], a[1], b[0], b[1], w, tone);
-    p.thickLine(b[0], b[1], c[0], c[1], w, tone);
-  };
-  // the tail hangs behind (a tapering void1 stroke, a spade tip)
-  const tl = C.tail.map((q) => shift(q, dx));
-  for (let i = 0; i + 1 < tl.length; i++) p.thickLine(tl[i][0], tl[i][1], tl[i + 1][0], tl[i + 1][1], big ? (i < 1 ? 2 : 1) : 1, PAL.void1);
-  const tip = tl[tl.length - 1];
-  if (big) {
-    p.hline(tip[0] - 2, tip[0] + 2, tip[1], PAL.void2);
-    p.hline(tip[0] - 1, tip[0] + 1, tip[1] + 1, PAL.void2);
-    p.set(tip[0], tip[1] + 2, PAL.void2);
-  } else {
-    p.hline(tip[0] - 1, tip[0] + 1, tip[1], PAL.void2);
-  }
-  // back limbs one step darker (they sit behind the body)
-  limb(C.lArm, PAL.void1);
-  limb(C.lLeg, PAL.void1);
-  // torso: a hunched void2 plane, a void3 lit band on its left
-  p.poly(C.torso.map((q) => shift(q, dx)), PAL.void2);
-  const [t0] = C.torso;
-  if (big) p.vline(t0[0] + dx + 1, t0[1] + 1, t0[1] + 8, PAL.void3);
-  limb(C.rLeg, PAL.void2);
-  limb(C.rArm, PAL.void2);
-  // horns (behind the head's outline: drawn first, the head covers their bases)
-  C.horns.forEach((hs) => {
-    for (let i = 0; i + 1 < hs.length; i++) {
-      const a = shift(hs[i], dx);
-      const b = shift(hs[i + 1], dx);
-      p.thickLine(a[0], a[1], b[0], b[1], big && i === 0 ? 2 : 1, i === hs.length - 2 ? PAL.void3 : PAL.void2);
-    }
-  });
-  // head, lolling a little to the right
-  const [hx, hy, hr] = C.head;
-  p.disc(hx + dx + 0.5, hy + 0.5, hr, PAL.void2);
-  if (big) {
-    // the brow catches the key light; a pointed chin (it is no doll: a jaw)
-    p.hline(hx + dx - 3, hx + dx, hy - 4, PAL.void3);
-    p.hline(hx + dx - 4, hx + dx - 2, hy - 3, PAL.void3);
-    p.set(hx + dx + 2, hy + hr, PAL.void2);
-    p.set(hx + dx + 3, hy + hr, PAL.void2);
-    // a wooden neck peg
-    p.rect(hx + dx - 1, hy + hr + 1, 2, 1, PAL.gold1);
-  }
-  // claws: hands and feet end in hooked points (void3 tips)
-  C.claws.forEach((c) => p.set(c[0] + dx, c[1], PAL.void3));
-  // wooden joint pins at elbows and knees (the marionette's joints)
-  if (big) for (const pts of [C.lArm, C.rArm, C.lLeg, C.rLeg]) p.set(pts[1][0] + dx, pts[1][1], PAL.gold1);
-  else for (const pts of [C.rArm, C.rLeg]) p.set(pts[1][0] + dx, pts[1][1], PAL.gold1);
-}
-
 /** A 1-px strand drawn 4-connected (every diagonal step gets a corner pixel: no 2×2 checker at a step). */
 function strand4(L: PixelCanvas, a: P, b: P, color: number, skip: (x: number, y: number) => boolean): void {
   const n = Math.max(Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]));
@@ -386,77 +101,215 @@ function strand4(L: PixelCanvas, a: P, b: P, color: number, skip: (x: number, y:
   }
 }
 
-function paint(size: Size, l: ArtLayers, f: number): void {
-  const C = CFG[size];
-  const big = size === 'big';
-  const dx = SWAY[f % 4];
-  // 1. backdrop: the stage, the spotlight, the curtains
-  paintStage(l.backdrop, size);
-  // the puppet's shadow on the floor (a flat night0 ellipse in the pool; it sways with it)
-  const [sx, sy, sr] = C.shadow;
-  l.backdrop.ellipse(sx + dx, sy, sr, big ? 2 : 1, PAL.night0);
-  // 2. subject: the puppet (behind), then the cross
-  const puppet = new PixelCanvas(l.subject.w, l.subject.h);
-  paintPuppet(puppet, size, dx);
-  litEdge(puppet, 1, { only: (c) => c === PAL.void1 || c === PAL.void2 });
-  ink(puppet);
-  if (big) rim(puppet, PAL.teal3, { skip: [PAL.gold1, PAL.void3] });
-  const cross = new PixelCanvas(l.subject.w, l.subject.h);
-  paintCross(cross, size);
-  ink(cross);
-  if (big) rim(cross, PAL.teal3, { skip: [PAL.fire2, PAL.fire3, PAL.fire4] });
-  l.subject.blit(puppet, 0, 0);
-  l.subject.blit(cross, 0, 0);
-  // 3. light: the strings (only where no matter stands in front … the cross hides their tops), hooks, eye, bead
-  const L = l.light;
-  const onCross = (x: number, y: number) => cross.get(x, y) !== null;
-  C.hooks.forEach((h, i) => strand4(L, [h[0], h[1] + 1], shift(C.ends[i], dx), PAL.gold4, onCross));
-  // star hooks where the strings bite (big: a 3 × 3 four-point star, small: the white heart only)
-  C.ends.forEach((e, i) => {
-    const [x, y] = shift(e, dx);
-    if (i === 2) return; // the head string ends in the eye's light
-    L.set(x, y, PAL.white);
-    if (big) {
-      L.set(x - 1, y, PAL.gold4);
-      L.set(x + 1, y, PAL.gold4);
-      L.set(x, y + 1, PAL.gold4);
-    }
-  });
-  // the eye: the teal spiral (rotating a quarter per frame), white heart — the brightest point
-  const [ex, ey] = shift(C.eye, dx);
-  const rot = (rows: readonly string[], n: number) => {
-    const s = rows.length;
-    const out: string[][] = rows.map((r) => [...r]);
-    for (let y = 0; y < s; y++)
-      for (let x = 0; x < s; x++) {
-        let sx2 = x;
-        let sy2 = y;
-        for (let k = 0; k < n; k++) {
-          const nx = sy2;
-          sy2 = s - 1 - sx2;
-          sx2 = nx;
-        }
-        out[y][x] = rows[sy2][sx2];
-      }
-    return out;
+/** Big living art: the body is yanked up 1 px on frame 1 (as in the small), the legs swing 1 px on frames 2 / 3. */
+const BIG_JERK = [0, -1, 0, 0] as const;
+const BIG_SWING = [0, 0, 1, -1] as const;
+
+/**
+ * The BIG picture (88 × 68), r5: the SMALL's composition at 1 : 1 detail (KART_RESIMLERI §27: one picture in the
+ * hand and in the panel). The cross across the top (a 5-wide knobbed upright, a 4-row hand bar with round caps, a
+ * foot bar) with a 7 × 6 heart knot framed in ink at the crossing; the imp HANGS under it, arms yanked up in a V,
+ * legs hanging apart, feet 4 px over its shadow (the pool lies below the puppet, not under its soles); FIVE 1-px
+ * strings — hand bar → hands, foot bar → feet, upright → head — each ending on its limb in a star hook; the teal
+ * spiral turns in its eye. Living: the jerk (strings shorten with it), the legs' dangle swing, the spiral, a bead.
+ */
+function paintBig(l: ArtLayers, f: number): void {
+  paintStage(l.backdrop, 'big');
+  const dy = BIG_JERK[f % 4];
+  const sw = BIG_SWING[f % 4];
+  // the shadow: a flat night0 ellipse in the pool, under (not touching) the hanging feet
+  l.backdrop.ellipse(45 + sw, 64, 10, 1, PAL.night0);
+  // ---- the puppet (subject, behind the cross): the small's figure at 2 : 1
+  const pp = new PixelCanvas(l.subject.w, l.subject.h);
+  const put = (x: number, y: number, c: number) => pp.set(x, y + dy, c);
+  const row = (y: number, x0: number, x1: number, c: number) => {
+    for (let x = x0; x <= x1; x++) put(x, y, c);
   };
-  const base = big ? ['.##..', '#..#.', '#.W.#', '.#..#', '..##.'] : ['ab.', '.Wa', '.ab'];
-  const g = rot(base, f % 4);
-  const hs = (g.length - 1) / 2;
-  g.forEach((row, y) =>
-    row.forEach((ch, x) => {
-      const c = ch === '#' || ch === 'a' ? PAL.teal4 : ch === 'b' ? PAL.teal3 : ch === 'W' ? PAL.white : null;
-      if (c !== null) L.set(ex - hs + x, ey - hs + y, c);
-    }),
-  );
-  // the bead running down the head string
-  const [hx, hy] = C.hooks[2];
-  const [tx, ty] = shift(C.ends[2], dx);
-  const k = [0.3, 0.55, 0.8, -1][f % 4];
+  const seg = (x0: number, y0: number, x1: number, y1: number, w: number, c: number) => pp.thickLine(x0, y0 + dy, x1, y1 + dy, w, c);
+  // back limbs one step darker (behind the body): the left arm yanked up, the left leg hanging (it swings)
+  seg(39, 42, 28, 30, 4, PAL.void2);
+  seg(37, 39, 28, 29, 1, PAL.void3);
+  put(25, 28, PAL.void3);
+  put(26, 27, PAL.void3);
+  put(28, 27, PAL.void3);
+  seg(42, 49, 39, 54, 4, PAL.void1);
+  seg(39, 54, 38 + sw, 58, 3, PAL.void1);
+  row(59, 36 + sw, 39 + sw, PAL.void1);
+  put(36 + sw, 59, PAL.void3);
+  // torso: a hunched plane, lit void3 on its left edge, void1 on its shadow edge
+  const torso: readonly (readonly [number, number, number])[] = [
+    [38, 41, 48],
+    [39, 40, 49],
+    [40, 39, 50],
+    [41, 38, 51],
+    [42, 38, 51],
+    [43, 39, 50],
+    [44, 40, 49],
+    [45, 40, 49],
+    [46, 41, 48],
+    [47, 41, 48],
+    [48, 42, 47],
+    [49, 42, 47],
+    [50, 42, 47],
+  ];
+  for (const [y, x0, x1] of torso) for (let x = x0; x <= x1; x++) put(x, y, x === x0 ? PAL.void3 : x === x1 ? PAL.void1 : PAL.void2);
+  // a carved seam down the chest (it is a puppet now)
+  for (let y = 42; y <= 47; y++) put(45, y, PAL.void1);
+  // front limbs: the right arm yanked up, the right leg hanging
+  seg(50, 42, 61, 30, 4, PAL.void2);
+  put(64, 28, PAL.void3);
+  put(63, 27, PAL.void3);
+  put(61, 27, PAL.void3);
+  seg(47, 49, 50, 54, 4, PAL.void2);
+  seg(50, 54, 51 + sw, 58, 3, PAL.void2);
+  row(59, 50 + sw, 53 + sw, PAL.void2);
+  put(53 + sw, 59, PAL.void3);
+  // wooden joint pins: shoulders, elbows, knees, the neck peg
+  for (const [x, y] of [
+    [39, 41],
+    [50, 41],
+    [33, 35],
+    [56, 35],
+    [40, 54],
+    [49, 54],
+  ] as const)
+    put(x, y, PAL.gold1);
+  row(37, 44, 45, PAL.gold1);
+  // horns (void3 tips)
+  row(25, 40, 41, PAL.void2);
+  row(24, 40, 41, PAL.void2);
+  put(40, 23, PAL.void2);
+  put(39, 22, PAL.void3);
+  row(25, 48, 49, PAL.void2);
+  row(24, 48, 49, PAL.void2);
+  put(49, 23, PAL.void2);
+  put(50, 22, PAL.void3);
+  // the head 14 × 11, lit top-left, a dark brow over the eye, a crooked grin
+  const head: readonly (readonly [number, number, number])[] = [
+    [26, 40, 49],
+    [27, 39, 50],
+    [28, 38, 51],
+    [29, 38, 51],
+    [30, 38, 51],
+    [31, 38, 51],
+    [32, 38, 51],
+    [33, 38, 51],
+    [34, 39, 50],
+    [35, 40, 49],
+    [36, 41, 48],
+  ];
+  for (const [y, x0, x1] of head)
+    for (let x = x0; x <= x1; x++) put(x, y, (y === 26 && x <= 44) || (y === 27 && x <= 42) || (x === x0 && y <= 31) ? PAL.void3 : x === x1 && y >= 29 ? PAL.void1 : PAL.void2);
+  row(29, 43, 49, PAL.void1);
+  row(35, 42, 44, PAL.void1);
+  put(41, 34, PAL.void1);
+  ink(pp);
+  rim(pp, PAL.teal3, { skip: [PAL.gold1, PAL.void3] });
+  // ---- the cross
+  const cr = new PixelCanvas(l.subject.w, l.subject.h);
+  // the upright (5 wide: lit left, mid, shadow right) and its knob
+  const upTones = [PAL.gold3, PAL.gold3, PAL.gold2, PAL.gold1, PAL.gold1];
+  for (let y = 4; y <= 17; y++) upTones.forEach((c, i) => cr.set(43 + i, y, c));
+  cr.hline(44, 46, 2, PAL.gold4);
+  cr.set(43, 3, PAL.gold4);
+  cr.hline(44, 45, 3, PAL.gold3);
+  cr.set(46, 3, PAL.gold2);
+  cr.set(47, 3, PAL.gold1);
+  // the hand bar (4 rows) with round caps
+  const barTones = [PAL.gold3, PAL.gold3, PAL.gold2, PAL.gold1];
+  barTones.forEach((c, i) => cr.hline(18, 72, 6 + i, c));
+  for (const x0 of [15, 73]) {
+    cr.set(x0 + 1, 4, PAL.gold4);
+    cr.hline(x0, x0 + 2, 5, PAL.gold3);
+    cr.set(x0 + 1, 5, PAL.gold4);
+    for (let y = 6; y <= 9; y++) {
+      cr.set(x0, y, PAL.gold3);
+      cr.set(x0 + 1, y, PAL.gold2);
+      cr.set(x0 + 2, y, PAL.gold1);
+    }
+    cr.hline(x0, x0 + 2, 10, PAL.gold1);
+    cr.set(x0 + 1, 11, PAL.gold1);
+  }
+  for (const x of [26, 34, 56, 64]) cr.set(x, 7, PAL.gold1);
+  // the foot bar (2 rows) with caps
+  cr.hline(32, 58, 14, PAL.gold2);
+  cr.hline(32, 58, 15, PAL.gold1);
+  cr.set(32, 14, PAL.gold3);
+  for (const x of [30, 31, 59, 60]) {
+    cr.set(x, 13, PAL.gold3);
+    cr.set(x, 14, PAL.gold2);
+    cr.set(x, 15, PAL.gold1);
+    cr.set(x, 16, PAL.gold1);
+  }
+  // the heart knot: 7 × 6 over the crossing, lit top-left lobe, framed in ink
+  const HEART = ['.##.##.', '#######', '#######', '.#####.', '..###..', '...#...'];
+  const isHeart = (x: number, y: number) => {
+    const r = HEART[y - 5];
+    return !!r && x >= 42 && x <= 48 && r[x - 42] === '#';
+  };
+  for (let y = 5; y <= 10; y++)
+    for (let x = 42; x <= 48; x++) {
+      if (!isHeart(x, y)) continue;
+      for (const [nx, ny] of [
+        [x - 1, y],
+        [x + 1, y],
+        [x, y - 1],
+        [x, y + 1],
+      ] as const)
+        if (!isHeart(nx, ny)) cr.set(nx, ny, PAL.ink);
+    }
+  for (let y = 5; y <= 10; y++) for (let x = 42; x <= 48; x++) if (isHeart(x, y)) cr.set(x, y, PAL.fire2);
+  cr.set(43, 5, PAL.fire4);
+  cr.set(44, 5, PAL.fire3);
+  cr.set(42, 6, PAL.fire3);
+  cr.set(43, 6, PAL.fire4);
+  cr.set(46, 5, PAL.fire3);
+
+  ink(cr);
+  rim(cr, PAL.teal3, { skip: [PAL.fire1, PAL.fire2, PAL.fire3, PAL.fire4, PAL.ink] });
+  l.subject.blit(pp, 0, 0);
+  l.subject.blit(cr, 0, 0);
+  // ---- light: five strings, each ending on its limb in a star hook; the spiral eye; a bead
+  const L = l.light;
+  const onCross = (x: number, y: number) => cr.get(x, y) !== null;
+  const ends: readonly (readonly [P, P])[] = [
+    [[22, 11], [27, 26 + dy]],
+    [[33, 17], [37 + sw, 55 + dy]],
+    [[45, 18], [45, 23 + dy]],
+    [[57, 17], [52 + sw, 55 + dy]],
+    [[68, 11], [62, 26 + dy]],
+  ];
+  ends.forEach(([a, b]) => strand4(L, a, b, PAL.gold4, onCross));
+  ends.forEach(([, [x, y]]) => {
+    L.set(x, y, PAL.white);
+    L.set(x - 1, y, PAL.gold4);
+    L.set(x + 1, y, PAL.gold4);
+    L.set(x, y + 1, PAL.gold4);
+  });
+  // the eye: the teal spiral (rotating a quarter per frame), white heart
+  const base = ['.##..', '#..#.', '#.W.#', '.#..#', '..##.'];
+  const ex = FOCUS[0];
+  const ey = FOCUS[1] + dy;
+  for (let y = 0; y < 5; y++)
+    for (let x = 0; x < 5; x++) {
+      let sx = x;
+      let sy = y;
+      for (let k = 0; k < f % 4; k++) {
+        const nx = sy;
+        sy = 4 - sx;
+        sx = nx;
+      }
+      const ch = base[sy][sx];
+      const c = ch === '#' ? PAL.teal4 : ch === 'W' ? PAL.white : null;
+      if (c !== null) L.set(ex - 2 + x, ey - 2 + y, c);
+    }
+  // the bead runs down the left hand string
+  const k = [0.3, -1, 0.55, 0.8][f % 4];
   if (k > 0) {
-    const bx = Math.round(hx + (tx - hx) * k);
-    const by = Math.round(hy + 1 + (ty - hy - 1) * k);
-    if (!onCross(bx, by)) L.set(bx, by, PAL.white);
+    const [[ax, ay], [bx, by]] = ends[0];
+    const x = Math.round(ax + (bx - ax) * k);
+    const y = Math.round(ay + (by - ay) * k);
+    if (!onCross(x, y)) L.set(x, y, PAL.white);
   }
 }
 
@@ -603,7 +456,7 @@ const art: CardArtV3 = {
   focusSmall: [23, 15],
   frames: 4,
   holdMs: 150,
-  big: (l, f) => paint('big', l, f),
+  big: (l, f) => paintBig(l, f),
   small: (l, f) => paintSmall(l, f),
 };
 

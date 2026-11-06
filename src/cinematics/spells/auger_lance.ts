@@ -21,8 +21,12 @@
 //            spark tick, e_quickFire) — a follow-through, not a second reveal; it lies back down, dimmed, as the lance appears
 //   T+0      RELEASE + LOCK: a 7-px teal orb with a twin spiral trail flies to the sky over the target (170 ms, its
 //            own light); a spiral reticle closes round the target's tile, corner ticks snap in (e_augerLock +40)
-//   T+170    the orb bursts into a star; the LANCE (13 px shaft / 17 px collar, a deep two-tone helical flute)
-//            screws down (300 ms, e_augerDescend: the 1 → 8 kHz whistle over the 120 Hz rotor), its shadow grows;
+//            (an equip: its holder's bond snaps in teal here — the little aura sword fizzles, it never floats in
+//            front of the drilled card)
+//   T+170    the orb bursts into a star and spins open the SKY RIFT (a turquoise spiral aperture, its own light);
+//            the LANCE (13 px shaft / 17 px collar, a deep two-tone helical flute, a thin drive spindle running up
+//            into the rift — cut cleanly by the rift's near lip) screws down out of it (300 ms, e_augerDescend: the
+//            1 → 8 kHz whistle over the 120 Hz rotor) with a vertical speed smear, its shadow grows;
 //            150 ms before contact the vortex tears the card up onto ONE CORNER, turning (a face-down card shows
 //            its face as it turns)
 //   T+470    BITE: 50 ms freeze, star, e_augerBite, 1 px shake; the card spins like a TOP (6 → 20 rad/s, drawn in
@@ -30,16 +34,20 @@
 //   T+520    DRILL (480 ms): a teal vortex helix wraps the bit, the lance shudders 1 px, sinks 6 px; shavings
 //            (solid 1-px spirals) are flung along the spin, chips spark, grinding rings ripple, the card heats teal;
 //            e_augerDrill (rotor 120 → 165 Hz, ends on the pierce frame) + e_augerCurls (metal pings 3.5 → 9 kHz)
-//   T+1000   PIERCE: e_augerPierce (rotor surge + hard cut, burr rip, steel ting); the card flashes white for one
+//   T+1000   PIERCE (an equip's holder: its statChange plays here as the plain stat beat, −700): e_augerPierce (rotor surge + hard cut, burr rip, steel ting); the card flashes white for one
 //            beat with the bore ALREADY punched and the lance tip in front, then steps to teal4 (70 ms freeze in
 //            all), a floor shock ring, a big light, 2 px shake, card shards
 //   T+1070   THE BORE (130 ms): a 6-px hole with a glowing lip, a helical FOUNTAIN of big curls out of it
-//   T+1200   CRACK (100 ms): three cracks run out of the bore; the lance RETRACTS (240 ms, e_augerRetract, streaks)
+//   T+1200   CRACK (100 ms): three cracks run out of the bore; the lance RETRACTS back up into the rift (240 ms,
+//            e_augerRetract, streaks), the rift twists shut (140 ms)
 //   T+1300   the dying top TOPPLES (270 ms): off its corner, back onto the tile face up (150 ms, its face always
-//            showing), the SLAP (e_augerSlap) — then it spins out flat like a dropped coin into its rest pose; no
-//            edge-on frame, no re-raise; its pieces drift apart; dust, a teal
-//            scorch spiral burns into the tile; a field spell: cracks run along the floor tiles (e_augerRift)
-//   T+1570   the drilled card and the spent lance card leave (card continuity); the rest of the resolution plays
+//            showing), the SLAP (e_augerSlap) — then it spins out flat like a dropped coin into its rest pose
+//            (e_augerSpin: a rattle whose tick rate rises); no edge-on frame, no re-raise; its pieces drift apart;
+//            dust, a teal scorch spiral burns into the tile; a field spell: cracks run along the floor tiles from
+//            the slap on (e_augerRift)
+//   T+1570   the drilled card leaves IN PIECES (brokenLeaves: the proxy raster itself — bore, cracks, three
+//            pieces — flies the card-continuity arc to the graveyard, e_augerShards; it never heals), then the
+//            spent lance card; the rest of the resolution plays
 //   Signature ≈ 1.6 s scene (storyboard 1.8 s) + the card flights.
 //
 // Pixel rules: the lance, the reticle, the shavings and the proxy card are whole-pixel rasters (Raster), palette
@@ -50,14 +58,18 @@ import Phaser from 'phaser';
 import type { GameEvent, PlayerId, Uid, ZoneRef } from '../../engine/types';
 import type { CardId } from '../../data/cards';
 import { PAL } from '../../art/palette';
-import { FLAT_H, FLAT_W, STAND_H, STAND_W, cardMip, isoProject, poseAxes, qAxis, qFromBasis, qMul, qSlerp, renderCard, restQuat, standQuat, type Quat, type V3 } from '../../art/cards';
+import { FLAT_H, FLAT_W, ISO_CX, ISO_CY, ISO_TEX_H, ISO_TEX_W, STAND_H, STAND_W, cardIsoKey, cardMip, isoProject, poseAxes, qAxis, qFromBasis, qMul, qSlerp, renderCard, restQuat, standQuat, type Quat, type V3 } from '../../art/cards';
 import type { TileCard } from '../../view/TileCard';
 import { CardSprite } from '../../view/CardSprite';
 import { BOARD_CENTER, DEPTH, LOOK_V3, type XY, zoneXY } from '../../view/layout';
 import { shake, wait } from '../../vfx/core';
 import { Sparks as PxSparks, stopTime } from '../../vfx/combat';
 import { E, Raster, floorRing, onFrame, run, seg } from '../../vfx/setpieces';
-import { cardLeaves } from '../_v3/card';
+import { flightMs, landingCount } from '../_v3/card';
+import { V3HOOKS } from '../v3small/_hooks';
+import { sfx } from '../../audio/sfx';
+import { equipAnchor } from '../../duel/auras-v3';
+import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { panAt, play as playV3, start as startV3 } from '../_v3/sound';
 import { fxRng } from '../_v3/spellfx';
 import { fx, registerCardHook, type CinematicContext } from '../api';
@@ -149,7 +161,7 @@ class TopCard {
   private readonly back;
   constructor(
     readonly scene: Phaser.Scene,
-    readonly floor: XY,
+    public floor: XY,
     cardId: CardId,
     owner: PlayerId,
     depth: number,
@@ -233,46 +245,21 @@ const TAU = Math.PI * 2;
 
 // ---------------------------------------------------------------- the lance (pixel raster, drawn every frame)
 
-/** Bit (tapering cutter), shaft, collar: rows. */
+/** Bit (tapering cutter), fluted shaft, collar (the rotor hub): rows. Above the collar a thin drive spindle runs
+ *  up into the SKY RIFT (the lance has no free top end: it is cut by the rift's front lip). */
 const L_BIT = 22;
 const L_SHAFT = 48;
 const L_COLLAR = 10;
-const L_LEN = L_BIT + L_SHAFT + L_COLLAR;
-/** Half widths: shaft (13 px), collar (17 px), the bit's widest row. */
+/** Half widths: shaft (13 px), collar (17 px), the drive spindle (7 px). */
 const L_HW = 6;
 const L_CHW = 8;
-/** Raster width (the lance + the vortex helix + the vibration). */
+const L_SHW = 3;
+/** Raster width (the lance + the vortex helix + the rift + the vibration). */
 const L_W = 64;
 /** The flute's lead (rows per turn). */
 const L_P = 9;
-
-/** One step darker (the lance's upper part fading into the night sky). */
-const DARKER: Readonly<Record<number, number>> = {
-  [PAL.white]: PAL.mist,
-  [PAL.mist]: PAL.steel,
-  [PAL.steel]: PAL.night4,
-  [PAL.night4]: PAL.night3,
-  [PAL.night3]: PAL.night2,
-  [PAL.night2]: PAL.night1,
-  [PAL.teal4]: PAL.teal3,
-  [PAL.teal3]: PAL.teal2,
-  [PAL.teal2]: PAL.teal1,
-  [PAL.teal1]: PAL.night2,
-};
-/** Rows of the lance's top that fade out (stepped scanline bands, so it reads as coming from the sky). */
-const L_FADE = 40;
-/** The fade of a lance row `ft` rows below its top: null = not drawn, else how many steps darker. */
-function fadeRow(ft: number): number | null {
-  if (ft >= L_FADE) return 0;
-  if (ft < 12) return ft % 4 === 3 ? 2 : null;
-  if (ft < 22) return ft % 3 === 2 ? 2 : null;
-  if (ft < 31) return ft % 2 === 1 ? 1 : null;
-  return 1;
-}
-function darker(c: number, n: number): number {
-  for (let i = 0; i < n; i++) c = DARKER[c] ?? c;
-  return c;
-}
+/** The sky rift's full half width (px; iso 2.6 : 1). */
+const RIFT_RX = 17;
 
 /** Body tones across the shaft (key light from the top left): lit, mid, shade (u in −1..1). */
 function bodyTone(u: number): number {
@@ -280,74 +267,163 @@ function bodyTone(u: number): number {
 }
 
 /**
- * Draw the auger lance with its tip at (x, tipY): a tapering spiral bit, a shaft with a DEEP two-tone helical
- * flute (the groove follows the cylinder: y-offset ∝ asin(u), a dark groove of 3 rows with its own shade, a
- * white / mist lit lip above it), a wide dark collar with a teal band; the flute scrolls with `phase` (it turns).
- * `vortex` (0..1) wraps a teal helix cone round the bit (drilling); `orbit` (rad) turns it.
+ * The SKY RIFT the lance screws out of: a turquoise spiral aperture (iso ellipse) high over the target. Drawn in
+ * two halves round the lance — `back` (the dark inside with two turning spiral arms, the far rim), `front` (the
+ * near rim, white glints running round it, a teal1 under-lip) — so the shaft reads as passing THROUGH it.
+ * `open` 0..1 (its size), `spin` (rad).
  */
-function drawLance(g: Raster, x: number, tipY: number, phase: number, orbit: number, o: { vortex?: number; hot?: number; arcs?: boolean } = {}): void {
-  const top = tipY - L_LEN;
+function drawRift(g: Raster, x: number, y: number, open: number, spin: number, front: boolean): void {
+  const rx = Math.round(RIFT_RX * open);
+  if (rx < 2) {
+    if (open > 0 && !front) g.px(x, y, PAL.white);
+    return;
+  }
+  const ry = Math.max(1, Math.round(rx * 0.38));
+  if (!front) {
+    // the inside: night1, two spiral arms (teal1 → teal2) turning into its centre
+    for (let yy = -ry + 1; yy <= ry - 1; yy++)
+      for (let xx = -rx + 1; xx <= rx - 1; xx++) if ((xx * xx) / ((rx - 1) * (rx - 1)) + (yy * yy) / (ry * ry) < 1) g.px(x + xx, y + yy, PAL.night1);
+    for (let s = 0; s < 2; s++)
+      for (let j = 2; j < 26; j++) {
+        const a = spin + s * Math.PI + j * 0.32;
+        const r = (j / 26) * (rx - 2);
+        g.px(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * r * 0.38), j < 9 ? PAL.teal3 : j < 18 ? PAL.teal2 : PAL.teal1);
+      }
+  }
+  // the rim: the far half teal2 / teal3, the near half teal4 with two white glints chasing round it
+  const n = Math.round(rx * 7);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU;
+    const sn = Math.sin(a);
+    if (sn >= 0 !== front) continue;
+    const X = Math.round(x + Math.cos(a) * rx);
+    const Y = Math.round(y + sn * ry);
+    const gl = (((a - spin * 1.4) % Math.PI) + Math.PI) % Math.PI;
+    const c = front ? (gl < 0.35 ? PAL.white : PAL.teal4) : sn < -0.6 ? PAL.teal2 : PAL.teal3;
+    g.px(X, Y, c);
+    if (front) g.px(X, Y + 1, gl < 0.35 ? PAL.teal3 : PAL.teal1);
+  }
+  // the ink edge: outside the far rim (it reads against the arena's dark wall and the bright portrait alike)
+  if (!front)
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * TAU;
+      if (Math.sin(a) >= 0) continue;
+      g.px(Math.round(x + Math.cos(a) * (rx + 1)), Math.round(y + Math.sin(a) * (ry + 1)), PAL.ink);
+    }
+}
+
+/**
+ * Draw the auger lance with its tip at (x, tipY), running up into the sky rift at `riftY`: a tapering spiral
+ * bit, a shaft with a DEEP two-tone helical flute (the groove follows the cylinder: y-offset ∝ asin(u), a dark
+ * groove of 3 rows with its own shade, a white / mist lit lip above it), a wide dark rotor collar with a teal
+ * band, then a thin drive spindle up to the rift (rows above the rift's centre are never drawn — the rift's
+ * near lip cuts the steel cleanly). The flute scrolls with `phase` (it turns). `vortex` (0..1) wraps a teal
+ * helix cone round the bit (drilling); `orbit` (rad) turns it; `smear` (0..1) its descent speed streaks.
+ */
+function drawLance(g: Raster, x: number, tipY: number, riftY: number, phase: number, orbit: number, o: { vortex?: number; hot?: number; arcs?: boolean; smear?: number; rift?: number; riftSpin?: number; riftX?: number } = {}): void {
+  const top = riftY;
+  const rx0 = o.riftX ?? x;
   const rowHW = (d: number): number => {
     if (d < L_BIT) return Math.min(L_HW + 1, Math.floor(((d + 1) * (L_HW + 1.6)) / L_BIT));
     if (d < L_BIT + L_SHAFT) return L_HW;
     if (d < L_BIT + L_SHAFT + 2) return L_CHW;
     if (d < L_BIT + L_SHAFT + 7) return L_CHW - 1;
-    return L_HW - 1;
+    if (d < L_BIT + L_SHAFT + L_COLLAR) return L_HW - 1;
+    return L_SHW;
   };
   const vortex = o.vortex ?? 0;
+  const rift = o.rift ?? 0;
+  if (rift > 0) drawRift(g, rx0, riftY, rift, o.riftSpin ?? 0, false);
   // the back half of the vortex helix first (behind the lance)
   if (vortex > 0) vortexHelix(g, x, tipY, orbit, vortex, false);
-  // ink outline (1 px round the body and under the tip); the faded top keeps its outline only on drawn rows
-  for (let y = top; y <= tipY; y++) {
-    if (fadeRow(y - top) === null) continue;
-    const hw = rowHW(tipY - y);
-    g.px(x - hw - 1, y, PAL.ink);
-    g.px(x + hw + 1, y, PAL.ink);
-    const hwUp = rowHW(tipY - y + 1);
-    // horizontal ink where the width steps out (collar shoulders, the bit's steps)
-    for (let c = hwUp + 1; c <= hw + 1; c++) {
-      if (fadeRow(y - 1 - top) === null) continue;
-      g.px(x - c, y - 1, PAL.ink);
-      g.px(x + c, y - 1, PAL.ink);
-    }
-  }
-  g.px(x - 1, tipY + 1, PAL.ink);
-  g.px(x + 1, tipY + 1, PAL.ink);
-  g.px(x, tipY + 2, PAL.ink);
-  for (let y = top; y <= tipY; y++) {
-    const fade = fadeRow(y - top);
-    if (fade === null) continue;
-    const d = tipY - y;
-    const hw = rowHW(d);
-    const collar = d >= L_BIT + L_SHAFT;
-    for (let c = -hw; c <= hw; c++) {
-      const u = c / (hw + 0.5);
-      let col = bodyTone(u);
-      if (collar) {
-        // the collar: dark steel with a glowing teal band (the spell's energy driving the rotor)
-        const cd = d - L_BIT - L_SHAFT;
-        if (cd === 3 || cd === 4) col = (Math.floor(phase / 3) + (c > 0 ? 1 : 0)) % 2 ? PAL.teal4 : PAL.teal3;
-        else if (cd === 2 || cd === 5) col = PAL.teal1;
-        else col = cd >= 8 ? PAL.night3 : u < -0.4 ? PAL.steel : u < 0.3 ? PAL.night4 : PAL.night3;
-      } else {
-        // the flute: a helix on the cylinder (the groove bends with asin(u)), scrolling as the lance turns
-        const off = (L_P * Math.asin(Math.max(-1, Math.min(1, u)))) / Math.PI;
-        const k = (((Math.floor(y - off - phase) % L_P) + L_P) % L_P) as number;
-        if (k <= 2) col = k === 0 ? PAL.night1 : u < -0.3 ? PAL.night3 : PAL.night2;
-        else if (k === 3) col = u < -0.15 ? PAL.white : u < 0.45 ? PAL.mist : PAL.steel;
-        // the bit's cutting edge heats teal near the tip while drilling
-        if (o.hot && d < 6 && k > 2) col = o.hot > 0.5 ? (d < 3 ? PAL.white : PAL.teal4) : col;
+  if (tipY >= top) {
+    // descent smear: two pairs of streaks beside the shaft and a ghost of the bit's flanks above it (teal2 / teal1)
+    const sm = o.smear ?? 0;
+    if (sm > 0.05) {
+      const len = Math.round(26 * sm);
+      for (const [dx, c, off] of [
+        [-(L_HW + 3), PAL.mist, 4],
+        [L_HW + 3, PAL.teal3, 9],
+        [-(L_HW + 6), PAL.teal2, 14],
+        [L_HW + 6, PAL.teal1, 18],
+      ] as const) {
+        const y0 = Math.max(top, tipY - off - len);
+        const y1 = tipY - off;
+        if (y1 > y0) g.rect(x + dx, y0, 1, y1 - y0, c);
       }
-      g.px(x + c, y, darker(col, fade));
+      for (const [gy, c] of [
+        [6, PAL.teal2],
+        [12, PAL.teal1],
+      ] as const)
+        for (let d = 0; d < L_BIT; d += 1) {
+          const y = tipY - gy - d;
+          if (y < top) break;
+          const hw = rowHW(d);
+          g.px(x - hw - 2, y, c);
+          g.px(x + hw + 2, y, c);
+        }
     }
+    // ink outline (1 px round the body and under the tip)
+    for (let y = top; y <= tipY; y++) {
+      const hw = rowHW(tipY - y);
+      g.px(x - hw - 1, y, PAL.ink);
+      g.px(x + hw + 1, y, PAL.ink);
+      const hwUp = rowHW(tipY - y + 1);
+      // horizontal ink where the width steps (collar shoulders, the spindle's foot, the bit's steps)
+      if (y - 1 >= top) {
+        for (let c = hwUp + 1; c <= hw + 1; c++) {
+          g.px(x - c, y - 1, PAL.ink);
+          g.px(x + c, y - 1, PAL.ink);
+        }
+        for (let c = hw + 1; c <= hwUp + 1; c++) {
+          g.px(x - c, y, PAL.ink);
+          g.px(x + c, y, PAL.ink);
+        }
+      }
+    }
+    g.px(x - 1, tipY + 1, PAL.ink);
+    g.px(x + 1, tipY + 1, PAL.ink);
+    g.px(x, tipY + 2, PAL.ink);
+    for (let y = top; y <= tipY; y++) {
+      const d = tipY - y;
+      const hw = rowHW(d);
+      const collar = d >= L_BIT + L_SHAFT && d < L_BIT + L_SHAFT + L_COLLAR;
+      const spindle = d >= L_BIT + L_SHAFT + L_COLLAR;
+      for (let c = -hw; c <= hw; c++) {
+        const u = c / (hw + 0.5);
+        let col = bodyTone(u);
+        if (spindle) {
+          // the drive spindle: dark steel, one teal thread spiralling up it (the energy fed down from the rift)
+          col = u < -0.5 ? PAL.steel : u < 0.5 ? PAL.night4 : PAL.night3;
+          const k = (((Math.floor(y + c - phase * 0.7) % 6) + 6) % 6) as number;
+          if (k === 0) col = c <= 0 ? PAL.teal4 : PAL.teal2;
+        } else if (collar) {
+          // the collar: dark steel with a glowing teal band (the spell's energy driving the rotor)
+          const cd = d - L_BIT - L_SHAFT;
+          if (cd === 3 || cd === 4) col = (Math.floor(phase / 3) + (c > 0 ? 1 : 0)) % 2 ? PAL.teal4 : PAL.teal3;
+          else if (cd === 2 || cd === 5) col = PAL.teal1;
+          else col = cd >= 8 ? PAL.night3 : u < -0.4 ? PAL.steel : u < 0.3 ? PAL.night4 : PAL.night3;
+        } else {
+          // the flute: a helix on the cylinder (the groove bends with asin(u)), scrolling as the lance turns
+          const off = (L_P * Math.asin(Math.max(-1, Math.min(1, u)))) / Math.PI;
+          const k = (((Math.floor(y - off - phase) % L_P) + L_P) % L_P) as number;
+          if (k <= 2) col = k === 0 ? PAL.night1 : u < -0.3 ? PAL.night3 : PAL.night2;
+          else if (k === 3) col = u < -0.15 ? PAL.white : u < 0.45 ? PAL.mist : PAL.steel;
+          // the bit's cutting edge heats teal near the tip while drilling
+          if (o.hot && d < 6 && k > 2) col = o.hot > 0.5 ? (d < 3 ? PAL.white : PAL.teal4) : col;
+        }
+        g.px(x + c, y, col);
+      }
+    }
+    g.px(x, tipY, PAL.white);
   }
-  g.px(x, tipY, PAL.white);
   if (vortex > 0) vortexHelix(g, x, tipY, orbit, vortex, true);
-  if (o.arcs) {
+  if (o.arcs && tipY > top + 12) {
     // two teal motion arcs orbiting the bit while it falls (front bright, back hidden by the shaft)
     for (let i = 0; i < 2; i++) {
       const a = orbit + i * Math.PI;
       const ay = tipY - 10 - i * 11;
+      if (ay < top + 2) continue;
       for (let s = 0; s < 5; s++) {
         const aa = a - s * 0.3;
         const px = Math.round(x + Math.cos(aa) * 11);
@@ -358,6 +434,7 @@ function drawLance(g: Raster, x: number, tipY: number, phase: number, orbit: num
       }
     }
   }
+  if (rift > 0) drawRift(g, rx0, riftY, rift, o.riftSpin ?? 0, true);
 }
 
 /** The teal vortex cone wrapping the bit while it drills: two strands, ~2 turns over 30 rows, widening upwards. */
@@ -622,7 +699,7 @@ function quickCaster(q: QuickFire): Caster {
  */
 function augerOrb(sc: Phaser.Scene, from: XY, to: XY, ms: number, floorY: number, depth: number): Promise<void> {
   const ras = Raster.around(sc, (from.x + to.x) / 2, (from.y + to.y) / 2, Math.abs(to.x - from.x) + 40, Math.abs(to.y - from.y) + 40, depth);
-  const light = lightPool(sc, from.x, from.y, { color: PAL.teal3, radius: 18, floorY: Math.max(floorY, from.y), intensity: 0.75, fadeIn: 0 });
+  const light = lightPool(sc, from.x, from.y, { color: PAL.teal3, radius: 18, floorY: Math.max(floorY, from.y), intensity: 0.52, fadeIn: 0 });
   const trail: { x: number; y: number; c: number; age: number }[] = [];
   let last = -1;
   return run(sc, ms, (t, el) => {
@@ -783,30 +860,51 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   const faceUp = tile ? tile.faceUp : true;
   const owner = ref.player;
   const uDepth = DEPTH.UNIT + floor.y;
-  const sky: XY = { x: floor.x, y: Math.max(14, floor.y - 140) };
+  const sky: XY = { x: floor.x, y: Math.max(36, floor.y - 140) };
   // (the camera never moves in lane E scenes)
+  // an EQUIP drilled: its holder's ATK drops. The equip's own death (Ejder Kılıcı's sword rising and breaking)
+  // never plays on top of the drill — this card IS its death: the holder's bond snaps in teal at the lock (the
+  // small aura sword fizzles out, so it never floats in front of the spinning card), and its statChange plays
+  // on the PIERCE frame as the plain stat beat (the −700 roll), nothing else.
+  const slot = ref.zone === 'spellTrap' ? ctx.state.players[ref.player].spellTraps[ref.index] : null;
+  const holderUid = slot && slot.uid === dEv!.uid ? (slot.equippedTo ?? null) : null;
+  const ci = holderUid !== null ? idxOf(ctx, s.run, (e) => e.type === 'statChange' && e.uid === holderUid) : -1;
+  const holder = holderUid !== null ? ctx.unit(holderUid) : null;
 
   // ---- T+0: release + lock
   const lock = lockReticle(sc, floor);
   if (tile && tile.active) tile.tileFlash(PAL.teal3, 260);
   void wait(sc, 40).then(() => playV3('e_augerLock', { volume: 0.8, pan }));
   cast.launch(sky);
+  if (holder && !holder.retired && holder.hasAura('equip')) snapBond(sc, holder);
   await augerOrb(sc, cast.from, sky, ORB_MS, floor.y, DEPTH.FX_TOP + 13);
 
   // ---- T+170: the lance pokes out of the orb's star and screws down
+  // the orb bursts into the SKY RIFT: a turquoise spiral aperture spins open (110 ms) and the lance screws out of it
   star(sc, sky, 7, 180, uDepth + 2);
-  void lightFlash(sc, sky.x, sky.y, PAL.teal4, 16, 220, { floorY: floor.y, air: 0.8, intensity: 0.5 });
+  void lightFlash(sc, sky.x, sky.y, PAL.teal4, 16, 220, { floorY: floor.y, air: 0.8, intensity: 0.34 });
+  const riftLight = lightPool(sc, sky.x, sky.y, { color: PAL.teal3, radius: 18, floorY: floor.y, intensity: 0.42, anim: 'flicker', fadeIn: 90 });
   playV3('e_augerDescend', { volume: 0.95, pan });
   // the caster has done its part: the quick card settles back down (dimmed) as the lance takes the stage
   cast.bite?.();
-  const LR_TOP = -L_LEN - 20;
-  const lance = new Raster(sc, floor.x - L_W / 2, LR_TOP, L_W, floor.y - LR_TOP + 6, uDepth + 1);
+  const riftY = sky.y;
+  const lance = new Raster(sc, floor.x - L_W / 2, riftY - 12, L_W, floor.y - riftY + 20, uDepth + 1);
+  let rift = 0;
+  let riftOpen = 1;
+  let riftSpin = 0;
+  let smear = 0;
+  const riftLoop = onFrame(sc, (dt) => {
+    if (!lance.alive) return false;
+    riftSpin += dt * 0.011;
+    rift = riftOpen > rift ? Math.min(riftOpen, rift + dt / 110) : Math.max(riftOpen, rift - dt / 140);
+    return true;
+  });
   const shadow = floorShadow(sc, floor);
   const top = new TopCard(sc, floor, victimId, owner, uDepth + 0.5);
   const flatPose: TopPose = { q: restQuat(owner, 'up', faceUp), w: FLAT_W, h: FLAT_H, z: 0 };
   const theta0 = faceUp ? 0 : Math.PI;
   const contactY = Math.round(floor.y + isoProject([0, 0, TOP_ZC * 2])[1]);
-  const startTip = sky.y;
+  const startTip = riftY;
   let tipY = startTip;
   let phase = 0;
   let orbit = 0;
@@ -816,7 +914,7 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   let lanceOn = true;
   const drawL = () => {
     if (!lanceOn) return;
-    lance.draw((g) => drawLance(g, floor.x + jit, Math.round(tipY), Math.floor(phase), orbit, { arcs: vortex === 0, hot, vortex }));
+    lance.draw((g) => drawLance(g, floor.x + jit, Math.round(tipY), riftY, Math.floor(phase), orbit, { arcs: vortex === 0, hot, vortex, smear, rift, riftSpin, riftX: floor.x }));
   };
   // the card's spin state
   let theta = theta0;
@@ -857,6 +955,8 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   await run(sc, DESCENT_MS, (t, el) => {
     const k = 0.25 * t + 0.75 * E.inQuad(t);
     tipY = startTip + (contactY - startTip) * k;
+    // the speed smear: it grows with the fall's speed, gone on the last frames before the bite
+    smear = t < 0.9 ? Math.min(1, 0.2 + 1.5 * t) : 0.4;
     shadow.set(t);
     if (el >= liftStart) {
       if (liftK < 0) {
@@ -869,6 +969,7 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   liftK = 1;
   poseNow = cornerPose;
   tipY = contactY;
+  smear = 0;
   top.draw(cornerPose());
   drawL();
 
@@ -979,6 +1080,8 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   void lightFlash(sc, floor.x, floor.y - 20, PAL.teal4, 40, 360, { floorY: floor.y, ring: true, intensity: 1.1, air: 0.6 });
   void floorLight.fadeOut(260);
   void shake(sc, 200, 2);
+  // the equip's holder loses its bonus NOW (the plain stat beat: crim edge, "−700", the badge rolls)
+  const statJob: Promise<void> = ci >= 0 ? ctx.play(ci, {}).catch((e) => console.error('[auger_lance] stat', e)) : Promise.resolve();
   const holeAt = { x: floor.x, y: Math.round(floor.y + isoProject([0, 0, TOP_ZC])[1]) };
   const shardSp = new PxSparks(sc, uDepth + 1.6);
   for (let i = 0; i < 22; i++) {
@@ -1028,21 +1131,33 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   shadow.destroy();
   const tip1 = tipY;
   const retract = run(sc, RETRACT_MS, (t) => {
-    tipY = tip1 + (LR_TOP + L_LEN - 30 - tip1) * E.inQuad(t);
+    // back up INTO the rift (its last 15 % the rift starts to close round the spindle)
+    tipY = tip1 + (riftY - 3 - tip1) * E.inQuad(t);
+    if (t > 0.85) riftOpen = 0;
     phase += 3;
     lance.draw((g) => {
-      drawLance(g, floor.x, Math.round(tipY), Math.floor(phase), orbit, { hot: 1 - t });
+      drawLance(g, floor.x, Math.round(tipY), riftY, Math.floor(phase), orbit, { hot: 1 - t, rift, riftSpin, riftX: floor.x });
       // speed streaks under the leaving lance
-      const len = Math.round(34 * Math.min(1, t * 3));
-      if (len > 0) {
+      const len = Math.min(Math.round(34 * Math.min(1, t * 3)), floor.y - Math.round(tipY) - 4);
+      if (len > 0 && tipY > riftY) {
         g.rect(floor.x - 8, Math.round(tipY) + 2, 1, len, PAL.teal2);
         g.rect(floor.x + 8, Math.round(tipY) + 6, 1, Math.round(len * 0.7), PAL.teal3);
         g.rect(floor.x - 3, Math.round(tipY) + 4, 1, Math.round(len * 0.5), PAL.teal4);
         g.rect(floor.x, Math.round(tipY) + 3, 1, Math.round(len * 0.4), PAL.white);
       }
     });
-  }).then(() => {
+  }).then(async () => {
     lanceOn = false;
+    // the rift twists shut (the last of its spiral), its light goes
+    riftOpen = 0;
+    void riftLight.fadeOut(140);
+    await run(sc, 140, () =>
+      lance.draw((g) => {
+        drawRift(g, floor.x, riftY, rift, riftSpin, false);
+        drawRift(g, floor.x, riftY, rift, riftSpin, true);
+      }),
+    );
+    riftLoop();
     lance.destroy();
   });
   await run(sc, CRACK_MS, (t) => top.draw({ ...cornerPose(), hole: 6, hot: t < 0.5, crack: E.outCubic(t) }));
@@ -1056,13 +1171,19 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   const psiFall = Math.min(psiEnd, 0.35);
   const LAND = 0.55;
   let slapped = false;
+  // a field spell: the arena feels it — cracks run along the floor from its slot, started ON the slap (it overlaps
+  // the spin-out instead of waiting for it)
+  let fieldBeat: Promise<void> = Promise.resolve();
   const slap = () => {
     slapped = true;
     playV3('e_augerSlap', { volume: 0.9, pan });
+    // the spin-out's coin rattle (its tick rate rises as it settles, one last clack)
+    playV3('e_augerSpin', { volume: 0.85, pan });
     floorDust(sc, floor, uDepth + 0.6, rnd);
     scorchSpiral(sc, floor, DEPTH.SHADOW - 1);
     void lightFlash(sc, floor.x, floor.y, PAL.teal3, 26, 300, { intensity: 0.7 });
     void shake(sc, 70, 1);
+    if (ref.zone === 'field') fieldBeat = fieldRift(sc, floor, pan);
   };
   await run(sc, COLLAPSE_MS, (t) => {
     const fa = seg(t, 0, LAND);
@@ -1079,23 +1200,23 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
     top.draw({ q: tq.q, w, h, z, light: -0.12 * Math.sin(Math.PI * fa), hole: 6 - Math.round(fa * 2), crack: 1, split: sp });
   });
   if (!slapped) slap();
-  top.draw({ q: endQ, w: FLAT_W, h: FLAT_H, z: 0, hole: 4, crack: 1, split: 4 });
+  // the BROKEN card at rest: a whole-pixel 3-piece pose (bore 4, cracks, pieces 3 px apart). It never heals:
+  // this very raster is what flies to the graveyard below.
+  const brokenPose: TopPose = { q: endQ, w: FLAT_W, h: FLAT_H, z: 0, hole: 4, crack: 1, split: 3 };
+  top.draw({ ...brokenPose, split: 4 });
   await wait(sc, 50);
-  top.draw({ q: endQ, w: FLAT_W, h: FLAT_H, z: 0, hole: 4, crack: 1, split: 3 });
+  top.draw(brokenPose);
   await wait(sc, 40);
 
-  // a field spell: the arena feels it — cracks run along the floor from its slot before its effects go out
-  const fieldBeat = ref.zone === 'field' ? fieldRift(sc, floor, pan) : Promise.resolve();
-
-  // ---- T+1420: the cards leave (the drilled one, then the spent lance)
+  // ---- T+1420: the cards leave (the drilled one — still in pieces — then the spent lance)
   let victimGone: Promise<void> = Promise.resolve();
   const vg = evAt(ctx, vgi, 'toGraveyard');
   if (owned && vg) {
     if (tile && tile.active) tile.destroy();
-    victimGone = cardLeaves(ctx, { owner: vg.owner, cardId: vg.cardId, from: floor });
-    top.destroy();
+    victimGone = brokenLeaves(ctx, top, vg, brokenPose, pan);
   } else {
-    // the card stays for the next handler (e.g. a return to the deck): the tile shows again under the proxy
+    // the card stays for the next handler (Hınç Baltası goes back to its owner's deck, its own toDeck scene):
+    // the tile shows again under the proxy for that handler — face up, as the drill showed it
     if (tile && tile.active) {
       tile.setVisible(true);
       if (tile.faceUp !== true && dEv) tile.setCard(dEv.cardId);
@@ -1106,11 +1227,117 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   await retract;
   await fieldBeat;
   relax(ctx, 300);
-  // the rest of the resolution (an equip's monster's ATK, a field spell going out, …)
-  const rest = s.run.filter((i) => i !== di && i !== vgi && i !== gi && !ctx.isConsumed(i));
+  // the rest of the resolution (a field spell going out, …)
+  const rest = s.run.filter((i) => i !== di && i !== vgi && i !== gi && i !== ci && !ctx.isConsumed(i));
   await fx.playRun(ctx, rest);
-  await fx.all([victimGone, spent]);
+  await fx.all([victimGone, spent, statJob]);
   await fx.playRun(ctx, fx.resolutionRun(ctx));
+}
+
+/**
+ * The drilled card goes to its owner's graveyard IN PIECES (round 4: it never heals into a whole card): the
+ * proxy raster itself — bore, cracks, three pieces — lifts off the tile with a brittle rustle (e_augerShards),
+ * the pieces loosening a pixel more at the top of the arc, teal embers dropping off them, a dithered shadow on
+ * the floor; it lands on the pile, which then shows the card (the pile's own face) with a bump and teal dust.
+ * The same arc and timing as _v3/card.ts cardLeaves (card continuity), so it sits with every other flight.
+ */
+async function brokenLeaves(ctx: AnyCtx, top: TopCard, g: Extract<GameEvent, { type: 'toGraveyard' }>, pose: TopPose, pan: number): Promise<void> {
+  const sc = ctx.scene;
+  const pile = ctx.views.field.pile(g.owner, 'graveyard');
+  const from = { x: top.floor.x, y: top.floor.y };
+  const to0 = pile.topXY();
+  const to = { x: Math.round(to0.x), y: Math.round(to0.y) };
+  const dist = Math.hypot(to.x - from.x, to.y - from.y);
+  const ms = flightMs(dist) + 40;
+  const arc = Math.round(Math.min(34, 14 + dist * 0.12));
+  const lift = 6;
+  top.ras.img.setDepth(DEPTH.FX + 5);
+  playV3('e_augerShards', { volume: 0.8, pan });
+  const shadow = Raster.around(sc, (from.x + to.x) / 2, (from.y + to.y) / 2, Math.abs(to.x - from.x) + 40, Math.abs(to.y - from.y) + 24, DEPTH.CARD_ON_TILE + 7);
+  const embers = new PxSparks(sc, DEPTH.FX + 4);
+  const rnd = fxRng(g.uid * 5 + 77);
+  let floorAt = { ...from };
+  let height = 0;
+  const drawShadow = () =>
+    shadow.draw((r) => {
+      const k = Math.max(0.35, 1 - height / 60);
+      const rx = Math.round(14 * k);
+      const ry = Math.max(2, Math.round(7 * k));
+      for (let y = -ry; y <= ry; y++)
+        for (let x = -rx; x <= rx; x++) {
+          const d = (x * x) / (rx * rx) + (y * y) / (ry * ry);
+          if (d > 1 || (x + y) % 2 !== 0) continue;
+          r.px(Math.round(floorAt.x) + x, Math.round(floorAt.y) + y, PAL.ink);
+        }
+    });
+  const place = (split: number) => {
+    top.floor = { x: Math.round(floorAt.x), y: Math.round(floorAt.y) - height };
+    top.draw({ ...pose, split });
+    drawShadow();
+  };
+  await run(sc, 60, (t) => {
+    height = Math.round(lift * (1 - (1 - t) * (1 - t)));
+    place(3);
+  });
+  let lastEmber = -99;
+  await run(sc, ms, (t, el) => {
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    floorAt = { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e };
+    height = Math.round(lift * (1 - e) + arc * Math.sin(Math.PI * e));
+    // the pieces loosen a pixel at the top of the arc, then close up again for the landing (still broken)
+    place(3 + Math.round(Math.sin(Math.PI * t)));
+    if (el - lastEmber >= 28 && t < 0.85) {
+      lastEmber = el;
+      const x = Math.round(floorAt.x + (rnd() - 0.5) * 22);
+      const y = Math.round(floorAt.y - height + (rnd() - 0.5) * 8);
+      embers.add({ x, y, vx: (rnd() - 0.5) * 20, vy: 10, ay: 160, life: 200 + rnd() * 100, colors: [PAL.teal4, PAL.teal2, PAL.teal1], shape: 'px', fadeAt: 1 });
+    }
+  });
+  embers.release();
+  shadow.destroy();
+  // land on the pile (the count from the engine state: A6 §2.3, as cardLeaves)
+  const count = landingCount(pile.count, ctx.after?.players?.[g.owner]?.graveyard?.length);
+  const accept = V3HOOKS.pileAccept;
+  if (accept) {
+    const img = sc.add.image(to.x, to.y, cardIsoKey(g.cardId, 'up', g.owner)).setOrigin(ISO_CX / ISO_TEX_W, ISO_CY / ISO_TEX_H).setDepth(DEPTH.FX + 5);
+    top.destroy();
+    pile.set(count, g.cardId);
+    accept(ctx, { owner: g.owner, cardId: g.cardId, pile, at: to, count, card: img });
+    return;
+  }
+  top.destroy();
+  try {
+    sfx.play('cardPlace', { volume: 0.45, pitch: 0.9 });
+  } catch {
+    /* no audio */
+  }
+  pile.set(count, g.cardId);
+  pile.bump();
+  // the drilled card's teal dust puffs off the pile (its last breath)
+  const sp = new PxSparks(sc, DEPTH.FX + 4);
+  for (let i = 0; i < 8; i++) {
+    const a = Math.PI + (i / 7) * Math.PI;
+    sp.add({ x: to.x, y: to.y, vx: Math.cos(a) * 46, vy: Math.sin(a) * 22, drag: 4, life: 220, colors: [PAL.white, PAL.teal4, PAL.teal2], shape: 'px', fadeAt: 1 });
+  }
+  sp.release();
+}
+
+/**
+ * The equip's holder's bond snaps at the lock: the little aura sword fizzles out in teal (it never floats in
+ * front of the drilled card). Its gold pixels become teal sparks that drop to the holder's floor.
+ */
+function snapBond(sc: Phaser.Scene, u: MonsterUnit): void {
+  const s = u.sprite;
+  const an = equipAnchor(u);
+  const gx = Math.round(s.x + an.dx);
+  const gy = Math.round(s.y + an.dy);
+  u.setAura('equip', null);
+  star(sc, { x: gx, y: gy - 6 }, 4, 130, s.depth + 1);
+  const sp = new PxSparks(sc, s.depth + 1);
+  const rnd = fxRng(u.uid * 3 + 5);
+  for (let i = 0; i < 9; i++)
+    sp.add({ x: gx + Math.round((rnd() - 0.5) * 4), y: gy - Math.round(rnd() * 14), vx: (rnd() - 0.5) * 50, vy: -20 - rnd() * 30, ay: 260, life: 260 + rnd() * 120, colors: [PAL.white, PAL.teal4, PAL.teal3, PAL.teal1], shape: i % 3 === 0 ? 'plus' : 'px', floor: Math.round(u.home.y), bounce: 0.2, fadeAt: 1 });
+  sp.release();
 }
 
 /** A ring of dust puffs as the drilled card slaps flat on its tile. */
@@ -1138,7 +1365,7 @@ registerCardHook('auger_lance', 'activate', async (ctx) => {
   if (response) {
     // the quick answer: the reveal (with the card's name under "HIZLI BÜYÜ!"), then the card lies down cocked;
     // the target comes in the next batch (the 'target' hook below fires it — no second opening)
-    const q = await quickReveal(ctx, { sub: 'BURGU MIZRAĞI', hold: 60 });
+    const q = await quickReveal(ctx, { sub: 'BURGU MIZRAĞI', hold: 20 });
     await prime(ctx, q, ev.uid);
     return;
   }

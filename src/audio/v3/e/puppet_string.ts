@@ -74,6 +74,9 @@ function creak(v: Voice, t: number, d: number, f0: number, f1: number, g: number
   v.tone('sawtooth', [[0, f0], [d * 0.5, (f0 + f1) * 0.55, 'e'], [d, f1, 'e']], { t, g: [[0, 0], [d * 0.15, g], [d * 0.7, g * 0.8], [d, 0.0001, 'e']], to: fl });
 }
 
+/** r5 mix: the steps +1.6 dB in the recipe (the scene adds the rest: volume 1). */
+const STEP_G = 1.2;
+
 export const RECIPES = {
   e_puppetCross: {
     cap: 2,
@@ -145,13 +148,14 @@ export const RECIPES = {
         [0.016, 2600, 0.38],
         [0.04, 3000, 0.3],
       ].forEach(([t, f, g]) => {
-        woodSmall(v, f, t, g * 0.7, 0.01);
-        v.noise('white', { t, g: perc(g * 1.4, 0.004, 0.0002), to: v.filt('bandpass', hz(v, f * 1.5), 4) });
+        woodSmall(v, f, t, g * 0.7 * STEP_G, 0.01);
+        v.noise('white', { t, g: perc(g * 1.4 * STEP_G, 0.004, 0.0002), to: v.filt('bandpass', hz(v, f * 1.5), 4) });
       });
-      woodSmall(v, 2100, 0.002, 0.08, 0.016);
-      pluck(v, midiHz(88), 0.02, 0.03, 0.22, { bright: 0.6, settle: 0.05 });
-      pluck(v, midiHz(76), 0.024, 0.018, 0.2, { bright: 0.5, settle: 0.05 });
-      sweep(v, 0.004, 0.05, [5200, 7400, 6000], 0.02, { kind: 'white', q: 3, peakAt: 0.3 });
+      // r5: the toe knock a little fuller (+3 dB with the scene's volume: the steps carry the identity)
+      woodSmall(v, 2100, 0.002, 0.11 * STEP_G, 0.018);
+      pluck(v, midiHz(88), 0.02, 0.03 * STEP_G, 0.22, { bright: 0.6, settle: 0.05 });
+      pluck(v, midiHz(76), 0.024, 0.018 * STEP_G, 0.2, { bright: 0.5, settle: 0.05 });
+      sweep(v, 0.004, 0.05, [5200, 7400, 6000], 0.02 * STEP_G, { kind: 'white', q: 3, peakAt: 0.3 });
     },
   },
   e_puppetCreak: {

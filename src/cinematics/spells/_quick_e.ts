@@ -272,7 +272,7 @@ export function quickWord(scene: Phaser.Scene, at: XY, text = 'HIZLI BÜYÜ!', o
       g.px(l, t + SH - 1, PAL.teal3);
       g.px(l + w - 1, t + SH - 1, PAL.teal3);
     });
-  const STAG = 13;
+  const STAG = 10;
   return (async () => {
     // the plate cuts open from the centre (3 steps)
     await run(scene, 45, (t) => {
@@ -298,18 +298,18 @@ export function quickWord(scene: Phaser.Scene, at: XY, text = 'HIZLI BÜYÜ!', o
     drawPlate();
     if (SL) {
       // the name drops in under the word: its plate unrolls from the centre, the letters type on (5 ms apart)
-      await run(scene, 40 + subL.length * 5, (_t, el) => {
+      await run(scene, 40 + subL.length * 3, (_t, el) => {
         subOpen = Math.min(1, Math.ceil((el / 40) * 3) / 3);
         drawSub();
         subL.forEach((l, i) => {
-          const lt = el - 20 - i * 5;
+          const lt = el - 20 - i * 3;
           if (lt < 0 || !l.obj.active) return;
           l.obj.setVisible(true).setTint(lt < 20 ? PAL.white : PAL.teal4);
         });
       });
       for (const l of subL) if (l.obj.active) l.obj.setVisible(true).setTint(PAL.teal4);
     }
-    await wait(scene, 90 + (o.hold ?? 0));
+    await wait(scene, 80 + (o.hold ?? 0));
     try {
       o.onOut?.();
     } catch (e) {
@@ -510,7 +510,7 @@ class LeanCard {
 }
 
 /**
- * The cocked card FIRES — a small COCK-AND-RELEASE, a follow-through of the reveal, never a second one (≈ 120 ms
+ * The cocked card FIRES — a small COCK-AND-RELEASE, a follow-through of the reveal, never a second one (≈ 70 ms
  * scene): the flat card kicks a pixel down into its tile (the cock, e_quickFire's snap), then hinges up to a
  * ~60° lean with a tiny overshoot while ONE teal spark ticks off its top edge; the caller launches its effect
  * from `top` at once, then calls settle() when the effect lands (the card lies back down, dimmed). The card
@@ -536,17 +536,18 @@ export async function quickFire(ctx: AnyCtx, o: { uid: Uid; cardId: CardId; play
   }
   // the cock: the card dips a pixel into its tile, squashed, darker; a tile tick in the quick teal
   void tileFlash(sc, at.x, at.y, [PAL.teal3, PAL.teal2, PAL.teal1], 140);
-  await run(sc, 35, () => lean?.draw(0, { dip: 1, squash: 0.94, light: -0.2 }));
+  // (round 4: one frame of cock, not two — the release is what reads)
+  await run(sc, 17, () => lean?.draw(0, { dip: 1, squash: 0.94, light: -0.2 }));
   // the release: it hinges up to its lean with a small overshoot; ONE spark ticks off the top edge
   void floorRing(sc, at.x, at.y, { r0: 5, r1: 20, ms: 160, ramp: [PAL.teal4, PAL.teal3, PAL.teal2, PAL.teal1], depth: DEPTH.SHADOW - 1 });
   void lightFlash(sc, at.x, at.y, PAL.teal3, 22, 200, { floorY: at.y, intensity: 0.7 });
   let top: XY = { x: at.x, y: at.y - 30 };
   const spark = new Raster(sc, at.x - 20, at.y - 90, 40, 94, DEPTH.FX + 6);
-  await run(sc, 85, (t) => {
+  await run(sc, 55, (t) => {
     const k = LEAN * (1 + 0.12 * Math.sin(Math.PI * Math.min(1, t * 1.25))) * E.outCubic(Math.min(1, t * 1.25));
     top = lean ? lean.draw(k, { light: t < 0.5 ? 0.18 : 0.05 }) : top;
     spark.draw((g) => {
-      if (t < 0.35 || t > 0.9) return;
+      if (t < 0.25 || t > 0.95) return;
       // the tick: a 3-stroke zig-zag spark, 12 px, standing off the top edge (white core, teal4 ends)
       const z = zigzag({ x: top.x, y: top.y - 2 }, 12, 3, 2);
       for (let i = 1; i < z.length; i++) g.line(z[i - 1].x, z[i - 1].y, z[i].x, z[i].y, t < 0.6 ? PAL.white : PAL.teal4);
