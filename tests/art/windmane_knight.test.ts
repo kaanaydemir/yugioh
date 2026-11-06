@@ -25,7 +25,7 @@ describe('windmane_knight', () => {
     }
     expect(spec('attack').marks).toMatchObject({ charge: 1, release: 5, impact: 5, contact: 6, recover: 8 });
     expect(spec('special').marks).toMatchObject({ charge: 1, release: 11, impact: 11, contact: 12, recover: 14 });
-    expect(spec('roar').marks).toMatchObject({ release: 4, impact: 4 });
+    expect(spec('roar').marks).toMatchObject({ release: 5, impact: 5 });
     expect(spec('summon').marks?.land).toBe(6);
     expect(spec('revive').marks?.land).toBe(7);
     expect(spec('death').marks).toMatchObject({ impact: 0, contact: 0, dissolve: 4 });
@@ -39,9 +39,9 @@ describe('windmane_knight', () => {
     expect(validateArt(art, { tier: 'normal', attack: 'melee' }).filter((f) => f.severity === 'error').map((f) => `${f.rule} ${f.anim} ${f.frame ?? ''} ${f.message}`)).toEqual([]);
   });
 
-  it('is registered under the v3 look and fits its budget (an ace: ≤ 131 frames by its own cap, ≤ 7 MB)', async () => {
+  it('is registered under the v3 look and fits its budget (an ace: ≤ 137 frames by its own cap, ≤ 7 MB)', async () => {
     const frames = ALL.reduce((n, a) => n + spec(a).frames, 0);
-    expect(frames).toBeLessThanOrEqual(131);
+    expect(frames).toBeLessThanOrEqual(137);
     expect(art.w * art.h * 4 * frames).toBeLessThanOrEqual(7_000_000);
     const fs = (await import(/* @vite-ignore */ 'node:fs' as string)) as { readdirSync(p: string): string[] };
     const src = fs.readdirSync('src/art/monsters-v3');
@@ -92,9 +92,15 @@ describe('windmane_knight', () => {
     expect(earthLast).toBe(0);
   });
 
-  it('death ends on the empty boots STANDING (open dark tops), and the revive is its own gust assembly, not a rewind', () => {
+  it('death shows the empty boots STANDING (open dark tops) when the pennon lands, then they tip over; the revive is its own gust assembly, not a rewind', () => {
     const n = spec('death').frames;
-    const last = drawFrame(art, 'death', n - 1, 'left');
+    // round 2 #8: the boots stand on the pennon's frame (f9); the last two frames are the greaves tipping over
+    const last = drawFrame(art, 'death', 9, 'left');
+    const end = drawFrame(art, 'death', n - 1, 'left');
+    let upright = 0;
+    for (let x = art.anchorX - 16; x <= art.anchorX + 12; x++)
+      for (let y = art.anchorY - 30; y < art.anchorY - 14; y++) if (end.get(x, y) === PAL.night0) { upright++; break; }
+    expect(upright).toBeLessThan(2);
     // two upright greaves standing ≥ 18 px tall near the anchor, each with an open night0 top
     let tops = 0;
     for (let x = art.anchorX - 16; x <= art.anchorX + 12; x++)

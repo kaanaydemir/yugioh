@@ -244,10 +244,12 @@ export const WINDMANE_KNIGHT_RECIPES = {
     verb: 0.3,
     duck: 0.55,
     play(v) {
-      thump(v, 0, 140, 60, 0.6, 0.2, { drive: 0.4 });
-      plate(v, 0.002, 0.16, 0.25);
-      crack(v, 0, 0.22, { hp: 2200, lp: 8000, n: 1, dec: 0.01 });
-      puff(v, 0.01, 0.12, 0.2, 1400, { kind: 'pink' });
+      // round 2 #6: the lance's own thrust — the hollow helm ring rings through it and the mane's whssh rides behind
+      // (LSD ≥ 10 dB from the generic metal hit; shots/v3/kart-f/windmane_knight/r2-fix/lsd-plate.txt)
+      thump(v, 0, 150, 70, 0.42, 0.14, { drive: 0.3 });
+      plate(v, 0.002, 0.2, 0.25, { helm: 1.2, helmDec: 0.45 });
+      crack(v, 0, 0.2, { hp: 2200, lp: 8000, n: 1, dec: 0.01 });
+      sweep(v, 0.02, 0.16, [3400, 2800, 2000], 0.22, { kind: 'white', q: 2.4, peakAt: 0.2 });
     },
   },
   /** The double hit: a frame after the thrust the mane lashes the target's head — a whip "ŞAK" (no thump). */
@@ -307,9 +309,9 @@ export const WINDMANE_KNIGHT_RECIPES = {
       // the zing: a narrow band climbing in four whole steps (2 → 4 kHz), chopped like a saw
       const steps: [number, number][] = [[0, 2000], [0.035, 2000], [0.036, 2500], [0.07, 2500], [0.071, 3100], [0.105, 3100], [0.106, 3900], [0.15, 3900]];
       const saw = v.flutter(90, 0.7, { d: 0.16, base: 0.5 });
-      v.noise('white', { g: [[0, 0], [0.01, 0.42], [0.14, 0.55], [0.16, 0.0001, 'e']], to: v.filt('bandpass', steps, 9, { to: saw }) });
+      v.noise('white', { g: [[0, 0], [0.01, 0.8], [0.14, 1], [0.16, 0.0001, 'e']], to: v.filt('bandpass', steps, 9, { to: saw }) });
       crack(v, 0.15, 0.85, { hp: 1500, lp: 9500, n: 2, gap: 0.006, dec: 0.016 });
-      sweep(v, 0.15, 0.32, [320, 520, 360], 0.7, { kind: 'pink', q: 1.5, peakAt: 0.2 });
+      sweep(v, 0.15, 0.32, [320, 520, 360], 1, { kind: 'pink', q: 1.5, peakAt: 0.2 });
       sweep(v, 0.152, 0.3, [3600, 2800, 2000], 0.25, { kind: 'white', q: 1.6, peakAt: 0.1 });
     },
   },
@@ -433,7 +435,8 @@ export const WINDMANE_KNIGHT_RECIPES = {
     verb: 0.35,
     duck: 0.3,
     play(v) {
-      sweep(v, 0, 0.18, [500, 900, 300], 0.14, { kind: 'pink', q: 1.6, peakAt: 0.8 });
+      sweep(v, 0, 0.18, [500, 900, 300], 0.5, { kind: 'pink', q: 1.6, peakAt: 0.8 });
+      sweep(v, 0.02, 0.16, [1200, 2200, 900], 0.12, { kind: 'white', q: 2, peakAt: 0.8 });
     },
   },
   /** The lance shaft hits the floor (death f8, the frame it lies flat — round 2 #8): the wooden knock, a bounce, its ring. */
@@ -524,7 +527,7 @@ export const WINDMANE_KNIGHT_RECIPES = {
       howl(v, 0, [[0, 0.03], [0.06, 0.12], [0.7, 0.0001, 'e']], C3, G3, { q: 8 });
       sweep(v, 0, 0.06, [700, 1500, 2300], 0.4, { kind: 'white', q: 1.6, peakAt: 0.9 });
       bannerSnap(v, 0.055, 1);
-      sweep(v, 0.06, 0.36, [3800, 2900, 2000], 0.4, { kind: 'white', q: 1.3, peakAt: 0.08 });
+      sweep(v, 0.06, 0.36, [3800, 2900, 2000], 0.55, { kind: 'white', q: 1.3, peakAt: 0.08 });
       sweep(v, 0.05, 0.3, [320, 460, 340], 0.6, { kind: 'pink', q: 1.5, peakAt: 0.2 });
     },
   },
@@ -562,9 +565,9 @@ export const WINDMANE_KNIGHT_RECIPES = {
     verb: 0.35,
     duck: 0.4,
     play(v) {
-      frizz(v, 0, 0.26, 0.34, 26);
-      sweep(v, 0, 0.28, [4800, 4000, 3000], 0.14, { kind: 'white', q: 3, peakAt: 0.15 });
-      plate(v, 0.004, 0.08, 0.16, { f: 320, helm: 0.8 });
+      frizz(v, 0, 0.26, 0.9, 26);
+      sweep(v, 0, 0.28, [4800, 4000, 3000], 0.4, { kind: 'white', q: 3, peakAt: 0.15 });
+      plate(v, 0.004, 0.14, 0.16, { f: 320, helm: 0.9 });
     },
   },
   /** A guarded blow: the lance shaft's wood + the plate — a braced "tunk", no low thump. */
@@ -587,8 +590,8 @@ export const WINDMANE_KNIGHT_RECIPES = {
     verb: 0.35,
     duck: 0.4,
     play(v) {
-      howl(v, 0, [[0, 0], [0.12, 0.1], [0.35, 0.07], [0.55, 0.0001, 'e']], [[0, C3], [0.5, G3, 'e']], [[0, G3], [0.5, C4, 'e']], { q: 8 });
-      sweep(v, 0, 0.5, [300, 900, 500], 0.4, { kind: 'pink', q: 1.5, peakAt: 0.35 });
+      howl(v, 0, [[0, 0], [0.12, 0.18], [0.35, 0.12], [0.55, 0.0001, 'e']], [[0, C3], [0.5, G3, 'e']], [[0, G3], [0.5, C4, 'e']], { q: 8 });
+      sweep(v, 0, 0.5, [300, 900, 500], 0.75, { kind: 'pink', q: 1.5, peakAt: 0.35 });
       sweep(v, 0.05, 0.4, [2600, 3300, 2400], 0.12, { kind: 'white', q: 4, peakAt: 0.4 });
     },
   },

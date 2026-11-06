@@ -282,6 +282,8 @@ interface Gale {
   amount(k: number): void;
   /** Split the band around a point (two plumes) — 0 none … 1 fully split. */
   split(k: number, around?: XY): void;
+  /** 0…1 a gust swell: the billows and ribbons grow (the front's stepped pulses). */
+  swell(k: number): void;
   readonly centre: XY;
   destroy(): void;
 }
@@ -291,7 +293,7 @@ interface Gale {
  * horsehair ribbons streaming through it in front (depth `front`), `w` px long, `h` px tall, rolling on its own
  * clock. Whole pixels; it never makes a full-width band (it is clipped to ±w/2 of its centre).
  */
-function gale(sc: Phaser.Scene, o: { at: XY; dir: XY; w: number; h: number; back: number; front: number; seed: number; ribbons?: number; billows?: number }): Gale {
+function gale(sc: Phaser.Scene, o: { at: XY; dir: XY; w: number; h: number; back: number; front: number; seed: number; ribbons?: number; billows?: number; scale?: number }): Gale {
   const rnd = mulberry32(o.seed);
   const back = layer(sc, o.back);
   const front = layer(sc, o.front);
@@ -305,6 +307,8 @@ function gale(sc: Phaser.Scene, o: { at: XY; dir: XY; w: number; h: number; back
   let c = { ...o.at };
   let amt = 1;
   let spl = 0;
+  let sw = 0;
+  const SC = o.scale ?? 1;
   let around: XY | null = null;
   let alive = true;
   const stop = onFrame(sc, (_dt, el) => {
@@ -318,7 +322,7 @@ function gale(sc: Phaser.Scene, o: { at: XY; dir: XY; w: number; h: number; back
     for (const b of bil) {
       if (Math.abs(b.a) > half) continue;
       const roll = Math.sin(el * 0.012 + b.ph);
-      const r = b.r * (0.85 + 0.15 * roll) * (0.6 + 0.4 * A);
+      const r = b.r * SC * (1 + 0.35 * Math.round(sw * 3) / 3) * (0.85 + 0.15 * roll) * (0.6 + 0.4 * A);
       let x = c.x + d.x * b.a;
       let y = c.y + d.y * b.a - r * 0.5 - b.up * (o.h * 0.35) - Math.round(roll);
       if (spl > 0 && around) {
@@ -340,7 +344,7 @@ function gale(sc: Phaser.Scene, o: { at: XY; dir: XY; w: number; h: number; back
         const side = r.h > o.h / 2 ? -1 : 1;
         y += side * spl * 12;
       }
-      ribbon(front, { x: Math.round(x), y: Math.round(y) }, { x: -d.x, y: -d.y }, r.len * (0.6 + 0.4 * A), r.ph + el * 0.02, 1.2, r.tone);
+      ribbon(front, { x: Math.round(x), y: Math.round(y) }, { x: -d.x, y: -d.y }, r.len * (0.6 + 0.4 * A) * (1 + 0.4 * sw), r.ph + el * 0.02, 1.2, r.tone);
     }
     return true;
   });
@@ -353,6 +357,9 @@ function gale(sc: Phaser.Scene, o: { at: XY; dir: XY; w: number; h: number; back
     },
     amount(k) {
       amt = k;
+    },
+    swell(k) {
+      sw = Math.max(0, Math.min(1, k));
     },
     split(k, p) {
       spl = k;
@@ -422,7 +429,7 @@ function stormAura(sc: Phaser.Scene, u: MonsterUnit, level: 1 | 2 | 3): Storm {
     const feet = feetOf(u);
     const dw = u.flipX ? 1 : -1; // downwind (behind him)
     // the pool on his tile (storm only)
-    if (lvl >= 2 && calmAt < 0 && !pool) pool = lightPool(sc, u.home.x, u.home.y, { color: PAL.gold3, radius: 16, floorY: u.home.y, intensity: 0.32, anim: 'breathe', fadeIn: 200 });
+    if (lvl >= 2 && calmAt < 0 && !pool) pool = lightPool(sc, u.home.x, u.home.y, { color: PAL.gold3, radius: 21, floorY: u.home.y, intensity: 0.55, anim: 'breathe', fadeIn: 200 });
     if ((lvl < 2 || calmAt >= 0) && pool) {
       const p = pool;
       pool = null;
@@ -471,28 +478,32 @@ function stormAura(sc: Phaser.Scene, u: MonsterUnit, level: 1 | 2 | 3): Storm {
     if (lvl >= 2 && (calmAt < 0 || el - calmAt < 300)) {
       const tip = pointNow(u, 'staff', { x: feet.x + dw * 28, y: feet.y - 70 });
       const drift = calmAt >= 0 ? Math.floor((el - calmAt) / 60) * 3 : 0;
-      for (let k = 0; k < 3; k++) {
+      // round 2 #4: a long, taut stepped tail — the +500 is readable at 1× (four 2-px strands, 22 → 13 px)
+      for (let k = 0; k < 4; k++) {
         if (calmAt >= 0 && (k + Math.floor((el - calmAt) / 50)) % 3 === 0) continue;
-        const len = (lvl >= 3 ? 14 : 10) - k * 2;
-        ribbon(back, { x: tip.x + dw * (1 + drift), y: tip.y - 1 + k * 2 }, { x: dw, y: 0 }, len, el * 0.03 + k * 1.7, 1, 3 - k);
+        const len = (lvl >= 3 ? 26 : 22) - k * 3;
+        ribbon(back, { x: tip.x + dw * (1 + drift + (k % 2)), y: tip.y - 2 + k * 2 }, { x: dw, y: 0 }, len, el * 0.03 + k * 1.7, 0.8, 3 - (k % 3));
       }
     }
     // ---- wind streaks behind him (storm only)
     if (lvl >= 2 && calmAt < 0 && !frozen) {
       if (el >= nextStreak) {
-        nextStreak = el + 300;
-        streaks.push({ y: feet.y - 14 - Math.floor(rnd() * 44), x: feet.x - dw * 6, len: 6 + Math.floor(rnd() * 5), born: el });
+        // round 2 #4: ≈ 3.5 wind streaks a second blow THROUGH his tile, front to back
+        nextStreak = el + 280;
+        streaks.push({ y: feet.y - 6 - Math.floor(rnd() * 56), x: feet.x - dw * 26, len: 10 + Math.floor(rnd() * 7), born: el });
       }
     }
     for (let i = streaks.length - 1; i >= 0; i--) {
       const k = streaks[i];
       const age = el - k.born;
-      if (age > 420 || calmAt >= 0) {
+      if (age > 460 || calmAt >= 0) {
         streaks.splice(i, 1);
         continue;
       }
-      const x0 = Math.round(k.x + dw * age * 0.16);
-      back.line(x0, k.y, x0 + dw * k.len, k.y, age < 140 ? PAL.stone3 : PAL.stone2);
+      const x0 = Math.round(k.x + dw * age * 0.15);
+      const L = back;
+      L.line(x0, k.y, x0 + dw * k.len, k.y, age < 160 ? PAL.mist : age < 320 ? PAL.stone3 : PAL.stone2);
+      L.line(x0 + dw * (k.len - 3), k.y + 1, x0 + dw * k.len, k.y + 1, PAL.stone2);
     }
     if (calmAt >= 0 && el - calmAt > 560) {
       kill();
@@ -630,9 +641,9 @@ function knightCutinVoice(scene: Phaser.Scene, until: Promise<unknown>, maxMs = 
   const mine: typeof sfx.play = (name, opts) => {
     switch (name) {
       case 'whoosh':
-        return orig.call(sfx, 'wmkCutGust', { ...opts, pitch: 1, volume: vol(opts, 1.25) });
+        return orig.call(sfx, 'wmkCutGust', { ...opts, pitch: 1, volume: vol(opts, 1) });
       case 'cardSlam':
-        return orig.call(sfx, 'wmkCutClank', { ...opts, pitch: 1, volume: vol(opts, 1.8) });
+        return orig.call(sfx, 'wmkCutClank', { ...opts, pitch: 1, volume: vol(opts, 1.4) });
       case 'impactHeavy':
         return;
       case 'summonBurst':
@@ -662,7 +673,7 @@ async function galeEntrance(S: Stage): Promise<void> {
   // the camera eases toward him as every ace entrance does (the same single lean the placeholder made; EF-8)
   if (S.big) void S.ctx.focus({ x: home.x, y: home.y - 30 }, { ms: 420, pan: 0.3 });
   // ---- the gale front: from the enemy side of his tile to his back (never a full-width band)
-  const g = S.own(gale(sc, { at: { x: home.x + fwd.x * 60, y: home.y + fwd.y * 60 }, dir: down, w: 70, h: 40, back: S.depth - 0.6, front: S.depth + 0.6, seed: u.uid * 5 + 1, ribbons: 10, billows: 14 }));
+  const g = S.own(gale(sc, { at: { x: home.x + fwd.x * 60, y: home.y + fwd.y * 60 }, dir: down, w: 70, h: 34, back: S.depth - 0.6, front: S.depth + 0.6, seed: u.uid * 5 + 1, ribbons: 10, billows: 14, scale: 1.45 }));
   g.amount(0.25);
   const arrive = start(S.dir > 0 ? 'wmkGaleFront' : 'wmkGaleFrontP2', { volume: 0.9, pan: panAt(home.x) * 0.5 });
   const FRONT_MS = 760;
@@ -670,6 +681,10 @@ async function galeEntrance(S: Stage): Promise<void> {
     const k = E.inOutQ(t);
     g.at({ x: home.x + fwd.x * (60 - 120 * k), y: home.y + fwd.y * (60 - 120 * k) });
     g.amount(t < 0.15 ? 0.25 + t * 5 : t > 0.82 ? Math.max(0, (1 - t) * 5.5) : 1);
+    // round 2 #5: three stepped gust swells ≈ 0.3 s apart — the same rhythm as the sound's three swells
+    const ms = t * FRONT_MS;
+    const ph = ((ms - 20) % 300) / 300;
+    g.swell(ms < 20 || ms > 900 ? 0 : ph < 0.35 ? ph / 0.35 : Math.max(0, 1 - (ph - 0.35) / 0.4));
   });
   // ---- inside it: the two gold eye-points kindle first (the body is still hidden)
   await S.wait(110);
@@ -961,8 +976,9 @@ function galeBoom(sc: Phaser.Scene, at: XY, floor: XY): Promise<void> {
     px.clear();
     if (t >= 1) return;
     const k = Math.min(3, Math.floor(t * 4));
-    const r = 6 + k * 7;
-    px.ellipseRing(at.x, at.y, r, Math.round(r * 0.8), k < 2 ? 2 : 1, tones[k]);
+    const r = 8 + k * 9;
+    px.ellipseRing(at.x, at.y, r, Math.round(r * 0.8), k < 2 ? 3 : 2, tones[k]);
+    if (k >= 1) px.ellipseRing(at.x, at.y, r - 5, Math.round((r - 5) * 0.8), 1, tones[Math.min(3, k + 1)]);
   }).then(() => px.g.destroy());
 }
 
@@ -1088,7 +1104,7 @@ async function stormStrike(s: StrikeArgs): Promise<void> {
       const f = feetOf(u);
       return { x: f.x - fwd.x * (16 - 12 * k), y: f.y - fwd.y * (16 - 12 * k) };
     };
-    wall = gale(sc, { at: behind(0), dir: fwd, w: 60, h: 40, back: u.sprite.depth - 0.7, front: u.sprite.depth + 0.7, seed: u.uid * 3 + 9, ribbons: 9, billows: 12 });
+    wall = gale(sc, { at: behind(0), dir: fwd, w: 60, h: 40, back: u.sprite.depth - 0.7, front: u.sprite.depth + 0.7, seed: u.uid * 3 + 9, ribbons: 9, billows: 12, scale: 1.5 });
     wall.amount(0.25);
     const w0 = wall;
     u.pose('special', low);
@@ -1134,7 +1150,9 @@ async function stormStrike(s: StrikeArgs): Promise<void> {
       await animate(sc, s.direct ? 360 : 300, (t) => {
         const k = E.outQ(t);
         w0.at({ x: from.x + (passTo.x - from.x) * k, y: from.y + (passTo.y - from.y) * k });
-        if (s.blocked) w0.split(Math.min(1, t * 2), floor);
+        // round 2 #3: the pressure front swells on contact and splits AROUND the target as it streams past
+        w0.swell(t < 0.5 ? 1 : (1 - t) * 2);
+        if (!s.direct) w0.split(Math.min(1, t * (s.blocked ? 2 : 2.6)), floor);
         w0.amount(t > 0.6 ? Math.max(0, (1 - t) * 2.5) : 1);
       });
       w0.destroy();
@@ -1255,20 +1273,33 @@ async function hollowArmour(ctx: Ctx<'destroy'>): Promise<void> {
     at(6, () => play('wmkPlateClank', { volume: 0.75, pan }));
     at(7, () => play('wmkPoleFall', { volume: 0.9, pan }));
     at(8, () => {
+      // round 2 #8: the shaft's knock on the frame it lies flat (the swish played on f7)
+      play('wmkPoleKnock', { volume: 0.9, pan });
       // the lance lands along the floor in front: a line of dust where it hits
       const tip = pointNow(u, 'muzzle', home);
       dustPuffs(sc, { x: tip.x, y: Math.max(tip.y, home.y - 2) }, 4, { spread: 6, rnd });
     });
-    at(n - 1, () => {
+    const penF = Math.min(n - 1, 9);
+    at(penF, () => {
       play('wmkPennonFlop', { volume: 0.85, pan });
       born();
       void dustRing(sc, home, { r0: 6, r1: 26, ms: 360, tones: [PAL.stone2, PAL.stone2, PAL.stone1] });
     });
-    await capped(sc, untilShown(u, 'death', n - 1, 1600), 1600);
-    if (u.sprite.active) await sleep(sc, u.frameMs('death', n - 1) + 120);
+    // the ENDING (round 2 #8): the two empty greaves tip over one after the other — "tunk… tunk", the hollow C3 ring
+    if (n > penF + 2) {
+      const tunk = (f: number, k: number) =>
+        at(f, () => {
+          play('wmkGreaveTip', { volume: 0.8, pan, pitch: k ? 0.94 : 1.04 });
+          dustPuffs(sc, { x: home.x + (k ? -1 : 1) * (u.flipX ? -10 : 10), y: home.y - 1 }, 3, { spread: 4, rnd, depth: unitDepth(home.y) + 0.5 });
+        });
+      tunk(n - 2, 0);
+      tunk(n - 1, 1);
+    }
+    await capped(sc, untilShown(u, 'death', n - 1, 2000), 2000);
+    if (u.sprite.active) await sleep(sc, u.frameMs('death', n - 1) + 40);
     // ---- the pile settles in grey dust and goes out in palette steps (no shatter: nothing was inside)
-    play('wmkHollowBurst', { volume: 0.7, pan });
-    dustPuffs(sc, home, 7, { spread: 14, rnd, depth: unitDepth(home.y) + 0.5 });
+    play('wmkHollowBurst', { volume: 0.6, pan });
+    dustPuffs(sc, home, 4, { spread: 14, rnd, depth: unitDepth(home.y) + 0.5 });
     const steps = [0xb8b8c8, 0x8890a8, 0x586078];
     for (const c of steps) {
       if (!u.sprite.active) break;
@@ -1333,3 +1364,41 @@ if (LOOK_V3)
   });
 
 export type { AnyCtx };
+
+// ================================================================ revive: one plate tick per seated piece (round 2 #10)
+
+/** Revives already scored (uid:turn): the spell's batch is seen by several events. */
+const REVIVES = new Set<string>();
+
+if (LOOK_V3)
+  registerObserver((_ev, ctx) => {
+    // the spell (soul_recall) consumes the summon inside its own handler, so no observer ever sees it run: look ahead
+    // in the batch from whatever event starts it
+    const sv = ctx.events.slice(ctx.index).find((e): e is EvOf<'summon'> => e.type === 'summon' && e.from === 'graveyard' && e.cardId === ID);
+    if (!sv) return;
+    const key = `${sv.uid}:${ctx.state.turn}`;
+    if (REVIVES.has(key)) return;
+    REVIVES.add(key);
+    const ev = sv;
+    const sc = ctx.scene;
+    const uid = ev.uid;
+    // the revive pose is started by the spell's own presentation (soul_recall): wait for it, then score its frames
+    let armed = false;
+    const t0 = sc.time.now;
+    const poll = sc.time.addEvent({
+      delay: 16,
+      loop: true,
+      callback: () => {
+        const u = ctx.unit(uid);
+        if (armed || sc.time.now - t0 > 8000) return poll.remove(false);
+        if (!u || u.frameInfo().anim !== 'revive') return;
+        armed = true;
+        poll.remove(false);
+        const pan = panAt(u.home.x);
+        // f1 the fauld seats on the boots, f3 the cuirass drops in, f5 the helm lands last
+        ([[1, 0.85, 0.94], [3, 0.95, 1], [5, 1, 1.08]] as const).forEach(([f, vol, pitch]) =>
+          atFrame(u, 'revive', f, () => play('wmkReviveTick', { volume: vol, pan, pitch }), { late: f === 1, maxMs: 2400 }),
+        );
+      },
+    });
+  });

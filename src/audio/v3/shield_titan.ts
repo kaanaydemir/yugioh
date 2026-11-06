@@ -18,7 +18,10 @@
 //   kdPlateShiver      blocked strike: the plate rebounds and shivers (fast 9 Hz wobble, alone)
 //   kdSledScrape       direct: the face-down slab skids along the lane (copper scrape riding the ring)
 //   kdStrapHaul        direct: he hauls it back by its strap (creak + a soft drag)
-//   kdPlant            summon 'land', toGuard f3, strike re-plant: the "DUNK" of the shield's foot in the floor
+//   kdPlant            summon 'land', toGuard f3, strike re-plant: the "DUNK" of the shield's foot in the floor (sub + dirt)
+//   kdHinge            summon f1 / f2 / f3 (pitch per step): the drawbridge hinge groans up a notch
+//   kdPlateBloom       summon f4: the upright slab's ring blooms in
+//   kdGateBoom         summon land only (over kdPlant): the gate shuts — a deep boom with a long wub tail
 //   kdFistBang         roar f3 / f5: the fist on the copper (the shield drum)
 //   kdWardWake         effect t0 (sustained): the sunstone opens — the ring swelling in, the flutter rising 3 → 9 Hz
 //   kdWardWall         effect release: the rampart rises ("ZHUNG": a G2 strike + a rising pink sweep)
@@ -44,8 +47,9 @@ import { crack, puff, sweep, thump } from './kit';
 
 /** G2: the plate's fundamental. */
 const G2 = 98;
-/** The plate's FM ratio (inharmonic copper; never the magus' 1.41). */
-const RATIO = 2.76;
+/** The plate's FM ratio (inharmonic copper; never the magus' 1.41, nor 2.76 — the wyrm's glass bars and
+ *  windmane_knight's plate clank own that one: round 2 #10). */
+const RATIO = 3.11;
 
 /**
  * One ring of the copper plate: FM 2.76 on `f` + its octave partial + a low body sine, all through one gain that
@@ -117,13 +121,62 @@ export const SHIELD_TITAN_RECIPES = {
     play(v) {
       const D = 1.25;
       // three hauls: each a long strap creak that rises in pitch as the slab climbs
-      [0, 0.34, 0.66].forEach((t, i) => creak(v, t + 0.02, 0.36, 0.5 + i * 0.12, { f: [150 + i * 25, 330 + i * 40] }));
+      [0, 0.34, 0.66].forEach((t, i) => creak(v, t + 0.02, 0.36, 0.95 + i * 0.15, { f: [150 + i * 25, 330 + i * 40] }));
       // the slab's hinge edge grinding on the tile, low and soft
-      v.noise('brown', { t: 0.05, g: [[0, 0], [0.2, 0.12], [D - 0.2, 0.1], [D, 0.0001, 'e']], to: v.filt('lowpass', [[0, 180], [D, 260]], 1.2) });
+      v.noise('brown', { t: 0.05, g: [[0, 0], [0.2, 0.24], [D - 0.2, 0.2], [D, 0.0001, 'e']], to: v.filt('lowpass', [[0, 180], [D, 260]], 1.2) });
       // grit trickling off the face as it rises
       v.crackle({ t: 0.3, d: 0.8, n: 12, g: 0.07, f: 2200, q: 1.2, curve: 0.8, dec: 0.006 });
       // the plate starts to sing as it comes upright (a faint swell of its ring)
-      v.tone('sine', G2 * 2, { t: 0.5, g: [[0, 0], [0.6, 0.03], [D - 0.45, 0.0001, 'e']] });
+      v.tone('sine', G2 * 2, { t: 0.5, g: [[0, 0], [0.6, 0.06], [D - 0.45, 0.0001, 'e']] });
+    },
+  },
+  kdHinge: {
+    cap: 3,
+    gap: 0.05,
+    verb: 0.35,
+    duck: 0.3,
+    play(v) {
+      // summon f1 / f2 / f3 (pitch 1 · 1.12 · 1.26 per call, 25° → 55° → 80°): the drawbridge hinge GROANS up a notch —
+      // a stick-slip saw through a rising band, the straps with it, and the slab knocking up one notch
+      const D = 0.3;
+      const bp = v.filt('bandpass', [[0, 260], [D, 430, 'e']], 4);
+      const fr = v.flutter(19, 0.8, { d: D + 0.02, base: 0.3, to: bp });
+      v.tone('sawtooth', [[0, 58], [D * 0.7, 66, 'e'], [D, 61]], { g: [[0, 0], [0.03, 0.55], [D * 0.75, 0.45], [D, 0.0001, 'e']], to: fr });
+      creak(v, 0, D, 0.55, { f: [190, 400], rate: 24 });
+      thump(v, 0, 74, 50, 0.22, 0.08);
+    },
+  },
+  kdPlateBloom: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.5,
+    duck: 0.3,
+    play(v) {
+      // summon f4: the slab comes upright — its ring BLOOMS in (no strike: the copper settling into its own voice),
+      // the wobble waking 4 → 7 Hz, two soft rocking knocks as it settles on its foot
+      const D = 0.75;
+      const wob = v.amp(1);
+      v.lfo(wob.gain, [[0, 4], [D, 7]], [[0, 0.15], [D, 0.55]], { d: D + 0.1 });
+      v.tone('sine', G2 * 2, { g: [[0, 0.0001], [0.3, 0.18, 'e'], [D, 0.0001, 'e']], to: wob });
+      v.tone('sine', G2, { g: [[0, 0.0001], [0.3, 0.14, 'e'], [D, 0.0001, 'e']], to: wob });
+      v.bell(G2 * 4, { t: 0.26, g: 0.08, dec: 0.5, ratio: RATIO, index: 0.8, to: wob });
+      [0.32, 0.5].forEach((t, i) => thump(v, t, 92, 60, 0.24 - i * 0.09, 0.1));
+    },
+  },
+  kdGateBoom: {
+    cap: 1,
+    gap: 0.3,
+    verb: 0.6,
+    duck: 0.7,
+    play(v) {
+      // summon land only (over kdPlant): the GATE SHUTS — a deep boom, a slow wub tail that rolls on for two seconds,
+      // a G4 / D5 bloom of the sunstone, and the arena throwing the boom back once
+      thump(v, 0, 50, 24, 0.62, 0.7, { drive: 2.6 });
+      puff(v, 0, 0.45, 0.45, 380, { kind: 'brown' });
+      plate(v, 0.006, 0.2, 2.0, { rate: 4.5, depth: 0.75, cents: 10, index: 2.2, partial: 1.1, body: 1.2 });
+      v.bell(G2 * 4, { t: 0.02, g: 0.09, dec: 1.4, ratio: RATIO, index: 0.9 });
+      v.bell(G2 * 6, { t: 0.05, g: 0.06, dec: 1.2, ratio: RATIO, index: 0.7 });
+      thump(v, 0.3, 46, 30, 0.16, 0.4);
     },
   },
   kdHeave: {
@@ -133,10 +186,10 @@ export const SHIELD_TITAN_RECIPES = {
     duck: 0.3,
     play(v) {
       const D = 1.6;
-      hup(v, 0, 0.32);
+      hup(v, 0, 0.45);
       // the straps pulled taut and held: creak loops that tighten
       for (let t = 0.12, i = 0; t < D - 0.2; i++) {
-        creak(v, t, 0.26, 0.28 + 0.05 * Math.min(4, i), { f: [170 + i * 12, 340 + i * 16], rate: 18 + i * 3 });
+        creak(v, t, 0.26, 0.4 + 0.06 * Math.min(4, i), { f: [170 + i * 12, 340 + i * 16], rate: 18 + i * 3 });
         t += 0.3 - Math.min(0.1, i * 0.02);
       }
       // the plate hums under the strain (a faint 196 Hz with a slowly quickening tremble)
@@ -162,10 +215,10 @@ export const SHIELD_TITAN_RECIPES = {
     duck: 0.35,
     play(v) {
       // a big flat surface pushing air down: a pink sweep 200 → 900 → 150 Hz
-      sweep(v, 0, 0.26, [200, 900, 150], 0.9, { q: 1.1, kind: 'pink', peakAt: 0.5, pan: [-0.15, 0.2] });
-      sweep(v, 0.02, 0.2, [400, 1600, 300], 0.25, { q: 1.6, kind: 'white', peakAt: 0.55 });
+      sweep(v, 0, 0.3, [200, 900, 150], 1.6, { q: 1.1, kind: 'pink', peakAt: 0.55, pan: [-0.15, 0.2] });
+      sweep(v, 0.02, 0.24, [400, 1600, 300], 0.45, { q: 1.6, kind: 'white', peakAt: 0.6 });
       // the giant grunts with it
-      hup(v, 0, 0.18);
+      hup(v, 0, 0.3);
     },
   },
   kdSlabSlam: {
@@ -174,10 +227,13 @@ export const SHIELD_TITAN_RECIPES = {
     verb: 0.4,
     duck: 0.6,
     play(v) {
-      puff(v, 0, 0.6, 0.2, 900, { kind: 'brown' });
-      thump(v, 0, 82, 40, 0.62, 0.32, { drive: 2.4 });
-      plate(v, 0.002, 0.26, 1.0, { rate: 7, depth: 0.55, index: 2.8 });
-      crack(v, 0.004, 0.42, { hp: 1800, lp: 7000, n: 3, gap: 0.012, dec: 0.012 });
+      // the flat SLAP first (round 2 #6): a shaped broadband pink burst, 2–6 kHz, with a low-mid body under it …
+      v.noise('pink', { g: [[0, 0], [0.002, 0.95], [0.028, 0.0001, 'e']], to: v.filt('bandpass', 3800, 0.6) });
+      v.noise('pink', { g: [[0, 0], [0.003, 0.55], [0.05, 0.0001, 'e']], to: v.filt('bandpass', 650, 0.9) });
+      // … then the weight and the ring
+      puff(v, 0.004, 0.55, 0.2, 900, { kind: 'brown' });
+      thump(v, 0.006, 82, 40, 0.6, 0.32, { drive: 2.4 });
+      plate(v, 0.012, 0.26, 1.0, { rate: 7, depth: 0.55, index: 2.8 });
       v.crackle({ t: 0.03, d: 0.35, n: 12, g: 0.1, f: 2400, q: 1.1, curve: 1.6, dec: 0.007 });
     },
   },
@@ -187,9 +243,9 @@ export const SHIELD_TITAN_RECIPES = {
     verb: 0.35,
     duck: 0.3,
     play(v) {
-      plate(v, 0, 0.16, 0.5, { rate: 9, depth: 0.75, cents: 20, index: 1.8, body: 0.4 });
-      // the rim rattles against the shield's foot (two tiny copper ticks)
-      [0.06, 0.15].forEach((t) => v.bell(G2 * 6.1, { t, g: 0.03, dec: 0.08, ratio: RATIO, index: 1 }));
+      plate(v, 0, 0.2, 0.5, { rate: 9, depth: 0.75, cents: 20, index: 1.8, body: 0.4 });
+      // the rim rattles against the shield's foot (three copper ticks, slowing)
+      [0.03, 0.1, 0.2].forEach((t, i) => v.bell(G2 * 6.1, { t, g: 0.08 - i * 0.015, dec: 0.08, ratio: RATIO, index: 1 }));
     },
   },
   kdSledScrape: {
@@ -226,11 +282,12 @@ export const SHIELD_TITAN_RECIPES = {
     verb: 0.35,
     duck: 0.55,
     play(v) {
-      // "DUNK": the foot of the shield driven into the floor
-      thump(v, 0, 58, 36, 0.66, 0.3, { drive: 2.2 });
-      crack(v, 0.002, 0.24, { hp: 1500, lp: 5000, n: 2, gap: 0.01, dec: 0.01 });
-      puff(v, 0.004, 0.3, 0.16, 600, { kind: 'brown' });
-      plate(v, 0.004, 0.14, 0.55, { rate: 7.5, depth: 0.4, index: 2 });
+      // "DUNK": the foot of the shield driven into the floor — mostly sub and dirt; the ring only a trace (−10 dB)
+      thump(v, 0, 54, 28, 0.75, 0.34, { drive: 2.6 });
+      puff(v, 0.004, 0.45, 0.22, 450, { kind: 'brown' });
+      v.crackle({ t: 0.008, d: 0.18, n: 10, g: 0.12, f: 900, q: 0.9, curve: 1.8, dec: 0.006 });
+      v.noise('brown', { t: 0.01, g: [[0, 0], [0.01, 0.22], [0.2, 0.0001, 'e']], to: v.filt('bandpass', 1100, 0.8) });
+      plate(v, 0.006, 0.045, 0.45, { rate: 7.5, depth: 0.4, index: 2 });
     },
   },
   kdFistBang: {
@@ -239,10 +296,12 @@ export const SHIELD_TITAN_RECIPES = {
     verb: 0.45,
     duck: 0.55,
     play(v) {
-      // a knuckle click, then the copper rings out with a strong wobble
-      v.noise('white', { g: perc(0.3, 0.006, 0.0002), to: v.filt('bandpass', 2400, 1.6) });
-      thump(v, 0, 120, 60, 0.32, 0.12, { drive: 1.4 });
-      plate(v, 0.002, 0.24, 0.9, { rate: 6.5, depth: 0.7, cents: 16, index: 2.6, partial: 1.3 });
+      // the knuckles: a hollow mid KNOCK (wood-on-metal, 600–900 Hz), then a DRY, choked ring (no long wub: round 2 #6)
+      v.tone('sine', [[0, 880], [0.03, 740, 'e']], { g: perc(0.32, 0.05, 0.001) });
+      v.noise('pink', { g: perc(0.5, 0.03, 0.0005), to: v.filt('bandpass', 760, 2.2) });
+      v.bell(640, { g: 0.12, dec: 0.12, ratio: 2.32, index: 1.4 });
+      thump(v, 0, 110, 60, 0.36, 0.1, { drive: 1.4 });
+      plate(v, 0.003, 0.22, 0.6, { rate: 8, depth: 0.5, cents: 10, index: 2, partial: 1.3, choke: 0.32 });
     },
   },
   kdWardWake: {
@@ -274,11 +333,17 @@ export const SHIELD_TITAN_RECIPES = {
     duck: 0.6,
     play(v) {
       // "ZHUNG": a G2 copper strike and a pink sweep rising 300 → 2500 Hz as the rampart stands up
-      plate(v, 0, 0.26, 1.1, { rate: 6, depth: 0.5, index: 3, partial: 1.2 });
-      sweep(v, 0, 0.3, [300, 2500, 1800], 0.4, { q: 1.4, kind: 'pink', peakAt: 0.8 });
-      thump(v, 0, 70, 40, 0.4, 0.25, { drive: 1.5 });
-      // the masonry courses locking (three dull knocks climbing)
-      [0.03, 0.07, 0.11].forEach((t, i) => thump(v, t, 180 + i * 40, 120, 0.12, 0.05));
+      plate(v, 0, 0.2, 1.1, { rate: 6, depth: 0.5, index: 3, partial: 1.2 });
+      sweep(v, 0, 0.3, [300, 2500, 1800], 0.5, { q: 1.4, kind: 'pink', peakAt: 0.8 });
+      thump(v, 0, 70, 40, 0.34, 0.25, { drive: 1.5 });
+      // the masonry courses LOCKING, one per rise step (four stone knocks climbing: this is a wall, not a gong)
+      [0.0, 0.03, 0.06, 0.09].forEach((t, i) => {
+        thump(v, t, 230 + i * 50, 150, 0.26, 0.05);
+        v.noise('pink', { t, g: perc(0.28, 0.025, 0.0005), to: v.filt('bandpass', 1300 + i * 250, 1.6) });
+      });
+      // the sunstone's bloom over it: G4 + D5, bright
+      v.bell(G2 * 4, { t: 0.1, g: 0.12, dec: 0.9, ratio: RATIO, index: 1.6 });
+      v.bell(G2 * 6, { t: 0.12, g: 0.08, dec: 0.8, ratio: RATIO, index: 1.2 });
     },
   },
   kdSapStep: {
@@ -287,8 +352,12 @@ export const SHIELD_TITAN_RECIPES = {
     verb: 0.45,
     duck: 0.3,
     play(v) {
-      // one gong step: struck short (the next step chokes it), the pitch carried on the 196 Hz partial + its 2.76 shimmer
-      plate(v, 0, 0.22, 0.5, { rate: 8.5, depth: 0.5, index: 2.2, partial: 1.8, body: 0.5 });
+      // one gong step. The ladder's PITCH is carried by a struck copper bell at G5 with G4 under it (784 / 392 Hz at
+      // pitch 1 → 440 / 220 Hz on the A♭ step): the descent reads at 400–800 Hz on phone speakers (round 2 #1); the
+      // 98 Hz plate stays under it as the weight
+      v.bell(G2 * 8, { g: 0.2, dec: 0.38, ratio: RATIO, index: 1.6 });
+      v.bell(G2 * 4, { g: 0.14, dec: 0.45, ratio: RATIO, index: 1.2 });
+      plate(v, 0, 0.18, 0.5, { rate: 8.5, depth: 0.5, index: 2.2, partial: 1.4, body: 0.5 });
       // the soft push "thup" of the masonry shove
       thump(v, 0, 140, 70, 0.2, 0.06);
       puff(v, 0, 0.16, 0.07, 900, { kind: 'pink' });
@@ -301,8 +370,10 @@ export const SHIELD_TITAN_RECIPES = {
     duck: 0.35,
     play(v) {
       // the stripped strength falls away: low-passed noise "fwoomp" 900 → 120 Hz
-      v.noise('pink', { g: [[0, 0], [0.04, 0.4], [0.5, 0.0001, 'e']], to: v.filt('lowpass', [[0, 900], [0.5, 120, 'e']], 2) });
-      v.tone('sine', [[0, 180], [0.45, 70, 'e']], { g: perc(0.14, 0.45, 0.01) });
+      v.noise('pink', { g: [[0, 0], [0.04, 0.5], [0.5, 0.0001, 'e']], to: v.filt('lowpass', [[0, 900], [0.5, 120, 'e']], 2) });
+      v.tone('sine', [[0, 180], [0.45, 70, 'e']], { g: perc(0.18, 0.45, 0.01) });
+      // the strength hits the floor: the ladder ends on a low THUD (the steps grow to this, never fade)
+      thump(v, 0.03, 60, 30, 0.55, 0.38, { drive: 2 });
     },
   },
   kdRepel: {
@@ -311,11 +382,15 @@ export const SHIELD_TITAN_RECIPES = {
     verb: 0.45,
     duck: 0.55,
     play(v) {
-      plate(v, 0, 0.24, 0.8, { rate: 7, depth: 0.55, index: 3.2, partial: 1.2 });
-      thump(v, 0, 96, 48, 0.42, 0.18, { drive: 1.8 });
-      // a reversed-envelope push puff toward the attacker
-      v.noise('pink', { t: 0.01, g: [[0, 0.0001], [0.11, 0.3, 'e'], [0.13, 0.0001, 'e']], to: v.filt('bandpass', [[0, 400], [0.13, 1500, 'e']], 1.2, { to: v.panner([[0, 0], [0.13, 0.4]]) }) });
-      crack(v, 0.002, 0.18, { hp: 2500, n: 1 });
+      // the wall takes the blow (a low push), then GATHERS itself: a reversed pink swell opening 500 → 2600 Hz …
+      thump(v, 0, 90, 46, 0.4, 0.16, { drive: 1.8 });
+      v.noise('pink', { g: [[0, 0.0001], [0.066, 0.45, 'e'], [0.072, 0.0001, 'e']], to: v.filt('bandpass', [[0, 500], [0.07, 2600, 'e']], 1.4) });
+      // … into a BRIGHT G3 strike on 70 ms (the last crenellation slams the attacker on that frame)
+      v.bell(G2 * 2, { t: 0.07, g: 0.22, dec: 0.7, ratio: RATIO, index: 4.5 });
+      v.bell(G2 * 4, { t: 0.07, g: 0.12, dec: 0.5, ratio: RATIO, index: 2.5 });
+      plate(v, 0.07, 0.13, 0.7, { rate: 7, depth: 0.55, index: 3.2, partial: 1.2, body: 0.6 });
+      // the push WHOOSH that carries the shove into the attacker (played panned between the wall and it)
+      v.noise('pink', { t: 0.075, g: [[0, 0], [0.04, 0.5], [0.26, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1800], [0.26, 500, 'e']], 1.1) });
     },
   },
   kdWallBreak: {
@@ -359,9 +434,16 @@ export const SHIELD_TITAN_RECIPES = {
     verb: 0.35,
     duck: 0.4,
     play(v) {
-      // the hinge creak rising as the slab goes over, the air sweeping down under it
-      creak(v, 0, 0.22, 0.5, { f: [200, 420], rate: 30 });
-      sweep(v, 0.03, 0.22, [1200, 700, 200], 0.6, { q: 1, kind: 'pink', peakAt: 0.3 });
+      // played ≈ 420 ms before the slam (deathLayers): a long creaking GROAN as the slab goes over, the plate's ring
+      // swelling as it falls, and the air SUCKED under the lid — all of it peaking right before the slam, cut by it
+      const D = 0.42;
+      creak(v, 0, D, 0.9, { f: [160, 460], rate: 26 });
+      const bp = v.filt('bandpass', [[0, 240], [D, 520, 'e']], 4);
+      v.tone('sawtooth', [[0, 55], [D, 82, 'e']], { g: [[0, 0], [0.1, 0.25], [D - 0.05, 0.5], [D, 0.0001, 'e']], to: v.flutter(16, 0.7, { d: D + 0.02, base: 0.35, to: bp }) });
+      const wob = v.amp(1);
+      v.lfo(wob.gain, [[0, 4], [D, 9]], 0.4, { d: D + 0.02 });
+      v.tone('sine', G2 * 2, { g: [[0, 0.0001], [D - 0.04, 0.14, 'e'], [D, 0.0001, 'e']], to: wob });
+      v.noise('pink', { t: 0.1, g: [[0, 0.0001], [D - 0.13, 0.5, 'e'], [D - 0.1, 0.0001, 'e']], to: v.filt('bandpass', [[0, 300], [D - 0.1, 1500, 'e']], 1.2) });
     },
   },
   kdLidSlam: {
@@ -374,7 +456,8 @@ export const SHIELD_TITAN_RECIPES = {
       puff(v, 0, 0.7, 0.3, 700, { kind: 'brown' });
       thump(v, 0, 62, 32, 0.6, 0.42, { drive: 2.8 });
       plate(v, 0.003, 0.22, 1.4, { rate: 6, depth: 0.7, cents: 14, index: 3 });
-      crack(v, 0.004, 0.3, { hp: 1400, lp: 5000, n: 2, gap: 0.014, dec: 0.012 });
+      // the slap stays LOW-MID (no bright paper-like 1–3 kHz PAT: S11's book-close owns that, round 2 #10)
+      v.noise('pink', { t: 0.002, g: [[0, 0], [0.003, 0.6], [0.06, 0.0001, 'e']], to: v.filt('bandpass', 480, 0.8) });
       // the dust ring blowing out along the edges
       sweep(v, 0.02, 0.4, [500, 1100, 300], 0.25, { q: 0.9, kind: 'pink', peakAt: 0.25 });
     },
@@ -385,9 +468,12 @@ export const SHIELD_TITAN_RECIPES = {
     verb: 0.5,
     duck: 0.2,
     play(v) {
-      // the copper cools dark: a dry hiss and the ring's partial sinking a semitone
-      v.noise('white', { g: [[0, 0], [0.05, 0.05], [0.5, 0.0001, 'e']], to: v.filt('highpass', 3500, 0.8) });
-      v.tone('sine', [[0, G2 * 2], [0.6, G2 * 2 * 0.94, 'e']], { g: perc(0.05, 0.6, 0.02) });
+      // the copper cools dark: a dry hiss, the ring FALLING audibly (G3 → E3, with its bell partial), and the
+      // contracting copper ticking — tick … tick … tick, spreading apart as it cools
+      v.noise('white', { g: [[0, 0], [0.05, 0.12], [0.5, 0.0001, 'e']], to: v.filt('highpass', 3500, 0.8) });
+      v.tone('sine', [[0, G2 * 2], [0.7, G2 * 2 * 0.84, 'e']], { g: perc(0.24, 0.8, 0.01) });
+      v.tone('sine', [[0, G2 * 4], [0.7, G2 * 4 * 0.84, 'e']], { g: perc(0.1, 0.6, 0.01) });
+      [0.12, 0.25, 0.4, 0.58, 0.8].forEach((t, i) => v.bell(2600 + (i % 2) * 500, { t, g: 0.12 - i * 0.015, dec: 0.03, ratio: 1.47, index: 0.8 }));
     },
   },
   kdWardRise: {
@@ -396,12 +482,13 @@ export const SHIELD_TITAN_RECIPES = {
     verb: 0.65,
     duck: 0.4,
     play(v) {
-      // three warm partials on G (196, 294, 392 Hz) rising and fading, a fading wobble on them
+      // the end-of-life motif: a clear rising G–D–G arpeggio (392 · 587 · 784 Hz) of warm copper bells, a fading
+      // wobble on them — the ward's light leaving
       const wob = v.amp(1);
-      v.lfo(wob.gain, 6, [[0, 0.4], [0.9, 0]], { d: 0.95 });
-      [196, 294, 392].forEach((f, i) => {
-        v.bell(f, { t: i * 0.06, g: 0.09 - i * 0.015, dec: 0.9, ratio: 2, index: 0.8, to: wob });
-        v.tone('sine', [[0, f], [0.9, f * 1.06, 'e']], { t: i * 0.06, g: perc(0.03, 0.8, 0.05), to: wob });
+      v.lfo(wob.gain, 6, [[0, 0.35], [1.1, 0]], { d: 1.15 });
+      [392, 587, 784].forEach((f, i) => {
+        v.bell(f, { t: i * 0.11, g: 0.2 - i * 0.02, dec: 0.95, ratio: 2, index: 0.9, to: wob });
+        v.tone('sine', [[0, f], [0.9, f * 1.02, 'e']], { t: i * 0.11, g: perc(0.06, 0.8, 0.02), to: wob });
       });
       sweep(v, 0, 0.6, [800, 2600, 4000], 0.12, { q: 2, kind: 'pink', peakAt: 0.6 });
     },
@@ -428,10 +515,13 @@ export const SHIELD_TITAN_RECIPES = {
     verb: 0.4,
     duck: 0.55,
     play(v) {
-      hup(v, 0, 0.3);
-      thump(v, 0.05, 58, 36, 0.62, 0.3, { drive: 2.2 });
-      crack(v, 0.052, 0.22, { hp: 1500, lp: 5000, n: 2, gap: 0.01, dec: 0.01 });
-      plate(v, 0.055, 0.2, 0.8, { rate: 7, depth: 0.5, index: 2.4, partial: 1.2 });
+      // the lid LIFTED off him: the hup, the copper scraping up off the floor (a rising grit band) and the ring rising
+      // a semitone into tune as it comes upright — then the plant (sub only)
+      hup(v, 0, 0.4);
+      v.noise('white', { g: [[0, 0], [0.03, 0.2], [0.2, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1200], [0.2, 3200, 'e']], 1.6) });
+      v.tone('sine', [[0, G2 * 2 * 0.94], [0.25, G2 * 2, 'e']], { g: [[0, 0.0001], [0.12, 0.16, 'e'], [0.7, 0.0001, 'e']] });
+      thump(v, 0.06, 54, 30, 0.62, 0.3, { drive: 2.2 });
+      plate(v, 0.065, 0.12, 0.8, { rate: 7, depth: 0.5, index: 2.4, partial: 1.2 });
     },
   },
 } satisfies Record<string, Recipe>;

@@ -35,7 +35,8 @@ const I = {
   f0: [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
   lid: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0],
   boss: [1, 2, 2, 1, 1, 1, 1, 1, 1, 2, 2, 1, 1, 1, 1, 1],
-  swing: [0, 1, 2, 1, 0, -1, -2, -1, 0, 1, 2, 1, 0, -1, -2, -1],
+  // the strap swings ONCE per loop (a slow 16-frame pendulum, round 2 #9: the loop's sub-periods differ from ashen_drake's)
+  swing: [0, 1, 1, 2, 2, 2, 1, 0, 0, -1, -1, -2, -2, -2, -1, 0],
   ripple: [1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0],
   sheen: [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0],
   nu: [26, 26, 26, 27, 28, 28, 28, 27, 26, 26, 26, 27, 28, 28, 28, 27],
@@ -47,7 +48,7 @@ export function idlePose(f: number): Pose {
   return pose(o);
 }
 const IDLE0 = idlePose(0);
-const IDLE_HOLDS = [140, 120, 110, 120, 130, 110, 120, 140, 130, 110, 120, 110, 130, 120, 110, 140];
+const IDLE_HOLDS = [150, 110, 100, 130, 140, 100, 120, 150, 120, 100, 130, 110, 150, 110, 100, 140];
 
 const key = (d: Partial<Pose>, base: Pose = IDLE0): Pose => ({ ...base, ...d });
 
@@ -141,7 +142,8 @@ const HT: Partial<Pose>[] = [
   { bx: 1 },
 ];
 const hitPose = (f: number): Pose => (f >= HT.length ? IDLE0 : key(HT[f]));
-const HIT_HOLDS = [50, 60, 130, 100, 120, 130];
+// the copper flexes: f1 held long (≈180 ms) before he gives (round 2 #9: his weight, not stone_sentinel's timing)
+const HIT_HOLDS = [50, 180, 90, 100, 110, 120];
 
 // the shield is KNOCKED ASIDE: it swings out one iso step about its foot, away from him (his bare chest and beard
 // exposed for two frames, the rim hand torn off it), his hips stagger 2 px, then he hauls it back in
@@ -155,7 +157,8 @@ const HH: Partial<Pose>[] = [
   { by: 1 },
 ];
 const hitHeavyPose = (f: number): Pose => (f >= HH.length ? IDLE0 : key(HH[f]));
-const HH_HOLDS = [50, 70, 90, 100, 110, 120, 130, 140];
+// the exposed chest held ≈230 ms, the recovery late (≈420 ms): the heaviest body on the board (round 2 #9)
+const HH_HOLDS = [50, 120, 110, 140, 100, 110, 120, 130];
 
 // the copper conducts: the rim crackles, the beard bristles out, the braid lifts, he tears his rim hand off the copper
 // and shakes it (±1 px), the body jolts 1 px
@@ -169,7 +172,8 @@ const HM: Partial<Pose>[] = [
   { by: 1, bx: 1 },
 ];
 const hitMagicPose = (f: number): Pose => (f >= HM.length ? IDLE0 : key(HM[f]));
-const HM_HOLDS = [50, 60, 80, 90, 100, 110, 120, 130];
+// a jittery static hold: the shaking frames flicker fast (40 ms), then one long stunned beat (round 2 #9)
+const HM_HOLDS = [40, 40, 45, 40, 160, 100, 110, 120];
 
 // ------------------------------------------------------------------ summon (14 frames, land @ 8): the drawbridge rises
 

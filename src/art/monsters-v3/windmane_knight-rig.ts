@@ -470,35 +470,65 @@ function drawMane(f: PixelCanvas, P: Pose, S: Skel, light: Light) {
   }
 }
 
-/** The gathered mane: three thick plaits bound at the crest by a gold ring, short tufts at their ends. */
+/**
+ * The gathered mane (round 2 #9: ONE braid, never three fingers): a single tapered, twisted braid lying back along the
+ * crest — 6 px at the root, 2 px at the tuft — with a rope-like crease that alternates sides every 2 px (the twist),
+ * the lit strand / dark strand swapping across each crease, a gold binding ring near the root and a short tuft.
+ */
 function drawPlaits(f: PixelCanvas, paths: V[][]) {
-  const pick = [4, 2, 0];
-  for (const i of pick) {
-    const path = paths[i];
-    const q = new PixelCanvas(W, H);
-    q.stroke(path, 4, 3, MANE_L[i]);
-    bandRibbon(q, MANE_L[i], MANE_D[i]);
-    // the braid: a diagonal crease every 3 px along the plait
-    for (let k = 2; k < path.length - 1; k += 2) {
-      const [x, y] = path[k];
-      for (const [dx, dy] of [[0, -1], [1, 0]] as const) if (q.isOpaque(rnd(x) + dx, rnd(y) + dy)) q.set(rnd(x) + dx, rnd(y) + dy, MANE_D[i]);
-    }
-    // the tuft
-    const t = path[path.length - 1];
-    q.set(rnd(t[0]) - 1, rnd(t[1]) - 1, MANE_L[i]);
-    q.set(rnd(t[0]) - 1, rnd(t[1]) + 1, MANE_D[i]);
-    composite(f, q, seam);
-  }
-  // the binding ring across all three plaits, a third of the way out
+  const path = paths[1].length >= paths[2].length ? paths[1] : paths[2];
   const q = new PixelCanvas(W, H);
-  const k = Math.min(2, paths[0].length - 1);
-  const a = paths[0][k];
-  const b = paths[4][Math.min(k, paths[4].length - 1)];
-  q.thickLine(rnd(a[0]), rnd(a[1]) - 1, rnd(b[0]), rnd(b[1]) + 1, 2, PAL.gold1);
-  const src = q.clone();
-  const bb = src.bounds();
-  if (bb) for (let y = bb.y; y < bb.y + bb.h; y++) for (let x = bb.x; x < bb.x + bb.w; x++) if (src.isOpaque(x, y) && !src.isOpaque(x - 1, y)) q.set(x, y, PAL.gold2);
+  q.stroke(path, 6, 2, PAL.earth3);
+  bandRibbon(q, PAL.earth4, PAL.earth2);
+  // the twist: every 3 px along the braid a diagonal crease (earth1) across its whole width, slanting the same way
+  // (a rope / plait), the strand right after it catching the light (earth4)
+  const seg: number[] = [0];
+  for (let k = 1; k < path.length; k++) seg.push(seg[k - 1] + Math.hypot(path[k][0] - path[k - 1][0], path[k][1] - path[k - 1][1]));
+  const total = seg[seg.length - 1];
+  const at = (d: number): [number, number, number, number] => {
+    let k = 1;
+    while (k < seg.length - 1 && seg[k] < d) k++;
+    const u = (d - seg[k - 1]) / Math.max(1e-6, seg[k] - seg[k - 1]);
+    const dx = path[k][0] - path[k - 1][0];
+    const dy = path[k][1] - path[k - 1][1];
+    const L = Math.hypot(dx, dy) || 1;
+    return [path[k - 1][0] + dx * u, path[k - 1][1] + dy * u, dx / L, dy / L];
+  };
+  for (let d = 3; d < total - 2; d += 3) {
+    const [x0, y0, tx, ty] = at(d);
+    const nx = -ty;
+    const ny = tx;
+    const w = 3.2 - (d / total) * 2.2;
+    for (let j = -w; j <= w; j += 0.5) {
+      const X = rnd(x0 + nx * j + tx * j * 0.6);
+      const Y = rnd(y0 + ny * j + ty * j * 0.6);
+      if (q.isOpaque(X, Y)) q.set(X, Y, PAL.earth1);
+      const X2 = rnd(x0 + nx * j + tx * (j * 0.6 + 1));
+      const Y2 = rnd(y0 + ny * j + ty * (j * 0.6 + 1));
+      if (j < 0 && q.isOpaque(X2, Y2) && q.get(X2, Y2) !== PAL.earth1) q.set(X2, Y2, PAL.earth4);
+    }
+  }
+  // the tuft: a short splayed end
+  const t = path[path.length - 1];
+  const t1 = path[Math.max(0, path.length - 3)];
+  const ex = Math.sign(t[0] - t1[0]) || -1;
+  q.set(rnd(t[0]) + ex, rnd(t[1]) - 1, PAL.earth3);
+  q.set(rnd(t[0]) + ex, rnd(t[1]) + 1, PAL.earth2);
+  q.set(rnd(t[0]) + ex * 2, rnd(t[1]), PAL.earth3);
   composite(f, q, seam);
+  // the binding ring near the root: a gold band across the braid
+  const r = new PixelCanvas(W, H);
+  const k = Math.min(2, path.length - 2);
+  const [x0, y0] = path[k];
+  const [x1, y1] = path[k + 1];
+  const L = Math.hypot(x1 - x0, y1 - y0) || 1;
+  const nx = -(y1 - y0) / L;
+  const ny = (x1 - x0) / L;
+  r.thickLine(rnd(x0 - nx * 3.5), rnd(y0 - ny * 3.5), rnd(x0 + nx * 3.5), rnd(y0 + ny * 3.5), 2, PAL.gold1);
+  const src = r.clone();
+  const bb = src.bounds();
+  if (bb) for (let y = bb.y; y < bb.y + bb.h; y++) for (let x = bb.x; x < bb.x + bb.w; x++) if (src.isOpaque(x, y) && !src.isOpaque(x, y - 1)) r.set(x, y, PAL.gold2);
+  composite(f, r, seam);
 }
 
 /** The mane after it hit the floor: 3–4 rigid ribbon segments with ragged ends lying behind the knight (death f5+). */
@@ -1110,9 +1140,10 @@ export function drawKnight(p: PixelCanvas, P: Pose, lightFrom: 'left' | 'right' 
   // 2. the far side: back arm, back pauldron, back leg
   if (!P.boots) drawArm(f, S.sB, [P.bgx + SHIFT + rnd(P.bx), P.bgy + rnd(P.by)], light, true, P.fall.arms);
   drawPauldron(f, P, S.sB, true, light, P.fall.pauldB);
-  legOf(f, hipB, rnd(P.fbx) + SHIFT, rnd(P.fby), light, PLATE_FAR, true, P.boots, P.bootTip?.[1] ?? 0);
+  const tipped = !!P.bootTip && (P.bootTip[0] !== 0 || P.bootTip[1] !== 0);
+  if (!tipped) legOf(f, hipB, rnd(P.fbx) + SHIFT, rnd(P.fby), light, PLATE_FAR, true, P.boots);
   // 3. near leg, fauld, cuirass, gorget
-  legOf(f, hipF, rnd(P.ffx) + SHIFT, rnd(P.ffy), light, PLATE, false, P.boots, P.bootTip?.[0] ?? 0);
+  if (!tipped) legOf(f, hipF, rnd(P.ffx) + SHIFT, rnd(P.ffy), light, PLATE, false, P.boots);
   drawTorso(f, P, S, light);
   if (P.loose) {
     const q = new PixelCanvas(W, H);
@@ -1130,6 +1161,11 @@ export function drawKnight(p: PixelCanvas, P: Pose, lightFrom: 'left' | 'right' 
   if (!P.boots) drawArm(f, S.sF, P.hand ? [P.hand[0] + SHIFT, P.hand[1]] : S.grip, light, false, P.fall.arms);
   else gauntletsDown(f, light);
   drawPauldron(f, P, [S.sF[0] + 1, S.sF[1]], false, light, P.fall.pauldF);
+  // the ending: the tipping greaves fall OVER the pile (drawn last, so the empty boots stay the last image)
+  if (tipped && P.bootTip) {
+    legOf(f, hipB, rnd(P.fbx) + SHIFT, rnd(P.fby), light, PLATE_FAR, true, true, P.bootTip[1]);
+    legOf(f, hipF, rnd(P.ffx) + SHIFT, rnd(P.ffy), light, PLATE, false, true, P.bootTip[0]);
+  }
 
   f.outline(PAL.ink);
   // 6. light: the eye-points, the one glint

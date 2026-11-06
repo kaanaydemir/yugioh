@@ -215,7 +215,8 @@ function roarPose(f: number): Pose {
     { crouch: 1, gx: 69, gy: 51, la: -58, mane: { th: 215, curl: -30, ph: 0.15 }, pph: 0.15 },
     { crouch: 1, chest: -1, gx: 64, gy: 47, la: -45, lf: 40, lb: 36, mane: { th: 244, curl: -80, len: 30, ph: 0.25, spread: 0.2 }, pph: 0.3 },
     { crouch: 2, chest: -1, hy: -1, gx: 64, gy: 45, la: -45, lf: 40, lb: 36, eyes: 2, mane: { th: 258, curl: -140, len: 26, ph: 0.35, spread: 0.4, amp: 0.6 }, pph: 0.45 },
-    // round 2 #7: a 1-frame anticipation dip before the snap (the spiral wound tightest, the knees give)
+    // round 2 #7: the spiral is held longer (f2–f3 +80 ms), then a 1-frame anticipation dip before the snap (the spiral
+    // wound tightest, the knees give), the release one frame later
     { crouch: 3, chest: 0, hy: 0, gx: 64, gy: 47, la: -45, lf: 40, lb: 36, eyes: 2, mane: { th: 262, curl: -160, len: 24, ph: 0.4, spread: 0.5, amp: 0.4 }, pph: 0.5 },
     { crouch: 0, chest: -1, hy: -2, lean: 1, gx: 64, gy: 44, la: -45, lf: 40, lb: 36, eyes: 3, pen: 2, glint: 1, mane: TAUT },
     { crouch: 0, chest: -1, hy: -1, lean: 1, gx: 64, gy: 44, la: -45, lf: 40, lb: 36, eyes: 3, pen: 2, glint: 2, mane: { ...TAUT, ph: 0.55 } },
@@ -227,7 +228,7 @@ function roarPose(f: number): Pose {
   if (f >= R_N - 1) return IDLE0();
   return K(keys[f]);
 }
-const ROAR_HOLDS = [80, 100, 180, 230, 70, 60, 90, 110, 120, 130, 140, 150];
+const ROAR_HOLDS = [80, 100, 180, 200, 70, 60, 90, 110, 120, 130, 140, 150];
 
 // ------------------------------------------------------------------ hits
 
@@ -263,7 +264,7 @@ function hitHeavyPose(f: number): Pose {
   if (f >= 9) return IDLE0();
   return K(keys[f]);
 }
-const HH_HOLDS = [50, 60, 120, 60, 60, 110, 90, 100, 120, 140];
+const HH_HOLDS = [50, 60, 110, 60, 60, 120, 100, 110, 120, 140];
 
 function hitMagicPose(f: number): Pose {
   const keys: PD[] = [
@@ -283,7 +284,7 @@ const HM_HOLDS = [50, 60, 110, 100, 80, 100, 110, 120];
 // ------------------------------------------------------------------ summon (13): steps in gathered, plants, UNFURLS
 
 const SU_N = 13;
-const GATHER: Partial<Mane> = { th: 204, curl: -40, len: 20, amp: 0.4, droop: 2, spread: -1.2, bound: 1 };
+const GATHER: Partial<Mane> = { th: 194, curl: -8, len: 20, amp: 0.4, droop: 4, spread: -1.2, bound: 1 };
 function summonPose(f: number): Pose {
   const carry: PD = { gx: 63, gy: 58, la: -42, lb: 38, lf: 37 };
   const keys: PD[] = [
@@ -296,9 +297,9 @@ function summonPose(f: number): Pose {
     { bx: -1, crouch: 1, chest: -1, fbx: 40, ffx: 55, gx: 75, gy: 50, la: -80, dust: [[57, GY, 2]], mane: { ...GATHER, ph: 0.5 } },
     // land: the lance butt driven into the tile — a 2-frame squash (−2, −1) and the shaft's recoil
     { crouch: 2, gx: 75, gy: 59, la: -82, planted: true, dust: [[66, GY, 3], [78, GY, 3], [72, GY - 1, 2]], mane: { ...GATHER, ph: 0.55 } },
-    { crouch: 1, hy: -1, chest: -1, gy: 57, planted: true, dust: [[62, GY - 1, 2], [81, GY - 1, 2]], mane: { ...GATHER, len: 18, curl: -50, ph: 0.6 } },
-    { hy: -1, chest: -1, eyes: 3, planted: true, mane: { ...GATHER, len: 18, curl: -50, ph: 0.62 } },
-    { hy: -1, chest: -1, eyes: 3, planted: true, mane: { ...GATHER, len: 22, curl: -34, amp: 0.8, flick: 1, ph: 0.7 } },
+    { crouch: 1, hy: -1, chest: -1, gy: 57, planted: true, dust: [[62, GY - 1, 2], [81, GY - 1, 2]], mane: { ...GATHER, len: 18, curl: -14, ph: 0.6 } },
+    { hy: -1, chest: -1, eyes: 3, planted: true, mane: { ...GATHER, len: 18, curl: -14, ph: 0.62 } },
+    { hy: -1, chest: -1, eyes: 3, planted: true, mane: { ...GATHER, len: 22, curl: -12, amp: 0.8, flick: 1, ph: 0.7 } },
     // the UNFURL: one whip-crack out to full length, the pennon snaps taut
     { hy: -1, eyes: 3, pen: 2, smear: 9, glint: 1, planted: true, mane: { th: 182, curl: 0, droop: 0, amp: 0.3, len: 42, spread: -1, ph: 0.75, bound: 0 } },
     { pen: 0, pph: 0.2, glint: 2, planted: true, mane: { th: 192, curl: -14, droop: 3, amp: 2.8, len: 41, ph: 0.85, bound: 0 } },
@@ -345,12 +346,12 @@ function deathPose(f: number): Pose {
     { ...stag, ...down, pen: 5, hollow: true, shards: 2, boots: true, mane: FROZEN, fall: { ...PILE, lance: { dx: -54, dy: -4, rot: 82 } } },
     // the ENDING (round 2 #8): the two empty greaves tip over one after the other — "tunk… tunk"
     { ...stag, ...down, pen: 5, hollow: true, shards: 2, boots: true, bootTip: [34, 0], mane: FROZEN, fall: { ...PILE, lance: { dx: -54, dy: -4, rot: 82 } } },
-    { ...stag, ...down, pen: 5, hollow: true, shards: 2, boots: true, bootTip: [86, -32], mane: FROZEN, fall: { ...PILE, lance: { dx: -54, dy: -4, rot: 82 } } },
-    { ...stag, ...down, pen: 5, hollow: true, shards: 2, boots: true, bootTip: [88, -86], mane: FROZEN, fall: { ...PILE, lance: { dx: -54, dy: -4, rot: 82 } } },
+    { ...stag, ...down, pen: 5, hollow: true, shards: 2, boots: true, bootTip: [80, -30], mane: FROZEN, fall: { ...PILE, lance: { dx: -54, dy: -4, rot: 82 } } },
+    { ...stag, ...down, pen: 5, hollow: true, shards: 2, boots: true, bootTip: [80, -78], mane: FROZEN, fall: { ...PILE, lance: { dx: -54, dy: -4, rot: 82 } } },
   ];
   return K(keys[Math.min(f, D_N - 1)]);
 }
-const D_HOLDS = [50, 60, 150, 80, 70, 80, 80, 80, 90, 110, 70, 90, 150];
+const D_HOLDS = [50, 60, 150, 80, 70, 80, 80, 80, 90, 110, 70, 130, 150];
 /** The death frame the pennon lands on (the card is born) and the greaves' landings (round 2 #8). */
 export const D_PENNON = 9;
 export const D_GREAVES = [11, 12] as const;
@@ -403,7 +404,7 @@ export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
   death: spec(D_N, 12, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 4 }),
   revive: spec(RV_N, 10, false, RV_HOLDS, { land: 7 }),
   special: spec(SP_N, 10, false, SPECIAL_HOLDS, { charge: 1, release: 11, impact: 11, contact: 12, recover: 14 }),
-  hitHeavy: spec(10, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 6 }),
+  hitHeavy: spec(10, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 5 }),
   hitMagic: spec(8, 12, false, HM_HOLDS, { impact: 0, contact: 0, recover: 4 }),
   toGuard: spec(5, 14, false, TG_HOLDS),
   fromGuard: spec(5, 14, false, FG_HOLDS),

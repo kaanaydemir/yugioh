@@ -41,13 +41,13 @@ import { battleNumbers, currentAtk, currentDef } from '../../engine';
 import { DEPTH, LOOK_V3, TILE_H, TILE_W, type XY, unitDepth } from '../../view/layout';
 import { lightFlash, lightPool, type LightHandle } from '../../view/light';
 import { Raster } from '../../vfx/setpieces';
-import { Sparks, animate, onFrame, sleep } from '../../vfx/combat';
+import { Sparks, animate, onFrame, setCombatSfx, sleep } from '../../vfx/combat';
 import { shake } from '../../vfx/core';
 import { pixelText } from '../../ui/text';
 import { onDuelStart } from '../../duel/seeds';
 import { SAP_PITCH } from '../../audio/v3/shield_titan';
 import { registerCardHook, registerEvent, registerObserver, registerStrike, type CinematicContext, type StrikeArgs } from '../api';
-import { atFrame, dropCharge, panAt, play, start, takeCharge } from '../_v3/sound';
+import { atFrame, dropCharge, fade, hush, panAt, play, start, takeCharge } from '../_v3/sound';
 import { runSummon, type Stage } from '../summon-a/_kit';
 import { declarePoseFrame, strikeStartFrame } from '../_v3/clash';
 import { deathV3 } from '../_v3/death';
@@ -130,6 +130,8 @@ interface WallLine {
   len: number;
   /** unit vector a → b */
   d: XY;
+  /** one px of wall THICKNESS, back toward the titan (whole-px screen offset; the wall's top face) */
+  n: XY;
 }
 
 function wallLine(home: XY, player: 0 | 1): WallLine {
@@ -142,11 +144,14 @@ function wallLine(home: XY, player: 0 | 1): WallLine {
   // 4 px out past the tile edge, toward the opponent: the rampart stands clear of the shield's foot (round 1 #8)
   const m0 = { x: (a0.x + b0.x) / 2, y: (a0.y + b0.y) / 2 };
   const out = norm({ x: m0.x - home.x, y: (m0.y - home.y) * 2 });
-  const ox = out.x * 4;
-  const oy = out.y * 2;
-  const a = rint({ x: a0.x + d.x * 3 + ox, y: a0.y + d.y * 1.5 + oy });
-  const b = rint({ x: b0.x - d.x * 3 + ox, y: b0.y - d.y * 1.5 + oy });
-  return { a, b, mid: rint({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }), len: Math.hypot(b.x - a.x, b.y - a.y), d };
+  // round 2 #7: 9 px out (was 4) — the rampart stands in the open lane in front of him, its whole face on camera
+  const ox = out.x * 9;
+  const oy = out.y * 4.5;
+  // … and 2 px longer than the tile edge at both ends (round 2 #7: a rampart, not a strip)
+  const a = rint({ x: a0.x - d.x * 2 + ox, y: a0.y - d.y * 1 + oy });
+  const b = rint({ x: b0.x + d.x * 2 + ox, y: b0.y + d.y * 1 + oy });
+  const n = { x: -Math.sign(Math.round(out.x * 10)), y: -Math.sign(Math.round(out.y * 10)) };
+  return { a, b, mid: rint({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }), len: Math.hypot(b.x - a.x, b.y - a.y), d, n };
 }
 
 /** A point on the wall plane: `s` px along the floor line, `z` px up. Whole pixels. */
@@ -164,6 +169,8 @@ interface WallLook {
   crack?: number;
   /** skip every other brick row (a fading wall) */
   sparse?: boolean;
+  /** fill the bricks (a solid masonry face, round 2 #7); every other brick a step lighter */
+  fill?: readonly [number, number];
 }
 
 /**
@@ -185,6 +192,17 @@ function paintWall(g: Raster, w: WallLine, o: WallLook): void {
       }
     }
     return;
+  }
+  // solid bricks (a FACE the camera sees, never a ladder of rungs): alternate bricks one tone apart
+  if (o.fill) {
+    for (let z = 1; z < h; z++) {
+      const row = Math.floor(z / 6);
+      const off = row % 2 ? 3 : 0;
+      for (let s = 1; s < L; s++) {
+        const p = onWall(w, s, z);
+        g.px(p.x, p.y, o.fill[(Math.floor((s + off) / 6) + row) % 2]);
+      }
+    }
   }
   // brick courses: 2-px mortar lines (the dominant read: masonry, not a lattice) …
   for (let z = 6; z < h; z += 6) {
@@ -220,17 +238,32 @@ function paintWall(g: Raster, w: WallLine, o: WallLook): void {
     g.px(p.x, p.y, o.joint);
     g.px(q.x, q.y, o.joint);
   }
-  // the top edge + crenellations (merlons 3 px tall, 3 wide, every 6)
+  // the crest has THICKNESS (round 2 #7): its top face and the merlons' tops are drawn 1–2 px back toward the
+  // titan in the shaded tone first, so the rampart reads as a 3-px-deep masonry wall, not a 1-px ladder
+  for (let t = 2; t >= 1; t--) {
+    const dx = w.n.x * t;
+    const dy = Math.round(w.n.y * t * 0.5);
+    for (let s = 0; s <= L; s++) {
+      const merlon = s % 6 < 3;
+      const p = onWall(w, s, h + (merlon ? 3 : 0));
+      g.px(p.x + dx, p.y + dy, t === 2 ? o.mortar : o.joint);
+      if (s === 0 || s === L) for (let z = 0; z <= h; z += 2) {
+        const q = onWall(w, s, z);
+        g.px(q.x + dx, q.y + dy, o.joint);
+      }
+    }
+  }
+  // the top edge + crenellations (solid merlon blocks 3 × 3 every 6: lit top row, shaded body)
   for (let s = 0; s <= L; s++) {
     const merlon = s % 6 < 3;
     const p = onWall(w, s, h);
     g.px(p.x, p.y, o.top);
     if (merlon) {
+      for (let k = 1; k < 3; k++) {
+        const q = onWall(w, s, h + k);
+        g.px(q.x, q.y, s % 6 === 1 ? o.joint : o.top);
+      }
       const q = onWall(w, s, h + 3);
-      g.px(q.x, q.y, o.top);
-    }
-    if (s % 6 === 0 || s % 6 === 2) for (let k = 1; k < 3; k++) {
-      const q = onWall(w, s, h + k);
       g.px(q.x, q.y, o.top);
     }
   }
@@ -251,17 +284,19 @@ function paintWall(g: Raster, w: WallLine, o: WallLook): void {
   }
 }
 
-/** One crenellation profile ⊓⊓⊓ (18 px, parallel to the wall) whose floor anchor is `at`, `z` px up, flexing. */
+/** One MERLON BLOCK (round 2 #7: 6 × 6 px, parallel to the wall) whose floor anchor is `at`, `z` px up, flexing 1 px:
+ *  a solid face in `c`, its lit top row and leading edge in `lead`, and a 2-px top face back toward the titan. */
 function paintPulse(g: Raster, w: WallLine, at: XY, z: number, flex: number, c: number, lead: number): void {
-  const n = 18;
-  for (let i = 0; i <= n; i++) {
-    const s = i - n / 2;
-    const x = Math.round(at.x + w.d.x * s);
-    const y = Math.round(at.y + w.d.y * s - z);
-    const m = ((i % 6) + 6) % 6;
-    const up = m < 3 ? 3 - flex : 0;
-    g.px(x, y - up, i === 0 || i === n ? lead : c);
-    if (m === 0 || m === 3) for (let k = 0; k <= 3 - flex; k++) g.px(x, y - k, c);
+  const H = 6 - flex;
+  for (let t = 2; t >= 1; t--) {
+    const dx = w.n.x * t;
+    const dy = Math.round(w.n.y * t * 0.5);
+    for (let i = -3; i <= 2; i++) g.px(Math.round(at.x + w.d.x * i) + dx, Math.round(at.y + w.d.y * i - z - H) + dy, t === 1 ? lead : c);
+  }
+  for (let i = -3; i <= 2; i++) {
+    const x = Math.round(at.x + w.d.x * i);
+    const y0 = Math.round(at.y + w.d.y * i - z);
+    for (let k = 0; k <= H; k++) g.px(x, y0 - k, k === H || i === -3 ? lead : k === 0 ? WARD.dark : c);
   }
 }
 
@@ -322,7 +357,7 @@ function declareLayer(ctx: Ctx<'attackDeclare'>): Promise<void> {
 
 /** The wall's rise: 4 whole-pixel steps (scene ms each). */
 const RISE_STEP_MS = 30;
-const WALL_H = 36;
+const WALL_H = 42;
 
 async function wardV3(ctx: Ctx<'activate'>): Promise<void> {
   const ev = ctx.ev;
@@ -366,7 +401,8 @@ async function wardV3(ctx: Ctx<'activate'>): Promise<void> {
   // ---- f3 release: the rampart rises
   const wall = new Raster(sc, 0, 0, 640, 360, depth);
   let wallH = 0;
-  let wallLook: WallLook = { h: 0, top: WARD.hot, mortar: WARD.lit, joint: WARD.dim };
+  const BRICK = [PAL.gold1, PAL.earth3] as const;
+  let wallLook: WallLook = { h: 0, top: WARD.hot, mortar: WARD.lit, joint: WARD.dim, fill: BRICK };
   let wallGone = false;
   const drawWall = () => wall.draw((g) => !wallGone && paintWall(g, line, { ...wallLook, h: wallH }));
   await until(sc, () => !u.sprite.active || (u.frameInfo().anim === 'special' && u.frameInfo().frame >= REL), u.rangeMs('special', 0, REL) + 200);
@@ -379,7 +415,7 @@ async function wardV3(ctx: Ctx<'activate'>): Promise<void> {
     drawWall();
     await sleep(sc, RISE_STEP_MS);
   }
-  wallLook = { h: WALL_H, top: WARD.lit, mortar: WARD.lit, joint: WARD.dim };
+  wallLook = { h: WALL_H, top: WARD.lit, mortar: WARD.lit, joint: WARD.dim, fill: BRICK };
   drawWall();
   // ---- f5–f9: one crenellation pulse per shove
   const fx = new Raster(sc, 0, 0, 640, 360, DEPTH.FX + 1);
@@ -408,8 +444,10 @@ async function wardV3(ctx: Ctx<'activate'>): Promise<void> {
       flights.push(
         pulseFlight(sc, fx, line, lane, front, i).then(() => {
           // arrival: the gong step, the shove, the peel, the plate's −100
-          play('kdSapStep', { volume: 0.85 - i * 0.04, pan: panA, pitch: SAP_PITCH[Math.min(SAP_PITCH.length - 1, i + (5 - pulses))] });
+          // the steps GROW toward the last one (round 2 #1): the −500 lands on the loudest gong
+          play('kdSapStep', { volume: 0.74 + i * 0.06, pan: panA, pitch: SAP_PITCH[Math.min(SAP_PITCH.length - 1, i + (5 - pulses))] });
           if (live(a)) {
+            struckFlash(sc, a);
             shoved = Math.min(3, shoved + 1);
             a.sprite.setPosition(Math.round(live0.x + lane.x * shoved * 1.4), Math.round(live0.y + lane.y * shoved));
             peel(sc, a, lane, i);
@@ -493,14 +531,26 @@ async function pulseFlight(sc: Phaser.Scene, fx: Raster, w: WallLine, lane: XY, 
   void lane;
 }
 
-/** 4–6 pixels of the attacker's own colour peel off its struck face and blow back (2 palette steps). */
+/** The block hits: the attacker's silhouette flashes white, then gold, one frame each (round 2 #7). */
+function struckFlash(sc: Phaser.Scene, a: MonsterUnit): void {
+  const s = a.sprite;
+  s.setTintFill(PAL.white);
+  void sleep(sc, 34).then(() => {
+    if (s.active) s.setTintFill(WARD.lit);
+    return sleep(sc, 34);
+  }).then(() => {
+    if (s.active) s.clearTint();
+  });
+}
+
+/** 4–6 CLUMPS (2 × 2) of the attacker's own colour peel off its struck face and blow back (2 palette steps). */
 function peel(sc: Phaser.Scene, a: MonsterUnit, lane: XY, i: number): void {
   const ramp: Ramp = ATTRIBUTE_RAMP[a.attribute];
   const c = a.core();
   const sp = new Sparks(sc, a.sprite.depth + 0.3);
   const n = 4 + (i % 3);
   for (let k = 0; k < n; k++)
-    sp.add({ x: Math.round(c.x - lane.x * RR(4, 10)), y: Math.round(c.y + RR(-10, 8)), vx: lane.x * RR(40, 80), vy: lane.y * RR(20, 50) + RR(-30, -8), drag: 3, life: RR(220, 320), colors: [ramp[3], ramp[2], ramp[1]], shape: 'px', fadeAt: 1 });
+    sp.add({ x: Math.round(c.x - lane.x * RR(4, 10)), y: Math.round(c.y + RR(-10, 8)), vx: lane.x * RR(40, 80), vy: lane.y * RR(20, 50) + RR(-30, -8), drag: 3, life: RR(220, 320), colors: [ramp[3], ramp[2], ramp[1]], shape: 'sq', size: 2, fadeAt: 1 });
   sp.release();
   void lightFlash(sc, c.x - lane.x * 6, c.y, WARD.lit, 14, 140, { floorY: a.home.y, air: 0.5, intensity: 0.5 });
 }
@@ -544,8 +594,19 @@ async function defendV3(ctx: Ctx<'battle'>): Promise<void> {
     fired = true;
     sc.events.off('v3:contact', onContact);
     try {
-      if (w && !w.done) repel(sc, w, live(ctx.unit(ev.attackerUid)), blocked || tie);
-      else play('kdPlateHit', { volume: 0.6, pan: panAt(u.home.x) });
+      if (w && !w.done) {
+        // the titan's copper OWNS this beat (round 2 #2): the battle's generic block clang / impact sounds, played
+        // synchronously right after this event (vfx/combat blockClang, combatImpact), stay off for this call and
+        // anything already ringing fades; the hex glint and the water-blue clang graphics are hidden — the masonry
+        // rampart is the only shield on screen (precedents: kite_fencer, steppe_spiralhorn, wing_lady, reed_heron)
+        setCombatSfx(false);
+        queueMicrotask(() => {
+          setCombatSfx(true);
+          fade(['shieldBlock', 'impactLight', 'impactHeavy'], 12);
+        });
+        hideGenericGuard(sc, u);
+        repel(sc, w, live(ctx.unit(ev.attackerUid)), blocked || tie);
+      } else play('kdPlateHit', { volume: 0.6, pan: panAt(u.home.x) });
     } catch (e) {
       console.error('[shield_titan] defend layer', e);
     }
@@ -557,6 +618,26 @@ async function defendV3(ctx: Ctx<'battle'>): Promise<void> {
     sc.events.off('v3:contact', onContact);
     if (w) endWard(w);
   }
+}
+
+/** Hide the generic guard presentation made after this tick (≤ 420 ms): the hex glint (MonsterUnit guardGlint, an ADD
+ *  raster at the body's depth + 0.5) and the battle's hex-plate clang (vfx blockClang graphics at DEPTH.FX + 0.1 / 0.2). */
+function hideGenericGuard(sc: Phaser.Scene, u: MonsterUnit): void {
+  const before = new Set(sc.children.list);
+  onFrame(sc, (_dt, el) => {
+    const want = u.sprite.depth + 0.5;
+    for (const o of sc.children.list) {
+      if (before.has(o)) continue;
+      if (o.type === 'Image') {
+        const im = o as Phaser.GameObjects.Image;
+        if (im.blendMode === 1 && Math.abs(im.depth - want) < 0.01 && im.texture.key.startsWith('fx:set:')) im.setVisible(false);
+      } else if (o.type === 'Graphics') {
+        const g = o as Phaser.GameObjects.Graphics;
+        if (Math.abs(g.depth - (DEPTH.FX + 0.1)) < 1e-6 || Math.abs(g.depth - (DEPTH.FX + 0.2)) < 1e-6) g.setVisible(false);
+      }
+    }
+    return el < 420;
+  });
 }
 
 /** The blow lands on the warded titan: the rampart flashes up and repels it — or is broken. */
@@ -573,13 +654,14 @@ function repel(sc: Phaser.Scene, w: Ward, a: MonsterUnit | null, holds: boolean)
   const lane = aAt ? norm({ x: aAt.x - line.mid.x, y: aAt.y - line.mid.y }) : { x: dirOf(w.titan), y: -0.5 };
   const pan = panAt(line.mid.x);
   if (holds) {
-    play('kdRepel', { volume: 0.9, pan });
+    // panned between the wall and the attacker: the push whoosh carries the shove toward it
+    play('kdRepel', { volume: 0.95, pan: aAt ? panAt((line.mid.x + aAt.x) / 2) : pan });
     void lightFlash(sc, line.mid.x, line.mid.y - 16, WARD.hot, 34, 260, { floorY: line.mid.y, air: 0.7, intensity: 1 });
     void animate(sc, 260, (_k, el) => {
       const step = Math.floor(el / 35);
       r.draw((g) => {
         // 2 frames full wall (white top edge, gold bricks), then the spall frames
-        if (step < 2) paintWall(g, line, { h: WALL_H, top: PAL.white, mortar: WARD.lit, joint: WARD.dim });
+        if (step < 2) paintWall(g, line, { h: WALL_H, top: PAL.white, mortar: WARD.lit, joint: WARD.dim, fill: [PAL.gold2, PAL.gold1] });
         // one stepped 1-px ring shock out of the boss (EF-7: one ring)
         if (step < 4) g.ring(boss.x, boss.y, 6 + step * 5, Math.round((6 + step * 5) * 0.55), step < 2 ? WARD.hot : WARD.lit);
         // the last crenellation slams the attacker
@@ -636,6 +718,8 @@ async function drawbridgeV3(S: Stage): Promise<void> {
       landed = true;
       heave?.stop(60);
       play('kdPlant', { volume: 1, pan });
+      // the summon's own climax over the DUNK (round 2 #5): the gate SHUTS — a deep boom with a long wub tail
+      play('kdGateBoom', { volume: 0.95, pan });
       plantBurst(sc, unit, home, dir);
       void shake(sc, 170, 2);
       const boss = rint(pointOf(unit, 'summon', unit.markFrame('summon', 'land', 8), 'muzzle'));
@@ -652,13 +736,21 @@ async function drawbridgeV3(S: Stage): Promise<void> {
     return;
   }
   // f1–f3: dust slides off the rising face
-  for (const f of [1, 2, 3]) atFrame(unit, 'summon', f, () => faceDust(sc, unit, f), { late: false });
+  // the hinge groans up a notch on each step (25° → 55° → 80°: the pitch steps with the angle, round 2 #5)
+  for (const f of [1, 2, 3])
+    atFrame(unit, 'summon', f, () => {
+      faceDust(sc, unit, f);
+      play('kdHinge', { volume: 0.85 + f * 0.05, pan, pitch: [1, 1.12, 1.26][f - 1] });
+    }, { late: false });
   atFrame(unit, 'summon', 2, () => pool.setIntensity(0.5, 80), { late: false });
-  // f4: upright, rocking: the creak stops; the fingers curl over the rim
-  atFrame(unit, 'summon', 4, () => creak.stop(80), { late: false });
+  // f4: upright, rocking: the creak stops; the plate's ring BLOOMS in; the fingers curl over the rim
+  atFrame(unit, 'summon', 4, () => {
+    creak.stop(80);
+    play('kdPlateBloom', { volume: 0.9, pan });
+  }, { late: false });
   // f7: he lifts it 2 px — the chest "hup"
   atFrame(unit, 'summon', 7, () => {
-    if (!landed) heave = start('kdHeave', { volume: 0.55, pan });
+    if (!landed) heave = start('kdHeave', { volume: 0.95, pan });
   }, { late: false });
   await pose.done;
   creak.stop(40);
@@ -787,13 +879,19 @@ async function gateFallV3(s: StrikeArgs): Promise<void> {
   const rimAt = pointOf(u, 'attack', CON, 'muzzle');
   const at = rint({ x: rimAt.x + nd.x * 6, y: rimAt.y + 4 });
   const floorY = s.target ? s.target.home.y : s.toGround.y;
-  s.impact(at);
-  play('kdSlabSlam', { volume: s.blocked ? 0.85 : 1, pan: panAt(at.x) });
+  // the slab's copper owns the contact (round 2 #2): the generic block clang and impact thuds that the battle plays
+  // synchronously inside impact() are skipped (the struck body's own material sound stays)
+  hush(['shieldBlock', 'impactLight', 'impactHeavy'], () => s.impact(at));
+  play('kdSlabSlam', { volume: s.blocked ? 0.9 : 1, pan: panAt(at.x) });
   slamDust(sc, u, CON, floorY);
   void lightFlash(sc, at.x, at.y, WARD.lit, s.blocked ? 26 : 36, 320, { floorY, air: 0.7, intensity: 0.9 });
   const boss = rint(pointOf(u, 'attack', CON, 'grip'));
   void boss;
   if (loses) return; // the counter claims him on this frame; the gate closes over him (death hook)
+  // the re-plant on f(REC+1) (round 2 #4): registered before any await (blocked: in the tick the haul-back claimant
+  // starts, below — the claim restarts the anim, which would cancel an earlier mark)
+  const replant = () => atFrame(u, 'attack', Math.min(n - 2, REC + 1), () => play('kdPlant', { volume: 0.55, pan }), { late: false, maxMs: 2000 });
+  if (!s.blocked) replant();
   // a blocked melee survivor is claimed by battleV3 on this frame and handed a generic recoil once the hit-stop ends
   // (its f0 is upright idle: a one-frame pop from the slam). The haul-back is his recoil: on the first frame time runs
   // again we play attack f(CON+1)… as the claimant, in the same tick, so the slam flows into the re-lifted slab.
@@ -809,8 +907,12 @@ async function gateFallV3(s: StrikeArgs): Promise<void> {
         if (dt <= 0) return true; // the hit-stop: the contact frame holds
         if (!took) {
           took = true;
+          // the rebound is its own beat (round 2 #4): the plate shivers on the first frame after the hit-stop
+          play('kdPlateShiver', { volume: 0.9, pan: panAt(at.x) });
           const run = () => u.playRange('attack', CON + 1, undefined, { hold: false });
-          void (u.claimed ? u.asClaimant(run) : run()).then(() => {
+          const p = u.claimed ? u.asClaimant(run) : run();
+          replant();
+          void p.then(() => {
             if (u.claimed) u.unclaim();
             done();
           });
@@ -821,7 +923,6 @@ async function gateFallV3(s: StrikeArgs): Promise<void> {
   }
   if (s.blocked) {
     // the rebound: a 1-px jolt, then the plate shiver (±1 px on 3 frames), a 3 px heel-dust slide back
-    play('kdPlateShiver', { volume: 0.8, pan: panAt(at.x) });
     const sp = u.sprite;
     const x0 = sp.x;
     const y0 = sp.y;
@@ -839,16 +940,19 @@ async function gateFallV3(s: StrikeArgs): Promise<void> {
     feet = slideTo;
   }
   // ---- recover: haul the shield back up, step home, re-plant
-  atFrame(u, 'attack', Math.min(n - 2, REC + 1), () => play('kdPlant', { volume: 0.5, pan }), { late: false });
   const rest = haul ?? u.playRange('attack', CON + 1, undefined, { hold: false });
   await sleep(sc, u.rangeMs('attack', CON + 1, REC));
   const backMs = Math.max(120, Math.min(300, u.rangeMs('attack', REC, n) - 60));
   const from = { ...feet };
-  if (from.x !== home.x || from.y !== home.y)
+  if (from.x !== home.x || from.y !== home.y) {
+    // two heavy bare-foot steps on the walk home, the straps creaking with them (round 2 #4)
+    play('kdStep', { volume: 0.5, pan });
+    void sleep(sc, Math.round(backMs * 0.55)).then(() => play('kdStep', { volume: 0.42, pan, pitch: 0.94 }));
     await animate(sc, backMs, (k) => {
       const e = 0.5 - 0.5 * Math.cos(Math.PI * k);
       placeFeet(u, { x: lerp(from.x, home.x, e), y: lerp(from.y, home.y, e) });
     });
+  }
   placeFeet(u, home);
   await Promise.race([rest, sleep(sc, 700)]);
   const r0 = u.rest0;
@@ -1038,8 +1142,8 @@ async function sledgeV3(s: StrikeArgs): Promise<void> {
       hand = giant.world(giant.pts!.hand ?? giant.pts!.foot);
     }
     // ---- arrival = contact: the slab slams into the duelist
-    s.impact(s.to);
-    play('kdSlabSlam', { volume: 0.6, pan: panAt(s.to.x) });
+    hush(['impactHeavy', 'impactLight'], () => s.impact(s.to));
+    play('kdSlabSlam', { volume: 0.85, pan: panAt(s.to.x) });
     void lightFlash(sc, s.to.x, s.to.y, WARD.lit, 30, 320, { floorY: s.toGround.y, intensity: 0.9, air: 0.6 });
     // a little bounce back off the duelist
     const bounce = rint({ x: endFoot.x - lane.x * 5, y: endFoot.y - lane.y * 5 });
@@ -1123,7 +1227,7 @@ function deathLayers(ctx: Ctx<'destroy'>): Promise<void> {
       const f = u.frameInfo().frame;
       if (f < dis) play('kdKneel', { volume: 0.85, pan });
     }, { maxMs: 4000 });
-    // the lid SLAMS flat: a rectangular dust ring traced along its four edges, a 2 px shake
+    // the lid SLAMS flat: dust clumps puffing out along the floor from its long edges, a 1-px thud, a 2 px shake
     atFrame(u, 'death', slam, () => {
       lidDust(sc, u, slam);
       void shake(sc, 160, 2);
@@ -1193,8 +1297,21 @@ async function lidDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
       u.asClaimant(() => void u.playRange('death', st, undefined, { hold: true }));
     }
     const dis = u.markFrame('death', 'dissolve', Math.max(0, n - 3));
-    atFrame(u, 'death', dis, () => play('kdTopple', { pan }), { late: false });
-    atFrame(u, 'death', Math.min(n - 1, dis + 2), () => play('kdLidSlam', { volume: 1, pan }), { late: false });
+    // the topple GROAN is 420 ms long and peaks on the slam (round 2 #8): it starts on the frame ≈ 420 ms before the
+    // slam frame (a late entry: at once, shorter — the slam cuts it)
+    const slamF = Math.min(n - 1, dis + 2);
+    const TOPPLE = 420;
+    // every frame start re-measures the time left to the slam (the pose's real pace, whatever frame it joined on)
+    let toppled = false;
+    for (let f = 0; f < slamF; f++)
+      atFrame(u, 'death', f, () => {
+        if (toppled) return;
+        const rem = u.rangeMs('death', f, slamF);
+        if (rem - TOPPLE >= u.frameMs('death', f) && f < slamF - 1) return;
+        toppled = true;
+        void sleep(sc, Math.max(0, rem - TOPPLE)).then(() => play('kdTopple', { volume: 1, pan }));
+      }, { late: false, maxMs: 4000 });
+    atFrame(u, 'death', slamF, () => play('kdLidSlam', { volume: 1, pan }), { late: false });
     await until(sc, () => !u.sprite.active || !inDeath() || u.frameInfo().frame >= n - 1 || !u.sprite.anims.isPlaying, 2400);
     if (u.sprite.active && inDeath()) await sleep(sc, u.frameMs('death', n - 1));
     // ---- the ward's light leaves the dead copper; the lid goes dark and is gone
@@ -1220,46 +1337,89 @@ async function lidDeathV3(ctx: Ctx<'destroy'>): Promise<void> {
   await leave;
 }
 
-/** The lid's footprint dust ring: a stepped rectangle traced round the lying slab that blows outward in 4 steps
- *  (2 rows, earth4 → earth3, thinning), plus a few chips. Whole pixels. */
+/** The lid's slam dust (round 2 #3: never a closed outline): whole-pixel dust clumps (2–3 px, earth3 / earth2 with an
+ *  earth1 shadow row on the floor) puff out from the lid's two LONG edges along the iso floor axes (±0.5 slopes), rise
+ *  2–4 px and fall back over ≈ 380 ms — densest at the near edge's middle, thin at the ends; the far edge's clumps
+ *  sit behind the lid. The lid itself thuds 1 px into the floor for two frames, and a few chips fly. */
 function lidDust(sc: Phaser.Scene, u: MonsterUnit, f: number): void {
   // the lying lid spans x 8–63, rows 60–77 of the frame (the face + its 4-px front edge)
   const c0 = u.framePoint(8, 60);
   const c1 = u.framePoint(63, 77);
   const x0 = Math.round(Math.min(c0.x, c1.x));
   const x1 = Math.round(Math.max(c0.x, c1.x));
-  const y0 = Math.round(c0.y);
+  const y0 = Math.round(c0.y) + 4;
   const y1 = Math.round(c1.y);
-  const r = new Raster(sc, 0, 0, 640, 360, unitDepth(u.home.y) + 0.5);
-  void animate(sc, 300, (_k, el) => {
-    const step = Math.min(3, Math.floor(el / 75));
-    const ix = 2 + step * 4;
-    const iy = 1 + step * 2;
-    // puffs, not a box: 2-px dust clumps with gaps, a second row offset under them while it is dense
-    const c = step < 2 ? PAL.earth4 : PAL.earth3;
-    const per = step < 2 ? 4 : 6;
-    const clump = (x: number, y: number, i: number) => {
-      if (i % per >= 2) return;
-      g0!.px(x, y, i % per === 0 ? c : PAL.earth3);
-    };
-    let g0: Parameters<Parameters<Raster['draw']>[0]>[0] | null = null;
-    r.draw((g) => {
-      g0 = g;
-      let i = 0;
-      for (let x = x0 - ix; x <= x1 + ix; x++, i++) {
-        clump(x, y0 - iy - (i % 7 === 3 ? 1 : 0), i);
-        clump(x, y1 + iy + (i % 5 === 2 ? 1 : 0), i + 2);
-        if (step < 2 && i % per === 1) g.px(x, y1 + iy - 1, PAL.earth2);
-      }
-      i = 0;
-      for (let y = y0 - iy; y <= y1 + iy; y++, i++) {
-        clump(x0 - ix - (i % 3 === 1 ? 1 : 0), y, i + 1);
-        clump(x1 + ix + (i % 3 === 2 ? 1 : 0), y, i + 3);
-      }
-    });
-  }).then(() => r.destroy());
-  const sp = new Sparks(sc, unitDepth(u.home.y) + 0.6);
-  for (let i = 0; i < 8; i++) sp.add({ x: Math.round(lerp(x0, x1, R())), y: y0 - 1, vx: RR(-30, 30), vy: RR(-50, -24), ay: 300, floor: y1, bounce: 0.2, life: RR(240, 340), colors: DUST, shape: 'px', fadeAt: 1 });
+  const cx = (x0 + x1) / 2;
+  const half = (x1 - x0) / 2;
+  interface Clump {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    w: number;
+    rise: number;
+    near: boolean;
+  }
+  const clumps: Clump[] = [];
+  const edge = (y: number, near: boolean, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const t = (i + 0.5) / count;
+      const x = x0 + 2 + (x1 - x0 - 4) * t + RR(-1.5, 1.5);
+      const side = x < cx ? -1 : 1;
+      const mid = 1 - Math.abs(x - cx) / half; // 1 in the middle, 0 at the ends
+      const dist = RR(7, 11) + mid * 6;
+      // out along the iso floor axis away from the lid: (±1, ±0.5)
+      clumps.push({ x, y: y + Math.round(RR(-1.5, 1.5)), vx: side * dist * (0.4 + 0.6 * (1 - mid)), vy: (near ? 1 : -1) * dist * RR(0.35, 0.65), w: mid > 0.5 ? 4 : mid > 0.2 ? 3 : 2, rise: Math.round(2 + mid * 2), near });
+    }
+  };
+  edge(y1 + 1, true, 12);
+  edge(y0, false, 5);
+  const rNear = new Raster(sc, 0, 0, 640, 360, Math.max(u.sprite.depth, unitDepth(u.home.y)) + 0.5);
+  const rFar = new Raster(sc, 0, 0, 640, 360, u.sprite.depth - 0.1);
+  const MS = 380;
+  void animate(sc, MS, (_k, el) => {
+    const step = Math.min(9, Math.floor(el / 38));
+    const k = step / 9;
+    const e = 1 - (1 - k) * (1 - k);
+    const z = (c: Clump) => Math.round(Math.sin(Math.PI * Math.min(1, k * 1.3)) * c.rise);
+    for (const [r, near] of [
+      [rNear, true],
+      [rFar, false],
+    ] as const) {
+      r.draw((g) => {
+        for (const c of clumps) {
+          if (c.near !== near) continue;
+          const w = step >= 7 ? c.w - 1 : c.w;
+          if (w <= 0 || (step >= 8 && (Math.round(c.x) & 1))) continue;
+          const bx = Math.round(c.x + c.vx * e - w / 2);
+          const by = Math.round(c.y + c.vy * e);
+          const h = z(c);
+          // the shadow row on the floor (only while the clump is up)
+          if (h > 0) for (let x = 0; x < w; x++) g.px(bx + x, by, PAL.earth1);
+          // the clump: a lit top row, a body row (2 rows while dense, 1 once thinning)
+          for (let x = 0; x < w; x++) {
+            const lip = x === 0 || x === w - 1;
+            if (step < 4 && !lip) g.px(bx + x, by - h - 2, PAL.earth3);
+            g.px(bx + x, by - h - 1, step < 5 ? (lip ? PAL.earth3 : PAL.earth4) : PAL.earth3);
+            if (step < 7) g.px(bx + x, by - h, PAL.earth2);
+          }
+        }
+      });
+    }
+  }).then(() => {
+    rNear.destroy();
+    rFar.destroy();
+  });
+  // the lid THUDS 1 px into the floor for two frames (a heavy door, not a bar)
+  const sp0 = u.sprite;
+  const ly = sp0.y;
+  sp0.setY(ly + 1);
+  void sleep(sc, 60).then(() => {
+    if (sp0.active && sp0.y === ly + 1) sp0.setY(ly);
+  });
+  // edge chips off the near edge
+  const sp = new Sparks(sc, Math.max(u.sprite.depth, unitDepth(u.home.y)) + 0.6);
+  for (let i = 0; i < 6; i++) sp.add({ x: Math.round(lerp(x0 + 6, x1 - 6, R())), y: y1 - 1, vx: RR(-30, 30), vy: RR(-50, -24), ay: 300, floor: y1 + 2, bounce: 0.2, life: RR(240, 340), colors: DUST, shape: 'px', fadeAt: 1 });
   sp.release();
   void f;
 }
@@ -1282,7 +1442,18 @@ function positionLayer(ctx: Ctx<'positionChange'>): Promise<void> {
   const u = live(ctx.unit(ev.uid));
   if (u) {
     const pan = panAt(u.home.x);
-    if (ev.position === 'defense' && u.has('toGuard')) atFrame(u, 'toGuard', 3, () => play('kdPlant', { volume: 0.8, pan }), { late: false, maxMs: 2500 });
+    if (ev.position === 'defense' && u.has('toGuard')) {
+      atFrame(u, 'toGuard', 3, () => play('kdPlant', { volume: 0.85, pan }), { late: false, maxMs: 2500 });
+      // the DUNK is the guard's only sound (round 2 #2): the shared position change's generic shield bell
+      // (summon-b/position.ts, played through this context ~170 ms after the DUNK) is skipped for this event
+      const sfx0 = ctx.sfx;
+      ctx.sfx = (name, opts) => {
+        if (name !== 'shieldBlock') sfx0(name, opts);
+      };
+      return ctx.base().finally(() => {
+        ctx.sfx = sfx0;
+      });
+    }
     if (ev.position === 'attack') for (const f of [3, 5]) atFrame(u, 'roar', f, () => play('kdFistBang', { volume: f === 3 ? 0.8 : 0.9, pan }), { late: false, maxMs: 2500 });
   }
   return ctx.base();
