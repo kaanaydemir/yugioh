@@ -497,7 +497,7 @@ registerCardHook(
       }
     });
     u.sprite.setPosition(Math.round(r0.x), Math.round(r0.y));
-    // ---- the repel: the field throws the pieces apart. The body's last frame flashes WHITE, and the pieces are born
+    // ---- the repel: the field throws the pieces apart. The body's last frame flashes hot gold, and the pieces are born
     // white where their parts were drawn (the flash frame carries the change of shape), then fly
     strain.stop(40);
     seamFx.stop();
@@ -505,7 +505,9 @@ registerCardHook(
     void lightFlash(sc, home.x, home.y - 40, PAL.white, 64, 260, { floorY: home.y, intensity: 1, ring: true });
     bg(shake(sc, 160, 4));
     await hitStop(sc, 80);
-    u.sprite.setTintFill(PAL.white);
+    // the body's flash frame is the seams' hot gold (their last tone before white); the pieces are born white over it
+    // (EF-4: a whole white body plus white pieces put > 1.5 % of the screen at white on that frame)
+    u.sprite.setTintFill(PAL.gold4);
     const seat = (id: string): XY => {
       const o = REPEL_AT[id] ?? { x: 0, y: -20 };
       return { x: home.x + o.x * dir, y: home.y + o.y };

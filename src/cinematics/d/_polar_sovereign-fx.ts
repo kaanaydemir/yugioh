@@ -478,7 +478,7 @@ function pieceKey(scene: Phaser.Scene, id: MonsterId, anim: AnyMonsterAnim, fram
   return key;
 }
 
-/** The split's fling: each piece's own sprite frame is born WHITE where its part was drawn in the body (the repel
+/** The split's fling: each piece's own sprite frame is born in its POLE's hot tone where its part was drawn in the body (the repel
  *  flash frame hides the change of shape), then kicked out along its own radial Bezier (up and away from the
  *  others: the field repels them apart), tumbling through its frames, trailing a two-colour streak (its pole over
  *  water) that sheds iron dust; braked by the field it swings in over its landing zone and hangs there — wobbling
@@ -493,7 +493,7 @@ export function flingPieces(scene: Phaser.Scene, ps: readonly FlungPiece[], ms: 
       .setOrigin((p.flip ? art.w - art.anchorX : art.anchorX) / art.w, art.anchorY / art.h)
       .setFlipX(p.flip)
       .setDepth(DEPTH.FX + 1)
-      .setTintFill(PAL.white);
+      .setTintFill(p.pole); // born in its pole's hot tone, not white (EF-4: three white bodies put > 1.5 % at white)
   });
   const xs = ps.flatMap((p) => [p.from.x, p.to.x, p.from.x + p.launch.x]);
   const ys = ps.flatMap((p) => [p.from.y, p.to.y, p.from.y + p.launch.y]);

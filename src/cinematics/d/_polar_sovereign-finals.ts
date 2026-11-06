@@ -70,7 +70,7 @@ export async function piecesFall(sc: Phaser.Scene, o: { uidBase: number; player:
     else u.pose('death', 0);
     u.sprite.setPosition(rnd(p.from.x), rnd(p.from.y)).setDepth(unitDepth(p.to.y) + 0.5 + i * 0.01);
     u.showSprite();
-    u.sprite.setTintFill(PAL.white);
+    u.sprite.setTintFill(p.pole ?? PAL.gold4); // born in its pole's hot tone (EF-4: three white bodies > 1.5 % white)
   });
   await sleep(sc, 50);
   units.forEach((u, i) => u.sprite.active && u.sprite.setTintFill(o.pieces[i].pole ?? PAL.gold4));
