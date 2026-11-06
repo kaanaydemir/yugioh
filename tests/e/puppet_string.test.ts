@@ -24,7 +24,8 @@ const cc = (e: GameEvent[]) => e.filter((x): x is Extract<GameEvent, { type: 'co
 
 describe('e_puppet_string stages', () => {
   it('every stage takes a monster with the spell as the source', () => {
-    for (const key of Object.keys(PACK)) {
+    // (ePuppetBot has no scripted steps: the bot plays it — see the CPU test below)
+    for (const key of Object.keys(PACK).filter((k) => PACK[k].steps.length > 0)) {
       const { events } = runStage(key);
       const take = cc(events).find((e) => e.reason === 'take');
       expect(take, key).toBeTruthy();
@@ -46,6 +47,24 @@ describe('e_puppet_string stages', () => {
     const { events } = runStage('ePuppetNoZone');
     expect(cc(events).filter((e) => e.reason === 'return')).toHaveLength(0);
     expect(events.find((e) => e.type === 'destroy' && e.reason === 'rule')).toMatchObject({ cardId: 'abyss_magus', player: 0 });
+  });
+});
+
+describe('ePuppetBot: the CPU casts it on its own and the turn goes on', () => {
+  it('the bot picks Kukla İpi, takes a monster, and the duel reaches the End Phase return or a winner', async () => {
+    const { chooseAction } = await import('../../src/engine');
+    let state = buildStage(PACK.ePuppetBot.stage);
+    const events: GameEvent[] = [];
+    for (let k = 0; k < 80; k++) {
+      if (state.winner !== null || state.activePlayer !== 1) break;
+      const r = apply(state, chooseAction(state, k + 1));
+      state = r.state;
+      events.push(...r.events);
+    }
+    const take = cc(events).find((e) => e.reason === 'take');
+    expect(take).toBeTruthy();
+    expect(uidOf(buildStage(PACK.ePuppetBot.stage), 'puppet_string', 1)).toBe(take!.sourceUid);
+    expect(state.winner !== null || cc(events).some((e) => e.reason === 'return')).toBe(true);
   });
 });
 

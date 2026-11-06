@@ -141,6 +141,7 @@ function paintCard(card: PixelCanvas, g: Geo): void {
   card.poly(rect(g.cc, g.chx, g.chy, g.roll), PAL.night3);
   const fu = g.frame / g.chx;
   const fv = g.frame / g.chy;
+  const text = new Set<number>();
   for (let y = 0; y < card.h; y++)
     for (let x = 0; x < card.w; x++) {
       if (!card.isOpaque(x, y)) continue;
@@ -154,7 +155,16 @@ function paintCard(card: PixelCanvas, g: Geo): void {
         c = v < -0.25 ? PAL.mag1 : PAL.mag0;
       } else if (g.k === 2 && Math.round((v - 0.4) * g.chy) % 3 === 0 && u > -0.7 && u < 0.4) c = PAL.night4; // text lines
       card.set(x, y, c);
+      if (c === PAL.night4 && g.k === 2 && v >= 0.3) text.add(y * card.w + x);
     }
+  // the rolled text lines step 1 px at a time: each step is a 2×2 checkerboard at 1× (reads as dither, §10).
+  // Fill the step's lower-right corner so every step is an L (the line stays 1 px thick between its steps).
+  for (let y = 0; y + 1 < card.h; y++)
+    for (let x = 0; x + 1 < card.w; x++)
+      if (text.has(y * card.w + x + 1) && text.has((y + 1) * card.w + x) && card.get(x, y) === PAL.night3 && card.get(x + 1, y + 1) === PAL.night3) {
+        card.set(x + 1, y + 1, PAL.night4);
+        text.add((y + 1) * card.w + x + 1);
+      }
   // cracks out of the bore: jagged night0 lines (1 px; a lit night4 edge on their upper side at 2×)
   for (const [ang, len] of g.cracks) {
     const ca = Math.cos(ang);
@@ -443,8 +453,9 @@ function smallLance(x: number, y: number, f: number): number | null {
 
 // prettier-ignore — one big white curl peeling off the shaft's lit edge (root at the bottom-left, 's')
 const CURL_S: readonly (readonly string[])[] = [
-  ['..wwww.', '.w....w', 'w..ww.w', 'w.w..ww', 'w..ww..', '.m.....', 's......'],
-  ['..mwww.', '.w....w', 'w..ww.w', 'm.w..ww', 'w..ww..', '.m.....', 's......'],
+  // (a 4-connected spiral: no 1-px diagonal joins, so no 2×2 checkerboards at 1× — KART_RESIMLERI §10)
+  ['..wwww.', '.ww..ww', 'ww....w', 'w..w.ww', 'w..www.', '.m.....', 's......'],
+  ['..mwww.', '.ww..ww', 'ww....w', 'm..w.ww', 'w..www.', '.m.....', 's......'],
 ];
 
 function paintSmall(l: ArtLayers, f: number): void {

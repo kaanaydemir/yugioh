@@ -685,6 +685,15 @@ function openingCaster(op: Opening): Caster {
     },
     leave: (gi) => (op.leave ? op.leave(gi) : Promise.resolve()),
     close: () => op.close(),
+    // an own SET card stands on its tile, right in front of the monster behind it (it hid that monster and
+    // its stat badge drew over the card face for the whole signature): it lies back down as the lance takes
+    // the stage, like the quick answer's card does; leave() then goes to the graveyard from the flat tile
+    bite: standing
+      ? () => {
+          const t = op.card as TileCard;
+          if (t.active) bg(t.layDown(160));
+        }
+      : undefined,
   };
 }
 

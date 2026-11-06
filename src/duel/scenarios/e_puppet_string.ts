@@ -56,6 +56,12 @@ const PACK: Record<string, Scenario> = {
     stage: { zones: 5, p0: { hand: ['puppet_string'] }, p1: { monsters: [null, null, 'abyss_magus'] } },
     steps: [pull(0, 2), { type: 'enterBattle', player: 0 } as Action, { type: 'attack', player: 0, attackerZone: 0, targetZone: null } as Action, endTurn(0)],
   },
+  // ---- the CPU casts it: film with &mode=vsBot (P2 = the bot); no scripted steps, the bot picks its own play
+  ePuppetBot: {
+    desc: 'Kukla İpi (P2 = bilgisayar; --fresh olmadan &mode=vsBot ile): bot kartı kendisi oynar, alır, saldırır, tur sonunda geri verir',
+    stage: { zones: 5, active: 1, p1: { hand: ['puppet_string'], monsters: [null, 'abyss_magus', null, null, null] }, p0: { lp: 8000, monsters: [null, 'stone_sentinel', 'crystal_wyrm', null, null] } },
+    steps: [],
+  },
   // ---- no free zone at the owner: destroyed by rule
   ePuppetNoZone: {
     desc: 'Kukla İpi, dönüşte boş alan yok: P2 son boş alanını Saman Korkuluk ile doldurur, Büyücü kural gereği yok olur',
