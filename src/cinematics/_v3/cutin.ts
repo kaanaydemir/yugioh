@@ -70,6 +70,11 @@ const BAND_TONES: Record<Attribute, [number, number, number]> = {
   WIND: [PAL.leaf0, PAL.leaf1, PAL.leaf2],
 };
 
+/** A card's own two-tone band (additive, lane D): the half behind the portrait in `back`, the half before it in
+ *  `front` (ramps [0 deep, 1 wedge, 2 glow, 3 light, 4 hot]), split on a slanted seam through the portrait's focus;
+ *  the speed lines take the opposite half's ramp. polar_sovereign registers its fire / water poles. */
+export const CUTIN_BAND_SPLIT = new Map<MonsterId, { back: readonly number[]; front: readonly number[] }>();
+
 const H_BAND = 120;
 const MID_Y = 172;
 /** Gap (px) between the band's top edge and the point it keeps clear of. */
@@ -156,6 +161,7 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
   const dir = p1 ? 1 : -1;
   const ramp = ATTRIBUTE_RAMP[o.attribute];
   const [deep, wedge, glow] = BAND_TONES[o.attribute];
+  const split = CUTIN_BAND_SPLIT.get(o.monsterId) ?? null;
   const D = DEPTH.CUTIN;
   const slope = p1 ? -0.13 : 0.13;
   const mid = bandMidY(o.player, o.clear);
@@ -173,6 +179,9 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
   let burst = 0; // 0…1 the focus-line burst behind the portrait
   let flashLv = 0; // the band's tones step up on the slam (band only, never the screen)
   const focus = { x: p1 ? 200 : GAME_W - 200, y: mid - 6 };
+  // the split band's seam (slanted like the wipe's slash) and which half a pixel is in
+  const seamX = (y: number) => focus.x + Math.round((y - mid) * 0.3 * dir);
+  const inBack = (x: number, y: number) => (dir > 0 ? x < seamX(y) : x > seamX(y));
   // polar map of the band for the focus-line burst (computed once)
   const BW = bandR.w;
   const BH = bandR.h;
@@ -211,28 +220,40 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
         if (h <= 0) continue;
         for (let y = t0; y < t0 + h; y++) {
           const i = (y - yMin) * BW + x;
-          let c: number = deep;
+          const sr = split ? (inBack(x, y) ? split.back : split.front) : null;
+          const dp = sr ? sr[0] : deep;
+          const wd = sr ? sr[1] : wedge;
+          const gl = sr ? sr[2] : glow;
+          const lt = sr ? sr[3] : ramp[3];
+          let c: number = dp;
           if (burst > 0) {
             // 36 alternating wedges radiating from behind the portrait, a glowing core
             const wdg = Math.floor((((ang[i] + rot) / (Math.PI * 2)) * 36 + 36) % 36);
             const r = rad[i];
-            if (wdg % 2 === 0) c = r < 90 * burst ? glow : wedge;
-            else if (r < 50 * burst) c = wedge;
+            if (wdg % 2 === 0) c = r < 90 * burst ? gl : wd;
+            else if (r < 50 * burst) c = wd;
             // the core: one flat stepped disc (A2 fix r1: no 50 % checker behind the portrait)
-            if (r < 30 * burst) c = glow;
+            if (r < 30 * burst) c = gl;
           }
-          if (flashLv > 0.4) c = c === deep ? glow : ramp[3];
-          else if (flashLv > 0.1) c = c === deep ? wedge : c === wedge ? glow : ramp[3];
+          if (flashLv > 0.4) c = c === dp ? gl : lt;
+          else if (flashLv > 0.1) c = c === dp ? wd : c === wd ? gl : lt;
+          // the split's seam: a white line with a gold edge through the portrait's focus
+          if (split) {
+            const sx = seamX(y);
+            if (x === sx) c = PAL.white;
+            else if (x === sx - dir) c = PAL.gold4;
+          }
           g.px(x, y, c);
         }
-        // borders: white + attribute light, thin outer echo
+        // borders: white + attribute light (the half's own on a split band), thin outer echo
+        const br = split ? (inBack(x, t0) ? split.back : split.front) : ramp;
         g.px(x, t0 - 1, PAL.white);
         g.px(x, t0 + h, PAL.white);
-        g.px(x, t0 - 2, ramp[3]);
-        g.px(x, t0 + h + 1, ramp[3]);
+        g.px(x, t0 - 2, br[3]);
+        g.px(x, t0 + h + 1, br[3]);
         if (close <= 0) {
-          g.px(x, t0 - 5, ramp[1]);
-          g.px(x, t0 + h + 4, ramp[1]);
+          g.px(x, t0 - 5, br[1]);
+          g.px(x, t0 + h + 4, br[1]);
         }
       }
       // speed lines along the band
@@ -246,7 +267,10 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
           if (h < 8) continue;
           const y = t0 + 3 + Math.round(l.v * (h - 6));
           const head = dir > 0 ? k / l.len : 1 - k / l.len;
-          g.px(x, y, head < 0.3 ? l.c : head < 0.65 ? ramp[2] : ramp[1]);
+          // on a split band the lines run in the OPPOSITE half's pole colour
+          const lr = split ? (inBack(x, y) ? split.front : split.back) : null;
+          if (lr) g.px(x, y, head < 0.3 ? (l.c === PAL.white ? PAL.white : lr[4]) : head < 0.65 ? lr[3] : lr[2]);
+          else g.px(x, y, head < 0.3 ? l.c : head < 0.65 ? ramp[2] : ramp[1]);
         }
       }
       // the leading edge of the wipe: a white slash

@@ -1,0 +1,509 @@
+// Kutup İğnesi (polar_needle, lane D, C12) — its own v3 summon, strike and death (?look=v3 only; v1 falls through
+// to the chain below every hook, byte-identical). Pieces: ./_polar_needle-fx.ts; sounds: src/audio/v3/polar_needle.ts.
+//
+// Summon (≈ 2.1 s at tempo): iron dust streams into a compass dial etched round the tile while the needle falls
+// point-first out of the sky (polarNeedleDrop); on 'land' its point strikes the marble — "tink" (polarNeedleTip)
+// — and, still a CLOSED needle (limbs folded into the lozenge, its blue S point on the tile centre, the spear
+// balanced on the pivot as the compass card), it spins TWICE on the tip (the art's yaw frames: the card's fire and
+// water points swap sides every half turn): the needle-shadow on the dial follows the card, the tick under it
+// lights, the pivot ratchet slows down (polarNeedleSpin, held to the lock); the card swings past the foe and back
+// and LOCKS (f12): "TIK" (polarNeedleLock), the dial's foe tick flashes, a stepped bearing line shoots out along
+// the floor toward the opponent, hit-stop 40 ms, the badge pops; f13–f16 it unfolds — the body rises out of a
+// plié as the legs drop, the arms open from the pivot, the rose crown fans out (polarNeedleUnfold on f13) while
+// the dial's dust lets go.
+// Strike "Kıskaç Hamlesi" (melee lunge): the spear is drawn back level and the long locked aim begins (the
+// declaration's polarNeedleCharge goes on) while a dotted bearing marches over the floor to the target; f2 the
+// two field brackets — orange "(" on the near side, blue ")" on the far side — appear wide round the target
+// (polarNeedleBracket) and step in; f4 they SLAM shut on the body: it is locked, iron dust flows ( → ) through it
+// (polarNeedleClamp; no pull). f6 the lunge: the needle crosses the floor in one straight dash, its two-colour
+// track behind it (polarNeedleLunge); f7 contact — the spear runs through between the brackets: a line of light
+// through the target, a star at the point, the brackets shatter (polarNeedlePierce; hit-stop of the mediumHeavy
+// class), then it draws back home through the recovery frames. Blocked: the point skids off the guard
+// (polarNeedleDeflect), the brackets spring back out and flicker away, the needle is thrown back to its tile.
+// Repelled (lost to an ATTACK-position foe): no guard, no shield clink — like poles repel: the brackets snap
+// open, two field lines ")(" bow apart at the point (polarNeedleRepel; the battle's shieldBlock is hushed).
+// Direct: the brackets close round the duelist and the dash crosses the field.
+// Death: an invisible force seizes the needle (f1: iron dust sucked up to a point above the head, the field lines
+// bend up to it; polarNeedleSeize), RIPS it out of the shell (f2: steel / gold shards, "şvuup" polarNeedleRip),
+// it spins madly away and off the top of the screen (polarNeedleWhirl; own pixel frames after the art's f5),
+// and the hollow shell's PLATES come down one by one (art f6 helm, f7 near pauldron, f8 far pauldron, f9 the legs
+// fold): a clink and a few steel / gold chips at each (polarNeedlePlate ×4). The last frame becomes the remains
+// (the sprite hides: no generic material break), the shell settles on the burst frame (polarNeedleBurst) and the
+// plates blink out in the last 150 ms. Position → defence: the spear swings upright with a pivot tick and a hum
+// swell (polarNeedleGuard), no generic hex. Camera never moves (EF-8).
+
+import { PAL, PLAYER_COLOR, type Ramp } from '../../art/palette';
+import type { GameEvent } from '../../engine/types';
+import { DEATH_PLATES, SUMMON_LOCK, SUMMON_UNFOLD, framePose } from '../../art/monsters-v3/polar_needle-anims';
+import { skeleton } from '../../art/monsters-v3/polar_needle-rig';
+import { DEPTH, LOOK_V3, unitDepth, zoneXY, type XY } from '../../view/layout';
+import { lightFlash } from '../../view/light';
+import { shake } from '../../vfx/core';
+import { Sparks, animate, sleep } from '../../vfx/combat';
+import { registerCardHook, registerEvent, registerStrike } from '../api';
+import type { StrikeArgs } from '../_core/types';
+import { strikeStartFrame } from '../_v3/clash';
+import { deathV3 } from '../_v3/death';
+import { summonPose } from '../_v3/summon';
+import { atFrame, atMark, hush, panAt, play, quietCombat, start, takeCharge } from '../_v3/sound';
+import { sourceOwnsDeath, worldBox } from '../strikes-b/_kit';
+import { freeze, runSummon, type Stage } from '../summon-a/_kit';
+import { FLOOR_DEPTH, bearingLine, brackets, compassDial, dropStreak, flyingNeedle, forceGrip, lockBeam, lungeTrail, needleOffset, needlePoint, needleRemains, pierceFlash, plateClink, repelFlash, ripBurst, seedFx, shellPlates } from './_polar_needle-fx';
+
+const ID = 'polar_needle';
+/** The hologram onset's tones: the orange N field. */
+const FIELD: Ramp = [PAL.night2, PAL.fire1, PAL.fire2, PAL.fire3, PAL.fire4];
+type BattleEv = Extract<GameEvent, { type: 'battle' }>;
+
+const norm = (p: XY): XY => {
+  const l = Math.hypot(p.x, p.y) || 1;
+  return { x: p.x / l, y: p.y / l };
+};
+const clamp = (v: number, a: number, b: number): number => (v < a ? a : v > b ? b : v);
+
+// ================================================================ summon
+
+async function entranceV3(S: Stage): Promise<void> {
+  const sc = S.scene;
+  const u = S.unit;
+  const pan = panAt(S.home.x);
+  seedFx(u.uid * 29 + 5);
+  const foe = zoneXY(S.player === 0 ? 1 : 0, 'monster', u.zone);
+  const dial = S.own(compassDial(sc, u, S.home, S.dir, foe));
+  const pool = S.glow({ color: PAL.fire3, radius: 24, intensity: 0.45, anim: 'flicker', fadeIn: 120 });
+  play('polarNeedleDrop', { volume: 0.8, pan });
+  // the needle falls out of the sky before the pose takes over (its f0 carries the last of the streak)
+  await dropStreak(sc, S.home, 190, S.depth + 0.5);
+  // no generic hologram: the needle that fell IS the body (its f0 still carries the streak, f1 the landing ring)
+  const p = summonPose(sc, u, { ramp: FIELD, hologram: false });
+  if (!p) {
+    dial.destroy();
+    return;
+  }
+  const snd: { spin: ReturnType<typeof start> | null } = { spin: null };
+  atMark(u, 'summon', 'land', () => {
+    play('polarNeedleTip', { volume: 0.9, pan });
+    snd.spin = start('polarNeedleSpin', { volume: 0.85, pan });
+    pool.setIntensity(0.85, 40);
+    void lightFlash(sc, S.home.x, S.home.y - 2, PAL.white, 14, 160, { floorY: S.home.y, intensity: 0.8 });
+    void shake(sc, 60, 1);
+  });
+  const LOCK = SUMMON_LOCK;
+  atFrame(
+    u,
+    'summon',
+    LOCK,
+    () => {
+      snd.spin?.stop(25);
+      snd.spin = null;
+      play('polarNeedleLock', { volume: 0.95, pan });
+      dial.lock();
+      void lockBeam(sc, S.home, foe, FLOOR_DEPTH + 1);
+      pool.setColor(PAL.fire4);
+      pool.setIntensity(1.15, 30);
+      const tip = needlePoint(u, 'spear');
+      if (tip) void lightFlash(sc, tip.x, tip.y, PAL.fire4, 20, 260, { floorY: S.home.y, intensity: 0.9 });
+      // no generic shock ring: the dial's own gold pulse and the bearing line are the lock's rings
+      void freeze(sc, 40);
+      void shake(sc, 90, 1);
+      void u.badge.pop();
+    },
+    { late: false },
+  );
+  atFrame(
+    u,
+    'summon',
+    SUMMON_UNFOLD,
+    () => {
+      play('polarNeedleUnfold', { volume: 0.8, pan });
+      void dial.fade(360);
+    },
+    { late: false },
+  );
+  await p.done;
+  snd.spin?.stop(40);
+  void pool.fadeOut(260);
+}
+
+registerCardHook(
+  ID,
+  'summon',
+  async (ctx) => {
+    if (!LOOK_V3) return ctx.base();
+    const ev = ctx.ev;
+    if (ev.from === 'field') return ctx.base();
+    // the sovereign's split lands its pieces itself (lane D polar_sovereign)
+    if (ev.from === 'graveyard' && ev.sourceUid !== null && ctx.cardId(ev.sourceUid) === 'polar_sovereign') return ctx.base();
+    await runSummon(ctx, entranceV3, entranceV3);
+  },
+  { priority: 20, name: 'd:polar_needle:summon' },
+);
+
+// ================================================================ strike
+
+registerStrike(
+  ID,
+  async (s: StrikeArgs) => {
+    if (!LOOK_V3) return s.base?.();
+    const u = s.attacker;
+    const sc = s.scene;
+    const spr = u.sprite;
+    seedFx(u.uid * 41 + (s.target?.uid ?? 3));
+    const res = (s.ctx.ev as BattleEv).result;
+    const loses = res === 'attackerDestroyed' || res === 'bothDestroyed';
+    // lost to an ATTACK-position foe: not a guard that holds — like poles repel (no hex, no shield clink)
+    const repelled = res === 'attackerDestroyed' && !!s.target && (s.ctx.ev as BattleEv).targetPosition !== 'defense';
+    const sgn: 1 | -1 = u.flipX ? -1 : 1;
+    const pan = panAt(u.home.x);
+    const f0 = strikeStartFrame(u);
+    const REL = u.markFrame('attack', 'release', 6);
+    const CON = u.markFrame('attack', 'contact', REL + 1);
+    const home: XY = { ...u.rest0 };
+    // ---- the target's box: where the brackets close
+    const box = s.target && s.target.sprite.active ? worldBox(s.target) : null;
+    const at: XY = box ? { x: Math.round(box.cx), y: Math.round(s.to.y) } : { x: Math.round(s.to.x), y: Math.round(s.to.y) };
+    const half = box ? clamp(Math.round(box.w / 2) - 3, 8, 18) : 12;
+    const hh = box ? clamp(Math.round(box.h / 2) - 2, 12, 22) : 18;
+    const bdepth = DEPTH.FX - 2;
+    const clampB = brackets(sc, { at, half, h: hh, side: (sgn as 1 | -1), depth: bdepth });
+    // ---- the aim: the declaration's gathering goes on, the bearing marches to the target
+    const charge = takeCharge(u, 'polarNeedleCharge', { volume: 0.85, pan });
+    const bearing = bearingLine(sc, u.home, s.toGround);
+    atFrame(u, 'attack', Math.max(f0 + 1, 2), () => {
+      clampB.appear();
+      play('polarNeedleBracket', { volume: 0.8, pan: panAt(at.x) });
+    }, { late: true });
+    atFrame(u, 'attack', 4, () => {
+      clampB.clamp();
+      play('polarNeedleClamp', { volume: 0.9, pan: panAt(at.x) });
+      void lightFlash(sc, at.x, at.y, PAL.fire3, 24, 220, { floorY: s.toGround.y, intensity: 0.6 });
+    }, { late: true });
+    await u.playRange('attack', f0, REL);
+    // ---- release: the lunge
+    charge.stop(30);
+    bearing.stop();
+    play('polarNeedleLunge', { volume: 0.9, pan });
+    // where the feet go so the spear point (contact frame) reaches the aim point
+    const off = needleOffset(u, 'spear', 'attack', CON);
+    const dir = norm({ x: s.toGround.x - u.home.x, y: s.toGround.y - u.home.y });
+    const inset = s.blocked ? 9 : s.direct ? 2 : -2;
+    const aim: XY = s.blocked || !s.target ? { x: at.x - dir.x * (half + 2), y: at.y } : at;
+    const feet: XY = { x: Math.round(aim.x - dir.x * inset - off.x), y: Math.round(aim.y - dir.y * inset - off.y) };
+    const feetHome: XY = { x: home.x, y: home.y + u.hover };
+    const dist = Math.hypot(feet.x - feetHome.x, feet.y - feetHome.y);
+    const dashMs = Math.round(clamp(dist * 1.05, 90, s.direct ? 240 : 200));
+    const tDepth = s.target && s.target.sprite.active ? s.target.sprite.depth + 0.5 : 0;
+    const place = (p: XY) => {
+      if (!spr.active || u.retired) return;
+      spr.setPosition(Math.round(p.x), Math.round(p.y - u.hover));
+      spr.setDepth(Math.max(unitDepth(p.y), tDepth));
+    };
+    const tipNow = (): XY => needlePoint(u, 'spear') ?? { x: spr.x, y: spr.y };
+    const trailFrom = tipNow();
+    void lungeTrail(sc, trailFrom, tipNow, DEPTH.FX - 3, dashMs);
+    await animate(sc, dashMs, (t) => {
+      const e = 0.55 * t + 0.45 * t * t;
+      place({ x: feetHome.x + (feet.x - feetHome.x) * e, y: feetHome.y + (feet.y - feetHome.y) * e });
+    });
+    place(feet);
+    // ---- contact: through the brackets
+    if (spr.active && !u.claimed) u.pose('attack', CON);
+    const tip = tipNow();
+    const hitAt: XY = s.blocked ? tip : s.direct ? { x: Math.round(s.to.x), y: Math.round(s.to.y) } : at;
+    if (repelled) {
+      // no guard hex / guard pose on a foe that is not guarding (clang: false); the repel scores it
+      hush(['shieldBlock'], () => quietCombat(() => s.impact(hitAt, { clang: false })));
+      play('polarNeedleRepel', { volume: 0.95, pan: panAt(tip.x) });
+      clampB.bounce();
+      repelFlash(sc, { x: Math.round((tip.x + at.x) / 2), y: tip.y }, { x: sgn, y: 0 }, DEPTH.FX + 1, s.toGround.y);
+    } else s.impact(hitAt);
+    if (repelled) {
+      /* scored above */
+    } else if (s.blocked) {
+      play('polarNeedleDeflect', { volume: 0.9, pan: panAt(tip.x) });
+      clampB.bounce();
+      void lightFlash(sc, tip.x, tip.y, PAL.water4, 20, 240, { floorY: s.toGround.y, intensity: 0.7 });
+    } else {
+      play('polarNeedlePierce', { volume: 0.95, pan: panAt(hitAt.x) });
+      clampB.shatter(s.toGround.y);
+      pierceFlash(sc, hitAt, { x: sgn, y: 0 }, DEPTH.FX + 1, s.toGround.y, s.direct);
+    }
+    void sleep(sc, 470).then(() => clampB.destroy());
+    // a melee loser is claimed on the contact frame and dies right there (battle.ts); a blocked survivor's
+    // recoil only takes the animation (pin: false) — we still carry it home
+    if (loses || !spr.active || u.retired) return;
+    await sleep(sc, u.frameMs('attack', CON));
+    if (!spr.active || u.retired) return;
+    if (s.blocked) {
+      // thrown back off the guard: the battle's recoil plays the hit pose; we carry it home
+      const kick: XY = { x: feet.x - dir.x * 10, y: feet.y - dir.y * 10 };
+      await animate(sc, 90, (t) => place({ x: feet.x + (kick.x - feet.x) * t, y: feet.y + (kick.y - feet.y) * t }));
+      await animate(sc, 260, (t) => {
+        const e = t * (2 - t);
+        place({ x: kick.x + (feetHome.x - kick.x) * e, y: kick.y + (feetHome.y - kick.y) * e });
+      });
+    } else {
+      // the recovery frames draw the spear back while the needle steps home
+      if (!u.claimed) u.pose('attack', CON + 1);
+      await sleep(sc, u.frameMs('attack', CON + 1));
+      const back = u.rangeMs('attack', CON + 2, u.frameCount('attack'));
+      void u.playRange('attack', CON + 2);
+      await animate(sc, Math.max(220, Math.round(back * 0.8)), (t) => {
+        const e = t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t);
+        place({ x: feet.x + (feetHome.x - feet.x) * e, y: feet.y + (feetHome.y - feet.y) * e });
+      });
+    }
+    place(feetHome);
+    if (spr.active) spr.setDepth(unitDepth(u.home.y));
+  },
+  { priority: 20, name: 'd:polar_needle:strike' },
+);
+
+// ================================================================ death
+
+registerCardHook(
+  ID,
+  'destroyed',
+  (ctx) => {
+    if (!LOOK_V3) return ctx.base();
+    if (ctx.ev.location !== 'monster' || sourceOwnsDeath(ctx)) return ctx.base();
+    const sc = ctx.scene;
+    const u = ctx.views.field.unit(ctx.ev.uid);
+    if (!u || u.retired || !u.sprite.active || !u.sprite.visible) return ctx.base();
+    seedFx(u.uid * 53 + 7);
+    const feet = u.worldPoint('feet');
+    const ground: XY = { x: Math.round(feet.x), y: Math.round(feet.y) };
+    const dir: 1 | -1 = u.flipX ? -1 : 1;
+    const pan = panAt(ground.x);
+    let seizedAt = -1e9;
+    // the seize is scored here (not as the voice's deathStart): a lethal recoil often joins the pose past f1, and
+    // the grip must still be heard before the rip
+    atFrame(
+      u,
+      'death',
+      1,
+      () => {
+        seizedAt = sc.time.now;
+        play('polarNeedleSeize', { volume: 0.9, pan });
+        forceGrip(sc, u, ground, Math.max(120, u.rangeMs('death', 1, 3)), dir);
+      },
+      { maxMs: 3000 },
+    );
+    atFrame(
+      u,
+      'death',
+      2,
+      () => {
+        // a lethal recoil can land f1 and f2 on the same tick: the grip must still be heard before the rip
+        const lag = Math.max(0, seizedAt + 70 - sc.time.now);
+        const rip = () => {
+          play('polarNeedleRip', { volume: 0.95, pan });
+          const c = needlePoint(u, 'pivot', 'death', 1) ?? u.core();
+          ripBurst(sc, c, ground.y, u.sprite.depth + 0.3);
+          void shake(sc, 110, 2);
+        };
+        if (lag > 0) void sleep(sc, lag).then(rip);
+        else rip();
+      },
+      { maxMs: 3000 },
+    );
+    // the art lets the needle leave its frame after f5: from there it is our own spinning sprite
+    const P5 = framePose('death', 5);
+    const sk5 = skeleton(P5);
+    atFrame(
+      u,
+      'death',
+      6,
+      () => {
+        if (!u.sprite.active) return;
+        const from = u.framePoint(sk5.nc[0], sk5.nc[1]);
+        // P1's needle flies off behind itself (up-left); a P2 needle's "behind" is its LP panel (upper right), so
+        // it is torn nearly straight up over the board's top edge, drifting toward the centre, clear of the HUD
+        void flyingNeedle(sc, { from: { x: from.x - dir * 6, y: from.y - 12 }, deg: P5.ra, back: -1, drift: dir < 0 ? 0.35 : 1, depth: DEPTH.FX + 2, flip: dir < 0 });
+      },
+      { maxMs: 3000 },
+    );
+    // the plates land one by one (art f6 helm, f7 near pauldron, f8 far pauldron, f9 the legs fold): a clink and
+    // a few steel / gold chips at each (the clink sounds come from the voice's afterDissolve, _v3/sound.ts)
+    const plateAt: [number, number][] = [[-15, -2], [7, -1], [-9, -3], [0, -1]];
+    DEATH_PLATES.forEach((f, i) =>
+      atFrame(
+        u,
+        'death',
+        f,
+        () => {
+          if (!u.sprite.active) return;
+          plateClink(sc, { x: ground.x + dir * plateAt[i][0], y: ground.y + plateAt[i][1] }, u.sprite.depth + 0.2);
+        },
+        { maxMs: 3000 },
+      ),
+    );
+    // the last frame (the plates lying still) becomes the remains as soon as it shows: the sprite hides, so no
+    // generic material break follows — the final material is the needle's own plates, gone in the last 150 ms
+    const lastF = u.frameCount('death') - 1;
+    let remains = false;
+    atFrame(
+      u,
+      'death',
+      lastF,
+      () => {
+        if (remains || !u.sprite.active || !u.sprite.visible || u.retired) return;
+        remains = true;
+        needleRemains(sc, u.sprite, ground, u.frameMs('death', lastF) + 330);
+        u.sprite.setVisible(false);
+      },
+      { maxMs: 3000 },
+    );
+    return deathV3(ctx, {
+      fallback: () => ctx.base(),
+      onBurst: () => {
+        shellPlates(sc, ground, dir, DEPTH.FX - 1);
+        // the shatter (and its burst cue) was skipped: the shell's own settle
+        if (remains) play('polarNeedleBurst', { pan });
+      },
+    });
+  },
+  { priority: 20, name: 'd:polar_needle:death' },
+);
+
+// ================================================================ position: the needle comes up to guard
+
+/**
+ * Attack → defence (v3): no generic hex. The art's toGuard swings the spear upright before the visor; as it
+ * lands the needle's pivot ticks and the 110 / 111 hum swells (polarNeedleGuard) and a two-pole light step
+ * answers at the core (N fire above, S water below). Defence → attack keeps the shared fromGuard.
+ */
+registerEvent(
+  'positionChange',
+  async (ctx) => {
+    if (!LOOK_V3 || ctx.cardId(ctx.ev.uid) !== ID || ctx.ev.position !== 'defense') return ctx.base();
+    const u = ctx.views.field.unit(ctx.ev.uid);
+    const tile = ctx.views.field.tileOf(ctx.ev.uid);
+    if (!u || u.retired || !u.sprite.visible || !u.has('toGuard')) return ctx.base();
+    const sc = ctx.scene;
+    const pan = panAt(u.home.x);
+    u.posed = true;
+    try {
+      ctx.sfx('cardSlide', { volume: 0.5 });
+      const jobs: Promise<unknown>[] = [];
+      if (tile && tile.orientation !== 'side') jobs.push(tile.rotateTo('side', 240));
+      u.position = 'defense';
+      u.badge.setPosition('defense');
+      play('polarNeedleGuard', { volume: 0.85, pan });
+      const n = u.frameCount('toGuard');
+      jobs.push(u.playRange('toGuard', 0, undefined, { hold: true }).then(() => u.rest()));
+      jobs.push(
+        u.playToFrame('toGuard', n - 2).then(() => {
+          const n0 = needlePoint(u, 'n');
+          const s0 = needlePoint(u, 's');
+          if (n0) void lightFlash(sc, n0.x, n0.y, PAL.fire4, 14, 220, { floorY: u.home.y, intensity: 0.6 });
+          if (s0) void lightFlash(sc, s0.x, s0.y, PAL.water4, 14, 220, { floorY: u.home.y, intensity: 0.6 });
+          const tip = needlePoint(u, 'spear');
+          if (tip) void lightFlash(sc, tip.x, tip.y, PAL.fire3, 10, 160, { floorY: u.home.y, intensity: 0.5 });
+        }),
+      );
+      await Promise.race([Promise.all(jobs), sleep(sc, 400)]);
+    } finally {
+      u.posed = false;
+      if (u.sprite.active && !u.retired) {
+        u.sprite.setPosition(u.rest0.x, u.rest0.y);
+        if (u.frameInfo().anim !== 'guard' || !u.sprite.anims.isPlaying) u.rest();
+      }
+    }
+  },
+  { priority: 20, name: 'd:polar_needle:position' },
+);
+
+// ================================================================ flip summon: a compass flick
+
+/**
+ * Flip summon (v3): no generic hologram, no shared shockwave. Half-way through the card's turn, iron dust
+ * streams in along two field loops and the needle is already turning in it — half a compass turn (away → back →
+ * toward the foe, the summon's own yaw frames, quickened), a swing past the bearing and back, and it LOCKS: one
+ * "TIK" (polarNeedleLock), a short bearing to the foe, the badge pops; then it opens into its stance. A flip into
+ * defence (attacked while set) keeps the recipe flip (its single lock on the dust accent).
+ */
+registerCardHook(
+  ID,
+  'flip',
+  async (ctx) => {
+    const ev = ctx.ev;
+    if (!LOOK_V3 || ev.cause !== 'flipSummon') return ctx.base();
+    const v = ctx.views;
+    const field = v.field;
+    const sc = ctx.scene;
+    const si = ctx.findType('summon', (e) => e.uid === ev.uid && e.method === 'flip');
+    if (si >= 0) ctx.consumeAt(si);
+    void v.duelists?.get(ev.player).play('command');
+    void v.camera.unfocus(120);
+    let tile = field.tileOf(ev.uid);
+    if (!tile) tile = field.placeCard(ev.player, 'monster', ev.zone, ev.uid, ev.cardId, false, 'side');
+    tile.setCard(ev.cardId);
+    const home: XY = { x: tile.home.x, y: tile.home.y };
+    const pan = panAt(home.x);
+    seedFx(ev.uid * 67 + 3);
+    void tile.pulse(PLAYER_COLOR[ev.player], 240);
+    ctx.sfx('flipReveal', { volume: 0.9 });
+    const FLIP = 240;
+    const flipP = tile.flipUp(FLIP);
+    const t0 = tile;
+    void sleep(sc, Math.round(FLIP * 0.7)).then(() => (t0.active && t0.orientation !== 'up' ? t0.rotateTo('up', 200) : undefined));
+    // the field gathers: iron dust runs in along two loops (fire from the left, water from the right)
+    const dust = new Sparks(sc, DEPTH.FX - 1);
+    for (let i = 0; i < 18; i++) {
+      const side = i % 2 ? 1 : -1;
+      const a = (i / 18) * Math.PI;
+      dust.add({ x: home.x + side * (14 + Math.sin(a) * 10), y: home.y - 8 - Math.cos(a) * 18, tx: home.x + side, ty: home.y - 22 + (i % 5) * 4, life: 150 + (i % 4) * 20, colors: side < 0 ? [PAL.fire4, PAL.fire3, PAL.stone3] : [PAL.water4, PAL.water3, PAL.stone3], shape: 'px', fadeAt: 1 });
+    }
+    dust.release();
+    play('polarNeedleTip', { volume: 0.55, pan });
+    await sleep(sc, Math.round(FLIP * 0.45));
+    const atk = ctx.atk(ev.uid, 'after');
+    const dfn = ctx.def(ev.uid, 'after');
+    const unit = field.addUnit(ev.uid, { hidden: true, atk, def: dfn, position: 'attack' });
+    if (!unit) {
+      await flipP;
+      return;
+    }
+    unit.position = 'attack';
+    unit.badge.setPosition(unit.position);
+    unit.posed = true;
+    const spr = unit.sprite;
+    const foe = zoneXY(ev.player === 0 ? 1 : 0, 'monster', ev.zone);
+    try {
+      spr.setPosition(unit.rest0.x, unit.rest0.y);
+      // half a turn out of the dust: away (f7) → back (f8) → toward the foe (f9), quickened, then the lock
+      unit.pose('summon', 7);
+      unit.showSprite();
+      const snd = start('polarNeedleSpin', { volume: 0.6, pan });
+      const done = unit.playRange('summon', 7, undefined, { hold: false, timeScale: 1.35 });
+      atFrame(
+        unit,
+        'summon',
+        SUMMON_LOCK,
+        () => {
+          snd.stop(20);
+          play('polarNeedleLock', { volume: 0.9, pan });
+          void lockBeam(sc, home, foe, FLOOR_DEPTH + 1);
+          const tip = needlePoint(unit, 'spear');
+          if (tip) void lightFlash(sc, tip.x, tip.y, PAL.fire4, 18, 220, { floorY: home.y, intensity: 0.8 });
+          unit.badge.setVisible(true);
+          void unit.badge.pop();
+        },
+        { late: false },
+      );
+      await done;
+      snd.stop(30);
+      await flipP;
+    } finally {
+      unit.posed = false;
+      unit.lift = 0;
+      if (spr.active && !unit.retired) {
+        spr.setPosition(unit.rest0.x, unit.rest0.y);
+        unit.show();
+        if (!spr.anims.isPlaying) unit.rest();
+      }
+    }
+  },
+  { priority: 20, name: 'd:polar_needle:flip' },
+);

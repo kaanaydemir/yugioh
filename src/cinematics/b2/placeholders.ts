@@ -4,10 +4,10 @@
 //   controlChange  the monster glides from its zone to the new one in a player-coloured streak, "ELE GEÇİRİLDİ" /
 //                  "SAHİBİNE DÖNDÜ" over it
 //   massDestroy    a short red sweep: every doomed card's zone flares at once, then the destroys play
-//   coinToss       a gold coin spins over the board, lands on YAZI / TURA, "BİLDİ!" / "BİLEMEDİ!"
+//   coinToss       (moved: lane D's own coin toss, src/cinematics/d/dial_jester-coin.ts)
 //   diceRoll       a white die tumbles through faces and stops on the value
 //   banish         a void wisp rises out of the owner's graveyard: "OYUNDAN ÇIKTI"
-//   tokenVanish    the straw token squashes and scatters into straw bits
+//   tokenVanish    (moved: lane D's own straw-token vanish, src/cinematics/d/straw_decoy_token.ts)
 // Only the new event types are registered (never an old one), so v1 and every old card are untouched.
 
 import Phaser from 'phaser';
@@ -150,62 +150,6 @@ registerEvent(
   { name: 'b2:massDestroy' },
 );
 
-// ================================================================ coin toss (Kadran Soytarısı)
-
-registerEvent(
-  'coinToss',
-  async (ctx: Ctx<'coinToss'>) => {
-    const ev = ctx.ev;
-    const scene = ctx.scene;
-    const loc = ctx.locate(ev.sourceUid);
-    const base = loc && 'player' in loc && 'index' in loc ? zoneXY(loc.player as PlayerId, 'monster', loc.index as number) : zoneXY(ev.player, 'monster', 2);
-    const x = R(base.x);
-    const y0 = R(base.y - 30);
-    const face = (f: 'heads' | 'tails') => (f === 'heads' ? 'TURA' : 'YAZI');
-    const coin = scene.add.container(x, y0).setDepth(DEPTH.FX_TOP);
-    const g = scene.add.graphics();
-    g.fillStyle(PAL.gold1).fillCircle(0, 0, 11);
-    g.fillStyle(PAL.gold3).fillCircle(0, -1, 10);
-    g.fillStyle(PAL.gold4).fillCircle(-2, -3, 5);
-    const label = pixelText(scene, 0, 0, face(ev.call), { size: 'sm', color: PAL.night0, outline: false }).setOrigin(0.5);
-    coin.add([g, label]);
-    ctx.sfx('uiClick', { volume: 0.8, pitch: 1.6 });
-    void floatWord(scene, { x, y: y0 - 20 }, `${ev.player === 0 ? 'OYUNCU 1' : 'OYUNCU 2'}: ${face(ev.call)}`, PLAYER_COLOR[ev.player], 900);
-    // up, spinning (scaleX flips), down
-    const o = { t: 0 };
-    let lastHalf = -1;
-    await tween(scene, {
-      targets: o,
-      t: 1,
-      duration: 1100,
-      onUpdate: () => {
-        const t = o.t;
-        coin.y = R(y0 - Math.sin(t * Math.PI) * 46);
-        const spin = t * 9;
-        coin.scaleX = Math.max(0.12, Math.abs(Math.cos(spin * Math.PI)));
-        const half = Math.floor(spin + 0.5);
-        if (half !== lastHalf) {
-          lastHalf = half;
-          label.setText(face(half % 2 ? (ev.call === 'heads' ? 'tails' : 'heads') : ev.call));
-          if (half % 2 === 0) ctx.sfx('uiHover', { volume: 0.4, pitch: 1.8 });
-        }
-      },
-    });
-    coin.scaleX = 1;
-    label.setText(face(ev.result));
-    ctx.sfx('uiClick', { volume: 0.9, pitch: 2 });
-    await tween(scene, { targets: coin, y: y0 - 6, duration: 90, yoyo: true, ease: 'Quad.Out' });
-    await wait(scene, 250);
-    const color = ev.win ? PAL.leaf4 : PAL.crim4;
-    ctx.sfx(ev.win ? 'uiConfirm' : 'uiError', { volume: 0.9 });
-    sparks(scene, { x, y: y0 }, ev.win ? PAL.gold4 : PAL.crim3, 14, 22);
-    await floatWord(scene, { x, y: y0 - 18 }, ev.win ? `${face(ev.result)} — BİLDİ!` : `${face(ev.result)} — BİLEMEDİ!`, color, 1000);
-    await tween(scene, { targets: coin, alpha: 0, duration: 160 });
-    coin.destroy();
-  },
-  { name: 'b2:coinToss' },
-);
-
 // ================================================================ die roll (Talih Zarı)
 
 const PIPS: Record<number, [number, number][]> = {
@@ -270,33 +214,6 @@ registerEvent(
     await floatWord(scene, { x: at.x, y: at.y - 18 }, `${CARDS[ev.cardId].name}: OYUNDAN ÇIKTI`, PAL.void4, 800);
   },
   { name: 'b2:banish' },
-);
-
-// ================================================================ token leaves (Saman Korkuluk)
-
-registerEvent(
-  'tokenVanish',
-  async (ctx: Ctx<'tokenVanish'>) => {
-    const ev = ctx.ev;
-    const scene = ctx.scene;
-    const field = ctx.views.field;
-    const at = zoneXY(ev.player, 'monster', ev.zone);
-    const { tile, unit } = field.release(ev.uid);
-    ctx.sfx('cardSlide', { volume: 0.6, pitch: 1.4 });
-    sparks(scene, { x: at.x, y: at.y - 10 }, PAL.gold3, 12, 20, 520);
-    const jobs: Promise<void>[] = [];
-    let ghost: Phaser.GameObjects.Image | null = null;
-    if (unit) {
-      ghost = ghostOf(scene, unit);
-      jobs.push(tween(scene, { targets: ghost, scaleY: 0.2, alpha: 0, duration: 260, ease: 'Quad.In' }));
-    }
-    if (tile) jobs.push(tween(scene, { targets: tile, alpha: 0, duration: 260 }));
-    await Promise.all(jobs);
-    ghost?.destroy();
-    tile?.destroy();
-    if (unit) field.forget(ev.uid);
-  },
-  { name: 'b2:tokenVanish' },
 );
 
 // ================================================================ spite_axe back onto its owner's deck

@@ -146,3 +146,7 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   shield_titan). Açık: P2 kürsüsü küçük/sönük, saha üstü hedeften soğuk, öndeki sis HUD altında. Test sürümü 18.
 - 2026-11-06: ŞERİT B BİTTİ (mudgrasp_spirit, 28e8c7d; grim_warden, wisp_imp, hollow_ogre önceden). Kapılar temiz
   (vitest bilinen 4; v1 17/17 + a6v1 26/26). Açık notlar docs/v3/oturum-b.md'de. Test sürümü 19.
+- 2026-11-06: ŞERİT D BİTTİ (b3170bd): dial_jester, reflection_archer, scrap_raiders, straw_decoy_token, polar_needle/
+  anvil/coil + polar_sovereign (birleşme/ayrılma). Kapılar temiz (vitest bilinen 4; v1 17/17 + a6v1 26/26). Test sürümü 21.
+  KARAR: "kurban bekleme döngüsü ortasında vuruluyor" (temas probu, tüm şeritlerde) → kit düzeyinde tek düzeltme (b),
+  boşta bir şeride verilecek. cardface G1 → ortak frame.ts / test eşiği.
