@@ -17,6 +17,7 @@ import { V3_DAWN_RECIPES } from './v3/dawn';
 import { V3_POLAR_ANVIL_RECIPES } from './v3/polar_anvil';
 import { V3_POLAR_NEEDLE_RECIPES } from './v3/polar_needle';
 import { V3_POLAR_COIL_RECIPES } from './v3/polar_coil';
+import { V3_POLAR_SOVEREIGN_RECIPES } from './v3/polar_sovereign';
 import { V3_JESTER_RECIPES } from './v3/jester';
 import { V3_ARCHER_RECIPES } from './v3/archer';
 import { V3_RAIDERS_RECIPES } from './v3/raiders';
@@ -1112,6 +1113,7 @@ export const RECIPES: Record<SfxName, Recipe> = {
   ...V3_POLAR_ANVIL_RECIPES, // Kutup Örsü (./v3/polar_anvil.ts)
   ...V3_POLAR_NEEDLE_RECIPES, // Kutup İğnesi (./v3/polar_needle.ts)
   ...V3_POLAR_COIL_RECIPES, // Kutup Bobini (./v3/polar_coil.ts)
+  ...V3_POLAR_SOVEREIGN_RECIPES, // Kutup Hükümdarı (./v3/polar_sovereign.ts)
   ...V3_JESTER_RECIPES, // Kadran Soytarısı (./v3/jester.ts)
   ...V3_ARCHER_RECIPES, // Yansıyan Okçu (./v3/archer.ts)
   ...V3_RAIDERS_RECIPES, // Hurda Akıncıları (./v3/raiders.ts)

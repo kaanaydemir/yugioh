@@ -32,6 +32,7 @@ import type { DawnSfxName } from './v3/dawn';
 import type { PolarAnvilSfxName } from './v3/polar_anvil';
 import type { PolarNeedleSfxName } from './v3/polar_needle';
 import type { PolarCoilSfxName } from './v3/polar_coil';
+import type { PolarSovereignSfxName } from './v3/polar_sovereign';
 import type { JesterSfxName } from './v3/jester';
 import type { ArcherSfxName } from './v3/archer';
 import type { RaidersSfxName } from './v3/raiders';
@@ -83,6 +84,7 @@ export type SfxName =
   | PolarAnvilSfxName
   | PolarNeedleSfxName
   | PolarCoilSfxName
+  | PolarSovereignSfxName
   | JesterSfxName
   | ArcherSfxName
   | RaidersSfxName
