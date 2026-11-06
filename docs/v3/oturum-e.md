@@ -27,6 +27,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
 | auger_lance (Burgu Mızrağı) | büyük + elle yeniden kurulmuş küçük; §10 dama sınırı içinde (büyük ≤22/26, küçük ≤3/6), x1/x3/x6 bakıldı | tamam: yarık, mızrak, burgu; elden 3566 ms / set 3366 ms (≤3675); set kartı mızrak çıkınca yatırılır; CPU senaryosu eAugerCpu | tamam: 14 e_* tarifi, her vuruşta ses, kırpma yok (tepe ≤ -1,9 dB) | 6 / 7,5 / 7 | shots/e/auger_lance/ |
 | well_pail (Kuyu Kovası) | büyük + elle yapılmış küçük (daha sıkı kırpım); 0 palet dışı, mürekkep çizgisi 1,00, ton 19/20 | tamam: kova, makara cırcırı, iki kart çekme; el ~4,9 sn, bot 4,73 sn; kamera sabit; HP plakası parlama hatası düzeltildi; CPU senaryosu eWellPailCpu | tamam: 15 e_well tarifi, her vuruşta ses, 330 Hz cırcır imzası | 5,5 / 7 / 7,5 | shots/e/well_pail/ |
 | void_eye (Boşluk Gözü) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı, mürekkep 1,00, dama sınırda | tamam: gece örtüsü, göz açılışı, toplu yutuş, kapanış; yalnız göz ~5,43 sn (kabul ~5,4); Tılsım kılıcı kurtarmada sessizce kalkar; CPU senaryosu eVoidCpu | tamam: 16 e_void tarifi, hepsi sahnede çalıyor | 6 / 6 / 7 | shots/e/void_eye/ |
+| winnow_sieve (Harman Eleği) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı, 15 ton | tamam: üç kart çekme, iki atma seçimi, saman süpürülür; eSieve 3,37 + 2,22 = 5,59 sn (sınır 5,3, süre sınırı yok kararıyla kabul); CPU senaryosu eSieveCpu | tamam: 18 e_sieve tarifi, her vuruşta ses; e_sieveStraw Saman Korkuluklar'dan ayrışıyor | 5,5 / 6 / 6,5 | shots/e/winnow_sieve/dod/ |
 | (doldurulacak) | | | | | |
 
 ### S3 Boşluk Gözü (`void_eye`)
@@ -247,3 +248,9 @@ kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe aç�
 - palcheck sahne sonrası karelerde FAIL (+7 pt): boş sahada görünen arena zemin ışığı, kartın pikseli değil.
 - Uzun --start atlamalı filmde bir kez gri arena görüldü (çekim hatası); adım adım filmler normal.
 - eVoidCpu measure.mjs / --fresh ile çalışmaz (hep hot-seat); vitest testi ve --fresh'siz film ile doğrulandı.
+
+### winnow_sieve
+- eSieve toplam 5,59 sn oyun süresi (3,37 etkinleşme + 2,22 atma), (0,7 + 3,0) × 1,35 + 0,3 = 5,3 sn sınırının ~0,3 sn üstünde; sahibin süre sınırı yok kararıyla kabul, işaretli.
+- eSieveSeal ve eSieveSealP2: 4400 ms'de 1 karelik 38 px kamera kayması; ortak oyun sonu (mühür zaferi) sahnesinden geliyor (eWellPailSeal'de de var), kartın değil.
+- palcheck tüm karelerde FAIL: 600 ms'de +1,03 sıçrama (ortak büyü açılışı) ve seçimde %1,4'e kadar beyaz (seçim yazısı). Eleğin kendi pikselleri palette.
+- Resim aracı: büyük resim özne doluluğu 0,86 (hedef 0,6–0,75; elek kasıtlı alttan taşıyor); küçük resmin parlak alanı odak noktasına 10,5 px (~8 üstüne bak diyor).
