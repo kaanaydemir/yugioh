@@ -17,7 +17,8 @@
 // hand-cut patches (a crimson iso diamond with a mist rim and one light pip, a leaning white-framed magenta trap,
 // a small teal card at the edge, a clean tilted 4 × 6 in shade) and the few 2×2 diagonal pairs left by the 2:1
 // edges are closed (no checkerboard reads as dither).
-// Living art: 4 frames × 150 ms — the leaves turn, the airborne cards bob 1 px, the bristle dashes step along.
+// Living art: 4 frames × 150 ms — the leaves turn, the high card turns through two poses, the void card drops (1–2 px
+// a frame, turning) toward the corner, the tumbling card bobs, the bristles' breaks rush along the fan.
 
 import { PAL } from '../palette';
 import type { PixelCanvas } from '../pixel';
@@ -79,15 +80,8 @@ function bladeTone(x: number, y: number, f: number, k: 1 | 2 = 2): number | null
     // bristle streaks: arcs concentric with the inner circle, broken (dashes step with the frame)
     const rr = d2;
     if (d1 > R1) return null;
-    const arcs =
-      k === 2
-        ? ([
-            [R2 - 3, -2.45, -0.62, PAL.leaf3],
-            [R2 - 7, -2.35, -0.85, PAL.leaf3],
-            [R2 - 11, -2.25, -1.05, PAL.leaf2],
-            [R2 - 15, -2.1, -1.25, PAL.leaf2],
-          ] as const)
-        : ([] as const);
+    // (the big picture's bristles are drawn as a fan of curved strokes: see paintBristles)
+    const arcs = [] as readonly (readonly [number, number, number, number])[];
     for (const [r, from, to, tone] of arcs) {
       const a2 = Math.atan2(y - C2[1], x - C2[0]);
       if (Math.abs(rr - r) < (k === 2 ? 0.75 : 1) && a2 > from && a2 < to) {
@@ -102,6 +96,57 @@ function bladeTone(x: number, y: number, f: number, k: 1 | 2 = 2): number | null
   if (e < 4.5) return PAL.leaf4;
   if (e < 8.5) return PAL.leaf3;
   return PAL.leaf2;
+}
+
+// ---------------------------------------------------------------- the broom's bristles (big): a fan of curved strokes
+
+/** Where the bristles gather (the broom's "handle", down-left behind the crescent's root). */
+const HANDLE: P = [14, 58];
+/** Bristle roots on the blade's inner edge (angle on the inner circle C2) and their tones. */
+const BRISTLE_ROOTS: readonly (readonly [number, number])[] = [
+  [-2.2, PAL.leaf2],
+  [-2.02, PAL.leaf3],
+  [-1.86, PAL.leaf3],
+  [-1.7, PAL.leaf3],
+  [-1.55, PAL.leaf3],
+  [-1.4, PAL.leaf3],
+  [-1.25, PAL.leaf2],
+  [-1.1, PAL.leaf3],
+  [-0.95, PAL.leaf2],
+];
+
+/**
+ * The broom: each bristle is a curved stroke from the blade's inner edge sweeping back toward the handle (a
+ * quadratic curve bowed along the crescent, so the strokes splay like straw and converge), solid near the blade
+ * (leaf3 / leaf4 tip), breaking up toward the handle (leaf2, then leaf1 dashes); they stop halfway, the gust
+ * thins out. The break pattern steps along with the frame (the straw rushes).
+ */
+function paintBristles(p: PixelCanvas, f: number): void {
+  BRISTLE_ROOTS.forEach(([a, tone], i) => {
+    const root: P = [C2[0] + Math.cos(a) * (R2 - 1.5), C2[1] + Math.sin(a) * (R2 - 1.5)];
+    // the curve bows along the crescent's tangent (back toward the root of the stroke)
+    const tx = Math.sin(a);
+    const ty = -Math.cos(a);
+    const mid: P = [(root[0] + HANDLE[0]) / 2 + tx * 9, (root[1] + HANDLE[1]) / 2 + ty * 9];
+    const reach = 0.5 + ((i * 5) % 3) * 0.06;
+    const n = 40;
+    let prev: P | null = null;
+    for (let j = 0; j <= n; j++) {
+      const t = (j / n) * reach;
+      const x = Math.round((1 - t) * (1 - t) * root[0] + 2 * (1 - t) * t * mid[0] + t * t * HANDLE[0]);
+      const y = Math.round((1 - t) * (1 - t) * root[1] + 2 * (1 - t) * t * mid[1] + t * t * HANDLE[1]);
+      if (prev && prev[0] === x && prev[1] === y) continue;
+      const last = prev;
+      prev = [x, y];
+      const u = t / reach;
+      // break up toward the tail; the gaps step along with the frame
+      if (u > 0.45 && Math.floor(j / 3 + f + i) % (u > 0.75 ? 2 : 3) === 0) continue;
+      const c = u < 0.12 ? PAL.leaf4 : u < 0.5 ? tone : u < 0.8 ? PAL.leaf2 : PAL.leaf1;
+      // 4-connected strokes (a diagonal step gets its corner pixel): a clean stair, never a checker
+      if (last && last[0] !== x && last[1] !== y && !p.isOpaque(x, last[1])) p.set(x, last[1], c);
+      if (!p.isOpaque(x, y)) p.set(x, y, c);
+    }
+  });
 }
 
 // ---------------------------------------------------------------- cards (flat parallelograms)
@@ -147,8 +192,15 @@ const CARDS: readonly CardShape[] = [
   { pts: cardQuad(70, 55, 8, 12, -24, 0.9), frame: PAL.steel, face: PAL.night2, emblem: PAL.teal2, bob: true },
 ];
 
-function paintCard(p: PixelCanvas, c: CardShape, dy: number): void {
-  const pts = c.pts.map(([x, y]) => [x, y + dy] as P);
+/** The living art's card poses: the high card turns between two poses, the void card drops toward the corner. */
+function cardPts(i: number, f: number): readonly P[] {
+  if (i === 1) return f % 4 < 2 ? CARDS[1].pts : cardQuad(65, 18, 12, 17, 44, 0.86);
+  if (i === 3) return cardQuad(70 + [0, 0, 1, 1][f % 4], 55 + [0, 1, 3, 4][f % 4], 8, 12, -24 - [0, 6, 12, 18][f % 4], 0.9);
+  return CARDS[i].pts;
+}
+
+function paintCard(p: PixelCanvas, c: CardShape, dy: number, base: readonly P[] = c.pts): void {
+  const pts = base.map(([x, y]) => [x, y + dy] as P);
   shape(p, pts, c.frame);
   shape(p, inset(pts, 2.2), c.face);
   if (c.emblem !== null) {
@@ -197,7 +249,7 @@ function paint(l: ArtLayers, f: number): void {
   paintBackdrop(l.backdrop, 'SPELL', { focus: FOCUS, radius: 24, horizon: 999, shape: false });
   paintPlatform(l.subject);
   const bob = f === 1 || f === 2 ? 1 : 0;
-  if (k === 2) CARDS.forEach((c, i) => paintCard(l.subject, c, c.bob ? (i % 2 ? -bob : bob) : 0));
+  if (k === 2) CARDS.forEach((c, i) => paintCard(l.subject, c, c.bob && i !== 3 ? (i % 2 ? -bob : bob) : 0, cardPts(i, f)));
   ink(l.subject);
   if (k === 1) {
     // hand-made at 1×: the three cards as legible little parallelograms, one face tone each (+ an emblem pixel)
@@ -205,20 +257,25 @@ function paint(l: ArtLayers, f: number): void {
     // the platform card: a crimson iso diamond lifting off its slot (mist rim, one light pip)
     patch(l.subject, ['...kk...', '.kkmmkk.', 'kmrrermk', '.kkmmkk.', '...kk...'], key, 3, 23);
     // the flying trap: a leaning card (white frame, magenta body, one light pip)
-    patch(l.subject, ['..kkkkk', '.kwwwwk', '.kwpppk', '.kwpqpk', 'kwpppk.', 'kwpppk.', 'kwwwwk.', 'kkkkk..'], key, 28, 5 - bob);
+    const turned = f % 4 >= 2;
+    if (!turned) patch(l.subject, ['..kkkkk', '.kwwwwk', '.kwpppk', '.kwpqpk', 'kwpppk.', 'kwpppk.', 'kwwwwk.', 'kkkkk..'], key, 28, 5 - bob);
+    // its second pose: turned further over (wider, lower)
+    else patch(l.subject, ['...kkkk', '.kkwwwk', 'kwwppwk', 'kwpqpwk', 'kwppwwk', 'kwwwkk.', 'kkkk...'], key, 28, 6 - bob);
     // the card going over the edge: a teal card rolling, tilted (5 × 7, ink outlined)
     patch(l.subject, ['..kkk', '.kmtk', '.kttk', 'kttmk', 'kttk.', 'kmtk.', 'kkk..'], key, 23, 18 + bob);
     // the falling card in the void: a tilted 5 × 7 in shade
-    patch(l.subject, ['kkk..', 'ksnk.', 'ksnnk', '.ksnk', '.ksnk', '.kssk', '..kkk'], key, 34, 23 - bob);
+    const fall = [0, 1, 1, 2][f % 4];
+    patch(l.subject, ['kkk..', 'ksnk.', 'ksnnk', '.ksnk', '.ksnk', '.kssk', '..kkk'], key, 34, 23 + fall);
     smallCards = [
       [3, 23, 8, 5],
       [28, 5 - bob, 7, 8],
       [23, 18 + bob, 5, 7],
-      [34, 23 - bob, 5, 7],
+      [34, 23 + fall, 5, 7],
     ];
   }
   // the wind (light layer: never outlined)
   paintFn(l.light, (x, y) => bladeTone(x, y, f, k));
+  if (k === 2) paintBristles(l.light, f);
   // the cards in the wind stay in front of the blade's body (it passes behind the high card)
   if (k === 2) {
     LEAVES.forEach(([x, y], i) => {
@@ -263,7 +320,7 @@ function paint(l: ArtLayers, f: number): void {
     l.subject.set(21, 33, PAL.ink);
   }
   // keep the cards over the wind: the blade passes behind them (their outline included)
-  const dys = CARDS.map((c, i) => (c.bob ? (i % 2 ? -bob : bob) * (k === 2 ? 1 : 2) : 0));
+  const dys = CARDS.map((c, i) => (c.bob && i !== 3 ? (i % 2 ? -bob : bob) * (k === 2 ? 1 : 2) : 0));
   for (let y = 0; y < l.light.h; y++)
     for (let x = 0; x < l.light.w; x++) {
       if (!l.light.isOpaque(x, y)) continue;
@@ -273,7 +330,7 @@ function paint(l: ArtLayers, f: number): void {
         if (smallCards.some(([cx, cy, w, h]) => x >= cx && x < cx + w && y >= cy && y < cy + h && l.subject.isOpaque(x, y) && l.subject.get(x, y) !== PAL.night3)) l.light.erase(x, y);
         continue;
       }
-      if (CARDS.some((c, i) => inQuad(c.pts.map(([px, py]) => [px, py + dys[i]] as P), bx, by, k === 2 ? 1.2 : 2.2))) l.light.erase(x, y);
+      if (CARDS.some((_c, i) => inQuad(cardPts(i, f).map(([px, py]) => [px, py + dys[i]] as P), bx, by, k === 2 ? 1.2 : 2.2))) l.light.erase(x, y);
     }
 }
 

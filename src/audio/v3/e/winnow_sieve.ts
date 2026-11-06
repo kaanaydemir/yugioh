@@ -25,6 +25,8 @@
 //   e_sieveGustL   the same, R → L (the scene picks the side the graveyard lies on)
 //   e_sieveGust    (kept for compatibility) = e_sieveGustR
 //   e_sieveGrave   the straw lands on the graveyard: a light paper settle and a soft tick
+//   e_sieveStroke  ONE shake stroke (played per visual extreme of the shake, panned to the rim side it hits)
+//   e_sievePluck   one hoop strand peeling off as the sieve unravels
 //   e_sieveEnd     the sieve unravels: straw plucks running down + a last bent-wood creak and a puff
 
 import type { Recipe } from '../../sounds';
@@ -64,16 +66,25 @@ function wash(v: Voice, t: number, g: number, d: number, o: { f?: number; n?: nu
   v.noise('pink', { t, g: [[0, 0], [0.008, g * 0.5], [d, 0.0001, 'e']], to: v.filt('bandpass', f * 0.85, o.q ?? 1.1, { to: o.to }) });
 }
 
-/** One shake stroke: the grain slaps a side of the hoop — a sandy 2–4 kHz slap, the 240 Hz tap, a low body. */
-function stroke(v: Voice, t: number, g: number, f: number, to: AudioNode): void {
-  // the slap: a hard sandy burst (fast attack, short), then grains trickling back
-  // (round 2: the slap leads — the hoop tap is half what it was, the grain band sits higher, so the stroke's centroid
-  //  lands near 2 kHz and the 6 Hz sandy patter is the identity, not the 240 Hz knock)
-  const hp = v.filt('highpass', 1500, 0.7, { to });
-  v.noise('white', { t, g: perc(g * 0.62, 0.03, 0.0005), to: v.filt('bandpass', f * 0.8, 1.1, { to: hp }) });
-  v.noise('pink', { t: t + 0.006, g: perc(g * 0.3, 0.05, 0.001), to: v.filt('bandpass', f * 0.75, 1.4, { to }) });
-  v.crackle({ t, d: 0.06, n: 18, g: g * 0.36, f: f * 0.95, q: 1.2, dec: 0.003, curve: 2, to });
-  hoop(v, t + 0.002, g * 0.2, { f: 240, to, body: 0.12 });
+/**
+ * One shake stroke (round 4): the woven bowl is thrown against one side — three layers that are this card's own:
+ *   the WOVEN-STRAW RASP: a dense run of 1–2 ms dry ticks at 5–7 kHz (straw rubbing straw: no water, no glass),
+ *   the BENT-WOOD HOOP "tok" at 240 Hz (audible: it carries the 6 Hz rhythm under the grain),
+ *   the GRAIN SLOSH: ~75 ms of sandy wash whose band FALLS 3.4 → 1.3 kHz (the heap sliding down the far wall).
+ * One stroke is played per visual extreme of the shake (the scene pans it to the rim side it hits).
+ */
+function stroke(v: Voice, t: number, g: number, f: number, to?: AudioNode): void {
+  // the rasp: straw on straw, very short ticks high up
+  const hp = v.filt('highpass', 4600, 0.8, { to });
+  v.crackle({ t, d: 0.06, n: 30, g: g * 0.95, f: f * 2.05, q: 2.2, dec: 0.0015, curve: 1.6, to: hp });
+  v.noise('white', { t, g: perc(g * 0.4, 0.022, 0.0004), to: v.filt('bandpass', 6400, 2.4, { to: hp }) });
+  // the hoop: the bent wood knocks — a clear "tok" with the bowl's weight behind it
+  hoop(v, t, g * 0.8, { f: 240, to, body: 0.3 });
+  // the grain slosh: a falling band, gone in ~80 ms
+  const d = 0.078;
+  const bp = v.filt('bandpass', [[0, f * 0.9], [d, f * 0.33, 'e']], 1.5, { to });
+  v.noise('pink', { t: t + 0.004, g: [[0, 0], [0.006, g * 0.6], [0.03, g * 0.42], [d, 0.0001, 'e']], to: bp });
+  v.crackle({ t: t + 0.01, d: 0.06, n: 10, g: g * 0.16, f: f * 0.8, q: 1.3, dec: 0.003, curve: 1.8, to });
 }
 
 /** The winnowing breath: a narrow, high, fast puff of air carrying chaff ticks across `pan` (≤ 0.35 s). */
@@ -127,14 +138,22 @@ export const RECIPES = {
     }),
   },
   e_sieveShake: {
+    // (kept for reference / --compare: one whole cycle — the scene plays e_sieveStroke per visual extreme instead)
     cap: 2,
     gap: 0.06,
     verb: 0.14,
-    play: lift(-0.5, (v) => {
-      // one shake cycle (1/6 s): the grain slaps the hoop HARD LEFT, then HARD RIGHT
-      stroke(v, 0, 1.1, 2900, v.panner(-0.9));
-      stroke(v, 0.083, 1.05, 3300, v.panner(0.9));
+    play: lift(7.5, (v) => {
+      stroke(v, 0, 1.1, 2900, v.panner(0.9));
+      stroke(v, 0.083, 1.05, 3100, v.panner(-0.9));
     }),
+  },
+  e_sieveStroke: {
+    // ONE stroke of the 6 Hz shake, played on the frame the sieve reaches a side (pan = that rim's x)
+    cap: 3,
+    gap: 0.04,
+    verb: 0.14,
+    vary: 0.02,
+    play: lift(7.5, (v) => stroke(v, 0, 1.1, 3000)),
   },
   e_sieveToss: {
     cap: 3,
@@ -169,14 +188,21 @@ export const RECIPES = {
       hoop(v, 0.05, 0.36, { f: 352 });
       v.noise('white', { t: 0.02, g: perc(0.3, 0.012, 0.0003), to: v.filt('highpass', 6000, 0.8) });
       v.crackle({ t: 0.025, d: 0.22, n: 20, g: 0.16, f: 8800, q: 2, dec: 0.002, curve: 1.5 });
+      // … the WINNOWING THROW (round 4): the sheet of grain is flung up — a sandy band rising fast and wide, and the
+      // light chaff peeling off it sideways on the air (a thin high whisk drifting to one side)
+      sweep(v, 0.01, 0.2, [1600, 4200, 3000], 0.2, { q: 1.2, pan: [-0.2, 0.2], peakAt: 0.35 });
+      sweep(v, 0.08, 0.34, [5200, 7400, 6000], 0.06, { q: 2.4, pan: [0, 0.7], peakAt: 0.4 });
       // … a big golden spray, wide, and a long patter back into the bowl
       wash(v, 0.015, 0.95, 0.3, { f: 3300, n: 44, q: 1.8, to: v.panner(-0.35) });
       wash(v, 0.03, 0.8, 0.28, { f: 2900, n: 36, q: 1.8, to: v.panner(0.35) });
       v.crackle({ t: 0.03, d: 0.24, n: 26, g: 0.26, f: 5200, q: 1.8, dec: 0.003, curve: 1.4 });
       // the fountain raining back: a long grain shower tail, thinning over most of a second
-      v.crackle({ t: 0.2, d: 0.75, n: 54, g: 0.14, f: 2600, q: 1.3, dec: 0.004, curve: 0.6, to: v.panner(-0.25) });
-      v.crackle({ t: 0.26, d: 0.7, n: 40, g: 0.11, f: 3400, q: 1.4, dec: 0.003, curve: 0.6, to: v.panner(0.25) });
-      v.noise('pink', { t: 0.18, g: [[0, 0], [0.08, 0.06], [0.75, 0.0001, 'e']], to: v.filt('bandpass', 2700, 1) });
+      // (round 4: curve > 1 — the density thins toward the end — and the two runs end staggered at 0.70 / 0.85 s,
+      //  then a few last single grains: no chop)
+      v.crackle({ t: 0.18, d: 0.52, n: 50, g: 0.15, f: 2600, q: 1.3, dec: 0.004, curve: 1.5, to: v.panner(-0.25) });
+      v.crackle({ t: 0.24, d: 0.61, n: 38, g: 0.12, f: 3400, q: 1.4, dec: 0.003, curve: 1.6, to: v.panner(0.25) });
+      v.bursts([0.74, 0.81, 0.9, 0.99], [0.05, 0.04, 0.03, 0.02], { dec: 0.004, f: 3000, q: 1.6 });
+      v.noise('pink', { t: 0.18, g: [[0, 0], [0.08, 0.06], [0.7, 0.0001, 'e']], to: v.filt('bandpass', 2700, 1) });
       // a warm swell of light under it (the climax) — a soft fifth, no bell
       v.tone('sine', [[0, 294], [0.4, 330, 'e']], { t: 0.02, g: [[0, 0], [0.03, 0.05], [0.45, 0.0001, 'e']] });
       v.tone('sine', 440, { t: 0.04, g: [[0, 0], [0.04, 0.035], [0.4, 0.0001, 'e']] });
@@ -285,6 +311,20 @@ export const RECIPES = {
       v.crackle({ d: 0.1, n: 8, g: 0.1, f: 4600, q: 2, dec: 0.003 });
       v.noise('white', { t: 0.02, g: perc(0.12, 0.01, 0.0003), to: v.filt('bandpass', 3800, 3) });
       thump(v, 0, 210, 150, 0.06, 0.04);
+    }),
+  },
+  e_sievePluck: {
+    // one hoop strand peeling off (round 4: its own recipe, one per peeled arc — cap 4, gap 40 ms, so none is dropped)
+    cap: 4,
+    gap: 0.04,
+    verb: 0.3,
+    vary: 0.03,
+    play: lift(4, (v) => {
+      // a dry strand plucked loose: a bright straw snap, a tiny bent-wood twang that sags, a whisk of fibre
+      v.noise('white', { g: perc(0.2, 0.006, 0.0002), to: v.filt('bandpass', 5200, 3) });
+      v.tone('triangle', [[0, 520], [0.07, 430, 'e']], { g: perc(0.06, 0.07, 0.001) });
+      v.tone('sine', 1716, { g: perc(0.025, 0.03, 0.0005) });
+      v.crackle({ t: 0.008, d: 0.05, n: 6, g: 0.08, f: 6200, q: 2.2, dec: 0.0015 });
     }),
   },
   e_sieveEnd: {

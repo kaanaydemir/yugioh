@@ -113,6 +113,8 @@ export interface CollarLook {
   tint?: number;
   /** The whole band flashes (gold4: the weave closing; white: the lock). */
   bandFlash?: number;
+  /** A collar-shaped halo ring 3 px out round the band in this colour (the lock's KLAK frame). */
+  halo?: number;
 }
 
 /**
@@ -197,6 +199,16 @@ export class Collar {
           }
         }
         if (L.ghost) return;
+        // the lock's halo: a 1-px ring 3 px outside the band (front half over the body, back half behind it)
+        if (L.halo !== undefined && fall <= 0) {
+          const hn = Math.max(48, R((rx + ry + 5) * 10));
+          for (let i = 0; i < hn; i++) {
+            const a = (i / hn) * TAU;
+            const x = R(c.x + Math.cos(a) * (rx + 3));
+            const y = R(c.y + Math.sin(a) * (ry + 2.5));
+            (Math.sin(a) >= -0.15 ? f : b).px(x, y, L.halo);
+          }
+        }
         // the weaving tip: while the band is still being wrapped, its leading end burns white-gold
         if (L.prog > 0 && L.prog < 1) {
           const a = Math.PI / 2 + (lim / n) * TAU;
@@ -327,7 +339,8 @@ export class ShadowDouble {
     const sw = sil.bottom - sil.top;
     const shearFrom = sil.top + R(sw * 0.66);
     const id = ++shadowSeq;
-    for (let pose = 0; pose < 3; pose++) {
+    const hemFrom = sil.bottom - 3;
+    for (let pose = 0; pose < 4; pose++) {
       const key = `leash:shadow:${id}:${pose}`;
       const cv = document.createElement('canvas');
       cv.width = W;
@@ -355,8 +368,13 @@ export class ShadowDouble {
           if (!up || !lf) c = PAL.void3;
           else if (!dn || !rt) c = PAL.void2;
           else if (!sil.has(wx - 1, wy - 1) || !sil.has(wx, wy - 2)) c = PAL.void1;
-          const shift = wy >= shearFrom ? (pose === 1 ? 1 : pose === 2 ? -1 : 0) : 0;
+          // pose 3, the footfall: the hem kicks forward (the bottom rows 2 / 2 / 1 / 1 px ahead), so a
+          // legless figure's step still lands (critic round 3: it read as a sliding curtain)
+          const kick = wy >= hemFrom ? (wy - hemFrom >= 2 ? 2 : 1) : wy >= shearFrom ? 1 : 0;
+          const shift = pose === 3 ? kick : wy >= shearFrom ? (pose === 1 ? 1 : pose === 2 ? -1 : 0) : 0;
           put(x + 2 + shift, y + 1, c);
+          // the kicked hem drags a void2 pixel behind it (the cloth trailing)
+          if (pose === 3 && kick === 2 && !sil.has(wx - 1, wy)) put(x + 2, y + 1, PAL.void2);
         }
       g.putImageData(img, 0, 0);
       sc.textures.addCanvas(key, cv);
@@ -371,18 +389,27 @@ export class ShadowDouble {
     this.place();
   }
 
-  /** The stride pose (0 standing, 1 / 2 the two stride frames). */
+  /** The stride pose (0 standing, 1 / 2 the two stride frames, 3 the footfall with the hem kicked forward). */
   setPose(p: number): void {
     if (p === this.pose || !this.img.active) return;
     this.pose = p;
     this.img.setTexture(this.keys[p]);
   }
 
+  /** Rows sunk into the floor (the figure slides down and its lowest rows are cut: it pools at its feet). */
+  sink = 0;
+  /** Lean (px) of the upper body into the step: the top half shifted along the facing (footfall frames). */
+  lean = 0;
+
   /** Move the anchor (the sprite-position equivalent) and redraw at whole pixels. */
   place(at: XY = this.anchor): void {
     this.anchor = { x: R(at.x), y: R(at.y) };
+    const k = Math.max(0, Math.min(this.img.height - 1, R(this.sink)));
+    const lean = R(this.lean) * (this.turned ? -1 : 1);
     const x = this.turned ? this.anchor.x - (this.offL + this.W) : this.anchor.x + this.offL;
-    this.img.setFlipX(this.turned).setPosition(x, this.anchor.y + this.offT);
+    this.img.setFlipX(this.turned).setPosition(x + lean, this.anchor.y + this.offT + k);
+    if (k > 0) this.img.setCrop(0, 0, this.img.width, this.img.height - k);
+    else this.img.setCrop();
   }
 
   destroy(): void {
@@ -422,6 +449,8 @@ export interface LeashLook {
   sway?: boolean;
   /** The lock: the 4 links nearest the collar snap taut and flash white, in order toward the card (0..1, < 0 none). */
   snap?: number;
+  /** The bond dies (its wearer was destroyed): from the collar toward the card it goes dark (0..1). */
+  dark?: number;
 }
 
 /** The pixels of the leash curve from a to b (deduplicated, whole pixels). */
@@ -545,9 +574,18 @@ export function drawLeash(r: Raster, a: XY, b: XY, L: LeashLook, clip?: Clip): v
       const dy = L.drop && L.drop > 0 ? R((L.drop * i) / Math.max(1, cut)) : 0;
       const linkNo = Math.floor((last - i) / PITCH);
       const snapHot = L.snap !== undefined && L.snap >= 0 && linkNo < 4 && linkNo <= R(L.snap * 4);
-      const hot = L.hot || snapHot || Math.abs(i - pulseAt) <= 3;
+      const near = Math.abs(i - pulseAt) <= 5;
+      const voidRun = near && L.pulseColor === PAL.void4;
+      const hot = L.hot || snapHot || (near && !voidRun);
       if (k === 0) {
-        ovalLink(px, p.x - 1, p.y + dy, hot ? PAL.white : PAL.gold4, hot ? PAL.gold4 : PAL.gold3, hot ? PAL.gold3 : PAL.gold2);
+        if (voidRun) ovalLink(px, p.x - 1, p.y + dy, PAL.white, PAL.void4, PAL.void3);
+        else ovalLink(px, p.x - 1, p.y + dy, hot ? PAL.white : PAL.gold4, hot ? PAL.gold4 : PAL.gold3, hot ? PAL.gold3 : PAL.gold2);
+      } else if (voidRun) {
+        // the lock's ripple: the side links between swell to a 3-px void4 / white bead
+        px(p.x, p.y + dy - 2, PAL.void3);
+        px(p.x, p.y + dy - 1, PAL.white);
+        px(p.x, p.y + dy, PAL.void4);
+        px(p.x, p.y + dy + 1, PAL.void2);
       } else if (k === 4 || k === 5) {
         px(p.x, p.y + dy - 1, hot ? PAL.white : PAL.void4);
         px(p.x, p.y + dy, PAL.void2);
@@ -579,31 +617,62 @@ export function drawLeash(r: Raster, a: XY, b: XY, L: LeashLook, clip?: Clip): v
 
 // ================================================================ the lingering bond (two parts)
 
+/** Whole-pixel points of a straight line a → b (8-connected, a included, b included). */
+function linePts(a: XY, b: XY): XY[] {
+  const out: XY[] = [];
+  const n = Math.max(Math.abs(R(b.x) - R(a.x)), Math.abs(R(b.y) - R(a.y)), 1);
+  for (let i = 0; i <= n; i++) {
+    const q = { x: R(a.x + ((b.x - a.x) * i) / n), y: R(a.y + ((b.y - a.y) * i) / n) };
+    const last = out[out.length - 1];
+    if (!last || last.x !== q.x || last.y !== q.y) out.push(q);
+  }
+  return out;
+}
+
+/**
+ * The floor part of the lingering bond, from the leash card to the wearer's feet (screen points, whole
+ * pixels): it lies ON the tiles along the grid — from the card's near edge across the seam between the spell
+ * row and the monster row (where no unit stands), along that seam to the wearer's lane, then straight in to
+ * its feet. Iso-aligned 2:1 runs: it reads as a cord lying on the floor, and it never runs up the face of a
+ * neighbour (critic round 3: the old free arc climbed the side of the next unit to reach a card behind).
+ */
+export function bondFloorPath(card: XY, foot: XY): XY[] {
+  const g = screenToIso(foot.x, foot.y);
+  const c = screenToIso(card.x, card.y);
+  const dr = Math.sign(c.row - g.row) || 1;
+  const seam = R(g.row) + dr * 0.5;
+  const edge = isoToScreen(c.col, c.row - dr * 0.32);
+  const s1 = isoToScreen(c.col, seam);
+  const s2 = isoToScreen(g.col, seam);
+  const pts = [edge, s1, s2, foot].map((p) => ({ x: R(p.x), y: R(p.y) }));
+  const out: XY[] = [];
+  for (let i = 1; i < pts.length; i++) {
+    const seg = linePts(pts[i - 1], pts[i]);
+    for (const q of out.length ? seg.slice(1) : seg) out.push(q);
+  }
+  return out;
+}
+
 /**
  * The lingering bond — a thin LIGHT bond (§7 "ince ışık bağı"), drawn in three parts so it never cuts across its
- * wearer: a 3-px stub leaving the buckle ring IN FRONT of the neck toward the back (the `front` raster, over the
- * sprite), then from the back of the collar it hangs straight down BEHIND the body (the `back` raster), then it
- * lies on the tiles (the `floor` raster, under every unit): out round the wearer's back side IN FRONT of its feet
- * (so even a big body that stands between it and the card never hides it), then to the leash card's near corner.
- * The core is one lit pixel — gold3 / void4 / void4 — over a void2 underline; every 1.5 s a white-gold bead runs up
- * it from the card into the collar. `L.pulse` runs from the card (0) to the collar (1).
+ * wearer or a neighbour: a 4-px stub leaving the buckle ring IN FRONT of the neck toward the back (the `front`
+ * raster, over the sprite: the bond visibly starts AT the collar); then it hangs straight down BEHIND the body in
+ * a column inside the wearer's own silhouette (`vx`, the `back` raster — hidden by the body, it never shows as a
+ * second pole beside it); then it lies on the tiles (the `floor` raster) along the grid seams to the leash card
+ * (bondFloorPath). `clip` removes every pixel under (or 1 px beside) another unit, so it never peeks out between
+ * a neighbour's staff and robe. The core is one lit pixel — gold3 / void4 / void4 — over a void3 underline;
+ * every 1.5 s a white-gold bead runs up it from the card into the collar. `L.pulse` runs from the card (0) to
+ * the collar (1).
  */
-export function drawBond(back: Raster, floor: Raster, hook: XY, ground: XY, card: XY, L: LeashLook, facingLeft: boolean, front?: Raster, ring?: XY, halfW = 10): void {
-  const foot = { x: R(hook.x), y: R(ground.y) };
-  // the hanging part is on the back side; on the floor it turns toward the card's side, out IN FRONT of the
-  // feet, and arcs to the card through the open floor in front of the row (a body between them never hides it)
+export function drawBond(back: Raster, floor: Raster, hook: XY, ground: XY, card: XY, L: LeashLook, facingLeft: boolean, front?: Raster, ring?: XY, vx?: number, clip?: Clip): void {
   const fb = facingLeft ? 1 : -1;
-  const f = Math.abs(card.x - foot.x) > halfW ? Math.sign(card.x - foot.x) : fb;
-  const corner = { x: R(foot.x + f * (halfW * 0.6 + 6)), y: foot.y + 5 };
-  const end = { x: R(card.x - f * 10), y: R(card.y) };
-  const ctrl = { x: R((corner.x + end.x) / 2), y: R(Math.max(corner.y, end.y) + 10) };
-  const fl1 = quadPath(end, ctrl, corner);
-  const fl2 = quadPath(corner, { x: R((corner.x + foot.x) / 2), y: corner.y }, foot).slice(1);
-  const fl = [...fl1, ...fl2];
+  const x = R(vx ?? hook.x);
+  const foot = { x, y: R(ground.y) };
+  const fl = bondFloorPath(card, foot);
   const vert: XY[] = [];
-  for (let y = foot.y - 1; y >= R(hook.y); y--) vert.push({ x: foot.x, y });
+  for (let y = foot.y - 1; y >= R(hook.y); y--) vert.push({ x, y });
   const stub: XY[] = [];
-  if (front && ring) for (let k = 3; k >= 1; k--) stub.push({ x: ring.x + fb * k, y: ring.y + (k >= 2 ? 1 : 0) });
+  if (front && ring) for (let k = 4; k >= 1; k--) stub.push({ x: ring.x + fb * k, y: ring.y + (k >= 3 ? 1 : 0) });
   const n = fl.length + vert.length + stub.length;
   const pulseAt = L.pulse >= 0 ? R(L.pulse * (n - 1)) : -99;
   // the slow bead: every 1500 ms a light runs the whole bond in 700 ms
@@ -611,10 +680,15 @@ export function drawBond(back: Raster, floor: Raster, hook: XY, ground: XY, card
   const beadAt = bt < 700 ? R((bt / 700) * (n - 1)) : -99;
   const hotC = L.hotColor ?? PAL.void4;
   const runC = L.pulseColor ?? PAL.gold4;
+  const dbg = (globalThis as { __leashDbg?: boolean }).__leashDbg;
   for (let i = 0; i < n; i++) {
     const part = i < fl.length ? 0 : i < fl.length + vert.length ? 1 : 2;
     const p = part === 0 ? fl[i] : part === 1 ? vert[i - fl.length] : stub[i - fl.length - vert.length];
     const r = part === 0 ? floor : part === 1 ? back : front!;
+    const put = (px: number, py: number, c: number) => {
+      if (part !== 2 && clip && clip(px, py)) return;
+      r.px(px, py, c);
+    };
     // the underline axis: under it on the floor, beside it on the hanging part
     const wx = part === 1 ? -fb : 0;
     const wy = part === 1 ? 0 : 1;
@@ -626,21 +700,31 @@ export function drawBond(back: Raster, floor: Raster, hook: XY, ground: XY, card
       c = i % 2 ? hotC : (L.hotLight ?? PAL.white);
       under = hotC;
       if (L.hotHalo !== undefined) {
-        r.px(p.x + 2 * wx, p.y + 2 * wy, L.hotHalo);
-        r.px(p.x - wx, p.y - wy, L.hotHalo);
+        put(p.x + 2 * wx, p.y + 2 * wy, L.hotHalo);
+        put(p.x - wx, p.y - wy, L.hotHalo);
       }
     }
     const d = i - pulseAt;
-    if (L.pulse >= 0 && d <= 0 && d > -7) {
-      // the run: a bright head and a 6-px body behind it, 2 px wide, a 1-px dark-leaf halo on the far side
+    if (L.pulse >= 0 && d <= 0 && d > -9) {
+      // the run: a bright head and an 8-px body behind it, 2 px wide, a 1-px dark halo on the far side
       const col = d >= -1 ? (L.pulseHead ?? PAL.white) : runC;
       c = col;
       under = col;
-      if (L.pulseColor === PAL.leaf3 && d > -5) r.px(p.x - wx, p.y - wy, PAL.leaf2);
+      if (L.pulseColor === PAL.leaf3 && d > -7) put(p.x - wx, p.y - wy, PAL.leaf2);
     }
-    r.px(p.x + wx, p.y + wy, under);
-    if (part === 0 && !L.hot) r.px(p.x, p.y + 2, PAL.void1);
-    r.px(p.x, p.y, c);
+    if (L.dark !== undefined && L.dark > 0) {
+      const at = (1 - L.dark) * (n - 1);
+      if (i >= at) {
+        // dead: a dull void1 thread over ink; the front of the dark run is a single void3 spark
+        put(p.x + wx, p.y + wy, PAL.ink);
+        put(p.x, p.y, i - at < 2 ? PAL.void3 : PAL.void1);
+        continue;
+      }
+    }
+    put(p.x + wx, p.y + wy, under);
+    if (part === 0 && !L.hot) put(p.x, p.y + 2, PAL.void1);
+    put(p.x, p.y, c);
+    if (dbg) put(p.x, p.y, [PAL.crim3, PAL.cyan3, PAL.mag3][part]);
   }
 }
 
@@ -677,10 +761,13 @@ export function walkerMask(sil: Silhouette, groundX: number, groundY: number): X
 export function planRoute(from: XY, to: XY, obstacles: readonly Obstacle[], mask: readonly XY[]): XY[] {
   const a = screenToIso(from.x, from.y);
   const b = screenToIso(to.x, to.y);
-  const c0 = Math.max(0, LANE_COLS[0] - 1);
-  const c1 = LANE_COLS[LANE_COLS.length - 1] + 1;
-  const r0 = Math.max(0, Math.min(R(a.row), R(b.row)) - 1);
-  const r1 = Math.min(BOARD_ROWS - 1, Math.max(R(a.row), R(b.row)) + 1);
+  // the playable floor only: the lane columns and the rows from one monster row to the other (the monster rows
+  // and the bridge between them). Never the back gutter, the spell rows or the deck / extra / grave pads (a
+  // route through them walked the monster over the table's rim and its head into the HUD — critic round 3).
+  const c0 = LANE_COLS[0];
+  const c1 = LANE_COLS[LANE_COLS.length - 1];
+  const r0 = Math.max(0, Math.min(R(a.row), R(b.row)));
+  const r1 = Math.min(BOARD_ROWS - 1, Math.max(R(a.row), R(b.row)));
   // the lanes between the two monster rows are the walk's home; the back rows and the side pads cost more
   const rIn0 = Math.min(R(a.row), R(b.row));
   const rIn1 = Math.max(R(a.row), R(b.row));

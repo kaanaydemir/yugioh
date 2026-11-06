@@ -29,26 +29,37 @@
 //          and TUMBLES (a real 3-D roll about the wind's axis + a yaw); a face-down card shows its FACE as it turns
 //          over (one white frame — e_galeGlimpse); its shadow shrinks on the floor. EVERY card leaves over a VISIBLE
 //          rim: on player 2's (far) side the wind carries it LOW along its row to the right-hand rim; on player 1's
-//          side it is thrown over its own front-left rim; at the edge it drops past the wall into the void — the
-//          receding whistle, e_galeFall, each card's a step lower (a descending pentatonic run)
+//          side it is thrown over its own front-left rim; at the edge it drops past the wall into the VOID: it
+//          recedes — its mip shrinks in steps (1 → ¾ → ½), its tones step down (stone, then night), a thin falling
+//          streak above it — and it is cut off at the platform's lower lip (never reaching the hall floor) — the
+//          receding whistle, e_galeFall, each card's a step lower (a descending pentatonic run), its bend synced to
+//          the shrink. A far-row card flies one band IN FRONT of its row's monsters while it is in the air (and the
+//          blade's leading edge too: the bristles stay behind them)
 //   THE FIELD (its own clock, see fieldTimes): the flame leans as the front nears, is stretched and buffeted while
 //          the bristles pass, then gutters in three steps (150 ms) while the light over the half dims in three
-//          steps — and is SNUFFED like a candle: the light is CUT, the arena's light drops for a breath (the field
-//          theme changes under that dark: a volcano's lava is cut with it), a puff, a wick ember, a smoke thread —
+//          steps (one re-flare) — a real volcano arena's LAVA gutters with it in its own overlay (the board's crack
+//          pixels: fire3 → crim1, a re-flare, patches going out) — and is SNUFFED like a candle: the light is CUT,
+//          a night veil drops over the room for a breath (the theme changes under it, then it lifts in three
+//          steps), a puff, a wick ember, a smoke thread —
 //          e_galeSnuff ("vump"). 100 ms later the LAST GUST (three bristle curls with leaves racing through the
 //          field zone) tears the field card off and blows it over the rim
-//   +~760  THE TAIL: the stroke leaves over the far rim, its bristles thin out — e_galeTail
+//   +~760  the stroke leaves over the far rim, its bristles thin out. THE TAIL (e_galeTail) answers the LAST falling
+//          card: its whistle echoes back from the void (that card's pitch and pan), the last leaves tick down
 //   each fallen card is delivered to its owner's graveyard AS SOON AS it is gone: a little gust of four leaves
 //          streaks from where it vanished to the pile (e_galeCarry), drops a mini card silhouette on it, the pile
-//          counts up and bumps — e_galePile. The snuffed wick's smoke finishes on its own after the scene.
+//          counts up and bumps (and the HUD's graveyard counter with it) — e_galePile. The carrier leaves while the
+//          card is still receding. The snuffed wick's smoke finishes on its own after the scene.
+// The spent hand card comes apart into the wind (a white frame, it dissolves, its leaves carried to its pile): it
+// never slides over the duelist's dais. Each card's tear-off also fires a bristle "ksh" (e_galeBristle).
 // THE RESPONSE WINDOW (a ready Büyü Mührü): the activation batch has no massDestroy. The card does NOT dissolve: a
 // hand card keeps hovering beside its owner, a set card lies back down face-up on its own tile, while a few leaves
 // keep circling it (a kept handle, 'gale:wait'). Declined → the next batch's gale releases its curl FROM THAT CARD
 // and sends the card to its graveyard; sealed → after the trap's own presentation the gale dies on the card (the
-// leaves wither and drop, the card sags — e_galeDie) and it goes to its graveyard (the 'toGraveyard' hook).
-// Measured (game time, tempo 1.35; tools/measure.mjs, camera 0f/0px; round 3): eGale 4.75 s, eGaleP2 4.90, eGaleSet
-// 4.08, eGaleSetP2 4.23, eGaleOne 3.18, eGaleVolcano 5.02 / eGaleWindow 5.53 (both batches of the window), eGaleAxe 5.60
-// (with spite_axe's own toDeck presentation after the gale), eGaleSealed 5.18 (the seal's cut-in included). The
+// leaves wither and drop, the card sags — e_galeDie), FALLS off its hover in four stepped frames (upright, 20°, 60°,
+// flat), lands with a 1-px bounce (e_galeSlump) and fades out where it lies; its graveyard counts it then.
+// Measured (game time, tempo 1.35; tools/measure.mjs, camera 0f/0px; round 4): eGale 4.60 s, eGaleP2 4.75, eGaleSet
+// 3.93, eGaleSetP2 4.08, eGaleOne 2.97, eGaleVolcano 4.87 / eGaleWindow 5.38 (both batches of the window), eGaleAxe 5.53
+// (with spite_axe's own toDeck presentation after the gale), eGaleSealed 5.13 (the seal's cut-in included). The
 // side effects (spite_axe back to its deck, soul_leash's monster going home, a field spell's stat changes) are NOT
 // presented here: their events stay unconsumed and play in order after the gale (their own presentations). A card
 // whose destination is not the graveyard (spite_axe → deck) RESISTS the gale: it rattles, jumps 3 px and slams back
@@ -64,7 +75,7 @@ import { G1, GR1, SLAB_T } from '../../still/arena-geom';
 import { SLAB_RECT, buildCrackField } from '../../art/arena';
 import { BOARD_MID_COL, CARD_H, DEPTH, LOOK_V3, type XY, isoToScreen, screenToIso, unitDepth, zoneCell, zoneXY } from '../../view/layout';
 import type { TileCard } from '../../view/TileCard';
-import type { CardSprite } from '../../view/CardSprite';
+import { CardSprite } from '../../view/CardSprite';
 import { Raster, onFrame, run } from '../../vfx/setpieces';
 import { wait } from '../../vfx/core';
 import { lightDimFor } from '../../view/light';
@@ -822,7 +833,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   playV3('e_galeLob', { volume: 0.85, pan: panAt(top.x) });
   await lobCurl(sc, top, { x: R(start.x), y: R(start.y) });
   // the spent hand card comes apart into the wind (its own leaves carried to the pile); a set card leaves its tile
-  const hand = !setTile && op.card && op.card.active && !(op.card as { home?: unknown }).home ? (op.card as CardSprite) : null;
+  const hand = !setTile && op.card instanceof CardSprite && op.card.active ? op.card : null;
   const spent = wait(sc, 140).then(() => {
     if (hand && gi >= 0 && !ctx.isConsumed(gi)) {
       const g = ctx.events[gi] as Extract<GameEvent, { type: 'toGraveyard' }>;
@@ -1341,6 +1352,7 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
   let fallN = 0;
   const tauEdges = new Map<Swept, number>();
   const minEnd = T.stroke + T.strokeMs + 200;
+  const flyN = cards.filter((c) => c.flies).length;
 
   playV3('e_galeWhirl', { volume: 0.9, pan: panAt(start.x) });
 
@@ -1386,7 +1398,13 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
       void whirlLight?.fadeOut(160);
       whirlLight = null;
     });
-    once('tail', el, T.stroke + T.strokeMs * 0.66, () => playV3('e_galeTail', { volume: 0.8, pan: wind * 0.8 }));
+    // the tail answers the LAST falling card: its whistle echoes back from the void (its pitch, its pan)
+    if (!fired.has('tail') && flyN > 0 && fallN >= flyN) {
+      fired.add('tail');
+      const step = lastFallStep;
+      const pan = lastFallPan;
+      bg(wait(sc, 140).then(() => playV3('e_galeTail', { volume: 0.85, pan, pitch: Math.pow(2, -step / 12) })));
+    }
     once('headOut', el, T.stroke + T.strokeMs, () => {
       void (headLight as LightHandle | null)?.fadeOut(200);
       headLight = null;
@@ -1554,6 +1572,8 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
         c.fc = new FlyCard(sc, c.cardId, c.victim);
         tauEdges.set(c, edgeTau(c));
         playV3('e_galeSnap', { volume: 0.9, pan: panAt(fx0.x), pitch: 1 + ((i * 7) % 5) * 0.05 });
+        // the broom's bristles scrape over the slot as they tear it off
+        playV3('e_galeBristle', { volume: 0.7, pan: panAt(fx0.x), pitch: 1 - ((i * 3) % 4) * 0.04 });
         // floor dust and a paper scrap or two torn off with it
         for (let k = 0; k < 6; k++) bits.add({ kind: 'mote', x: fx0.x + R((rng() - 0.5) * 20), y: fx0.y + R((rng() - 0.5) * 6), vx: wind * (20 + rng() * 30), vy: -20 - rng() * 25, g: 60, life: 360, c: k % 2 ? PAL.stone4 : PAL.leaf4 });
         for (let k = 0; k < 2; k++) topBits.add({ kind: 'paper', x: fx0.x, y: fx0.y - 6, vx: wind * (60 + rng() * 60), vy: -40 - rng() * 40, g: 90, life: 600, ph: rng() });

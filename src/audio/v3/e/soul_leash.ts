@@ -11,12 +11,13 @@
 //   e_leashThrow      the strap whips out to the victim: an air sweep, a thin high link run, the strap's crack
 //   e_leashWeave      the collar wraps round the neck: a leather groan, four stud ticks, the buckle's click
 //   e_leashTear       the shadow tears off its body: a soft crackling rip falling in pitch + a low "hoo" drawn in
-//   e_leashShadowStep a shadow step: no sub, a breathy white puff banded at 900–1400 Hz (6–8 dB under the body)
+//   e_leashShadowStep a shadow step: a muffled pat — a pink puff low-passed to 700–1000 Hz (6–8 dB under the body)
 //   e_leashBodyStep   a body step, one beat behind: a dull sub thump + a 250–500 Hz scuff + a leather creak
 //   e_leashTurn       the shadow turns round on its new side: a dark swish and a low murmur
 //   e_leashMerge      the body walks into its shadow: a swelling suck that stops dead into a soft thud
-//   e_leashLock       the collar LOCKS: leather first (a strap thwack), then a small brass two-tone latch
-//                     "kla-k" (2.6 / 3.3 kHz), two links settling, the G-minor chord under it — no big metal
+//   e_leashLock       the collar LOCKS: leather first (a strap thwack in its 420–520 Hz / 1.4 kHz formants), then
+//                     a small brass two-tone latch "kla-k" (2.6 / 3.3 kHz), two links settling, a thin high
+//                     G-minor trace — no big metal, no low chord (that is Işık Zincirleri's chainBind)
 //   e_leashBond       the chain becomes the thin light bond: a light running down it (a thin D6 with a slow
 //                     vibrato) over three descending links
 //   e_leashPulse      the opponent's Draw Phase: the bond's heartbeat (two soft sub beats) + the soft bell
@@ -24,6 +25,7 @@
 //   e_leashSnap       the leash is gone: the bond snaps (a link crack), the buckle springs open, the collar falls
 //   e_leashHome       the freed shadow runs home: a quick dark swish over two light pats
 //   e_leashBounce     no room at home: the shadow hits the full row — a dull void knock thrown back
+//   e_leashSettle     … and its residue settles at the body's feet: a falling void murmur, two tiny links
 
 import type { Recipe } from '../../sounds';
 import type { Voice } from '../../synth';
@@ -85,11 +87,11 @@ export const RECIPES = {
     verb: 0.3,
     play(v) {
       // a leather strap whipping out: an air sweep, a thin high link run riding it, the strap's crack at the end
-      sweep(v, 0, 0.2, [700, 1900, 1100], 0.08, { kind: 'pink', q: 1.3, peakAt: 0.6 });
-      chainRun(v, 0.02, 0.15, 5, 3600, 4400, 0.035);
-      leather(v, 0.02, 0.2, 150, 210, 0.1);
-      leatherSlap(v, 0.19, 0.4);
-      crack(v, 0.195, 0.08, { hp: 3500, lp: 9000, dec: 0.004 });
+      sweep(v, 0, 0.2, [700, 1900, 1100], 0.16, { kind: 'pink', q: 1.3, peakAt: 0.6 });
+      chainRun(v, 0.02, 0.15, 5, 3600, 4400, 0.07);
+      leather(v, 0.02, 0.2, 150, 210, 0.2);
+      leatherSlap(v, 0.19, 0.8);
+      crack(v, 0.195, 0.16, { hp: 3500, lp: 9000, dec: 0.004 });
     },
   },
   e_leashWeave: {
@@ -128,12 +130,12 @@ export const RECIPES = {
     verb: 0.4,
     vary: 0.05,
     play(v) {
-      // airy and weightless: no sub at all — a breathy white puff banded at 900–1400 Hz, a soft pink "fff" over
-      // it and a tiny high brush; it sits 6–8 dB under the body's THUD and an octave and more above it
-      const band = v.filt('bandpass', [[0, 1400], [0.07, 950, 'e']], 1.6);
-      v.noise('white', { g: [[0, 0], [0.008, 1.1], [0.09, 0.0001, 'e']], to: band });
-      v.noise('pink', { t: 0.002, g: perc(0.7, 0.06, 0.006), to: v.filt('bandpass', 1150, 2.2) });
-      v.noise('white', { t: 0.004, g: perc(0.05, 0.035, 0.003), to: v.filt('highpass', 3200, 0.8) });
+      // a muffled "pat": a short pink puff low-passed to 700–1000 Hz (a soft sole on a boggy floor), a tiny
+      // 160 Hz body under it, no sub and no hiss; it sits 6–8 dB under the body's THUD
+      const lp = v.filt('lowpass', [[0, 1000], [0.06, 700, 'e']], 0.9);
+      v.noise('pink', { g: [[0, 0], [0.006, 0.9], [0.075, 0.0001, 'e']], to: lp });
+      puff(v, 0.002, 0.18, 0.06, 560, { kind: 'brown', att: 0.004 });
+      v.tone('sine', [[0, 170], [0.05, 120, 'e']], { t: 0.001, g: perc(0.05, 0.05, 0.003) });
     },
   },
   e_leashBodyStep: {
@@ -176,26 +178,30 @@ export const RECIPES = {
   e_leashLock: {
     cap: 1,
     gap: 0.3,
-    verb: 0.5,
+    verb: 0.28,
     duck: 0.3,
     play(v) {
       // leather first: the strap pulled tight with a thwack (the 1.4 kHz leather formant, 40 ms) and a body
       // under it (a short drop thump: the soul pulled up short) …
-      leatherSlap(v, 0, 1.5);
-      leather(v, 0, 0.07, 140, 120, 0.12);
-      thump(v, 0, 140, 62, 0.7, 0.12, { drive: 1.5 });
+      leatherSlap(v, 0, 1.6);
+      // the leather thwack's body: a 420–520 Hz band burst (the strap's own formant, not a sub)
+      v.noise('pink', { g: perc(2.6, 0.09, 0.001), to: v.filt('bandpass', [[0, 520], [0.09, 430, 'e']], 2.4) });
+      leather(v, 0, 0.2, 150, 118, 0.6);
+
       // … then the small brass buckle: a two-tone latch, "kla-k" (2.6 kHz tongue, 3.3 kHz frame, 14 ms apart),
       // with a short low brass clank (~760 Hz, 70 ms) giving the latch a body — still small, not big metal
-      clank(v, 760, 0.035, 0.28, 0.08, { ratio: 1.5, index: 1.8, click: 1.2 });
-      latch(v, 2600, 0.035, 1.0);
-      latch(v, 3300, 0.049, 0.7);
-      crack(v, 0.035, 0.26, { hp: 4000, lp: 11000, dec: 0.004 });
+      latch(v, 2600, 0.035, 1.5);
+      latch(v, 3300, 0.049, 1.2);
+      latch(v, 2600, 0.063, 0.4);
+      // the latch's click: a narrow 2.9 kHz noise tick (no broadband crack: that is glass / the puppet's string)
+      v.noise('white', { t: 0.035, g: perc(0.9, 0.012, 0.0004), to: v.filt('bandpass', 2900, 6) });
+      v.noise('white', { t: 0.049, g: perc(0.7, 0.01, 0.0004), to: v.filt('bandpass', 3400, 6) });
       // two small links settle under it
       link(v, 3900, 0.12, 0.03, 0.04);
       link(v, 3500, 0.17, 0.022, 0.04);
-      // G minor under it: G3 B♭3 D4, slow in, long out
-      [55, 58, 62].forEach((m, i) =>
-        v.tone('sine', midiHz(m), { t: 0.02 + i * 0.012, g: [[0, 0], [0.04, 0.05 - i * 0.008], [0.4, 0.03], [1.1, 0.0001, 'e']], detune: (i - 1) * 4 }),
+      // the hold: a thin G-minor trace an octave up (G4 B♭4 D5), soft and short — no low chord body
+      [67, 70, 74].forEach((m, i) =>
+        v.tone('sine', midiHz(m), { t: 0.06 + i * 0.015, g: [[0, 0], [0.03, 0.022 - i * 0.004], [0.5, 0.0001, 'e']], detune: (i - 1) * 4 }),
       );
     },
   },
@@ -205,10 +211,10 @@ export const RECIPES = {
     verb: 0.55,
     play(v) {
       const f = midiHz(86);
-      const a = v.tone('sine', f, { g: [[0, 0], [0.08, 0.03], [0.3, 0.02], [0.7, 0.0001, 'e']] });
+      const a = v.tone('sine', f, { g: [[0, 0], [0.08, 0.05], [0.3, 0.034], [0.7, 0.0001, 'e']] });
       v.lfo(a.osc.detune, 5, 18, { d: 0.7 });
-      v.tone('sine', f * 2.01, { g: [[0, 0], [0.1, 0.008], [0.4, 0.0001, 'e']] });
-      chainRun(v, 0, 0.2, 3, 3300, 2600, 0.035);
+      v.tone('sine', f * 2.01, { g: [[0, 0], [0.1, 0.013], [0.4, 0.0001, 'e']] });
+      chainRun(v, 0, 0.2, 3, 3300, 2600, 0.06);
     },
   },
   e_leashPulse: {
@@ -234,10 +240,10 @@ export const RECIPES = {
     gap: 0.3,
     verb: 0.5,
     play(v) {
-      sweep(v, 0, 0.36, [600, 2400, 4200], 0.045, { kind: 'white', q: 2.2, peakAt: 0.7 });
+      sweep(v, 0, 0.36, [600, 2400, 4200], 0.075, { kind: 'white', q: 2.2, peakAt: 0.7 });
       // three leaf chimes rising (E5 G♯5 B5)
-      [76, 80, 83].forEach((m, i) => v.tone('sine', midiHz(m), { t: 0.08 + i * 0.1, g: [[0, 0], [0.01, 0.045], [0.45, 0.0001, 'e']] }));
-      v.tone('sine', midiHz(88), { t: 0.36, g: [[0, 0], [0.01, 0.02], [0.5, 0.0001, 'e']] });
+      [76, 80, 83].forEach((m, i) => v.tone('sine', midiHz(m), { t: 0.08 + i * 0.1, g: [[0, 0], [0.01, 0.075], [0.45, 0.0001, 'e']] }));
+      v.tone('sine', midiHz(88), { t: 0.36, g: [[0, 0], [0.01, 0.034], [0.5, 0.0001, 'e']] });
     },
   },
   e_leashSnap: {
@@ -262,6 +268,19 @@ export const RECIPES = {
       sweep(v, 0, 0.2, [500, 1500, 700], 0.15, { kind: 'pink', q: 1.4, peakAt: 0.35 });
       pat(v, 0.05, 0.24);
       pat(v, 0.16, 0.2);
+    },
+  },
+  e_leashSettle: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.5,
+    play(v) {
+      // the soul's residue settling at the feet: a low void murmur falling away, two tiny links, a breath
+      const m = v.tone('sine', [[0, midiHz(50)], [0.3, midiHz(43), 'e']], { g: [[0, 0], [0.04, 0.07], [0.32, 0.0001, 'e']] });
+      v.lfo(m.osc.detune, 9, 25, { d: 0.3 });
+      puff(v, 0, 0.08, 0.22, 500, { kind: 'brown', att: 0.05 });
+      link(v, 2900, 0.06, 0.03, 0.04);
+      link(v, 2500, 0.15, 0.022, 0.04);
     },
   },
   e_leashBounce: {

@@ -126,6 +126,8 @@ interface Linger {
   bondIn(): Promise<void>;
   /** The collar's world point now (null: hidden). */
   collarAt(): XY | null;
+  /** Its wearer is destroyed: the collar snaps off, the bond goes dark from the collar to the card, the card dims. */
+  die(): Promise<void>;
 }
 
 /** By monster uid. Not ctx.keep: it must outlive many batches. Cleared on scene shutdown (one listener per scene). */
@@ -184,7 +186,7 @@ function lingerBond(sc: Phaser.Scene, field: FieldView, uid: Uid, leashUid: Uid,
   const back = new Raster(sc, 0, 0, RW, RH, DEPTH.UNIT);
   const floor = new Raster(sc, 0, 0, RW, RH, DEPTH.SHADOW + 2);
   const front = new Raster(sc, 0, 0, RW, RH, DEPTH.UNIT);
-  let halfW = 10;
+  const clip = othersClip(field, uid);
   const glow: LightHandle = lightPool(sc, 0, 0, { color: PAL.void3, radius: 10, air: 0.3, airRadius: 7, intensity: 0, fadeIn: 0, anim: 'breathe' });
   let alive = true;
   let el = 0;
@@ -193,13 +195,39 @@ function lingerBond(sc: Phaser.Scene, field: FieldView, uid: Uid, leashUid: Uid,
   const look: LeashLook = { mode: 'bond', sag: 1, prog: 1, pulse: -1, phase: 0 };
   let collarPt: XY | null = null;
   let cardPt: XY | null = null;
+  let dying = false;
+  let collarHidden = false;
+  let fadeAll = 1;
+  let lastSprite: { x: number; y: number; flipX: boolean; depth: number; hover: number } | null = null;
   const stop = onFrame(sc, (dt) => {
     if (!alive) return false;
     el += dt;
     look.phase = el;
     const u = field.unit(uid);
     const t = field.tileOf(leashUid);
+    if (dying) {
+      // the wearer is going: draw the dying bond from its last place (no collar)
+      collar.draw({ x: -50, y: -50 }, 0, false);
+      const ls = lastSprite;
+      if (!ls || !cardPt) return true;
+      const c = neckAt(neck, ls.x, ls.y, ls.flipX);
+      const hook = collar.backPoint(c, ls.flipX);
+      const ground = { x: R(ls.x), y: R(ls.y + ls.hover) };
+      back.img.setVisible(false);
+      front.img.setVisible(fadeAll > 0.5 && !collarHidden);
+      floor.img.setVisible(fadeAll > 0.3);
+      back.begin();
+      floor.begin();
+      front.begin();
+      drawBond(back, floor, hook, ground, cardPt, look, ls.flipX, undefined, undefined, R(ls.x), clip);
+      back.end();
+      floor.end();
+      front.end();
+      glow.setIntensity(0, 0);
+      return true;
+    }
     const show = !!u && !u.retired && u.sprite.active && u.sprite.visible && u.sprite.alpha > 0.05 && !!t && t.active;
+    if (show && u) lastSprite = { x: u.sprite.x, y: u.sprite.y, flipX: u.sprite.flipX, depth: u.sprite.depth, hover: u.hover + u.lift };
     if (!show) {
       gone += dt;
       if (gone > 80) fadeK = Math.max(0, fadeK - dt / 200);
@@ -237,11 +265,34 @@ function lingerBond(sc: Phaser.Scene, field: FieldView, uid: Uid, leashUid: Uid,
     front.img.setDepth(s.depth + 0.3).setVisible(vis);
     floor.img.setVisible(vis);
     const sil = silhouetteOf(s);
-    if (sil) halfW = Math.max(6, R((sil.right - sil.left) / 2));
+    // the hanging column: from the back of the collar toward the body's middle until the column is inside the
+    // wearer's own silhouette (hidden behind it: no second pole beside the body)
+    let vx = hook.x;
+    if (sil) {
+      const y0c = R(hook.y) + 2;
+      const y1c = R(ground.y) - 3;
+      const inside = (x: number) => {
+        let k = 0;
+        let n = 0;
+        for (let y = y0c; y <= y1c; y += 2) {
+          n++;
+          if (sil.has(x, y)) k++;
+        }
+        return n === 0 || k / n >= 0.75;
+      };
+      const dir = Math.sign(R(s.x) - hook.x) || (s.flipX ? -1 : 1);
+      for (let i = 0; i <= 24; i++) {
+        if (inside(hook.x + dir * i)) {
+          vx = hook.x + dir * i;
+          break;
+        }
+        if (i === 24) vx = R(s.x);
+      }
+    }
     back.begin();
     floor.begin();
     front.begin();
-    if (vis) drawBond(back, floor, hook, ground, card, look, s.flipX, front, collar.ring(c), halfW);
+    if (vis) drawBond(back, floor, hook, ground, card, look, s.flipX, front, collar.ring(c), vx, clip);
     back.end();
     floor.end();
     front.end();
@@ -268,6 +319,23 @@ function lingerBond(sc: Phaser.Scene, field: FieldView, uid: Uid, leashUid: Uid,
     neck,
     destroy,
     collarAt: () => collarPt,
+    async die() {
+      // hold the bond on screen whatever the wearer does now (its death may hide it at once)
+      dying = true;
+      const cp = collarPt;
+      playV3('e_leashSnap', { volume: 0.6, pitch: 0.85, pan: cp ? panAt(cp.x) : 0 });
+      if (cp) {
+        void lightFlash(sc, cp.x, cp.y, PAL.void3, 12, 200, { intensity: 0.6 });
+        motesFall(sc, { x: cp.x, y: cp.y + 3 }, 8, [PAL.gold3, PAL.void3, PAL.void2, PAL.void1]);
+      }
+      collarHidden = true;
+      await run(sc, 300, (k) => (look.dark = q(k, 12)));
+      const t = field.tileOf(leashUid);
+      if (t && t.active) t.tileFlash(PAL.void1, 320);
+      if (cardPt) void lightFlash(sc, cardPt.x, cardPt.y, PAL.void2, 16, 260, { intensity: 0.6 });
+      await run(sc, 160, (k) => (fadeAll = 1 - k));
+      destroy();
+    },
     async bondIn() {
       // the chain has become the bond: a white light runs up it from the card into the collar
       look.pulseColor = PAL.void4;
@@ -280,38 +348,53 @@ function lingerBond(sc: Phaser.Scene, field: FieldView, uid: Uid, leashUid: Uid,
       bg(run(sc, 200, (k) => (collar.look.glint = k)).then(() => (collar.look.glint = -1)));
     },
     async pulse() {
-      // two heartbeats: the bond swells to 2 px in leaf with a halo, light pools at both ends; the green run
-      // leaves the card ON the second beat and the gift leaves as soon as it reaches the collar (no lull)
+      // two heartbeats, equally loud: on each the whole bond swells to 2 px in leaf with a leaf2 halo and light
+      // pools at both ends; the second beat STAYS lit while a fat green run (white head) climbs the whole bond
+      // from the card into the collar; the collar flashes (one white frame, then leaf4) and the gift leaves at
+      // once (no lull)
       look.hotColor = PAL.leaf3;
       look.hotLight = PAL.leaf4;
       look.hotHalo = PAL.leaf2;
-      const beat = (second: boolean) => {
+      const beat = () => {
         look.hot = true;
         const cp = collarPt;
-        if (cp) void lightFlash(sc, cp.x, cp.y, PAL.leaf3, 14, 200, { intensity: 0.7 });
-        if (cardPt) void lightFlash(sc, cardPt.x, cardPt.y, PAL.leaf3, 18, 200, { intensity: 0.75 });
-        collar.look.tint = second ? PAL.leaf3 : undefined;
-        sc.time.delayedCall(60, () => {
-          look.hot = false;
-          collar.look.tint = undefined;
-        });
+        if (cp) void lightFlash(sc, cp.x, cp.y, PAL.leaf3, 16, 240, { intensity: 0.8 });
+        if (cardPt) void lightFlash(sc, cardPt.x, cardPt.y, PAL.leaf3, 20, 240, { intensity: 0.85 });
+        collar.look.tint = PAL.leaf3;
       };
-      beat(false);
-      await wait(sc, 130);
-      beat(true);
-      await wait(sc, 60);
-      look.hotColor = look.hotLight = look.hotHalo = undefined;
+      beat();
+      await wait(sc, 100);
+      look.hot = false;
+      collar.look.tint = undefined;
+      await wait(sc, 70);
+      beat();
       // the green runs from the card along the floor, up behind the body, into the collar
       look.pulseColor = PAL.leaf3;
-      look.pulseHead = PAL.leaf4;
-      await run(sc, 260, (k) => (look.pulse = q(k, 14)));
+      look.pulseHead = PAL.white;
+      await run(sc, 240, (k) => {
+        look.pulse = q(k, 16);
+        if (k > 0.35) look.hot = false;
+      });
+      look.hot = false;
       look.pulse = -1;
       look.pulseColor = undefined;
       look.pulseHead = undefined;
-      // the collar flashes leaf on arrival
-      collar.look.tint = PAL.leaf4;
+      look.hotColor = look.hotLight = look.hotHalo = undefined;
+      // the collar flashes on arrival: a white core frame, then leaf4, and a leaf halo round the band
+      collar.look.bandFlash = PAL.white;
+      collar.look.halo = PAL.leaf4;
+      const cp = collarPt;
+      if (cp) void lightFlash(sc, cp.x, cp.y, PAL.leaf4, 18, 260, { intensity: 1 });
+      sc.time.delayedCall(35, () => {
+        collar.look.bandFlash = undefined;
+        collar.look.tint = PAL.leaf4;
+        collar.look.halo = PAL.leaf3;
+      });
+      sc.time.delayedCall(110, () => {
+        collar.look.tint = undefined;
+        collar.look.halo = undefined;
+      });
       collar.look.glint = 0;
-      sc.time.delayedCall(70, () => (collar.look.tint = undefined));
       bg(run(sc, 200, (k) => (collar.look.glint = k)).then(() => (collar.look.glint = -1)));
       return collarPt;
     },
@@ -528,6 +611,37 @@ function chainClip(field: FieldView, self: MonsterUnit): (x: number, y: number) 
   };
 }
 
+/**
+ * The lingering bond's clip: every OTHER unit's body and stat plate plus a 1-px margin round them (live: units
+ * come and go while the leash lasts), so the bond never shows in the gap between a neighbour's staff and robe.
+ */
+function othersClip(field: FieldView, selfUid: Uid): (x: number, y: number) => boolean {
+  let frame = -1;
+  let tests: ((x: number, y: number) => boolean)[] = [];
+  return (x, y) => {
+    const self = field.unit(selfUid);
+    const now = self?.sprite.scene?.game.getFrame() ?? 0;
+    if (now !== frame) {
+      frame = now;
+      tests = [];
+      for (const p of [0, 1] as PlayerId[])
+        for (let i = 0; i < LANES; i++) {
+          const u = field.unitAt(p, i);
+          if (!u || u === self || u.retired || !u.sprite.active || !u.sprite.visible) continue;
+          const sil = silhouetteOf(u.sprite);
+          if (sil) {
+            const has = (px: number, py: number) => px >= sil.left && px <= sil.right && py >= sil.top && py <= sil.bottom && sil.has(px, py);
+            tests.push((px, py) => has(px, py) || has(px - 1, py) || has(px + 1, py) || has(px, py - 1));
+          }
+          const bb = badgeBox(u);
+          if (bb) tests.push((px, py) => px >= bb.x0 - 1 && px < bb.x1 + 1 && py >= bb.y0 - 1 && py < bb.y1 + 1);
+        }
+    }
+    for (const t of tests) if (t(x, y)) return true;
+    return false;
+  };
+}
+
 /** A shadow footfall: a small void print on the floor that fades in three stepped tones. */
 function footprint(sc: Phaser.Scene, at: XY): void {
   const ras = Raster.around(sc, at.x, at.y, 11, 5, DEPTH.SHADOW + 1);
@@ -672,7 +786,7 @@ async function takeScene(ctx: CCCtx): Promise<void> {
   const wispSp = new PxSparks(sc, DEPTH.FX + 2);
   await run(sc, total + T.turnWait, (_t, el) => {
     // living detail: thin void wisps rise off the shadow's head and shoulders
-    if (sh && el < N * ST && el >= wisps * 70) {
+    if (sh && el >= wisps * 70) {
       wisps++;
       const w = sh.img.width;
       const x = R(sh.img.x + 4 + ((wisps * 37) % Math.max(1, w - 8)));
@@ -688,8 +802,19 @@ async function takeScene(ctx: CCCtx): Promise<void> {
       const g = along(shRoute, (i + e) / N);
       const walking = el < N * ST;
       const rise = walking && lt > 0.3 && lt < 0.7 ? 1 : 0;
-      sh.place({ x: g.x, y: g.y - unit.hover - rise });
-      sh.setPose(walking && lt > 0.12 && lt < 0.78 ? (i % 2 ? 2 : 1) : 0);
+      // the footfall frames (the end of every stride and the first of the next): the hem kicks forward and
+      // the figure leans 1 px into the step
+      const fall = walking && (lt >= 0.86 || (i > 0 && lt < 0.08));
+      // after the walk it does not stand still: it breathes (a 1-px bob), then sinks into its feet as the body
+      // comes up behind it (stepped, a quarter of its height at most) — the merge finishes the sink
+      const wait0 = N * ST + T.turnWait;
+      const waitLen = Math.max(1, total + T.turnWait - wait0);
+      const wk = walking ? 0 : Math.max(0, Math.min(1, (el - wait0) / waitLen));
+      sh.sink = wk > 0.45 ? R(q((wk - 0.45) / 0.55, 4) * sh.img.height * 0.25) : 0;
+      const bob = !walking && wk <= 0.45 && Math.floor(el / 110) % 2 === 1 ? 1 : 0;
+      sh.lean = fall ? 1 : 0;
+      sh.place({ x: g.x, y: g.y - unit.hover - rise + bob });
+      sh.setPose(fall ? 3 : walking && lt > 0.12 && lt < 0.78 ? (i % 2 ? 2 : 1) : 0);
       // behind its body until it has stepped clear, then sorted by its feet like any unit
       if (!separated && Math.abs(g.x - b.ground.x) >= walkW * 0.95) separated = true;
       sh.img.setDepth(separated ? unitDepth(R(g.y)) + 0.1 : s.depth - 0.1);
@@ -697,8 +822,11 @@ async function takeScene(ctx: CCCtx): Promise<void> {
         shStepsDone++;
         const foot = along(shRoute, shStepsDone / N);
         playV3('e_leashShadowStep', { volume: 0.9, pitch: 1 + (shStepsDone % 2) * 0.05, pan: panAt(foot.x) });
-        voidPuff(sc, { x: R(foot.x), y: R(foot.y) }, 4, 10, [PAL.void3, PAL.void2, PAL.void1]);
-        footprint(sc, { x: R(foot.x), y: R(foot.y) });
+        // the print lands under the LEADING hem edge (ahead of the anchor along the facing)
+        const lead = (sh.turned ? !neck.flip : neck.flip) ? -1 : 1;
+        const fp = { x: R(foot.x + lead * Math.max(3, walkW * 0.3)), y: R(foot.y) };
+        voidPuff(sc, fp, 4, 10, [PAL.void3, PAL.void2, PAL.void1]);
+        footprint(sc, fp);
       }
       if (!turned && el >= N * ST + 30) {
         turned = true;
@@ -749,7 +877,21 @@ async function takeScene(ctx: CCCtx): Promise<void> {
 
   // ---- MERGE: the body walks into its shadow; the collar comes back to the body with its buckle open
   playV3('e_leashMerge', { volume: 0.9, pan: panAt(to.x) });
-  await wait(sc, 120);
+  if (rig.shadow) {
+    const shm = rig.shadow;
+    const s0 = shm.sink;
+    const H = shm.img.height;
+    let lastStep = -1;
+    await run(sc, 120, (t) => {
+      const st = Math.min(3, Math.floor(t * 4));
+      shm.sink = R(s0 + (H * 0.75 - s0) * ((st + 1) / 4));
+      shm.place();
+      if (st !== lastStep) {
+        lastStep = st;
+        voidPuff(sc, { x: R(to.x + (st % 2 ? 4 : -4)), y: R(to.y) }, 2, 8, [PAL.void4, PAL.void3, PAL.void2]);
+      }
+    });
+  } else await wait(sc, 120);
   bg(rimFlash(sc, s, { ramp: [PAL.void4, PAL.void3, PAL.void2, PAL.void1], hold: 2 }));
   rig.wearer = 'body';
   rig.collar.look.buckle = 'open';
@@ -782,9 +924,13 @@ async function takeScene(ctx: CCCtx): Promise<void> {
     rig.leash.sway = false;
     rig.leash.snap = 0;
   }
+  // the KLAK frame, all at once: a collar-shaped gold halo 3 px out round the band, the starburst at the buckle,
+  // a void ripple starting up the chain toward the card, and the floor rings already OUT past the feet (white)
+  rig.collar.look.halo = PAL.white;
+  if (rig.leash) rig.leash.pulse = 1;
   bg(lockBurst(sc, rig.collar.ring(c1)));
-  bg(stepRing(sc, to, { r0: 8, r1: 60, ms: 520, ramp: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2, PAL.void3, PAL.void2] }));
-  sc.time.delayedCall(90, () => void stepRing(sc, to, { r0: 4, r1: 34, ms: 360, ramp: [PAL.gold4, PAL.gold3, PAL.void3] }));
+  bg(stepRing(sc, to, { r0: 22, r1: 62, ms: 480, ramp: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2, PAL.void3, PAL.void2] }));
+  bg(stepRing(sc, to, { r0: 14, r1: 36, ms: 360, ramp: [PAL.gold4, PAL.gold3, PAL.void4, PAL.void3] }));
   void lightFlash(sc, c1.x, c1.y, PAL.gold4, 34, 420, { floorY: to.y, intensity: 1 });
   void lightDim(sc, 0, 320);
   b.ny = -1;
@@ -792,9 +938,29 @@ async function takeScene(ctx: CCCtx): Promise<void> {
   await hitStop(sc, 110);
   rig.collar.rx = neck.rx;
   rig.collar.look.bandFlash = PAL.gold4;
-  sc.time.delayedCall(40, () => (rig.collar.look.bandFlash = undefined));
-  sc.time.delayedCall(90, () => (rig.collar.look.buckle = 'on'));
+  rig.collar.look.halo = PAL.gold4;
+  sc.time.delayedCall(40, () => {
+    rig.collar.look.bandFlash = undefined;
+    rig.collar.look.halo = PAL.gold3;
+  });
+  sc.time.delayedCall(90, () => {
+    rig.collar.look.buckle = 'on';
+    rig.collar.look.halo = PAL.void4;
+  });
+  sc.time.delayedCall(140, () => (rig.collar.look.halo = undefined));
   if (rig.leash) bg(run(sc, 150, (k) => rig.leash && (rig.leash.snap = q(k, 4))));
+  // the ripple runs up the chain from the collar to the card (white head, void4 body)
+  if (rig.leash) {
+    const lr = rig.leash;
+    lr.pulseColor = PAL.void4;
+    bg(
+      run(sc, 220, (k) => (lr.pulse = 1 - q(k, 11))).then(() => {
+        lr.pulse = -1;
+        lr.pulseColor = undefined;
+        void lightFlash(sc, A.x, A.y, PAL.void4, 14, 160, { intensity: 0.7 });
+      }),
+    );
+  }
   // the 2-px shake of the locked body (the camera never moves)
   const jolt = [2, -2, 1, -1, 0];
   b.ny = 0;
@@ -1053,7 +1219,6 @@ async function noRoomScene(ctx: DestroyCtx): Promise<void> {
   // the 2-px recoil off the wall
   sh.place({ x: a0.x + dir.x * (RUN - 2), y: a0.y + dir.y * (RUN - 2) });
   await hitStop(sc, 80);
-  await wait(sc, 50);
   // … and is thrown back into the body (fast, stepped)
   await run(sc, 160, (t) => {
     const k = (1 - q(t, 6)) * (RUN - 2);
@@ -1061,9 +1226,21 @@ async function noRoomScene(ctx: DestroyCtx): Promise<void> {
   });
   sh.destroy();
   b0Jolt(sc, s, dir);
-  await rimFlash(sc, s, { ramp: [PAL.void4, PAL.void3, PAL.void2], hold: 1 });
-  // one beat: the body stands there without its soul's way home — then its death
-  await wait(sc, 220);
+  bg(rimFlash(sc, s, { ramp: [PAL.void4, PAL.void3, PAL.void2], hold: 1 }));
+  // one beat: the soul's residue settles at its feet (a dim void flicker, a soft murmur) — then its death
+  playV3('e_leashSettle', { volume: 0.8, pan: panAt(a0.x) });
+  const feet = { x: R(a0.x), y: R(a0.y + unit.hover) };
+  const res = Raster.around(sc, feet.x, feet.y, 30, 10, DEPTH.SHADOW + 2);
+  await run(sc, 260, (t) => {
+    const f = Math.floor(t * 6);
+    res.draw((r) => {
+      if (t >= 1) return;
+      const c = [PAL.void3, PAL.void1, PAL.void2, PAL.void1, PAL.void2, PAL.void1][Math.min(5, f)];
+      r.ring(feet.x + 0.5, feet.y + 0.5, 9 - Math.min(5, f), 3 - (f >> 2) * 0.5, c);
+      if (f % 2 === 0) r.px(feet.x + ((f * 5) % 11) - 5, feet.y - 1 - (f % 3), PAL.void3);
+    });
+  });
+  res.destroy();
 }
 
 /** The body takes its thrown-back shadow: a 2-px knock away from home. */
@@ -1172,6 +1349,20 @@ registerEvent(
     return ctx.base();
   },
   { name: 'e:soul_leash:noRoom', priority: 5 },
+);
+
+// the leashed monster is destroyed (battle, an effect): the collar snaps off and the bond goes dark from the
+// monster to the leash card, which dims — beside its own death, not instead of it
+registerEvent(
+  'destroy',
+  async (ctx: DestroyCtx) => {
+    const ev = ctx.ev;
+    if (!LOOK_V3 || ev.location !== 'monster' || ev.reason === 'rule') return ctx.base();
+    const l = takeLinger(ev.uid);
+    if (l) bg(l.die());
+    return ctx.base();
+  },
+  { name: 'e:soul_leash:dies', priority: 4 },
 );
 
 // the opponent's Draw Phase: the bond beats, green light flows to the owner's LP panel, then the v3 LP gain

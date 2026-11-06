@@ -85,9 +85,10 @@ function paintSieve(p: P, k: number, f: number): void {
     }
   // the wheat heap: a mound on the mesh, leaning a pixel against the shake
   const hx = cx - (SHAKE[f] > 0 ? q(2, k) : SHAKE[f] < 0 ? -q(2, k) : 0);
-  const grx = q(20, k);
-  const gry = q(7, k);
-  const hh = q(6, k);
+  // (round 4: a smaller, lower heap — the woven mesh shows round it, so it reads as a SIEVE, not a bowl of coins)
+  const grx = q(16, k);
+  const gry = q(6, k);
+  const hh = q(4, k);
   for (let y = my - gry - hh - 1; y <= my + gry; y++)
     for (let x = hx - grx; x <= hx + grx; x++) {
       const dx = (x + 0.5 - hx) / grx;
@@ -101,7 +102,7 @@ function paintSieve(p: P, k: number, f: number): void {
       else if (k === 2) {
         // staggered 2×1 grain dashes (a brick bond, each row shifted one px), banded by depth
         const row = y - (my - gry - hh);
-        const dash = Math.floor((x + (row % 2)) / 2) % 2 === 0;
+        const dash = Math.floor((x + (row % 3)) / 3) % 2 === 0;
         const band = y < my - 2 ? 0 : y < my + gry - 3 ? 1 : 2;
         c = band === 0 ? (dash ? PAL.gold4 : PAL.gold3) : band === 1 ? (dash ? PAL.gold3 : PAL.gold2) : dash ? PAL.gold2 : PAL.gold1;
       } else {
@@ -160,69 +161,84 @@ function paintCard(p: P, cx: number, cy: number, w: number, h: number, a: number
 }
 
 /**
- * Straw blowing off to the right on a gust (round 2): 3–4 SEPARATE short bent straws, each a body, a knee and a wheat
- * ear with side grains, spaced along a rising arc (never a connected zigzag — that read as a lightning bolt). BIG
- * geometry; the small art draws three, 1 px.
+ * Straw blowing off to the right on a gust (round 4): a diagonal STREAM of separate long bent stalks — each a 1-px
+ * stalk 5–7 px long running up-right, kinked once at its knee, ending in a 2-px wheat ear with a side grain — spaced
+ * along the gust's rising line (never arrow heads). The small art draws three shorter ones, by hand.
  */
 function paintStraw(p: P, k: number, f: number): void {
-  // x, y (tail), body length, ear direction: 0 = up-right, 1 = right (big px)
-  const stalks: readonly (readonly [number, number, number, number])[] = [
-    [67, 37, 6, 1],
-    [75, 29, 5, 0],
-    [79, 19, 5, 1],
-    [70, 24, 4, 0],
+  if (k === 1) {
+    // hand-placed at 1 px: three bent stalks (3 px diagonal + a 2-px ear), up a diagonal line, gaps between them
+    const SMALL: readonly (readonly [number, number])[] = [
+      [33, 21],
+      [37, 15],
+      [40, 9],
+    ];
+    SMALL.forEach(([sx, sy], i) => {
+      const dr = (f + i) % 4 < 2 ? 0 : 1;
+      const x = sx + dr;
+      p.set(x, sy, PAL.gold2);
+      p.set(x + 1, sy - 1, PAL.gold3);
+      p.set(x + 2, sy - 1, PAL.gold3);
+      p.set(x + 3, sy - 2, PAL.gold4);
+    });
+    return;
+  }
+  // tail x, y; length; knee bend (1 = flattens to the right, -1 = stands up)
+  const stalks: readonly (readonly [number, number, number, 1 | -1])[] = [
+    [60, 41, 5, 1],
+    [72, 37, 5, -1],
+    [65, 27, 6, 1],
+    [77, 20, 6, -1],
   ];
-  const n0 = k === 2 ? stalks.length : 3;
-  for (let s = 0; s < n0; s++) {
-    const [x, y, len, up] = stalks[s];
-    const drift = (f + s) % 4 < 2 ? 0 : 1;
-    const x0 = q(x + drift * 2, k);
-    const y0 = q(y - drift, k);
-    if (k === 1) {
-      // hand-placed at 1 px: three separate short straws (a 2-px body, a lit ear one step up), gaps between them
-      const SMALL: readonly (readonly [number, number])[] = [
-        [33, 20],
-        [37, 14],
-        [40, 8],
-      ];
-      const [sx, sy] = SMALL[s];
-      const dr = (f + s) % 4 < 2 ? 0 : 1;
-      p.set(sx + dr, sy, PAL.gold2);
-      p.set(sx + 1 + dr, sy, PAL.gold3);
-      p.set(sx + 2 + dr, sy - 1, PAL.gold4);
-      continue;
+  stalks.forEach(([sx, sy, len, bend], i) => {
+    const drift = (f + i) % 4 < 2 ? 0 : 1;
+    let x = sx + drift;
+    let y = sy - drift;
+    const knee = len - 2;
+    for (let j = 0; j < len; j++) {
+      p.set(x, y, j % 3 === 2 ? PAL.gold2 : PAL.gold3);
+      if (j < knee) {
+        x++;
+        y--;
+      } else if (bend > 0) x++;
+      else y--;
     }
-    // the body runs right, then bends up at the knee (2 px thick: a lit top over a shaded row)
-    let px = x0;
-    let py = y0;
-    for (let i = 0; i < len; i++) {
-      p.set(px, py, i === len - 1 ? PAL.gold3 : PAL.gold4);
-      p.set(px, py + 1, PAL.gold2);
-      px++;
-      if (i === len - 3) py--;
-    }
-    // the ear: 3 grains along the stalk's end direction, side grains alternating
-    // (an 'up' ear stands straight up off the knee, a 'right' ear runs on; side grains on alternate grains only, so
-    //  no 2×2 checker forms against the ink outline)
-    for (let i = 0; i < 3; i++) {
-      const gx = up ? px - 1 : px + i;
-      const gy = up ? py - 1 - i : py;
-      p.set(gx, gy, i === 2 ? PAL.gold4 : PAL.gold3);
-      if (i === 1) {
-        if (up) {
-          p.set(gx - 1, gy, PAL.gold4);
-          p.set(gx + 1, gy, PAL.gold2);
-        } else {
-          p.set(gx, gy - 1, PAL.gold4);
-          p.set(gx, gy + 1, PAL.gold2);
-        }
-      }
+    // the ear: two grains on, a side grain lit
+    const ex = bend > 0 ? 1 : 0;
+    const ey = bend > 0 ? 0 : -1;
+    p.set(x, y, PAL.gold4);
+    p.set(x + ex, y + ey, PAL.gold4);
+    p.set(x + (bend > 0 ? 0 : 1), y + (bend > 0 ? -1 : 0), PAL.gold3);
+  });
+}
+
+/**
+ * Under the bent-wood band (round 4): the sieve's woven BELLY — 3 rows of the mesh seen from below, each narrower —
+ * so it reads as a sieve, with grains falling THROUGH it (the light layer adds them, stepping down).
+ */
+function paintBelly(p: P, k: number, f: number): void {
+  const cx = q(44 + SHAKE[f], k);
+  const cy = q(44, k);
+  const rx = q(31, k);
+  const ry = q(11, k);
+  const hb = k === 2 ? 6 : 3;
+  const rows = k === 2 ? 3 : 1;
+  for (let r = 1; r <= rows; r++) {
+    const w = rx - (k === 2 ? 2 + r * 3 : 4);
+    for (let x = cx - w; x <= cx + w; x++) {
+      const dx = x + 0.5 - cx;
+      const y = Math.floor(cy + ry * Math.sqrt(Math.max(0, 1 - (dx / rx) * (dx / rx)))) + hb + r;
+      if (y >= p.h) continue;
+      // the weave from below: strands crossing, a dark gap in every third column (shifted per row)
+      const c = k === 1 ? PAL.earth2 : (x + r) % 3 === 0 ? PAL.earth1 : r === 1 ? PAL.earth3 : PAL.earth2;
+      p.set(x, y, c);
     }
   }
 }
 
-/** Daylight over the threshing floor: a warm sky and a big stepped sun glow rising behind the sieve. */
-const DAYLIGHT: BackdropRecipe = { kind: 'SPELL', shape: 'sun', tones: [PAL.gold1, PAL.gold2], sky: [PAL.night1, PAL.night2], split: 26, floor: PAL.night0, horizonLine: PAL.gold1, rim: PAL.gold2 };
+/** Daylight over the threshing floor: a day sky, a sun, a sunlit earth floor. */
+// (round 4: a real DAY sky — water3 over water4 — over a sunlit earth threshing floor)
+const DAYLIGHT: BackdropRecipe = { kind: 'SPELL', shape: 'sun', tones: [PAL.gold3, PAL.gold4], sky: [PAL.water3, PAL.water4], split: 26, floor: PAL.earth1, horizonLine: PAL.earth2, rim: PAL.gold2 };
 
 /** The sun's centre (BIG px): up left, clear of the cards, so it reads as a SUN (a disc in a ring), not a dome. */
 const SUN = [15, 13] as const;
@@ -241,7 +257,7 @@ function paintSun(p: P, k: number): void {
       if (x < 0 || y < 0 || x >= p.w || y >= p.h) continue;
       const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
       if (d <= r) p.set(x, y, d <= r * 0.5 && x <= cx && y <= cy ? PAL.gold4 : PAL.gold3);
-      else if (d > ring - (k === 2 ? 2 : 1.5) && d <= ring) p.set(x, y, PAL.gold1);
+      else if (d > ring - (k === 2 ? 2 : 1.5) && d <= ring) p.set(x, y, PAL.gold4);
     }
 }
 
@@ -276,6 +292,17 @@ function paintLight(l: P, k: number, f: number): void {
       l.set(q(x, k) + 1, q(y, k) + dy + 1, PAL.gold3);
     }
   }
+  // grains falling THROUGH the mesh under the sieve, stepping down a px per frame (big: 6 trickles, small: 3)
+  const TRICKLE: readonly number[] = [-16, -9, -3, 4, 10, 17];
+  const nt = k === 2 ? TRICKLE.length : 3;
+  for (let i = 0; i < nt; i++) {
+    const tx = q(44 + SHAKE[f] + TRICKLE[k === 2 ? i : i * 2 + 1], k);
+    const base = k === 2 ? 64 : 32;
+    const step = (f + i * 3) % 4;
+    const y = base + step * (k === 2 ? 1 : 0);
+    if (y < l.h) l.set(tx, y, i % 2 ? PAL.gold4 : PAL.gold3);
+    if (k === 2 && y + 2 < l.h && (f + i) % 2 === 0) l.set(tx, y + 2, PAL.gold2);
+  }
   // the burst at the focus: a small cross of light where the grains leave the heap
   const fx = q(FOCUS[0] + SHAKE[f] / 2, k);
   const fy = q(FOCUS[1], k);
@@ -302,6 +329,7 @@ function paint(l: ArtLayers, f: number, k: 1 | 2): void {
   paintSun(l.backdrop, k);
   const s = l.subject;
   paintSieve(s, k, f);
+  paintBelly(s, k, f);
   // three cards flicked up out of the grain, fanning toward the sky
   const lift = f % 2 === 0 ? 0 : -1;
   if (k === 2) {
