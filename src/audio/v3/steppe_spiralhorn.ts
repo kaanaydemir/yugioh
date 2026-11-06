@@ -44,7 +44,7 @@
 import type { Recipe } from '../sounds';
 import type { CharacterSounds } from '../../cinematics/_v3/sound';
 import { perc, type Pt, type Voice } from '../synth';
-import { crack, growl, puff, sweep, thump } from './kit';
+import { crack, puff, sweep, thump } from './kit';
 
 // ================================================================ the card's own blocks
 
@@ -98,6 +98,38 @@ function shhk(v: Voice, t: number, g: number, d = 0.08, to?: AudioNode): void {
 function keratin(v: Voice, t: number, g: number, f = 900, dec = 0.025, to?: AudioNode): void {
   v.noise('white', { t, g: perc(g, dec, 0.0004), to: v.filt('bandpass', f, 6, { to }) });
   v.tone('triangle', f, { t, g: perc(g * 0.18, dec * 1.4, 0.0006), to });
+}
+
+/** A hollow keratin knock (r4): a short pitched triangle drop (`f` → 0.85 f) through a resonant band, its 2.7× partial
+ *  — the horn's own hollow tone, never a low thump. */
+function hollowKnock(v: Voice, t: number, g: number, f = 900): void {
+  const bp = v.filt('bandpass', f, 4);
+  v.tone('triangle', [[0, f], [0.035, f * 0.85, 'e']], { t, g: perc(g, 0.04, 0.0005), to: bp });
+  v.tone('sine', [[0, f * 2.7], [0.02, f * 2.5, 'e']], { t, g: perc(g * 0.25, 0.018, 0.0004) });
+  v.noise('white', { t, g: perc(g * 0.5, 0.012, 0.0003), to: v.filt('bandpass', f * 1.1, 6) });
+}
+
+/**
+ * The saiga's nasal honk (r4, no breath layer): five detuned saws on `f` [a, b, c, e, z] through a grit drive (3) and a
+ * HARD nasal formant bank — 450 / 1300 / 2400 Hz at Q 5 / 8 / 9 with the upper two pushed — over `d` s.
+ */
+function nasalHonk(v: Voice, t: number, d: number, f: readonly number[], g: number): void {
+  const out = v.amp(1.3, { t });
+  const bands = ([[450, 5, 0.8], [1300, 8, 1.25], [2400, 9, 0.9]] as const).map(([F, q, k]) =>
+    v.filt('bandpass', [[0, F * 0.8], [0.2, F, 'e'], [d, F * 0.85, 'e']], q, { t, to: v.amp(k, { t, to: out }) }),
+  );
+  // the bank feeds the three formants only (never the output directly)
+  const bank = v.amp(1, { t, to: bands[0] });
+  bank.connect(bands[1]);
+  bank.connect(bands[2]);
+  const grit = v.drive(3, { to: bank, trim: 0.9 });
+  const env: Pt[] = [[0, 0], [0.03, 0.7], [0.22, 0.9], [d * 0.6, 0.6], [d, 0.0001, 'e']];
+  const [a, b, c, e, z] = f;
+  for (const [mul, det, gg] of [[1, 0, 0.5], [1, 15, 0.42], [1.01, -21, 0.3], [0.5, -6, 0.22]] as const) {
+    const fe: Pt[] = [[0, a * mul], [0.16, b * mul, 'e'], [0.32, c * mul, 'e'], [d * 0.75, e * mul, 'e'], [d, z * mul, 'e']];
+    const o = v.tone('sawtooth', fe, { t, g: env.map(([x, y, cc]) => [x, y * gg * g, cc] as Pt), to: grit, detune: det });
+    v.wander(o.osc.detune, 18, 50, { t, d });
+  }
 }
 
 /**
@@ -187,11 +219,16 @@ const SPIRALHORN_RECIPES = {
     gap: 0.08,
     verb: 0.25,
     duck: 0.15,
-    play: trim(2.5, (v) => {
-      for (let i = 0; i < 4; i++) hoof(v, i * 0.025, [0.3, 0.24, 0.27, 0.2][i], { f: [2200, 2350, 2100, 2280][i] });
-      // the grass flattens outward and springs back
-      shhk(v, 0.01, 0.11, 0.12);
-      puff(v, 0.0, 0.08, 0.06, 900, { kind: 'pink' });
+    play: trim(3.3, (v) => {
+      // four dry hoof-TIP ticks rolling front-to-back (a little roll, no body: the tiptoe lands light), each its own
+      // pitch, without the knock under them
+      for (let i = 0; i < 4; i++) {
+        crack(v, i * 0.03, [0.42, 0.3, 0.36, 0.26][i], { hp: [3600, 4300, 3300, 4000][i], lp: [6200, 7000, 5800, 6600][i], dec: 0.003 });
+        // each tip a small hollow knock of its own (a hoof, not a twig)
+        v.tone('triangle', [[0, [520, 610, 480, 570][i]], [0.02, [380, 430, 350, 410][i], 'e']], { t: i * 0.03, g: perc(0.07, 0.022, 0.0005) });
+      }
+      // the grass flattening outward, under it (no pink puff)
+      shhk(v, 0.02, 0.035, 0.09);
     }),
   },
   sshHonk: {
@@ -200,10 +237,13 @@ const SPIRALHORN_RECIPES = {
     verb: 0.35,
     duck: 0.5,
     play(v) {
-      growl(v, 0, { d: 0.55, f: [210, 240, 220, 180, 160], formants: [450, 1300, 2400], g: 0.42, grit: 2, rasp: 30 });
+      // r4: a short "k" onset (the glottal catch of a saiga's honk), then the nasal honk itself — no breath under it
+      crack(v, 0, 0.32, { hp: 1400, lp: 4200, dec: 0.006 });
+      v.tone('triangle', [[0, 1900], [0.016, 950, 'e']], { g: perc(0.12, 0.018, 0.0004) });
+      nasalHonk(v, 0.014, 0.55, [210, 240, 220, 180, 160], 0.42);
       // the nose: a nasal buzz band on top
-      const bp = v.filt('bandpass', [[0, 1100], [0.25, 1350, 'e'], [0.55, 1000, 'e']], 5);
-      v.tone('sawtooth', [[0, 215], [0.2, 240, 'e'], [0.55, 165, 'e']], { g: [[0, 0], [0.05, 0.05], [0.4, 0.035], [0.55, 0.0001, 'e']], to: bp });
+      const bp = v.filt('bandpass', [[0, 1100], [0.25, 1350, 'e'], [0.55, 1000, 'e']], 6);
+      v.tone('sawtooth', [[0, 215], [0.2, 240, 'e'], [0.55, 165, 'e']], { t: 0.014, g: [[0, 0], [0.04, 0.06], [0.4, 0.04], [0.55, 0.0001, 'e']], to: bp });
       // the flute answers the honk from the horns
       flute(v, 0.47, [[0, D6 * 0.99], [0.05, D6, 'e'], [0.45, D6]], 0.1, 0.45, { vibAt: 0.12, vib: 14 });
     },
@@ -221,7 +261,7 @@ const SPIRALHORN_RECIPES = {
     cap: 1,
     gap: 0.15,
     verb: 0.2,
-    play: trim(5, (v) => {
+    play: trim(3.2, (v) => {
       // the snort: pink band-passed at 900 Hz (dec 0.12) + the nostril edge at 2.4 kHz
       v.noise('pink', { g: [[0, 0], [0.012, 0.32], [0.13, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1000], [0.12, 800, 'e']], 1.6) });
       v.noise('white', { g: [[0, 0], [0.008, 0.07], [0.09, 0.0001, 'e']], to: v.filt('bandpass', 2400, 3) });
@@ -244,9 +284,13 @@ const SPIRALHORN_RECIPES = {
     gap: 0.05,
     verb: 0.25,
     play: trim(3, (v) => {
-      hoof(v, 0, 0.24);
-      shhk(v, 0.004, 0.12);
-      sweep(v, 0.01, 0.26, [700, 1800, 900], 0.1, { kind: 'pink', q: 1.3, peakAt: 0.4 });
+      // the grass "shhk" leads (the blades thrown back by the push-off), the hoof under it
+      crack(v, 0.012, 0.3, { hp: 1900, lp: 2600, dec: 0.004 });
+      shhk(v, 0, 0.3, 0.12);
+      grass(v, 0.02, 0.12, 0.08, { f: 3400, peakAt: 0.15 });
+      // the breeze of the bound, kept above 1 kHz (no low pink body)
+      const hp = v.filt('highpass', 1100, 0.9);
+      sweep(v, 0.01, 0.26, [1500, 2600, 1700], 0.05, { kind: 'pink', q: 1.5, peakAt: 0.4, to: hp });
     }),
   },
   sshApexFlute: {
@@ -277,19 +321,43 @@ const SPIRALHORN_RECIPES = {
       keratin(v, 0.05, 0.05, 1300, 0.02);
     }),
   },
+  sshHornScrape: {
+    cap: 1,
+    gap: 0.06,
+    verb: 0.2,
+    play: trim(2.2, (v) => {
+      // the drive: keratin dragged UP the target — a 45-ms rising scrape, 1.2 → 3 kHz, grained, swelling into the crack
+      const fl = v.flutter(140, 0.6, { d: 0.05, base: 0.4 });
+      const bp = v.filt('bandpass', [[0, 1200], [0.045, 3000, 'e']], 3, { to: fl });
+      v.noise('white', { g: [[0, 0], [0.035, 0.32], [0.05, 0.0001, 'e']], to: bp });
+      // the drag of the horn base on the hide under it (low-mid grain)
+      v.noise('pink', { g: [[0, 0], [0.035, 0.22], [0.055, 0.0001, 'e']], to: v.filt('bandpass', 700, 2, { to: fl }) });
+      v.tone('triangle', [[0, 1250], [0.045, 2900, 'e']], { g: [[0, 0], [0.035, 0.03], [0.05, 0.0001, 'e']] });
+    }),
+  },
   sshHornCrack: {
     cap: 2,
     gap: 0.06,
     verb: 0.3,
-    duck: 0.45,
-    play: trim(1.2, (v) => {
-      // the keratin crack: band-passed 1.5 → 3.5 kHz, 10 ms, two strikes 8 ms apart
-      crack(v, 0, 1.0, { hp: 1500, lp: 3500, dec: 0.01, n: 2, gap: 0.008 });
-      thump(v, 0, 140, 80, 0.4, 0.1, { drive: 1.6 });
-      keratin(v, 0.002, 0.36, 900, 0.05);
+    duck: 0.5,
+    play: trim(2.2, (v) => {
+      // r4: the identity is ON TOP — the keratin double crack band-passed 1.5 → 3.5 kHz (+3 dB), 10 ms, two strikes
+      // 8 ms apart, a brighter splinter, and the card's material signature after it: a 60-ms 3 kHz grass "shhk"
+      crack(v, 0, 2.25, { hp: 1500, lp: 3500, dec: 0.012, n: 2, gap: 0.008 });
+      crack(v, 0.017, 0.78, { hp: 2200, lp: 3600, dec: 0.008 });
+      keratin(v, 0.01, 0.7, 2100, 0.06);
+      keratin(v, 0.022, 0.35, 2600, 0.04);
+      v.noise('white', { t: 0.026, g: [[0, 0], [0.005, 0.34], [0.07, 0.0001, 'e']], to: v.filt('bandpass', 3000, 2.6) });
+      // the WEIGHT stays UNDER it, shorter: a 0.08-s knock 4 dB down, and the upward drive's whump as a sub-only sine
+      // below 70 Hz (it is felt, it never colours the crack)
+      thump(v, 0, 170, 100, 0.1, 0.08, { drive: 1.5 });
+      v.tone('sine', [[0, 66], [0.18, 42, 'e']], { g: [[0, 0], [0.016, 0.18], [0.07, 0.09], [0.2, 0.0001, 'e']] });
+      // the hide giving under the horns: a short low-mid body (lighter)
+      v.noise('pink', { g: [[0, 0], [0.004, 0.06], [0.06, 0.0001, 'e']], to: v.filt('bandpass', 620, 1.4) });
       // the horn's woody ring, short (no bell, no glass: two inharmonic triangle partials)
-      v.tone('triangle', 1420, { t: 0.003, g: perc(0.05, 0.09, 0.0008) });
-      v.tone('triangle', 2310, { t: 0.003, g: perc(0.03, 0.05, 0.0008) });
+      // the horn RINGS after the crack (a dry keratin tone, ~150 ms): the tok of a wet harpoon never rings
+      v.tone('triangle', [[0, 2310], [0.2, 2240, 'e']], { t: 0.003, g: perc(0.13, 0.2, 0.0008) });
+      v.tone('triangle', 3120, { t: 0.003, g: perc(0.025, 0.05, 0.0008) });
     }),
   },
   sshSeedBurst: {
@@ -297,11 +365,13 @@ const SPIRALHORN_RECIPES = {
     gap: 0.1,
     verb: 0.45,
     play: trim(6, (v) => {
-      // the seeds: a fine 5 kHz riffle spread over half a second, front-loaded
-      v.crackle({ d: 0.5, n: 30, g: 0.07, f: 5000, q: 1.4, dec: 0.003, curve: 1.6 });
-      // the release "fwoosh" of the burst
-      sweep(v, 0.01, 0.4, [3000, 1500, 600], 0.12, { kind: 'pink', q: 1.2, peakAt: 0.18 });
-      grass(v, 0.05, 0.5, 0.035, { f: 3200, peakAt: 0.25 });
+      // the seeds: a dense 5 kHz riffle spread over half a second, front-loaded — the main layer
+      v.crackle({ d: 0.5, n: 56, g: 0.11, f: 5200, q: 1.8, dec: 0.003, curve: 1.6 });
+      v.crackle({ d: 0.35, n: 22, g: 0.06, f: 7000, q: 2, dec: 0.002, curve: 1.2 });
+      // the release "fwoosh" of the burst, high: nothing under 1.8 kHz
+      const hp = v.filt('highpass', 1800, 0.8);
+      sweep(v, 0.01, 0.38, [5200, 3400, 2200], 0.07, { q: 1.4, peakAt: 0.16, to: hp });
+      grass(v, 0.05, 0.45, 0.03, { f: 3800, q: 1.6, peakAt: 0.25 });
     }),
   },
   sshHeadShake: {
@@ -322,13 +392,14 @@ const SPIRALHORN_RECIPES = {
     verb: 0.3,
     duck: 0.3,
     play: trim(1.5, (v) => {
-      // both horns lock against the guard: a double keratin clack and a short grind
-      crack(v, 0, 0.6, { hp: 1200, lp: 3200, dec: 0.008 });
-      crack(v, 0.018, 0.45, { hp: 1600, lp: 2600, dec: 0.01 });
-      thump(v, 0, 160, 100, 0.35, 0.07);
-      keratin(v, 0.004, 0.14, 1100, 0.06);
+      // both horns lock against the guard: a double keratin clack (hp 1.8 kHz) over two hollow knocks (~880 / 760 Hz,
+      // the two horns), then a short high grind — no low body (r4)
+      crack(v, 0, 0.66, { hp: 1800, lp: 3600, dec: 0.008 });
+      crack(v, 0.018, 0.5, { hp: 2000, lp: 2900, dec: 0.01 });
+      hollowKnock(v, 0.002, 0.26, 880);
+      hollowKnock(v, 0.02, 0.18, 760);
       const fl = v.flutter(45, 0.5, { t: 0.04, d: 0.16, base: 0.4 });
-      v.noise('white', { t: 0.04, g: [[0, 0], [0.03, 0.08], [0.16, 0.0001, 'e']], to: v.filt('bandpass', 1500, 3, { to: fl }) });
+      v.noise('white', { t: 0.04, g: [[0, 0], [0.03, 0.09], [0.16, 0.0001, 'e']], to: v.filt('bandpass', 2300, 3, { to: fl }) });
     }),
   },
   sshSlide: {
@@ -346,23 +417,27 @@ const SPIRALHORN_RECIPES = {
     cap: 2,
     gap: 0.05,
     verb: 0.25,
-    play: trim(2, (v) => {
-      puff(v, 0, 0.5, 0.07, 1000, { kind: 'pink', att: 0.002 });
-      thump(v, 0, 170, 100, 0.3, 0.06);
-      keratin(v, 0.004, 0.18, 900, 0.025);
+    play: trim(2.2, (v) => {
+      // hide + horn: a dull hide puff (lp 700) under two narrow keratin ticks (900 Hz Q 6, 1.4 kHz Q 8) — a notch at
+      // ~1.1 kHz and two peaks, never C7's low fur thump
+      puff(v, 0, 0.18, 0.05, 700, { kind: 'pink', att: 0.002 });
+      keratin(v, 0.002, 0.42, 900, 0.032);
+      v.noise('white', { t: 0.012, g: perc(0.3, 0.022, 0.0004), to: v.filt('bandpass', 1400, 8) });
+      v.tone('triangle', 1400, { t: 0.012, g: perc(0.05, 0.03, 0.0006) });
+      v.noise('white', { t: 0.004, g: perc(0.05, 0.006, 0.0002), to: v.filt('bandpass', 3200, 3) });
     }),
   },
   sshStruckHeavy: {
     cap: 2,
     gap: 0.05,
     verb: 0.3,
-    play: trim(1.8, (v) => {
-      puff(v, 0, 0.62, 0.1, 1000, { kind: 'pink', att: 0.002 });
-      thump(v, 0, 160, 80, 0.45, 0.1, { drive: 1.4 });
-      keratin(v, 0.004, 0.22, 900, 0.035);
-      keratin(v, 0.03, 0.08, 1250, 0.02);
-      // the hind legs buckle: a hoof skitter
-      for (let i = 0; i < 3; i++) hoof(v, 0.09 + i * 0.045, 0.12 - i * 0.025, { f: 2100 + i * 120 });
+    play: trim(2, (v) => {
+      puff(v, 0, 0.32, 0.08, 700, { kind: 'pink', att: 0.002 });
+      keratin(v, 0.003, 0.4, 900, 0.04);
+      v.noise('white', { t: 0.018, g: perc(0.28, 0.03, 0.0004), to: v.filt('bandpass', 1400, 8) });
+      v.tone('triangle', 1400, { t: 0.018, g: perc(0.06, 0.05, 0.0006) });
+      // the hind legs buckle: a hoof skitter, high and dry
+      for (let i = 0; i < 3; i++) crack(v, 0.09 + i * 0.045, 0.2 - i * 0.04, { hp: 2000 + i * 150, lp: 3000 + i * 150, dec: 0.004 });
     }),
   },
   sshGuardClack: {
@@ -370,11 +445,12 @@ const SPIRALHORN_RECIPES = {
     gap: 0.05,
     verb: 0.25,
     play: trim(2, (v) => {
-      // the pike fence: two cracks, hp 1.2 kHz then bp 2 kHz, 20 ms apart
-      crack(v, 0, 0.5, { hp: 1200, lp: 6000, dec: 0.008 });
-      crack(v, 0.02, 0.42, { hp: 1600, lp: 2500, dec: 0.009 });
-      thump(v, 0, 150, 110, 0.25, 0.05);
-      keratin(v, 0.003, 0.1, 1000, 0.04);
+      // the pike fence: two cracks (hp 1.8 kHz, then bp 2–3 kHz) 20 ms apart over a HOLLOW keratin knock at ~900 Hz —
+      // no low body (r4: the 140–150 Hz thump made it a twin of the wet tok and the axeman's blows)
+      crack(v, 0, 0.55, { hp: 1800, lp: 6000, dec: 0.008 });
+      crack(v, 0.02, 0.45, { hp: 2000, lp: 3000, dec: 0.009 });
+      hollowKnock(v, 0.002, 0.2, 920);
+      keratin(v, 0.003, 0.12, 1900, 0.03);
     }),
   },
   sshExhale: {
@@ -473,7 +549,7 @@ export const SPIRALHORN_VOICE = {
   dissolve: 'sshGrassTurn',
   afterDissolve: [
     [2, 'sshWindTakes', 0.95],
-    [6, 'sshLastFlute', 0.85],
+    [5, 'sshLastFlute', 0.85],
   ],
   burst: 'sshPlumeLift',
   reviveGather: 'sshReviveGather',

@@ -17,10 +17,10 @@ v1 baselines were filmed at 684e290 (before any lane B edit): `shots/v3/a3/basel
 ## Status
 | Card | Rig | Card art | Cut-in | Cinematics | SFX | Critique rounds | Gates |
 |---|---|---|---|---|---|---|---|
-| grim_warden | DONE | DONE | DONE | DONE | DONE (29 gw* recipes + voice) | 3 (+2 earlier) | PASS 2026-11-01 |
-| wisp_imp | WIP | WIP | n/a | – | – | 0 | – |
-| mudgrasp_spirit | WIP | WIP | n/a | – | – | 0 | – |
-| hollow_ogre | WIP | WIP | n/a | – | – | 0 | – |
+| grim_warden | DONE | DONE | DONE | DONE | DONE | 3 (+2 earlier) | PASS (09446f8) |
+| wisp_imp | DONE | DONE | n/a | DONE | DONE | 3 (+1 earlier) | PASS (d9df6a4) |
+| mudgrasp_spirit | DONE | DONE | n/a | DONE | DONE | 3 | PASS (this commit) |
+| hollow_ogre | DONE | DONE | n/a | DONE | DONE | 3 (+1 earlier) | PASS (dac99ea) |
 
 Checkpoint 2026-10-31 18:10 UTC (8af5386): build stage in progress — grim_warden and wisp_imp rigs + card art, grim cut-in, mudgrasp_spirit rig underway; hollow_ogre queued.
 Checkpoint 2026-10-31 19:42 UTC: grim_warden / wisp_imp cinematics + SFX in progress; mudgrasp_spirit and hollow_ogre rigs + card art underway. grim −400 drain timing change in battle/declare.ts + plates.ts (v3-gated).
@@ -43,3 +43,61 @@ Open issues for the orchestrator (non-blocking):
 - sameness KK-15: 10 UYARI pairs (no KALIR); blind eye test not done.
 - `glassReverse` is also used by crystal_wyrm in `src/audio/v3/slice.ts` (pre-lane-B) — §5.1 says R2 is its sole owner.
 - shared edits: `battle/declare.ts` one-line v3-only `holdDrain`; `battle/plates.ts` optional argument (default unchanged).
+
+## PAUSED (2026-11-01 ~11:25 UTC, owner decision: weekly usage 92%) — exact resume instructions
+State: grim_warden FINISHED (09446f8). wisp_imp: critique round 1 + fix done, round 2 critic was running when paused (its
+partial notes may be in docs/v3/oturum-b/wisp_imp.md). hollow_ogre: built; one earlier critique+fix round (not counted in
+the sequential run). mudgrasp_spirit: built; one earlier critique round, its fix never ran. Owner BLOCKERs still open:
+mudgrasp reads as a blurry brown mass at 1× (critic: "does not read as mud"); wisp frames too similar (see the notes files).
+
+Resume (same session, cache available):
+  Workflow({ scriptPath: "/root/.claude/projects/-home-user-yugioh/77596f6a-069b-5204-8bfc-ba0d0b8509ca/workflows/scripts/laneb-seq.js",
+             resumeFromRunId: "wf_506f6e7d-dc8" })
+  Order wisp_imp → hollow_ogre → mudgrasp_spirit; build stages skipped (SKIP_BUILD); per card exactly 3 critic+fix rounds,
+  then the adversarial gate verifier (typecheck, vitest, filmdiff v1 + a6v1, camera gate, palcheck, budgets), then commit.
+  Note: the cache has missed before on resume; if a finished stage restarts, stop and trim ORDER / rounds by hand.
+New session (no cache): a copy of the script is `docs/v3/oturum-b/laneb-seq.workflow.js` — run it with Workflow({scriptPath})
+after setting the scratchpad paths (SCR) to the new session's scratchpad; build the Chromium shim first:
+  mkdir -p $SCR/pwb/chromium-1243 && ln -sfn /opt/pw-browsers/chromium-1243/chrome-linux64 $SCR/pwb/chromium-1243/chrome-linux
+v1 baselines (shots/, gitignored) must be re-filmed at 684e290 in a fresh container before the filmdiff gates
+(`git worktree add /tmp/base 684e290`, npm ci there, filmdiff --write into this checkout's shots/ paths).
+
+## wisp_imp — FINISHED (2026-11-05, d9df6a4)
+3 critique rounds after the resume; gate verify pass: typecheck 0; vitest only known fails (+ lane C crag_axeman WIP);
+wisp tests 12/12; filmdiff v1 17/17 + a6v1 26/26 IDENTICAL vs main 6d507fa baselines; camera gate 0 FAIL; palcheck off-palette
+pixels traced to the merged arena/hologram/shared pixelText (none from wisp). Evidence: shots/v3/kart-b/wisp_imp/verify/.
+
+## hollow_ogre — FINISHED (2026-11-06 ~00:30 UTC; files landed in WIP checkpoints up to 0629989)
+3 critique rounds + gate verify pass: typecheck 0; vitest only known fails (+ lane C crag_axeman); ogre tests 14/14;
+filmdiff v1 17/17 + a6v1 26/26 IDENTICAL; camera gate: 3 FAIL only on scenarios targeting reed_heron (base taken 10-31,
+before lane C's reed_heron rig changed) — same attack vs other targets matches the base; re-take the ho* camera base.
+Palcheck: arena-driven absolute rule fails for every film incl. references; Δoff within reference spikes.
+Banish presentation: `registerEvent('banish', …, priority 1)` in src/cinematics/kart-b/hollow_ogre.ts (defers to ctx.base()
+for other sources); shared edits: one line each in DEATH_PRESETS and MONSTER_GLOW.
+
+## mudgrasp_spirit — FINISHED (2026-11-06 ~03:40 UTC; files landed in WIP checkpoints up to e59e26f)
+3 critique rounds (owner blocker "blurry brown mass at 1×" resolved: pale mask pops, distinct tone bands, wet gloss; pin
+grab + persistent lock-ring aura that expires with lockPositionTurn; liquid drain death, DEATH_PRESETS water/shadow).
+Gate verify pass: typecheck 0; vitest known-only (+ lane C crag_axeman); card tests 16/16; filmdiff v1 17/17 + a6v1 26/26
+IDENTICAL; camera gate 21 ok / 0 FAIL; palcheck Δoff spikes match the crystal_wyrm reference (arena + light layer).
+
+# FINAL SUMMARY — lane B (all 4 cards pass the gates)
+| Card | Finished marker | Signature moment |
+|---|---|---|
+| grim_warden (R2) | 09446f8 | lantern soul-light drain on the monsterEffect event (−400 badge drops at the drain beat), glassReverse siphon; new cut-in |
+| wisp_imp (R3) | d9df6a4 | feather pillow on the LP panel ("0 · KORUNDU", the only "pof"); wind-only death without the event |
+| hollow_ogre (C6) | dac99ea | seed planting = the banish presentation (priority-1 'banish' handler), knot lights + club sprouts, boosted strike |
+| mudgrasp_spirit (C10) | this commit | mud hands pin the attacker into guard; persistent mud-ring lock aura; climb-out entrance; liquid drain death |
+
+Shared-file edits (all small, v3-only or additive): `src/audio/sfx.ts`, `src/audio/sounds.ts`, `src/cinematics/_v3/sound.ts`
+(lane sound index spreads); `src/art/monsters/index.ts` (wisp_imp exclusion removed); one line per card in
+`src/view/light/profiles.ts` and `src/cinematics/_v3/presets.ts`; `src/cinematics/battle/declare.ts` (one-line v3-only holdDrain)
+and `src/cinematics/battle/plates.ts` (optional argument, default unchanged). `src/cinematics/b2/placeholders.ts` untouched.
+
+Open issues for the orchestrator:
+- Camera bases to re-take after the main merge: `gwGuard` (scenario redefined) and the ho* scenarios that target reed_heron (lane C rig change).
+- `glassReverse` is also used by crystal_wyrm (`src/audio/v3/slice.ts`, pre-lane-B) although §5.1 makes R2 its sole owner.
+- palcheck a5 absolute/Δoff rules fail on every v3 film incl. shipped references since the arena merge — the rule needs re-baselining.
+- Struck-body material sounds for wood (ogre) and mud (mudgrasp) still fall back to the generic hit (shared table not changed).
+- tests/presentation/crag_axeman.test.ts fails on lane C WIP (AXEMAN_VOICE.struck is an object) — not lane B.
+- Sameness KK-15 had 10 UYARI pairs for grim_warden (no KALIR); blind eye test not done.

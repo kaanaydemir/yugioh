@@ -30,10 +30,10 @@
 //   hitHeavy  8 f / 0.74 s       = death f0, tumbles back, the float drops, dizzy, springs up
 //   hitMagic  8 f / 0.74 s       eyes white-hot, every feather one value up and on end, sparks, a
 //                                rigid 1-px jolt, then a sag
-//   summon   14 f / 1.35 s       one big feather rocks down in three tilts to the tile (f0–f4), a
+//   summon   15 f / 1.35 s       one big feather rocks down in three tilts to the tile (f0–f4), a
 //                                helix of whole feathers whirls up round two eyes (the face locks in
 //                                first), the hood forms, then tail / hands / plumes shingle on,
-//                                land@9 (a soft squash), "bö!" (f10), settle → idle f0
+//                                land@10 (a soft squash), "bö!" (f11), settle → idle f0
 //   death    10 f / 0.86 s       the heavy struck pose → thrown back → a gust ribbon crosses it and
 //                                PEELS it part by part (cowlick, the plumes front to back, the hands,
 //                                the tail unhooks), each part leaving as a whole tumbling feather
@@ -144,8 +144,8 @@ const GUARD_BASE: Partial<Pose> = {
   crestX: -2,
   crestY: 1,
   // both little hands up over the lower half of the face, the eyes peeking over them
-  handN: Hd(-5, -5, -62, -12, -1),
-  handF: Hd(7, -5, 205, -12, -1),
+  handN: Hd(-5, -2, -62, -12, -1),
+  handF: Hd(7, -2, 205, -12, -1),
   ripple: 0,
   rippleAmp: 0.4,
 };
@@ -167,8 +167,8 @@ export function guardPose(f: number): Pose {
     ripple: t,
     rippleAmp: 0.8,
     fluff: 1.15,
-    handN: Hd(-5 + (odd ? 1 : -1), -5 + (k === 3 || k === 4 ? 1 : 0), -62 + (odd ? 14 : -10), -12 + (odd ? 8 : 0), -1),
-    handF: Hd(7 + (odd ? -1 : 1), -5 + (k === 1 || k === 6 ? -1 : 0), 205 + (odd ? -14 : 10), -12 + (odd ? 0 : 8), -1),
+    handN: Hd(-5 + (odd ? 1 : -1), -2 + (k === 3 || k === 4 ? 1 : 0), -62 + (odd ? 14 : -10), -12 + (odd ? 8 : 0), -1),
+    handF: Hd(7 + (odd ? -1 : 1), -2 + (k === 1 || k === 6 ? -1 : 0), 205 + (odd ? -14 : 10), -12 + (odd ? 0 : 8), -1),
     eyes: k === 5 ? 'blink' : 'peek',
     lookX: peek[k][0],
     lookY: peek[k][1],
@@ -207,13 +207,14 @@ const ATTACK: Table = {
     // rock back (the wind-up): hood leans away, the skirt swings forward under it
     [50, { puff: 1, fluff: 2.4, eyes: 'squint', lookX: 1, by: -1, bx: -2, hx: -2, hollow: 1, drift: 3, handN: Hd(-2, -4, 110, 30, 1), handF: Hd(-2, -4, -95, 30, 1), crestX: -4, crestY: -1, tailCurl: 0, tailLift: 3, tailSwing: -1, rippleAmp: 1.5, ripple: 0.9 }],
     // RELEASE — the snap: the hood thrust forward and stretched long, plumes and tail whipped back
-    [60, { puff: 0.25, fluff: 1.6, eyes: 'wide', lookX: 1, bx: 2, hx: 3, by: 0, sw: 3, sh: -2, hollow: 3, drift: -6, handN: Hd(4, -2, -15, 14, 1), handF: Hd(3, -2, 150, 14), crestX: -5, crestY: 2, tailSwing: -4, tailCurl: 0, tailLift: 1, rippleAmp: 1.2, ripple: 0.1, bursts: [burst(0, 7, 9, 1, 0, 0.55, 2.6, 41, 0)] }],
+    [60, { puff: 0.25, fluff: 1.6, eyes: 'wide', lookX: 1, bx: 2, hx: 3, by: 0, sw: 3, sh: -2, hollow: 3, drift: -6, handN: Hd(4, -2, -15, 14, 1), handF: Hd(3, -2, 150, 14), crestX: -5, crestY: 2, tailSwing: -4, tailCurl: 0, tailLift: 1, rippleAmp: 1.2, ripple: 0.1 }],
     // contact: the smear holds a frame, the second volley leaves
-    [70, { puff: 0.05, fluff: 1.2, eyes: 'wide', lookX: 1, bx: 2, hx: 2, by: 0, sw: 2, sh: -1, hollow: 2, drift: -5, handN: Hd(3, -1, -5, 8), handF: Hd(3, -1, 130, 8), crestX: -4, crestY: 2, tailSwing: -5, tailCurl: 0.1, bursts: [burst(1, 7, 9, 1, 0, 0.55, 2.6, 41, 0), burst(0, 5, 8, 3, 0.1, 0.4, 2.2, 43, 0)] }],
-    // recoil squash: knocked back by its own volley, flattened
-    [90, { fluff: 0.8, eyes: 'squeeze', bx: -1, hx: -2, by: 2, sw: 2, sh: -3, len: -2, drift: 3, hollow: -1, handN: Hd(-1, 1, 60, 6), handF: Hd(-1, 1, -50, 6), crestX: 3, crestY: 2, tailSwing: 3, tailCurl: 0.5, rippleAmp: 1, ripple: 0.4, bursts: [burst(2, 7, 9, 1, 0, 0.55, 2.6, 41, 0), burst(1, 5, 8, 3, 0.1, 0.4, 2.2, 43, 0)] }],
+    [70, { puff: 0.05, fluff: 1.2, eyes: 'wide', lookX: 1, bx: 2, hx: 2, by: 0, sw: 2, sh: -1, hollow: 2, drift: -5, handN: Hd(3, -1, -5, 8), handF: Hd(3, -1, 130, 8), crestX: -4, crestY: 2, tailSwing: -5, tailCurl: 0.1 }],
+    // recoil squash: knocked back by its own volley, flattened — a pleased blink, not a pained
+    // face (FIX r2: the darts are still in flight here; it must not read as already hurt)
+    [90, { fluff: 0.8, eyes: 'blink', bx: -1, hx: -1, by: 2, sw: 2, sh: -3, len: -2, drift: 3, hollow: 0, handN: Hd(-1, 1, 60, 6), handF: Hd(-1, 1, -50, 6), crestX: 3, crestY: 2, tailSwing: 3, tailCurl: 0.5, rippleAmp: 1, ripple: 0.4 }],
     // recover: the 3-beat wobble that settles (tall → squat → tall)
-    [100, { fluff: 0.4, eyes: 'open', lookX: 1, bx: 0, hx: 1, by: -2, sw: -1, sh: 2, len: 1, drift: -2, handN: Hd(0, -2, -30, 6), handF: Hd(0, -2, 40, 6), crestX: -2, crestY: -2, tailSwing: -2, tailCurl: 0.8, rippleAmp: 0.9, ripple: 0.7, bursts: [burst(3, 5, 8, 3, 0.1, 0.4, 2.2, 43, 0)] }],
+    [100, { fluff: 0.4, eyes: 'open', lookX: 1, bx: 0, hx: 1, by: -2, sw: -1, sh: 2, len: 1, drift: -2, handN: Hd(0, -2, -30, 6), handF: Hd(0, -2, 40, 6), crestX: -2, crestY: -2, tailSwing: -2, tailCurl: 0.8, rippleAmp: 0.9, ripple: 0.7 }],
     [100, { eyes: 'blink', hx: -1, by: 1, sw: 1, sh: -2, len: -1, drift: 1.5, handN: Hd(0, 1, 30), handF: Hd(0, 1, -25), crestX: 2, crestY: 1, tailSwing: 2, tailCurl: 0.45, rippleAmp: 0.8, ripple: 0.95 }],
     [110, { eyes: 'open', hx: 1, by: -1, sw: -1, sh: 1, drift: -1, handN: Hd(0, -1, -15), handF: Hd(0, -1, 15), crestX: -1, crestY: -1, tailSwing: -1, tailCurl: 0.7, rippleAmp: 0.6, ripple: 0.2 }],
     [120, { eyes: 'happy', by: 1, sw: 1, sh: -1, drift: 0.6, handN: Hd(0, 0, 12), handF: Hd(0, 0, -10), crestX: 1, tailSwing: 1, tailCurl: 0.55, rippleAmp: 0.5, ripple: 0.45 }],
@@ -256,16 +257,24 @@ const HIT: Table = {
   ],
 };
 
+// (FIX critic r3) hitHeavy is a real TUMBLE, not a bigger flinch: thrown back with the hood rolled
+// away and the skirt flung up over it, an edge-on "spin" frame (narrow and tall, the tail whipped the
+// other way), a ring of six-plus feathers shed round it, the float DROPPED 3–4 px with a squashed
+// floor bounce, a dizzy bob, then the shake-off. (hit stays the short flinch.)
 const HIT_HEAVY: Table = {
   marks: { impact: 0, contact: 0, recover: 3 },
   keys: [
     [50, { ...STRUCK_HEAVY }],
-    [60, { ...STRUCK_HEAVY, bx: -4, hx: -2, by: -1, drift: 6, free: [Fe(-13, -9, 230, 6, 1), Fe(10, 5, 15, 5.5, -1), Fe(-2, -11, 280, 5.5, 1), Fe(-15, 4, 190, 5.5, -1)], sw: 2, sh: -2, fluff: 2, eyes: 'x', handN: Hd(-2, -3, -60, 20), handF: Hd(-2, -3, 60, 20), tailSwing: 4, tailCurl: 0.2, rippleAmp: 1.5, ripple: 0.2, loose: Fe(-12, -1, 200, 6, 1), bursts: [burst(0, 6, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
-    [130, { free: [Fe(-16, -11, 205, 6, -1), Fe(12, 9, 70, 5.5, 1), Fe(-4, -12, 250, 5.5, -1), Fe(-17, 8, 160, 5.5, 1)], hx: -1, bx: -3, by: 3, drift: 2, sw: 1, sh: -2, fluff: 1.5, eyes: 'dizzy', hollow: -1, crestX: -1, crestY: 2, handN: Hd(-1, 2, 50), handF: Hd(-1, 2, -40), tailSwing: 1, tailCurl: 0.4, rippleAmp: 1.2, ripple: 0.45, loose: Fe(-14, 3, 170, 6, -1), bursts: [burst(1, 6, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
-    [100, { free: [Fe(-17, -8, 175, 6, 1), Fe(13, 14, 110, 5.5, -1), Fe(-18, 13, 140, 5.5, -1)], bx: -2, by: 2, drift: 0, sw: 1, sh: -1, fluff: 1, eyes: 'dizzy', crestX: 1, handN: Hd(0, 1, 30), handF: Hd(0, 1, -20), tailSwing: -1, tailCurl: 0.5, rippleAmp: 1, ripple: 0.7, loose: Fe(-11, 2, 158, 6.5, -1.2), bursts: [burst(3, 5, 8, 3, Math.PI * 0.9, 1.4, 1.4, 71, 0.18)] }],
-    [110, { bx: -1, by: -1, sw: -1, sh: 1, fluff: 0.5, eyes: 'blink', crestX: 1.5, crestY: -1, handN: Hd(0, -1, -10), handF: Hd(0, -1, 10), tailSwing: 1, tailCurl: 0.6, rippleAmp: 0.6, ripple: 0.95 }],
+    // thrown: the hood rolls back, the skirt swings up and forward under it, the tail flung
+    [70, { ...STRUCK_HEAVY, bx: -5, hx: -3, by: -1, drift: 8, len: -2, sw: 3, sh: -3, fluff: 2.4, eyes: 'x', hollow: -1, handN: Hd(-1, -5, -95, 26, 1), handF: Hd(-1, -5, 95, 26, 1), crestX: -5, crestY: 3, tailSwing: 6, tailCurl: 0, tailLift: 3, rippleAmp: 1.5, ripple: 0.2, loose: null, free: [Fe(-14, -10, 235, 6.5, 1), Fe(11, 4, 10, 6, -1), Fe(-4, -9, 275, 5.5, 1), Fe(-15, 3, 195, 6, -1), Fe(7, -9, 320, 5.5, 1), Fe(-8, 14, 140, 5.5, -1)], bursts: [burst(0, 8, 2, 2, Math.PI, TAU, 1.0, 71, 0.18)] }],
+    // the spin: edge-on — narrow and tall, the skirt whipped back the other way, eyes squeezed
+    [120, { bx: -4, hx: 1, by: 0, drift: -6, sw: -5, sh: 2, len: 2, fluff: 2, eyes: 'squeeze', hollow: -1, handN: Hd(2, -2, 120, 10), handF: Hd(2, -2, -120, 10), crestX: 4, crestY: 1, tailSwing: -4, tailCurl: 1, tailLift: 1, rippleAmp: 1.4, ripple: 0.55, loose: null, free: [Fe(-15, -12, 250, 6.5, -1), Fe(15, 2, 355, 6, 1), Fe(-6, -9, 260, 5.5, -1), Fe(-17, 6, 175, 6, 1), Fe(11, -11, 305, 5.5, -1), Fe(-9, 19, 120, 5.5, 1)], bursts: [burst(1, 8, 2, 2, Math.PI, TAU, 1.0, 71, 0.18)] }],
+    // the drop: the float fails, it falls 4 px and squashes flat on the bounce
+    [90, { bx: -3, hx: -1, by: 4, drift: 2, sw: 3, sh: -3, len: -3, fluff: 1.6, eyes: 'dizzy', hollow: -1, handN: Hd(-1, 3, 70, 10), handF: Hd(-1, 3, -60, 10), crestX: -2, crestY: 3, tailSwing: 2, tailCurl: 0.6, rippleAmp: 1.2, ripple: 0.8, loose: null, free: [Fe(-16, -6, 200, 6.5, 1), Fe(16, 9, 60, 6, -1), Fe(-5, -12, 240, 6, 1), Fe(-17, 13, 150, 6, -1), Fe(13, -6, 330, 5.5, 1)], bursts: [burst(3, 6, 2, 2, Math.PI, TAU, 1.0, 71, 0.18)] }],
+    // the bounce back up, dizzy, still low
+    [110, { bx: -2, by: 1, drift: -1, sw: -1, sh: 2, len: 1, fluff: 1, eyes: 'dizzy', handN: Hd(0, 1, 30), handF: Hd(0, 1, -20), crestX: 2, crestY: -1, tailSwing: -1, tailCurl: 0.5, rippleAmp: 1, ripple: 0.1, free: [Fe(-16, 4, 175, 6, -1), Fe(16, 15, 110, 5.5, 1), Fe(-17, 17, 140, 5.5, -1)] }],
     // it shakes the dizziness off: a head-shake left (hood, cowlick, tail all swung) …
-    [120, { hx: -1, bx: 0, by: 0, sw: 1, sh: -1, eyes: 'squeeze', lookX: -1, crestX: 3, crestY: 1, handN: Hd(0, 0, 40, 6), handF: Hd(0, 0, -35), tailSwing: 3, tailCurl: 0.5, drift: 1.5, rippleAmp: 1, ripple: 0.4 }],
+    [120, { hx: -1, bx: -1, by: 0, sw: 1, sh: -1, eyes: 'squeeze', lookX: -1, crestX: 3, crestY: 1, handN: Hd(0, 0, 40, 6), handF: Hd(0, 0, -35), tailSwing: 3, tailCurl: 0.5, drift: 1.5, rippleAmp: 1, ripple: 0.4 }],
     // … and right, eyes open again
     [130, PRE_IDLE({ hx: 1, eyes: 'open', lookX: 1, crestX: -3, tailSwing: -2 })],
     [140, {}],
@@ -309,20 +318,24 @@ function whirl(n: number, t: number, r: number, yTop: number, yBot: number): Fea
   }
   return out;
 }
-const BIG_FALL = (x: number, y: number, ang: number, bow: number): Feather => ({ x, y, ang, len: 11, bow, w: 4.6 });
+// (FIX critic r3) a bigger hero feather for the opening beat (14 px, a broad lit vane): it reads at 1×
+const BIG_FALL = (x: number, y: number, ang: number, bow: number): Feather => ({ x, y, ang, len: 14, bow, w: 5.8 });
 const SUMMON: Table = {
-  marks: { land: 9 },
+  marks: { land: 10 },
   keys: [
     [100, { ...GONE, free: [BIG_FALL(2, -14, 160, -2)] }],
     [100, { ...GONE, free: [BIG_FALL(-6, -6, 210, 2)] }],
-    [100, { ...GONE, free: [BIG_FALL(5, 3, 150, -1.6)] }],
-    [90, { ...GONE, free: [BIG_FALL(-4, 12, 205, 1.6)] }],
-    // touch: it lies on the floor point, the first feathers lift off round it
-    [80, { ...GONE, free: [BIG_FALL(-4, 24, 178, -0.6), ...whirl(4, 0, 9, 18, 27)] }],
+    [100, { ...GONE, free: [BIG_FALL(5, 6, 150, -1.6)] }],
+    [90, { ...GONE, free: [BIG_FALL(-2, 19, 205, 1.6)] }],
+    // touch: it settles flat on the tile's centre (the floor point), the first feathers lift off round it
+    [80, { ...GONE, free: [BIG_FALL(4, 32, 180, -0.6), ...whirl(4, 0, 9, 18, 27)] }],
     // the whirl climbs; the face locks in first: two eyes in the middle of the feathers
-    [70, { ...GONE, eyesOnly: true, eyes: 'wide', by: 2, free: whirl(9, 1, 15, -8, 26) }],
+    [60, { ...GONE, eyesOnly: true, eyes: 'wide', by: 2, free: whirl(9, 1, 15, -8, 26) }],
+    // (FIX r2) a bud of a hood closes round the eyes first (small, no sheet yet), so the body never
+    // pops in whole in one frame
+    [50, { by: 6, sh: -6, sw: -4, len: -12, peel: 8, eyes: 'wide', crestY: 3, loose: null, tailCurl: 0, free: whirl(9, 1.5, 15, -9, 24) }],
     // the hood and the bare sheet form round the eyes
-    [70, { by: 2, sh: -1, peel: 8, eyes: 'blink', crestY: 2, free: whirl(8, 2, 15, -10, 22) }],
+    [60, { by: 2, sh: -1, peel: 8, eyes: 'blink', crestY: 2, free: whirl(8, 2, 15, -10, 22) }],
     // the tail hooks on, the hands, the wing plume shingles on
     [70, { by: 1, peel: 5, eyes: 'open', loose: null, free: whirl(6, 3, 14, -12, 14) }],
     // the plumes lay themselves on one by one; the last feathers close in over the crown
@@ -375,11 +388,14 @@ const DEATH: Table = {
     [80, { ...SLUMP, fluff: 2, rippleAmp: 1.5, ripple: 0.4, gust: 1, peel: 1, free: peeled(2) }],
     // the front plumes go, the body leans into the wind
     [90, { ...SLUMP, fluff: 2.4, drift: -2, rippleAmp: 1.5, ripple: 0.7, gust: 2, peel: 3, free: peeled(3) }],
-    [90, { ...SLUMP, fluff: 2.4, drift: -3, rippleAmp: 1.5, ripple: 0.95, gust: 3, peel: 5, free: peeled(4) }],
+    [90, { ...SLUMP, fluff: 2.4, drift: -3, rippleAmp: 1.5, ripple: 0.95, gust: 3, peel: 4, free: peeled(4) }],
     // the wing plume and the hands — only the bare sheet and the tail are left
-    [90, { ...SLUMP, fluff: 2, drift: -3, rippleAmp: 1.2, ripple: 0.2, gust: 4, peel: 7, eyes: 'wide', free: peeled(5) }],
-    // the tail unhooks; the bare sheet frays (the short pixel dissolve)
-    [90, { ...SLUMP, drift: -3, peel: 8, eyes: 'wide', erode: 0.55, erodeDir: -1, seed: 6, free: peeled(6) }],
+    // (FIX r2) the wing plume and the hands go, but the hem shingle still clings on: it keeps a
+    // feather hem (never a bald tadpole)
+    [90, { ...SLUMP, fluff: 2, drift: -3, rippleAmp: 1.2, ripple: 0.2, gust: 4, peel: 4.5, eyes: 'wide', handN: Hd(-30, 0, 0), handF: Hd(-30, 0, 0), free: peeled(5) }],
+    // the last shingle and the tail go as whole feathers; what is left is a small shrunken hood
+    // round the eyes (no pixel dissolve, no holes)
+    [90, { ...SLUMP, drift: -4, peel: 8, eyes: 'wide', sw: -3, sh: -3, len: -9, hx: 1, free: [...peeled(6), Fe(-12, 10, 205, 8, 1.4), Fe(-6, 15, 160, 7.5, -1.4), Fe(-15, 3, 230, 7, 1.2)] }],
     // the eyes hang alone in the air…
     [90, { ...SLUMP, eyesOnly: true, eyes: 'wide', free: peeled(7) }],
     [100, { ...SLUMP, eyesOnly: true, eyes: 'wide', lookX: -1, free: peeled(8) }],
@@ -413,10 +429,18 @@ const REVIVE: Table = {
 
 // special: the feather pillow ---------------------------------------------------------------
 const SPECIAL: Table = {
-  marks: { charge: 1, release: 5, impact: 5, recover: 8 },
+  marks: { charge: 1, release: 8, impact: 8, recover: 11 },
   keys: [
     [70, { eyes: 'wide', lookX: -1, crestY: -1, handN: Hd(0, -1, 15), handF: Hd(0, -1, -10) }],
-    [100, { eyes: 'shut', by: 1, sw: -1, sh: -1, handN: Hd(-4, -1, 130, -16), handF: Hd(4, -1, -110, -16), crestX: -1, crestY: 1, tailCurl: 1, tailLift: 2 }],
+    // f1 THE HUG: it clutches itself (the clutch observer holds the lethal-blow body from here)
+    // (FIX critic r2: a real HUG, never a wave — the near hand lies flat ACROSS the belly pointing
+    // back, the far hand's fingertips wrap round the back edge pointing forward, both low; no
+    // feather is flung up; f2–f4 shrink 1 px a frame with the eyes squeezed "> <" and shiver ±1 px)
+    [100, { eyes: 'shut', by: 1, sw: -1, sh: -1, len: -1, handN: Hd(-6, 1, 152, -22, 1), handF: Hd(5, 1, 150, -22), crestX: -1, crestY: 1, tailCurl: 1, tailLift: 2, drift: 0.5, loose: null }],
+    // f2–f4 the build-up, a living hold: it squeezes smaller, then shivers left / right ever tighter
+    [90, { eyes: 'squeeze', by: 2, sw: -2, sh: -2, len: -2, fluff: 1, rippleAmp: 1.2, ripple: 0.15, handN: Hd(-7, 1, 156, -26, 1), handF: Hd(6, 1, 152, -24), crestX: -2, crestY: 2, tailCurl: 1.15, tailLift: 3, drift: 1, loose: null }],
+    [90, { eyes: 'squeeze', bx: -1, by: 2, sw: -3, sh: -3, len: -3, fluff: 1.6, rippleAmp: 1.5, ripple: 0.45, handN: Hd(-7, 2, 158, -28, 1), handF: Hd(6, 2, 154, -26), crestX: -3, crestY: 2, tailCurl: 1.2, tailLift: 3, tailSwing: 1, loose: null }],
+    [90, { eyes: 'squeeze', bx: 1, by: 3, sw: -3, sh: -4, len: -3, fluff: 2.2, rippleAmp: 1.5, ripple: 0.75, handN: Hd(-8, 2, 160, -28, 1), handF: Hd(7, 2, 156, -26), crestX: -2, crestY: 3, tailCurl: 1.25, tailLift: 4, tailSwing: -1, loose: null }],
     [110, { pillow: 0.35, puff: 0.35, fluff: 0.8, eyes: 'shut', by: 1, handN: Hd(-4, -1, 130, -16), handF: Hd(4, -1, -110, -16), tailCurl: 1, tailLift: 3 }],
     [170, { pillow: 1, puff: 0.45, eyes: 'happy', loose: null }],
     [60, { pillow: 1, puff: 0.2, sw: 2, sh: -3, eyes: 'shut', loose: null }],
@@ -438,8 +462,8 @@ const TO_GUARD: Table = {
     [60, { eyes: 'wide', hollow: 1, sh: 1, crestY: -2, handN: Hd(0, -2, -30), handF: Hd(0, -2, 30) }],
     [60, { eyes: 'wide', by: 0, sh: 1, sw: -1, fluff: 1, crestX: 1, crestY: -2, handN: Hd(-2, -5, -60, -6), handF: Hd(2, -5, 120, -6), tailCurl: 0.8 }],
     [60, { by: 1, sh: -1, sw: 1, len: -1, fluff: 1, eyes: 'peek', hollow: -1, crestX: -1, crestY: 0, handN: Hd(-3, -6, -70, -10), handF: Hd(4, -6, 180, -10), tailCurl: 0.9, tailLift: 1 }],
-    [70, { by: 3, sh: -3, sw: 2, len: -3, fluff: 1.2, eyes: 'peek', hollow: -1, crestX: -2, crestY: 1, handN: Hd(-5, -4, -66, -12, -1), handF: Hd(7, -4, 205, -12, -1), tailCurl: 0.9, tailLift: 1 }],
-    [70, { by: 2, sh: -2, sw: 1, len: -2, fluff: 1, eyes: 'peek', hollow: -1, crestX: -2, crestY: 1, handN: Hd(-5, -5, -62, -12, -1), handF: Hd(7, -5, 205, -12, -1), tailCurl: 0.85, tailLift: 1, rippleAmp: 0.4 }],
+    [70, { by: 3, sh: -3, sw: 2, len: -3, fluff: 1.2, eyes: 'peek', hollow: -1, crestX: -2, crestY: 1, handN: Hd(-5, -1, -66, -12, -1), handF: Hd(7, -1, 205, -12, -1), tailCurl: 0.9, tailLift: 1 }],
+    [70, { by: 2, sh: -2, sw: 1, len: -2, fluff: 1, eyes: 'peek', hollow: -1, crestX: -2, crestY: 1, handN: Hd(-5, -2, -62, -12, -1), handF: Hd(7, -2, 205, -12, -1), tailCurl: 0.85, tailLift: 1, rippleAmp: 0.4 }],
     [70, {}],
   ],
 };

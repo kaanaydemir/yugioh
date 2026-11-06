@@ -35,23 +35,32 @@ export function ntIso(col: number, row: number): XY {
  * band), its four corners cut by the screen lines x = PLATE_X0 / PLATE_X1 (vertical end caps) and y = PLATE_Y0 / PLATE_Y1
  * (flat far / near edges). Every vertex lands on a whole screen pixel; the slab is point-symmetric about the board centre (320, 160).
  */
-// hedef-gorunum-3: the stage is a TIGHT block parallel to the tile rows (0.375 tile margin on every side, small chamfered
-// corners); the duelists stand on their own raised daises attached to the stage (pads layer), not on the plate.
+// hedef-gorunum-3 (arena pass, 2026-11-05): the stage is a TIGHT block parallel to the tile rows with small chamfered corners.
+// Column sides: 0.375 tile margin. Row sides (the two long edges): 0.5625 tile, exactly so far that each duelist dais's back edge
+// (layout.duelistXY ± the 40×20 pad diamond, its edge parallel to the stage edge) lies flush on the stage edge: the daises are
+// attached to the long edges (P1 in front of the near-left edge, P2 behind the far-right one), never floating off it.
 export const PLATE_C0 = -0.875;
 export const PLATE_C1 = NT_COLS - 0.5 + 0.375; // 6.875
-export const PLATE_R0 = -0.875;
-export const PLATE_R1 = NT_ROWS - 0.5 + 0.375; // 4.875
-/** The chamfer lines (screen px): vertical end caps x, flat far / near edges y. */
-export const PLATE_X0 = 114;
-export const PLATE_X1 = 526;
-export const PLATE_Y0 = 58;
+export const PLATE_R0 = -1.0625;
+// arena pixel/polish round 3 (#1): the near-left edge moves out 30 px (0.9375 row) so the P1 dais stands ON the stage (one convex
+// block, no L notch round a protruding dais base); the far-right edge stays (the P2 dais keeps its ledge behind it).
+export const PLATE_R1 = NT_ROWS - 0.5 + 1.5; // 6.0
+/**
+ * The chamfer lines (screen px): vertical end caps x, flat far / near edges y. Arena pass round 2: BIG cuts so the slab reads as
+ * an octagon (hedef-gorunum-3): the side caps cut 20 px off the left / right tips (20-px tall vertical caps, still 10 px clear of
+ * the outer tile corners), the far edge 13 px (52-px flat edge, 2 px clear of the far tile corner); the near flat edge stays
+ * 328..364 (arena-nt/lights.ts splits blue / crimson at its right end, x 364).
+ */
+export const PLATE_X0 = 118;
+export const PLATE_X1 = 522;
+export const PLATE_Y0 = 62;
 export const PLATE_Y1 = 262;
 /**
  * Height of the side armour below the top edge (J1: 28, was 18; J4: a THICK slab, 52): coping 3 + groove, upper armour plate 12,
  * light channel 6, main armour plate 18 (big bevelled panel face), belt 5, footing flange 4 incl. the bottom outline. The stands /
  * crowd sit behind it (armour bottom y = 178 + x/2 on the left face, 448 − x/2 on the right face, 314 on the flat near edge).
  */
-export const FACE_H = 58; // hedef-gorunum-3: as tall as the screen allows (near edge 262 + 58 = 320, the hand / hint plate draw over it)
+export const FACE_H = 46; // hedef-gorunum-3: a chunky plinth (critique round 3: 58 read ~25% too tall vs the target; near edge 262 + 46 = 308)
 
 /** Grid coordinates of a screen point (inverse of ntIso). */
 export function ntGrid(x: number, y: number): [number, number] {
@@ -64,30 +73,30 @@ export function ntGrid(x: number, y: number): [number, number] {
  * Platform top outline (grid coords), duelist pads inside it: the eight vertices of the octagon, clockwise on screen, starting
  * at the near-left corner (index 6 is the near-right end of the flat near edge: arena-nt/lights.ts splits blue / crimson there).
  */
-// The four sharp corners of the tight block are far (288, 52), right (536, 176), near (352, 268), left (104, 144); the
-// chamfer lines cut 6 px off the far / near tips and 10 px off the side tips.
+// The four sharp corners of the tight block are far (294, 49), right (542, 173), near (346, 271), left (98, 147); the
+// chamfer lines cut 13 px off the far tip, 9 px off the near tip and 20 px off the side tips (the near flat edge is 328..364).
 export const PLATE_OUTLINE: readonly [number, number][] = [
-  ntGrid(PLATE_X0, 149), // near-left corner (left face start)
-  ntGrid(PLATE_X0, 139), // left end cap, top
-  ntGrid(276, PLATE_Y0), // far flat edge, left end
-  ntGrid(300, PLATE_Y0), // far flat edge, right end
-  ntGrid(PLATE_X1, 171), // right end cap, top
-  ntGrid(PLATE_X1, 181), // right end cap, bottom
+  ntGrid(PLATE_X0, 187), // near-left corner (left face start)
+  ntGrid(PLATE_X0, 137), // left end cap, top
+  ntGrid(268, PLATE_Y0), // far flat edge, left end
+  ntGrid(320, PLATE_Y0), // far flat edge, right end
+  ntGrid(PLATE_X1, 163), // right end cap, top
+  ntGrid(PLATE_X1, 183), // right end cap, bottom
   ntGrid(364, PLATE_Y1), // near flat edge, right end (the near corner of the right face)
-  ntGrid(340, PLATE_Y1), // near flat edge, left end
+  ntGrid(268, PLATE_Y1), // near flat edge, left end
 ];
 
 /** The extreme points of the plate's top (screen): the middle of the flat far edge, the right / left end caps, the middle of the flat near edge. */
 export const PLATE_CORNERS = {
-  apex: { x: 288, y: PLATE_Y0 },
-  right: { x: PLATE_X1, y: 176 },
-  bottom: { x: 352, y: PLATE_Y1 },
-  left: { x: PLATE_X0, y: 144 },
+  apex: { x: 294, y: PLATE_Y0 },
+  right: { x: PLATE_X1, y: 173 },
+  bottom: { x: 316, y: PLATE_Y1 },
+  left: { x: PLATE_X0, y: 162 },
 } as const;
 
 /** Screen bounding box of the plate top (duelist pads are inside it). */
 export const PLATE_TOP: Rect = { x: PLATE_X0, y: PLATE_Y0, w: PLATE_X1 - PLATE_X0, h: PLATE_Y1 - PLATE_Y0 };
-/** Plate + side armour (the lowest point is the flat near edge: y 262 + FACE_H = 314, behind the hint plate / hand: HUD draws over it). */
+/** Plate + side armour (the lowest point is the flat near edge: y 262 + FACE_H = 308, behind the hint plate / hand: HUD draws over it). */
 export const PLATE_FULL: Rect = { x: PLATE_X0, y: PLATE_Y0, w: PLATE_X1 - PLATE_X0, h: PLATE_Y1 - PLATE_Y0 + FACE_H };
 /** Soft contact shadow under the platform (ink, stepped): may run under the HUD, never above y 140. */
 export const PLATE_SHADOW: Rect = { x: 88, y: 140, w: 464, h: 196 };

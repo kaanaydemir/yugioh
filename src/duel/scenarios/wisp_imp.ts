@@ -58,6 +58,28 @@ const scenarios: Record<string, Scenario> = {
     stage: { phase: 'battle', p0: { monsters: [{ id: 'shield_titan', position: 'attack' }] }, p1: { monsters: [{ id: 'wisp_imp', position: 'defense' }] } },
     steps: [attack(0, 0)],
   },
+  wiBlockedP2: {
+    desc: 'Tüy Hayalet (player 2) attacks a defending Taş Muhafız: the darts glance off',
+    stage: { phase: 'battle', active: 1, p0: { monsters: [{ id: 'stone_sentinel', position: 'defense' }] }, p1: { monsters: ['wisp_imp'] } },
+    steps: [attack(0, 0, 1)],
+  },
+  wiGuardP2: {
+    desc: 'player 1\'s defending Tüy Hayalet (200) is attacked by player 2\'s Kalkan Titanı (100): the guard holds',
+    stage: { phase: 'battle', active: 1, p0: { monsters: [{ id: 'wisp_imp', position: 'defense' }] }, p1: { monsters: [{ id: 'shield_titan', position: 'attack' }] } },
+    steps: [attack(0, 0, 1)],
+  },
+  // ---- non-battle destroy: Yargı Şimşeği (judgment_bolt) — no prevented damage, no event: the wind, no pof
+  wiSpellKill: {
+    desc: 'Yargı Şimşeği destroys player 2\'s Tüy Hayalet: no battle damage to prevent → the wind takes it (no pillow, no pof)',
+    stage: { p0: { hand: ['judgment_bolt'] }, p1: { monsters: [null, 'wisp_imp'] } },
+    steps: [(D) => ({ type: 'activateSpell', player: 0, uid: D.uid('judgment_bolt', 0), target: { kind: 'monster', ref: { player: 1, zone: 'monster', index: 1 } } })],
+  },
+  // ---- Muhafız Tılsımı saves it: it is not destroyed → no pillow (the charm breaks instead)
+  wiCharmSave: {
+    desc: 'Gölge Suikastçı attacks a Tüy Hayalet equipped with Muhafız Tılsımı: the charm breaks, the wisp lives (no pillow)',
+    stage: { phase: 'battle', p0: { monsters: ['shade_assassin'] }, p1: { monsters: [{ id: 'wisp_imp', position: 'attack' }], spellTraps: [{ id: 'guardian_charm', equippedTo: 0 }] } },
+    steps: [attack(0, 0)],
+  },
   // ---- the effect: the feather pillow (activate event)
   wiCushion: {
     desc: 'Gölge Suikastçı (1900) attacks an attack-position Tüy Hayalet: it dies, the pillow takes the 1600 (0 · KORUNDU, pof)',

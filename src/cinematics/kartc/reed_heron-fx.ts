@@ -334,10 +334,11 @@ export class Pinpoint {
         this.line(a, b, tone);
         this.line(b, c, tone);
         this.line(c, a, tone);
-        // the star: four diagonal rays out of the third point, 4 px each (the inner pixel left dark so the point
-        // reads as a point); the two pointing back at the beak are 1 px shorter
+        // the star: four diagonal rays out of the third point (the inner pixel left dark so the point reads as a
+        // point); the two pointing back at the beak are 1 px shorter. Lit (the 3 white frames) the rays are 5 / 4 px
+        // — the TAK reads at 1× without the number — then they draw in by a pixel as the tones step down
         for (const [sx, sy] of [[1, -1], [1, 1], [-1, -1], [-1, 1]] as const) {
-          const len = sx === d ? 4 : 3;
+          const len = (sx === d ? 4 : 3) + (tone === PAL.white ? 1 : 0);
           for (let i = 2; i <= len + 1; i++) this.air.dot(c.x + sx * i, c.y + sy * i, i === len + 1 && tone === PAL.white ? PAL.mist : tone);
         }
       }

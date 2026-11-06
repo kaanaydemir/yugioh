@@ -77,6 +77,7 @@ import { createRequire } from 'node:module';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import path from 'node:path';
+import { untrimFrame } from './lib/frame-trim.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(path.join(REPO, 'package.json'));
@@ -131,6 +132,7 @@ function chromePath() {
 
 /** Runs inside the page (serialized by Playwright). */
 async function probeInPage(o) {
+  const untrimFrame = new Function(`return (${o.untrimSrc})`)();
   const N = window.__neon;
   const FRAME = 1000 / 60;
   // ---- the shot.mjs --fresh restart: freeze, restart the scenario under the frozen clock
@@ -279,7 +281,11 @@ async function probeInPage(o) {
       const g = c.getContext('2d');
       g.imageSmoothingEnabled = false;
       g.drawImage(f.source.image, f.cutX, f.cutY, f.cutWidth, f.cutHeight, 0, 0, f.cutWidth, f.cutHeight);
-      v = { c, w: f.cutWidth, h: f.cutHeight, data: g.getImageData(0, 0, f.cutWidth, f.cutHeight).data };
+      // A cropped / trimmed atlas frame is only its opaque box: rebuild the REAL frame (cut at frame.x / frame.y inside
+      // realWidth × realHeight) so drawing at left/top, the flipX mirror (cut at realWidth − x − cutWidth), the box and
+      // the in-place frame Δ all match what Phaser draws. Untrimmed frames come back unchanged (tools/lib/frame-trim.mjs).
+      const full = untrimFrame({ data: g.getImageData(0, 0, f.cutWidth, f.cutHeight).data, w: f.cutWidth, h: f.cutHeight }, f);
+      v = { c, w: full.w, h: full.h, data: full.data };
     }
     frameCache.set(k, v);
     return v;
@@ -634,7 +640,7 @@ async function probeOne(key) {
       await page.goto(base + q, { waitUntil: 'load', timeout: 240000 });
     }
     await page.waitForFunction(() => window.__neon && window.__neon.ready === true && !!window.__neon.duel, null, { timeout: 300000 });
-    res = await page.evaluate(probeInPage, { key, cap: CAP, png: !!PNG, scale: SCALE, hist: HIST });
+    res = await page.evaluate(probeInPage, { key, cap: CAP, png: !!PNG, scale: SCALE, hist: HIST, untrimSrc: untrimFrame.toString() });
   } catch (e) {
     res = { failed: String(e && e.message ? e.message : e).slice(0, 500), contacts: [] };
   }

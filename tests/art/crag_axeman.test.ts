@@ -71,11 +71,12 @@ describe('crag_axeman', () => {
     expect(d.split).toBeGreaterThan(0);
     expect(d.ag).toBe(1);
     expect(framePose('summon', 0).bould).toBe(1);
-    // the seam colours: white core / earth4 lips, never fire on the floor seam at the bite
+    // the seam colours: white core / earth4 lips, never fire on the floor seam at the bite (the art shows only the crack's
+    // lit mouth at the edge: the run itself is the cinematic's, crag_axeman-yarik.ts)
     const p = drawFrame(art, 'attack', 13, 'left');
     let white = 0;
     for (let x = 0; x < p.w; x++) if (p.get(x, art.anchorY) === PAL.white) white++;
-    expect(white).toBeGreaterThan(3);
+    expect(white).toBeGreaterThanOrEqual(3);
   });
 
   it('paints the card picture at both sizes within the kit budgets (living frames)', () => {

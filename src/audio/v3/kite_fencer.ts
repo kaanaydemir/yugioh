@@ -134,13 +134,16 @@ const KITE_RECIPES = {
   kfnKiteDrift: {
     cap: 3,
     gap: 0.05,
-    verb: 0.35,
+    verb: 0.4,
     play(v) {
-      // the cloth passing through the air on one leaf sway (pink, soft)
-      sweep(v, 0, 0.26, [1200, 2200, 1400], 0.13, { kind: 'pink', q: 1.4, peakAt: 0.5 });
-      // the panels' cloth ripple on the turn of the sway (the bright layer that carries on small speakers)
-      const fl = v.flutter(55, 0.45, { t: 0.06, d: 0.2, base: 0.4 });
-      v.noise('white', { t: 0.06, g: [[0, 0], [0.06, 0.056], [0.2, 0.0001, 'e']], to: v.filt('bandpass', [[0, 1600], [0.2, 1900, 'e']], 1.6, { to: fl }) });
+      // one leaf sway of the EMPTY kite falling (×3, alternating pans): ONLY AIR, nothing strikes it — no cloth body,
+      // no flap transient, and a hole where the struck cloth lives (1–1.6 kHz). The loudest layer is the thin hiss of
+      // air sliding off the panel edges (pink, 3.2 → 4.6 → 3.6 kHz) …
+      sweep(v, 0, 0.26, [3200, 4600, 3600], 0.2, { kind: 'pink', q: 2, peakAt: 0.5, to: v.filt('highpass', 1800, 0.7) });
+      // … the sway's own pitch contour (the sheet's 1.2 → 2.2 → 1.4 kHz) as a faint narrow whistle of air over it …
+      sweep(v, 0.01, 0.24, [1200, 2200, 1400], 0.028, { kind: 'pink', q: 5, peakAt: 0.5 });
+      // … and the soft push of the air the panel turns over (a low breath under 400 Hz, felt more than heard)
+      v.noise('pink', { g: [[0, 0], [0.11, 0.035], [0.26, 0.0001, 'e']], to: v.filt('lowpass', 300, 0.7) });
     },
   },
   kfnKiteFlop: {
@@ -291,32 +294,42 @@ const KITE_RECIPES = {
     gap: 0.15,
     verb: 0.3,
     play(v) {
-      // the downswing is ~0.37 s of game time from its first frame to the cut: the air and the string both peak there
-      sweep(v, 0, 0.44, [400, 1600, 600], 0.2, { kind: 'pink', q: 1.3, peakAt: 0.84, pan: [-0.25, 0.25] });
-      // the string peaks at the low point of the arc
-      stringBuzz(v, 0, [[0, 1320], [0.36, 1480, 'e'], [0.46, 1400]], [[0, 0], [0.22, 0.03], [0.36, 0.05], [0.46, 0.0001, 'e']], { flutter: 95, q: 7 });
+      // the pendulum, two voices and a gap between them: a deep "vwoooom" of the whole open kite falling through the
+      // air (300 → 800 → 380 Hz, peaking as it bottoms out) and the taut STRING singing over it, its buzz band at
+      // 2.6–3 kHz (the 2nd harmonic of 1320 → 1480 Hz, peaking at the low point). Nothing in the 1–2 kHz band where a
+      // generic whoosh and the struck kite cloth live. The downswing is ~0.37 s of game time from its first frame to the cut
+      const air = v.filt('lowpass', 900, 0.7);
+      sweep(v, 0, 0.44, [300, 700, 360], 0.34, { kind: 'pink', q: 2.2, peakAt: 0.84, pan: [-0.25, 0.25], to: air });
+      v.noise('pink', { g: [[0, 0], [0.34, 0.05], [0.38, 0.055], [0.46, 0.0001, 'e']], to: v.filt('lowpass', 420, 0.7) });
+      // (only the buzz band: the wire's fundamental is left out so the 1–2 kHz gap stays open)
+      const fl = v.flutter(95, 0.4, { d: 0.48, base: 0.7 });
+      const strF: Pt[] = [[0, 1320], [0.36, 1480, 'e'], [0.46, 1400]];
+      const bp = v.filt('bandpass', strF.map(([x, y, c]) => [x, y * 2, c] as Pt), 11, { to: v.filt('highpass', 2200, 0.8, { to: fl }) });
+      v.tone('sawtooth', strF, { g: [[0, 0], [0.22, 0.03], [0.36, 0.055], [0.46, 0.0001, 'e']], to: bp });
     },
   },
   kfnCut: {
     cap: 2,
     gap: 0.05,
-    verb: 0.35,
+    verb: 0.3,
     duck: 0.35,
     play(v) {
-      // the curved cut "sşhk": the loudest layer is a narrow white band SLIDING round the body — 3.5 → 2.7 kHz fast
-      // (the first 40 %), then on down to 2.15 kHz as the blade leaves (a curve, not a line), panned across with the
-      // swing; its airy edge (the "s") rides the same curve an octave up …
-      const D = 0.135;
-      const path: Pt[] = [[0, 3500], [D * 0.4, 2700], [D, 2150, 'e']];
-      const across = v.panner([[0, -0.22], [D, 0.22]]);
-      v.noise('white', { g: [[0, 0], [0.002, 0.5], [0.03, 0.9], [D * 0.7, 0.5], [D, 0.0001, 'e']], to: v.filt('bandpass', path, 5, { to: across }) });
-      v.noise('white', { g: [[0, 0], [0.002, 0.55], [0.025, 0.66], [D * 0.8, 0.0001, 'e']], to: v.filt('bandpass', path.map(([x, y, c]) => [x, y * 1.9, c] as Pt), 3, { to: across }) });
-      // … the edge's thin steel line (3.2 kHz, under the band: never the tsst's 4 kHz) …
-      v.tone('sine', [[0, 3300], [D, 3150, 'e']], { t: 0.002, g: perc(0.03, 0.09, 0.0015) });
-      // … the felt hint of the body it passes through …
+      // the lateral cut "sşhk" — a CLOTH-AND-EDGE cut, never a steel whoosh: everything sits under 5 kHz (the generic
+      // slash lives up there) and moves DOWN. "sş": a narrow white band sliding 3.2 → 1.8 kHz in 90 ms (Q 4) panned
+      // across with the sweep, low-passed at 4.6 kHz so no airy edge rides above it …
+      const D = 0.09;
+      const across = v.panner([[0, -0.2], [D + 0.04, 0.2]]);
+      const lp = v.filt('lowpass', 4600, 0.7, { to: across });
+      v.noise('white', { g: [[0, 0], [0.004, 0.55], [0.028, 0.95], [D * 0.8, 0.5], [D + 0.03, 0.0001, 'e']], to: v.filt('bandpass', [[0, 3200], [D, 1800, 'e'], [D + 0.03, 1700]], 4, { to: lp }) });
+      // … "h": the cloth DRAG behind the edge (pink, low-passed at 2 kHz, 60 ms: fabric pulled across, not air) …
+      v.noise('pink', { t: 0.018, g: [[0, 0], [0.012, 0.42], [0.06, 0.0001, 'e']], to: v.filt('lowpass', 2000, 0.8, { to: v.filt('highpass', 380, 0.7, { to: across }) }) });
+      // … one short 4 kHz glint where the edge bites (25 ms: the needle's pitch, not its ring) …
+      v.tone('sine', 4000, { t: 0.004, g: perc(0.035, 0.025, 0.001) });
+      // … the kite string answering the bottom of the swing (its peak note, quiet, falling with the tension) …
+      v.tone('triangle', [[0, 1480], [0.09, 1380, 'e']], { t: 0.006, g: perc(0.03, 0.11, 0.003) });
+      // … "k": one fibre tick as the blade leaves (band-limited: a thread parting, not a click) + a felt body hint
+      tick(v, D + 0.012, 0.075, { hp: 2200, lp: 4600, dec: 0.005, att: 0.001 });
       thump(v, 0, 220, 120, 0.02, 0.05);
-      // … and the linen fibres parting behind the blade: three tiny ticks after the sweep
-      for (let i = 0; i < 3; i++) tick(v, D - 0.01 + i * 0.019, 0.05 * (1 - i * 0.2), { hp: 4200, lp: 9000, dec: 0.004, att: 0.001 });
     },
   },
   kfnLiftOff: {

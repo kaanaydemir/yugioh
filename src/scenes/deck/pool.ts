@@ -4,7 +4,7 @@
 import { ALL_CARDS, COLLECTIBLE_CARDS, isMonster, type Attribute, type CardDef, type CardId } from '../../data/cards';
 
 export type KindFilter = 'all' | 'monster' | 'spell' | 'trap';
-export type SortKey = 'level' | 'atk' | 'name';
+export type SortKey = 'new' | 'level' | 'atk' | 'name';
 
 export interface PoolFilter {
   kind: KindFilter;
@@ -13,8 +13,8 @@ export interface PoolFilter {
 }
 
 export const ELEMENTS: readonly Attribute[] = ['FIRE', 'WATER', 'LIGHT', 'DARK', 'EARTH', 'WIND'];
-export const SORT_KEYS: readonly SortKey[] = ['level', 'atk', 'name'];
-export const SORT_LABEL: Record<SortKey, string> = { level: 'Seviye', atk: 'ATK', name: 'Ad' };
+export const SORT_KEYS: readonly SortKey[] = ['new', 'level', 'atk', 'name'];
+export const SORT_LABEL: Record<SortKey, string> = { new: 'Yeni', level: 'Seviye', atk: 'ATK', name: 'Ad' };
 
 export function matches(def: CardDef, f: PoolFilter): boolean {
   if (f.kind !== 'all' && def.kind !== f.kind) return false;
@@ -31,6 +31,8 @@ export function sortPool(defs: readonly CardDef[], key: SortKey): CardDef[] {
   const idx = (c: CardDef) => order.get(c.id) ?? 0;
   const out = [...defs];
   out.sort((a, b) => {
+    // 'new': newest first — later card batches are appended to ALL_CARDS, so a higher index is a newer card.
+    if (key === 'new') return idx(b) - idx(a);
     if (key === 'name') return collator.compare(a.name, b.name) || idx(a) - idx(b);
     const am = isMonster(a);
     const bm = isMonster(b);
