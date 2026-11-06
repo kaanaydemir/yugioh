@@ -7,7 +7,7 @@ Per-card design + critique log: docs/v3/oturum-f/<id>.md.
 ## Status
 | card | design | rig + card art | cinematics + SFX | critique rounds | gates | pushed |
 |---|---|---|---|---|---|---|
-| windmane_knight | — | — | — | 0/3 | — | — |
+| windmane_knight | ✓ | ✓ | ✓ | 3/3 | ✓ | ✓ |
 | shield_titan | ✓ | ✓ | ✓ | 3/3 | ✓ | ✓ |
 | hourglass_imp | ✓ | ✓ | ✓ | 3/3 | ✓ | ✓ |
 | wing_lady | — | — | — | 0/3 | — | — |
@@ -41,6 +41,18 @@ Per-card design + critique log: docs/v3/oturum-f/<id>.md.
   camera gate vs `camera-base-v2.json` 23 ok, 0 NOBASE, 0 FAIL. Evidence: shots/v3/kart-f/shield_titan/{r1-craft,r1-fix,
   r2-unique,r2-fix,r3-integration,r3-fix,verify1,verify2,gatefix}/ (gatefix/camera-gate-v2.txt, gatefix/measure.json,
   verify1/filmdiff-a6v1.txt, filmdiff-v1.txt, verify2/gates.txt, verify2/same.txt).
+
+- 2026-11-06: **windmane_knight (Fırtına Şövalyesi) shipped.** Fix rounds 1–3 (craft / unique / integration) + gate fix
+  (blocked strike now a melee clash with a claimed recoil, no backlash line; tense attack f2 so the declaration hold
+  trembles; DEATH_PRESETS light/light; m1Knight lane-base entry rebased for the taller rig, original kept as
+  `shots/v3/kart-f/camera-base.pre-wmk-rebase.json`) logged in docs/v3/oturum-f/windmane_knight.md. Gates at ship:
+  `npm run typecheck` clean; vitest 1476 pass / 8 fail (none ours, known list); `tests/art/windmane_knight.test.ts` +
+  a6-flow 75/75; monster-gates `--class ace --ref none` (P1 + P2) 24 rows, 21 ok / 0 FAIL / 2 n/a / 1 info (5.47 MB);
+  filmdiff v1 17/17 + a6v1 26/26 IDENTICAL; camera gate vs card base 30 ok + 15 NOBASE, vs rebased lane base 2 ok +
+  43 NOBASE, 0 FAIL; sameness no KALIR (12 UYARI out of plan). Evidence: shots/v3/kart-f/windmane_knight/{r1-craft,r1-fix,
+  r2-unique,r2-fix,r3-integration,r3-fix,verify1,gfix,verify2}/ (gfix/gates.txt, gfix/gate-card.txt, gfix/gate-lane.txt,
+  gfix/filmdiff.txt, verify2/filmdiff-v1.txt, verify2/filmdiff-a6v1.txt, verify2/gates.txt, verify2/gate-lane.txt,
+  verify2/sameness.txt, verify2/palcheck.txt).
 
 ## Resume instructions (lane F is PAUSED — resume only when the orchestrator says so)
 
@@ -86,6 +98,11 @@ to re-exclude them.
   sealed unit), `src/duel/HumanInput.ts` (seal refusal hint), `src/duel/StatBadge.ts` (sand freeze icon); the v1
   ready ring and a full legal-attackers query are orchestrator calls. ksBoard5: the sealed back-row emblem overlaps
   the Işık Perisi behind it (gold on gold). The summon's cyan card-slam flash is the shared `runSummon` kit.
+- windmane_knight: shared-code items left alone — `traps/chains_of_light.ts` re-holds the normal `wmkCharge` voice
+  during its own lunge; eye-point dimming in the calm needs a sprite-contract hook; `fsLocked` is unreachable (not
+  added). palcheck (a5, default frame-0 reference) flags fsSummon / fsStormAtkP2 / fsStormDies (Δoff +2.3…+5.0,
+  white 3.1–3.3 % on one flash frame each; `verify2/palcheck.txt`); same frame-0-before-opening pattern wing_lady
+  measured on the approved `sbSentinelDies` — re-measure with `--ref 4` in the final gate run.
 - Camera gate against the lane base `shots/v3/kart-f/camera-base.json`: `m1Imp` (wisp_imp, not lane F) FAILs
   maxScroll 15 → 18 (lean #0 (0,-13) → (0,-16)); not caused by hourglass_imp — needs a rebase by its owner lane.
 
