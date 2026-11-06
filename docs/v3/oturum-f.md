@@ -135,3 +135,45 @@ The orchestrator merges only a head where every card is finished and green; send
    - the battleV3 COUNTER_FLASH white-blob fix on the blocked attacker;
    - a public `StatBadge.flashDigits()` (replaces the private-field cast in shield_titan's `plateStep()`).
    Re-base the stale camera keys (m1Shield, kdWallWeak) on main + lane F in the final gate run.
+
+## Final summary (2026-11-06) — lane F is mergeable
+
+All four cards are finished: v3 rig (P1 + P2), v3 card art (big + small), unique summon/attack/death/effect
+cinematics and synthesized SFX, each through design → design critique → build → 3 independent
+film-look-critique-fix rounds (craft / uniqueness / integration) → adversarial gate verification → ship.
+
+| card | finished commit | class | notes |
+|---|---|---|---|
+| hourglass_imp (Kum Saati Cücesi) | 0858886 | small | sand seal persists on the frozen target until it expires; emblem now ink-rimmed (ksBoard5) |
+| shield_titan (Kalkan Devi) | 9b62cfb | medium | the ward visibly saps the attacker step by step (−500 on the ATK plate); own masonry-repel, no hex glint |
+| windmane_knight (Fırtına Şövalyesi) | 2c23a66 | ace (≤7 MB) | Lv7 ace with cut-in; distinct storm-charged strike on its summon turn vs plain strike later |
+| wing_lady (Kanat Hanımı) | 171e487 | medium | wind aura visibly marks each buffed WIND ally, born/lost with her and with allies arriving/leaving |
+
+Main (origin/claude/yugioh-card-game-tgi7td @ 9eaae1f) merged in at 389feef. Follow-ups at 1aabdef.
+
+**Final gates on HEAD 1aabdef** (fresh, independent verifier; full report `docs/v3/oturum-f/FINAL-GATES.md`):
+typecheck clean · vitest 1489/1491 (only the known cardface-v3 G1 + dusk_ashen; cloud_hatchling can time out under
+load: 4.9 s of a 5 s limit, not lane F) · filmdiff v1 17/17 + a6v1 26/26 IDENTICAL vs baselines rebuilt from 9eaae1f ·
+monster-gates 21 ok / 0 FAIL ×4 (P1+P2) · camera: rebased on main + lane F, 132 scenarios, zoom 1, 0 close-ups,
+fresh re-run 132 ok / 0 FAIL (deterministic) · sameness 0 KALIR · palcheck `--ref 4`: every failing frame is
+attributable to shared code, matching approved reference films (P2 cut-in title, card-flight/cut-in flash, shared
+damage number, ember_wolf's victory flare).
+
+**Camera keys changed by the rebase:** m1Shield 13→16 (real shield_titan rig), m1Imp 15→18 and ksGuard 11→14
+(wisp_imp rig from main; main itself reads 18), m1Knight 20→21 (taller knight rig). focusCalls unchanged everywhere.
+
+**Shared (non-lane-F) edits, all additive (defaults unchanged, v1 identical):**
+- `src/cinematics/v3small/turn.ts` — no ready ring on a sealed unit (hourglass_imp).
+- `src/duel/HumanInput.ts` — seal refusal hint (hourglass_imp).
+- `src/duel/StatBadge.ts` — sand freeze icon; public `flashDigits(on)`.
+- `src/art/types.ts` — optional `MonsterArt.guardGlint?: boolean` and `counterAt?: 'core' | 'clash'`.
+- `src/duel/MonsterUnit.ts` — `guardHit` honours `guardGlint === false`.
+- `src/cinematics/battle/battle.ts` — counter-flash point honours `counterAt: 'clash'` (fixes the white blob on shield_titan).
+- `src/cinematics/_v3/presets.ts` (DEATH_PRESETS), `src/view/light/profiles.ts` (MONSTER_GLOW), sound registries
+  (`src/audio/sfx.ts`, `src/audio/sounds.ts`, `src/cinematics/_v3/sound.ts`: one line each), `src/art/monsters/index.ts` (exclusions).
+
+**Open (not blocking):** declare-time `hexGlint` (battle/declare.ts) is outside the guardGlint opt-out; wing_lady still
+hides the MonsterUnit glint with its own workaround (could move to `guardGlint: false`); `traps/chains_of_light.ts`
+reuses windmane_knight's charge sound; the hourglass_imp summon's cyan slam flash is the shared `runSummon` kit;
+the v1 ready ring and a full legal-attackers query are orchestrator calls; SFX were checked on timelines and levels
+only — the owner should listen to the clips under `shots/v3/kart-f/*/`.
