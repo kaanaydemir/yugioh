@@ -30,8 +30,8 @@ import { mul, paintDie, pipOffsets, rot, upright, type M3 } from '../../cinemati
 
 const FRAMES = 4;
 /** The die's centre in BIG px (the focus is the six's middle glint, just above it). */
-const DIE: readonly [number, number] = [47, 33];
-const FOCUS = [46, 25] as const;
+const DIE: readonly [number, number] = [47, 31];
+const FOCUS = [46, 23] as const;
 /** Half edge (big). */
 const HB = 14;
 
@@ -58,28 +58,68 @@ function oval(p: P, cx: number, cy: number, rx: number, ry: number, c: number): 
     }
 }
 
+/**
+ * A recessed pip stamped on a face (critic round 2: the rasterised ovals melted into uneven blobs): `size` 4 → a 4×4
+ * rounded socket (ink rim, gold0 hollow, one gold1 lip pixel low right — the same ink-rim + cap rule as the scene's
+ * die); 3 → a 3×3 plus-socket (ink arms, gold0 heart); 2 → a 2×3 upright ink notch (a face seen edge-on).
+ */
+function pip(p: P, cx: number, cy: number, size: 2 | 3 | 4): void {
+  if (size === 4) {
+    const x0 = Math.round(cx - 2);
+    const y0 = Math.round(cy - 2);
+    for (let y = 0; y < 4; y++)
+      for (let x = 0; x < 4; x++) {
+        const edge = x === 0 || y === 0 || x === 3 || y === 3;
+        const corner = (x === 0 || x === 3) && (y === 0 || y === 3);
+        if (corner) continue;
+        p.set(x0 + x, y0 + y, edge ? PAL.ink : x === 2 && y === 2 ? PAL.gold1 : PAL.gold0);
+      }
+    return;
+  }
+  const x = Math.round(cx);
+  const y = Math.round(cy);
+  if (size === 3) {
+    for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, 1]] as const) p.set(x + dx, y + dy, PAL.ink);
+    p.set(x, y, PAL.gold0);
+    return;
+  }
+  p.set(x, y - 1, PAL.ink);
+  p.set(x, y, PAL.ink);
+  p.set(x, y + 1, PAL.ink);
+  p.set(x - 1, y, PAL.gold0);
+}
+
+/** The die (faces from the shared cube rasteriser, pips stamped by hand per face). */
+function dieWithPips(s: P, cx: number, cy: number, h: number, sizes: Readonly<Record<number, 2 | 3 | 4>>): void {
+  paintDie(s, cx, cy, h, POSE, { noPips: true });
+  ink(s);
+  rim(s, PAL.teal3, { skip: [PAL.ink] });
+  // the pips go on after the outline and the rim light (stamped sockets stay clean)
+  for (const v of [6, 3, 2]) {
+    const sz = sizes[v];
+    if (!sz) continue;
+    for (const o of pipOffsets(POSE, h, v)) pip(s, cx + o.x, cy + o.y, sz);
+  }
+}
+
 function paintBig(l: ArtLayers, f: number): void {
   const bob = f === 1 || f === 2 ? -1 : 0;
   const [cx, cy0] = DIE;
   const cy = cy0 + bob;
   paintBackdrop(l.backdrop, 'SPELL', { focus: [DIE[0], DIE[1] - 3], radius: 36 });
-  // the bounce shadow where it last hit (backdrop: flat night1, no outline)
-  oval(l.backdrop, 20, 59, 10, 2.5, PAL.night1);
-  // the die (subject)
+  // its shadow on the floor far below: a flat 2:1 night oval, DETACHED from the die (it floats at the top of its
+  // throw), a pixel narrower when it bobs up
+  oval(l.backdrop, 50, 64.5, 8 - (bob ? 1 : 0), 2.5, PAL.ink);
+  // the die (subject): the six square-ish to us (4×4 sockets), the 3 below it (3×3 sockets)
   const s = l.subject;
-  paintDie(s, cx, cy, HB, POSE, { pip: 0.2 });
-  ink(s);
-  rim(s, PAL.teal3, { skip: [PAL.gold0, PAL.ink] });
+  // (the 2 on the narrow right side is seen almost edge-on: no pips there, they would read as strays)
+  dieWithPips(s, cx, cy, HB, { 6: 4, 3: 3 });
   const L = l.light;
-  // the felt it is falling onto: a flat gold light spot (two bands), the die's own small shadow in it
-  oval(L, 52, 61, 17, 3.5, PAL.gold0);
-  oval(L, 52, 61, 11, 2.2, PAL.gold1);
-  oval(L, 52, 61, 5 + (f % 2), 1.2, PAL.night0);
   // three motion arcs: the spin's trail, concentric strokes round the die's trailing (left) side, inner gold4 →
   // outer gold2; each breaks off at its tail end, and the break walks along the arc frame by frame
   [31, 35, 39].forEach((r, ai) => {
     const a0 = (150 + ai * 6) * (Math.PI / 180);
-    const a1 = (232 - ai * 10) * (Math.PI / 180);
+    const a1 = (226 - ai * 10) * (Math.PI / 180);
     const n = Math.round(r * (a1 - a0) * 1.4);
     let px = -99;
     let py = -99;
@@ -91,8 +131,7 @@ function paintBig(l: ArtLayers, f: number): void {
       if (x === px && y === py) continue;
       px = x;
       py = y;
-      if (y > 58 || y < 2) continue;
-      // the tail (t → 1, lower left) thins into dashes
+      if (y > 56 || y < 2) continue;
       if (t > 0.7 && (i + f) % 3 === 0) continue;
       L.set(x, y, [PAL.gold4, PAL.gold3, PAL.gold2][ai]);
     }
@@ -115,15 +154,6 @@ function paintBig(l: ArtLayers, f: number): void {
       L.set(x, y + 1, PAL.gold2);
     }
   });
-  // dust kicked up at the bounce (stone tones, rising a step a frame)
-  const dust: readonly (readonly [number, number])[] = [
-    [12, 56],
-    [16, 53],
-    [27, 55],
-    [31, 57],
-    [22, 52],
-  ];
-  dust.forEach(([x, y], i) => L.set(x, y - ((f + i) % 2), i % 2 ? PAL.stone3 : PAL.mist));
   // the six's glint (the focus): on the face's lit upper rim, between the top pips — never on a pip
   const offs = pipOffsets(POSE, HB, 6);
   const gx = Math.round(cx + (offs[0].x + offs[3].x) / 2);
@@ -135,71 +165,62 @@ function paintBig(l: ArtLayers, f: number): void {
   }
 }
 
-/** The small die, drawn by hand on the 44×34 grid (see the header). (fx, fy) = the front face's top-left corner. */
+/** Half edge of the small die (it is the big one's pose at 1×, its pips stamped as clean 2×2 ink squares). */
+const HS = 6;
+const SMALL_DIE: readonly [number, number] = [24, 13];
+
 function paintSmall(l: ArtLayers, f: number): void {
   const bob = f === 1 || f === 2 ? -1 : 0;
+  const [cx, cy0] = SMALL_DIE;
+  const cy = cy0 + bob;
   paintBackdrop(l.backdrop, 'SPELL', { focus: [DIE[0], DIE[1] - 3], radius: 36 });
-  oval(l.backdrop, 9, 29, 5, 1.3, PAL.night1);
+  // the floating die's shadow: a flat 2:1 night oval well below it
+  oval(l.backdrop, 24, 31, 4 - (bob ? 1 : 0), 2, PAL.ink);
   const s = l.subject;
-  const FW = 15; // front face size
-  const D = 4; // depth of the side / bottom (the 3/4 offset)
-  const fx = 15;
-  const fy = 7 + bob;
-  // seen from a little below and to the right, like the big one (caught high in its throw, the six tipped toward the
-  // key light): the right side (mid gold2, its lit edge gold3) and the underside (shade gold1) lean down-right
-  for (let c = 1; c <= D; c++) for (let y = fy + c; y < fy + FW + c; y++) s.set(fx + FW - 1 + c, y, c === 1 ? PAL.gold3 : PAL.gold2);
-  for (let r = 1; r <= D; r++) for (let x = fx + r; x < fx + FW + r; x++) s.set(x, fy + FW - 1 + r, PAL.gold1);
-  // the front face: gold3, one gold4 highlight run on its top edge only, a gold2 band on its lower / right inner edge
-  for (let y = fy; y < fy + FW; y++) for (let x = fx; x < fx + FW; x++) s.set(x, y, PAL.gold3);
-  for (let x = fx + 1; x < fx + FW - 2; x++) s.set(x, fy, PAL.gold4);
-  for (let y = fy + 1; y < fy + FW - 3; y++) s.set(fx, y, PAL.gold4);
-  for (let x = fx + 1; x < fx + FW; x++) s.set(x, fy + FW - 1, PAL.gold2);
-  for (let y = fy + 1; y < fy + FW; y++) s.set(fx + FW - 1, y, PAL.gold2);
-  // the six: 2×2 ink pips in a clean 2×3 grid (3 px in from the sides; rows 2, 6, 10 px down)
-  for (const px of [fx + 3, fx + FW - 5])
-    for (const py of [fy + 3, fy + 7, fy + 11])
-      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) s.set(px + dx, py + dy, PAL.ink);
-  // the side's one pip (a 3's middle one), a dark 2-px stroke along its lean
-  s.set(fx + FW + 1, fy + 8, PAL.gold0);
-  s.set(fx + FW + 2, fy + 9, PAL.gold0);
+  // the same tilted pose as the big (one corner toward us): faces from the cube rasteriser, the six's pips stamped as
+  // 2×2 ink squares, the 3 below as single dark pixels
+  paintDie(s, cx, cy, HS, POSE, { noPips: true, corner: 0.15 });
   ink(s);
-  rim(s, PAL.teal3, { skip: [PAL.gold0, PAL.ink, PAL.gold4, PAL.gold3] });
+  rim(s, PAL.teal3, { skip: [PAL.ink, PAL.gold4, PAL.gold3] });
+  for (const o of pipOffsets(POSE, HS, 6)) {
+    const x = Math.round(cx + o.x - 0.5);
+    const y = Math.round(cy + o.y - 0.5);
+    s.set(x, y, PAL.ink);
+    s.set(x + 1, y, PAL.ink);
+    s.set(x, y + 1, PAL.ink);
+    s.set(x + 1, y + 1, PAL.gold0);
+  }
+  for (const o of pipOffsets(POSE, HS, 3)) s.set(Math.round(cx + o.x), Math.round(cy + o.y), PAL.gold0);
   const L = l.light;
-  // the gold light spot it falls onto
-  oval(L, 25, 30, 10, 1.8, PAL.gold0);
-  oval(L, 25, 30, 6, 1.1, PAL.gold1);
-  // two motion arcs: 1-px strokes up from the bounce on the floor to the die (at 1× the big's spin arcs would merge
-  // with the portal's rim), the bright step walking toward the die every other frame
-  (
-    [
-      [5, 28, 14, 14, 5],
-      [9, 29, 14, 20, 3],
-    ] as const
-  ).forEach(([sx, sy, ex, ey, h], ai) => {
+  // two clean concentric gold arcs on the trailing (left, lower) side of the spin, the bright step walking along them
+  [16, 19].forEach((r, ai) => {
+    const a0 = (140 + ai * 8) * (Math.PI / 180);
+    const a1 = (222 - ai * 8) * (Math.PI / 180);
+    const n = Math.round(r * (a1 - a0) * 1.6);
     let px = -99;
     let py = -99;
-    for (let i = 0; i <= 24; i++) {
-      const t = i / 24;
-      const x = Math.round(sx + (ex - sx) * t);
-      const y = Math.round(sy + (ey - sy) * t - Math.sin(t * Math.PI) * h);
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const ang = a0 + (a1 - a0) * t;
+      const x = Math.round(cx + Math.cos(ang) * r);
+      const y = Math.round(cy + Math.sin(ang) * r * 0.85);
       if (x === px && y === py) continue;
       px = x;
       py = y;
-      const band = t + ((f + ai) % 2 ? 0.12 : 0) > 0.6 ? 0 : 1;
-      L.set(x, y, band === 0 ? PAL.gold4 : PAL.gold2);
+      if (y < 1 || y > 30) continue;
+      const lit = Math.abs(t - ((f * 0.25 + ai * 0.12) % 1)) < 0.14;
+      L.set(x, y, lit ? PAL.gold4 : ai === 0 ? PAL.gold3 : PAL.gold2);
     }
   });
   // three sparkles
   const sp: readonly (readonly [number, number])[] = [
     [37, 5],
     [40, 15],
-    [9, 8],
+    [36, 24],
   ];
   sp.forEach(([x, y], i) => {
     if ((f + i) % 4 !== 3) L.set(x, y, (f + i) % 2 ? PAL.gold4 : PAL.white);
   });
-  L.set(5, 27 - (f % 2), PAL.mist);
-  L.set(13, 28 - ((f + 1) % 2), PAL.stone3);
 }
 
 const art: CardArtV3 = {

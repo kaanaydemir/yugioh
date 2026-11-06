@@ -28,9 +28,11 @@ export interface CageGeo {
   /** The row through the middle (ridge) and the door's centre column. */
   rm: number;
   cm: number;
-  /** Wall height and the vault's rise (px). */
+  /** Wall height and the vault's rise at the ends (px); the DOME over the middle lane: its half-width (columns) and rise. */
   H: number;
   VR: number;
+  DW: number;
+  DR: number;
   /** Bar columns along the long sides (k = 0 … n; k = 0 and n are the corner posts). */
   bars: number[];
   /** Rows of the bars on the short sides (j = 0 … m; the ends are the corner posts). */
@@ -63,7 +65,10 @@ export function cageGeo(target: PlayerId): CageGeo {
   const rB = r + 0.375;
   // trimmed (round 2): the neighbouring row's sprites stay clear of the rear rail and the vault
   const H = R(44 * K);
-  const VR = R(10 * K);
+  const VR = R(7 * K);
+  // round 3: a real birdcage DOME over the middle lane (the silhouette people remember), the sun finial on it
+  const DW = 0.75;
+  const DR = R(24 * K);
   const n = R((c1 - c0) * 4);
   const bars: number[] = [];
   for (let k = 0; k <= n; k++) bars.push(c0 + k / 4);
@@ -71,29 +76,55 @@ export function cageGeo(target: PlayerId): CageGeo {
   for (let j = 0; j <= 3; j++) sideRows.push(rA + j / 4);
   const cm = lanes[LANE_MID];
   const kc = R((cm - c0) * 4);
-  const top = Math.min(cp(c0, rA, H + 8).y, cp(c0, r, H + VR + 12).y, cp(c1, rA, H + 8).y);
+  const top = Math.min(cp(c0, rA, H + 8).y, cp(c0, r, H + VR + 12).y, cp(c1, rA, H + 8).y, cp(cm, r, H + VR + DR + 6).y);
   const ox = cp(c0, rB, 0).x - 8;
   const oy = top - 6;
   const w = cp(c1, rA, 0).x + 8 - ox;
   const h = cp(c1, rB, 0).y + 8 - oy;
-  return { target, c0, c1, rA, rB, rm: r, cm, H, VR, bars, sideRows, kh: kc - 1, kc, kl: kc + 1, dw: 0.5, ox, oy, w, h };
+  // the door: ONE COLUMN wide (four bar spacings), a real set piece in the middle of the sword side
+  return { target, c0, c1, rA, rB, rm: r, cm, H, VR, DW, DR, bars, sideRows, kh: kc - 2, kc, kl: kc + 2, dw: 1, ox, oy, w, h };
+}
+
+/**
+ * The vault's rise over column `col`: the low end hoops step down toward the cage's ends (3 → VR px), and over the
+ * middle lane a DOME rises (a hemisphere profile, DR px more at its crown) — a birdcage stretched over the row.
+ */
+export function vrAt(g: CageGeo, col: number): number {
+  const d = Math.abs(col - g.cm);
+  if (d < g.DW) {
+    const u = d / g.DW;
+    return g.VR + g.DR * Math.sqrt(1 - u * u);
+  }
+  const far = Math.max(g.cm - g.c0, g.c1 - g.cm);
+  const v = 1 - Math.min(1, (d - g.DW) / Math.max(0.01, far - g.DW));
+  return R(3 + (g.VR - 3) * v);
+}
+
+/** True for a bar column under the dome (its hoop is drawn at every bar there). */
+function inDome(g: CageGeo, col: number): boolean {
+  return Math.abs(col - g.cm) < g.DW - 0.01;
 }
 
 /** Where the dawn sun sits (its centre) at rest. */
 export function sunAt(g: CageGeo): XY {
-  const p = cp(g.cm, g.rm, g.H + g.VR);
-  return { x: p.x, y: p.y - 8 };
+  const p = cp(g.cm, g.rm, g.H + R(vrAt(g, g.cm)));
+  return { x: p.x, y: p.y - 7 };
+}
+
+/** True for a front bar inside the door's opening (the door's own drawing carries its bars). */
+export function inDoor(g: CageGeo, k: number): boolean {
+  return k >= g.kh && k <= g.kl;
 }
 
 /** The front bars that are DAWN SWORDS (every second one, not the door's posts) and the plain rods between them. */
 export function swordKs(g: CageGeo): number[] {
   const out: number[] = [];
-  for (let k = 2; k < g.bars.length - 1; k += 2) if (k !== g.kc && k !== g.kh && k !== g.kl) out.push(k);
+  for (let k = 2; k < g.bars.length - 1; k += 2) if (!inDoor(g, k)) out.push(k);
   return out;
 }
 export function rodKs(g: CageGeo): number[] {
   const out: number[] = [];
-  for (let k = 1; k < g.bars.length - 1; k++) if (k % 2 === 1 && k !== g.kh && k !== g.kl && k !== g.kc) out.push(k);
+  for (let k = 1; k < g.bars.length - 1; k++) if (k % 2 === 1 && !inDoor(g, k)) out.push(k);
   return out;
 }
 /** The blade's span on a front sword bar (heights above the floor): tip … guard. */
@@ -101,10 +132,18 @@ export function bladeSpan(g: CageGeo): { tip: number; guard: number } {
   return { tip: 1, guard: g.H - 8 };
 }
 
-/** The padlock's hanging point (the top of its shackle) on the closed door, at rest. */
+/** The padlock's hanging point (the top of its shackle) on the latch, at rest: high on the latch post, under the
+ *  lintel, so the lock stays clear of the stat plates below the row (round 3). */
 export function lockAt(g: CageGeo): XY {
-  const p = cp(g.bars[g.kl], g.rB, R(g.H * 0.72));
-  return { x: p.x - 1, y: p.y + 1 };
+  // just outside the latch post (the door's far side): clear of the middle lane's stat plate
+  const p = cp(g.bars[g.kl], g.rB, g.H - 5);
+  return { x: p.x + 5, y: p.y };
+}
+
+/** The latch point on the closed door (where the slam strikes). */
+export function latchAt(g: CageGeo): XY {
+  const p = cp(g.bars[g.kl], g.rB, R(g.H * 0.5));
+  return { x: p.x - 2, y: p.y };
 }
 
 /** The door's hinge floor point. */
@@ -176,17 +215,17 @@ const POMMEL = ['.kkk.', 'kwabk', 'kabck', '.kkk.'];
 const DULL: Record<string, number> = { ...KEY, w: PAL.gold3, a: PAL.gold2, b: PAL.gold1, c: PAL.gold1, d: PAL.gold0 };
 
 /**
- * A DAWN SWORD planted tip-down at floor point f: a 3-px blade (the left edge white — it catches the dawn — a gold4
- * core with a gold3 fuller, a gold3 back edge) tapering to a 1-px tip at `tip`, a 9-px crossguard at `guard`, a
- * wrapped grip up to `top` and a round pommel above it. `snapped`: only the lower part of the blade is left (the
- * break), its top a jagged white.
+ * A DAWN SWORD planted tip-down at floor point f: a 3-px STEEL blade (round 3: silver, not gold — the swords read
+ * as swords among the gilded rods; lit: a white edge, a mist core with a steel fuller, a steel back; dull: mist /
+ * steel / night4) tapering to a 1-px tip at `tip`, a 9-px GILDED crossguard at `guard`, a wrapped grip up to `top`
+ * and a round pommel above it. `snapped`: only the lower part of the blade is left (the break), its top a jagged white.
  */
 export function sword(p: Pc, g: CageGeo, f: XY, o: { tip: number; guard: number; top: number; lit?: boolean; snapped?: boolean }): void {
   const lit = o.lit !== false;
-  const edge = lit ? PAL.white : PAL.gold3;
-  const core = lit ? PAL.gold4 : PAL.gold2;
-  const back = lit ? PAL.gold3 : PAL.gold1;
-  const fuller = lit ? PAL.gold3 : PAL.gold1;
+  const edge = lit ? PAL.white : PAL.mist;
+  const core = lit ? PAL.mist : PAL.steel;
+  const back = lit ? PAL.steel : PAL.night4;
+  const fuller = lit ? PAL.steel : PAL.night4;
   const end = o.snapped ? o.tip + R((o.guard - o.tip) * 0.42) : o.guard - 1;
   for (let h = o.tip; h <= end; h++) {
     const d = h - o.tip;
@@ -197,7 +236,7 @@ export function sword(p: Pc, g: CageGeo, f: XY, o: { tip: number; guard: number;
       let c = x === -1 ? edge : x === 0 ? core : back;
       if (d < 2) c = edge;
       if (x === 0 && h > o.guard - 12 && h < o.guard - 2) c = fuller;
-      if (o.snapped && h >= end - 1) c = (h + x) % 2 === 0 ? PAL.white : PAL.gold4;
+      if (o.snapped && h >= end - 1) c = (h + x) % 2 === 0 ? PAL.white : PAL.mist;
       put(p, g, f.x + x, f.y - h, c);
     }
   }
@@ -229,13 +268,35 @@ function railPath(p: Pc, g: CageGeo, pts: readonly XY[], lit: number, shade: num
 }
 
 /** One hoop of the vault over column `col`: from the front top (φ = 0) over the ridge (π/2) to the back (π). */
-function hoop(g: CageGeo, col: number, from: number, to: number): XY[] {
+export function hoop(g: CageGeo, col: number, from: number, to: number): XY[] {
   const pts: XY[] = [];
-  const N = 10;
+  const vr = vrAt(g, col);
+  const N = vr > 12 ? 16 : 10;
   for (let i = 0; i <= N; i++) {
     const phi = from + ((to - from) * i) / N;
     const row = g.rm + (g.rB - g.rm) * Math.cos(phi);
-    pts.push(cp(col, row, g.H + g.VR * Math.sin(phi)));
+    pts.push(cp(col, row, g.H + vr * Math.sin(phi)));
+  }
+  return pts;
+}
+
+/** The bar indices that carry a hoop: every second bar, every bar under the dome. */
+export function hoopKs(g: CageGeo): number[] {
+  const out: number[] = [];
+  for (let k = 0; k < g.bars.length; k++) if (k % 2 === 0 || inDome(g, g.bars[k])) out.push(k);
+  return out;
+}
+
+/** The ridge along the crown (the dome sampled finely), as a polyline. */
+export function ridge(g: CageGeo): XY[] {
+  const pts: XY[] = [];
+  const N = R((g.c1 - g.c0) * 16);
+  let last: XY | null = null;
+  for (let i = 0; i <= N; i++) {
+    const c = g.c0 + ((g.c1 - g.c0) * i) / N;
+    const p = cp(c, g.rm, g.H + R(vrAt(g, c)));
+    if (!last || last.x !== p.x || last.y !== p.y) pts.push(p);
+    last = p;
   }
   return pts;
 }
@@ -265,7 +326,7 @@ export function paintBack(g: CageGeo): PixelCanvas {
   const p = new PixelCanvas(g.w, g.h);
   const n = g.bars.length - 1;
   // hoops: back halves
-  for (let k = 0; k <= n; k += 2) vaultLine(p, g, hoop(g, g.bars[k], Math.PI / 2, Math.PI), PAL.gold2, PAL.gold1);
+  for (const k of hoopKs(g)) vaultLine(p, g, hoop(g, g.bars[k], Math.PI / 2, Math.PI), PAL.gold2, PAL.gold1);
   // rods of the back side
   for (let k = 1; k < n; k++) rod(p, g, cp(g.bars[k], g.rA, 0), 3, g.H - 2, PAL.gold2, PAL.gold1);
   // rods of the left side
@@ -288,8 +349,9 @@ export function paintFront(g: CageGeo, o: { lit?: boolean; snapped?: boolean } =
   const p = new PixelCanvas(g.w, g.h);
   const n = g.bars.length - 1;
   // the vault: front halves of the hoops, the ridge
-  for (let k = 0; k <= n; k += 2) vaultLine(p, g, hoop(g, g.bars[k], 0, Math.PI / 2), PAL.gold3, PAL.gold1);
-  railPath(p, g, [cp(g.c0, g.rm, g.H + g.VR), cp(g.c1, g.rm, g.H + g.VR)], PAL.gold4, PAL.gold2);
+  for (const k of hoopKs(g)) vaultLine(p, g, hoop(g, g.bars[k], 0, Math.PI / 2), inDome(g, g.bars[k]) ? PAL.gold4 : PAL.gold3, inDome(g, g.bars[k]) ? PAL.gold2 : PAL.gold1);
+  railPath(p, g, ridge(g), PAL.gold4, PAL.gold2);
+
   // right side rods
   for (let j = 1; j < g.sideRows.length - 1; j++) rod(p, g, cp(g.c1, g.sideRows[j], 0), 3, g.H - 2, PAL.gold3, PAL.gold1);
   // the plain rods between the swords
@@ -310,12 +372,35 @@ export function paintFront(g: CageGeo, o: { lit?: boolean; snapped?: boolean } =
   return p;
 }
 
-/** The door's angles (degrees) — its drawings: 0 = shut. */
-export const DOOR_ANGLES = [0, 14, 28, 42, 56, 70] as const;
+/** The door's angles (degrees) — its drawings: 0 = shut, −8 = the slam's overshoot (into the cage), 100 = hanging
+ *  wide open toward the camera. */
+export const DOOR_ANGLES = [-8, 0, 15, 30, 45, 60, 75, 90, 100] as const;
+
+/** A heavy door rail: three tones (lit / mid / shade) between ink lines. */
+function heavyRail(p: Pc, g: CageGeo, a: XY, b: XY): void {
+  wline(p, g, { x: a.x, y: a.y - 2 }, { x: b.x, y: b.y - 2 }, PAL.ink);
+  wline(p, g, { x: a.x, y: a.y + 2 }, { x: b.x, y: b.y + 2 }, PAL.ink);
+  wline(p, g, { x: a.x, y: a.y - 1 }, { x: b.x, y: b.y - 1 }, PAL.gold4);
+  wline(p, g, a, b, PAL.gold3);
+  wline(p, g, { x: a.x, y: a.y + 1 }, { x: b.x, y: b.y + 1 }, PAL.gold1);
+}
+
+/** A door stile: 3 px (white edge | gold4 | gold2) between ink sides, from h0 to h1 at floor point f. */
+function stile(p: Pc, g: CageGeo, f: XY, h0: number, h1: number): void {
+  for (let h = h0; h <= h1; h++) {
+    put(p, g, f.x - 2, f.y - h, PAL.ink);
+    put(p, g, f.x - 1, f.y - h, PAL.white);
+    put(p, g, f.x, f.y - h, PAL.gold4);
+    put(p, g, f.x + 1, f.y - h, PAL.gold2);
+    put(p, g, f.x + 2, f.y - h, PAL.ink);
+  }
+}
 
 /**
- * The door at `deg` degrees open (it swings out toward the camera round its hinge post): two rails, a dawn sword in
- * the middle, the latch stile with its plate. `white`: the slam's white frame.
+ * The DOOR at `deg` degrees open (it swings out toward the camera round its hinge post): a real set piece one
+ * column wide — two heavy stiles (a white edge), three heavy rails, two gilded rods and a steel dawn sword between
+ * them, and a big SUN BOSS on its middle rail (foreshortened with the door: round face-on, a sliver edge-on).
+ * `white`: the slam's white frame.
  */
 export function paintDoor(g: CageGeo, deg: number, white = false, o: { lit?: boolean } = {}): PixelCanvas {
   const p = new PixelCanvas(g.w, g.h);
@@ -323,103 +408,138 @@ export function paintDoor(g: CageGeo, deg: number, white = false, o: { lit?: boo
   const hc = g.bars[g.kh];
   const at = (s: number, h: number): XY => cp(hc + s * g.dw * Math.cos(th), g.rB + s * g.dw * Math.sin(th), h);
   const lo = 4;
-  const hi = g.H - 7;
-  // the latch stile
-  const s1 = at(0.92, 0);
-  for (let h = 2; h <= g.H - 4; h++) {
-    put(p, g, s1.x - 1, s1.y - h, PAL.ink);
-    put(p, g, s1.x, s1.y - h, PAL.gold4);
-    put(p, g, s1.x + 1, s1.y - h, PAL.gold2);
-    put(p, g, s1.x + 2, s1.y - h, PAL.ink);
+  const hi = g.H - 6;
+  const mid = R(g.H * 0.5);
+  // the inner bars: two gilded rods and the steel sword in the middle
+  for (const s of [0.27, 0.73]) rod(p, g, at(s, 0), lo + 2, hi - 2, PAL.gold3, PAL.gold1);
+  sword(p, g, at(0.5, 0), { tip: lo + 1, guard: hi - 5, top: hi + 1, lit: o.lit });
+  // the rails
+  heavyRail(p, g, at(0.06, lo), at(0.95, lo));
+  heavyRail(p, g, at(0.06, mid), at(0.95, mid));
+  heavyRail(p, g, at(0.06, hi), at(0.95, hi));
+  // the stiles (hinge and latch)
+  stile(p, g, at(0.06, 0), 1, hi + 2);
+  stile(p, g, at(0.95, 0), 1, hi + 2);
+  // the SUN BOSS: an ellipse as wide as the door is face-on (screen x of the door's direction)
+  const face = Math.abs(Math.cos(th) - Math.sin(th));
+  const rx = Math.max(1, Math.min(5, R(5 * face)));
+  const c = at(0.5, mid);
+  const ry = 5;
+  for (let dy = -ry - 1; dy <= ry + 1; dy++) {
+    const hw = Math.round((rx + 0.5) * Math.sqrt(Math.max(0, 1 - (dy / (ry + 0.6)) ** 2)));
+    for (let dx = -hw - 1; dx <= hw + 1; dx++) put(p, g, c.x + dx, c.y + dy, PAL.ink);
   }
-  rail(p, g, at(0.06, lo), at(0.96, lo), PAL.gold3, PAL.gold1);
-  rail(p, g, at(0.06, hi), at(0.96, hi), PAL.gold4, PAL.gold2);
-  // the middle sword (between the door rails), in front of them
-  sword(p, g, at(0.5, 0), { tip: lo + 1, guard: hi - 6, top: hi + 2, lit: o.lit });
-  // a small sun boss on the door's middle (the latch plate)
-  const lp = at(0.92, R(g.H * 0.72));
-  stamp(p, g, ['kkkk', 'kabk', 'kbdk', 'kkkk'], lp.x - 1, lp.y - 2);
-  if (white) p.map((c) => (c === PAL.ink ? c : PAL.white));
+  for (let dy = -ry; dy <= ry; dy++) {
+    const hw = Math.round((rx + 0.5) * Math.sqrt(Math.max(0, 1 - (dy / (ry + 0.6)) ** 2)) - 0.5);
+    for (let dx = -hw; dx <= hw; dx++) {
+      let col: number = PAL.gold3;
+      if (dx < 0 && dy < 1) col = PAL.gold4;
+      if (dx > 0 && dy > 0) col = PAL.gold2;
+      if (Math.abs(dy) === ry || Math.abs(dx) === hw) col = dx > 0 || dy > 0 ? PAL.gold1 : PAL.gold3;
+      put(p, g, c.x + dx, c.y + dy, col);
+    }
+  }
+  if (rx >= 2) {
+    put(p, g, c.x - 1, c.y - 2, PAL.white);
+    put(p, g, c.x - 2, c.y - 1, PAL.white);
+  }
+  // its rays: a pixel above and below, and to both sides when face-on
+  put(p, g, c.x, c.y - ry - 2, PAL.gold4);
+  put(p, g, c.x, c.y + ry + 2, PAL.gold3);
+  if (rx >= 3) {
+    put(p, g, c.x - rx - 2, c.y, PAL.gold4);
+    put(p, g, c.x + rx + 2, c.y, PAL.gold3);
+  }
+  if (white) p.map((col) => (col === PAL.ink ? col : PAL.white));
   return p;
 }
 
 // ================================================================ the padlock (the counter)
 
-export const LOCK_W = 15;
-export const LOCK_H = 25;
+export const LOCK_W = 23;
+export const LOCK_H = 27;
 /** The padlock's anchor: the top of the shackle, centre. */
-export const LOCK_AX = 7;
-export const LOCK_AY = 1;
-/** The tongues' plates (under the body): left x of tongue i, their top row and height. */
-export const TONGUE_X = [2, 6, 10] as const;
-export const TONGUE_Y = 19;
-export const TONGUE_H = 4;
-/** The drawings of a turning tongue (it turns on its long axis: face → narrowing → edge → its dark back). */
+export const LOCK_AX = 11;
+export const LOCK_AY = 2;
+/** The three TONGUE BOLTS on the body's face (round 3: big 3 × 6 plates in dark slots, not teeth under it): left x
+ *  of bolt i, their top row and height. */
+export const TONGUE_X = [4, 10, 16] as const;
+export const TONGUE_Y = 13;
+export const TONGUE_H = 6;
+/** The drawings of a turning tongue (it turns on its long axis: narrowing → edge-on white frame → its iron back). */
 export const TURN_STEPS = 4;
 
 /**
- * The padlock: a gilded body with a sun-keyhole and, hanging under it, three TONGUE PLATES (the counter): a lit
- * tongue is a 3 × 4 plate (white edge, gold4, gold3), an unlit one is turned: its short dark back (gold0 / gold1).
- * `turning` (an index) with `step` 0 … 3 draws that tongue mid-turn: 2 px, 1 px edge-on (white), 2 px dark, 3 px dark.
- * `open`: the shackle sprung up out of the body. `white`: a white frame (an event's first frame).
+ * The padlock (≈ 19 × 24 + its outline): a heavy shackle, a gilded body with three TONGUE BOLTS set in dark slots on
+ * its face — the counter: a lit bolt is gilded (a white edge and top, gold4, gold3), a turned one shows its IRON
+ * back (stone3 / stone2 / stone1 — another material at a glance) — and a keyhole under them.
+ * `turning` (an index) with `step` 0 … 3: narrowing (2 px bright), EDGE-ON (a 1-px white blade and its slot framed
+ * in white), its back coming round (2 px iron), turned. `open`: the shackle sprung up. `white`: a white frame.
+ * `pop`: a gold4 halo one pixel outside the ink (the tick's "pop" — the eye goes to the lock).
  */
-export function paintLock(lit: number, o: { turning?: number; step?: number; open?: boolean; white?: boolean } = {}): PixelCanvas {
+export function paintLock(lit: number, o: { turning?: number; step?: number; open?: boolean; white?: boolean; pop?: boolean } = {}): PixelCanvas {
   const p = new PixelCanvas(LOCK_W, LOCK_H);
   const up = o.open ? 3 : 0;
-  // the shackle: an arch 9 wide, 2 px thick (lit outer, shade inner)
-  const sx = 3;
-  const sy = 1 - up;
-  const arch = ['..aaaaa..', '.abccccb.', 'ab.....ba', 'ab.....ba', 'ab.....ba', 'ab.....ba', 'ab.....ba', 'ab.....ba'];
-  p.stamp(arch, { a: PAL.gold4, b: PAL.gold2, c: PAL.gold3 }, sx, Math.max(0, sy + 1));
+  // the shackle: an arch 11 wide, legs 2 px (lit outer, shade inner)
+  const arch = ['...aaaaa...', '.aabcccbaa.', 'ab.......ba', 'ab.......ba', 'ab.......ba', 'ab.......ba', 'ab.......ba', 'ab.......ba', 'ab.......ba'];
+  p.stamp(arch, { a: PAL.gold4, b: PAL.gold2, c: PAL.gold3 }, 6, Math.max(0, 2 - up));
   if (o.open) {
-    // the free leg out of the body: shorten the right leg's bottom
-    for (let y = 5; y < 9; y++) {
-      p.erase(sx + 7, y + sy);
-      p.erase(sx + 8, y + sy);
+    // the free leg out of the body
+    for (let y = 7; y < 11; y++) {
+      p.erase(15, y);
+      p.erase(16, y);
     }
   }
-  // the body (13 × 10)
-  const bx = 1;
-  const by = 9;
-  p.rect(bx, by, 13, 10, PAL.gold3);
-  p.hline(bx, bx + 12, by, PAL.gold4);
-  p.vline(bx, by, by + 9, PAL.gold4);
-  p.hline(bx, bx + 12, by + 9, PAL.gold1);
-  p.vline(bx + 12, by + 1, by + 9, PAL.gold2);
+  // the body (19 × 15)
+  const bx = 2;
+  const by = 10;
+  p.rect(bx, by, 19, 15, PAL.gold3);
+  p.hline(bx, bx + 18, by, PAL.gold4);
+  p.vline(bx, by, by + 14, PAL.gold4);
+  p.hline(bx, bx + 18, by + 14, PAL.gold1);
+  p.vline(bx + 18, by + 1, by + 14, PAL.gold2);
+  p.hline(bx + 1, bx + 17, by + 13, PAL.gold2);
   p.set(bx + 1, by + 1, PAL.white).set(bx + 2, by + 1, PAL.white).set(bx + 1, by + 2, PAL.white);
-  // the sun-keyhole: a small sun (gold4 rays round a dark well) with the key slot under it
-  p.stamp(['a...a', '.kkk.', '.kkk.', '..k..', '.kkk.'], { a: PAL.gold4, k: PAL.gold0 }, bx + 4, by + 2);
-  // the tongue plates
+  // the keyhole under the bolts
+  p.set(11, 21, PAL.gold0).set(10, 22, PAL.gold0).set(11, 22, PAL.gold0).set(12, 22, PAL.gold0).set(11, 23, PAL.gold0);
+  p.set(9, 21, PAL.gold4).set(13, 21, PAL.gold4);
+  // the tongue bolts in their slots
   for (let i = 0; i < 3; i++) {
     const x = TONGUE_X[i];
     const y = TONGUE_Y;
+    const H = TONGUE_H;
+    p.rect(x - 1, y - 1, 5, H + 2, PAL.gold0);
+    const litBolt = () => {
+      p.vline(x, y, y + H - 1, PAL.white);
+      p.vline(x + 1, y, y + H - 1, PAL.gold4);
+      p.vline(x + 2, y, y + H - 1, PAL.gold3);
+      p.hline(x, x + 2, y, PAL.white);
+      p.set(x + 1, y + H - 1, PAL.gold3).set(x + 2, y + H - 1, PAL.gold2);
+    };
+    const ironBolt = () => {
+      p.vline(x, y, y + H - 1, PAL.stone2);
+      p.vline(x + 1, y, y + H - 1, PAL.stone1);
+      p.vline(x + 2, y, y + H - 1, PAL.stone0);
+      p.set(x, y, PAL.stone3).set(x + 1, y + 2, PAL.stone0).set(x + 1, y + 3, PAL.stone0);
+    };
     if (o.turning === i) {
       const st = Math.max(0, Math.min(TURN_STEPS - 1, o.step ?? 1));
       if (st === 0) {
-        // narrowing: 2 px, still bright
-        p.vline(x, y, y + 3, PAL.white).vline(x + 1, y, y + 3, PAL.gold3);
+        p.vline(x + 1, y, y + H - 1, PAL.white).vline(x + 2, y, y + H - 1, PAL.gold4);
       } else if (st === 1) {
-        // edge-on: a 1-px white blade, longer by a pixel (it swings past the vertical)
-        p.vline(x + 1, y, y + 4, PAL.white);
+        // edge-on: a white blade, its slot framed in white
+        p.rect(x - 1, y - 1, 5, H + 2, PAL.white);
+        p.rect(x, y, 3, H, PAL.gold0);
+        p.vline(x + 1, y - 1, y + H, PAL.white);
       } else if (st === 2) {
-        // its back comes round: 2 px dark
-        p.vline(x + 1, y, y + 2, PAL.gold1).vline(x + 2, y, y + 2, PAL.gold0);
-      } else {
-        p.hline(x, x + 2, y, PAL.gold1).hline(x, x + 2, y + 1, PAL.gold0);
-      }
-    } else if (i < lit) {
-      p.vline(x, y, y + TONGUE_H - 1, PAL.white);
-      p.vline(x + 1, y, y + TONGUE_H - 1, PAL.gold4);
-      p.vline(x + 2, y, y + TONGUE_H - 2, PAL.gold3);
-      p.set(x + 1, y + TONGUE_H - 1, PAL.gold3);
-      p.erase(x + 2, y + TONGUE_H - 1);
-    } else {
-      // turned: the plate's short dark back
-      p.hline(x, x + 2, y, PAL.gold1).hline(x, x + 2, y + 1, PAL.gold0);
-    }
+        p.vline(x + 1, y, y + H - 1, PAL.stone2).vline(x + 2, y, y + H - 1, PAL.stone0);
+      } else ironBolt();
+    } else if (i < lit) litBolt();
+    else ironBolt();
   }
   p.outline(PAL.ink, { corners: false });
   if (o.white) p.map((c) => (c === PAL.ink ? c : PAL.white));
+  if (o.pop) p.outline(PAL.gold4, { corners: false });
   return p;
 }
 

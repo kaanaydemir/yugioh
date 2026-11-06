@@ -9,51 +9,42 @@
 // value: the tumble is computed backwards from the final pose, so every frame is consistent with where it ends.
 //
 // BEAT LIST (scene ms at 1×; × 1.35 in game time with the v3 tempo). Signature ≈ 2.8 s after the opening (D = the
-// die's birth; numbers are DIE_T below). Measured (tools/measure.mjs, game ms, activation → input): six 4.68 s,
-// three 4.23 s, one 4.02 s, set card 4.37 s; camera 0.
+// die's birth; numbers are DIE_T below). Measured (tools/measure.mjs, game ms, activation → input, round 3): six
+// 4.97 s, three 4.42 s, one 4.02 s, set card 4.58 s; camera 0.
 //   0      common v3 spell opening (spells/_kit): the card hovers beside its owner (a set card stands up on its tile),
-//          "TALİH ZARI" plate, short hover (hold 200 → 130)
-//   ~330   RELEASE: a gold orb leaves the card (a hand card: its top edge; a set card: its lower edge) for the caster's
-//          cupped light just in front of it — always over the BOARD floor (handSpawn: a hand card hovers out over the
-//          arena wall, so the die is born on the board edge in front of the card's top corner, clear of the duelist)
-//   D+0    FORM: the die condenses there in four native sizes (h 3 → 5 → 7 → 9, 28 ms apart: a white, two hot-gold
-//          silhouette frames, then its real faces), ten gold motes are pulled in, a gold light pool opens — e_dieForm
-//   D+100  RATTLE: four hard shakes (46 ms; ±2 px, a quarter turn about a random axis each: the faces flicker), motes
-//          spill off it — e_dieRattle (its knocks land on the shakes)
-//   D+290  WIND-UP: the die dips back 3 px and up (anticipation, 56 ms)
-//   D+346  THROW (from here until it lies still the die flies at DEPTH.FX: over every body and stat badge): a high arc (apex 42 px) to the first bounce, tumbling fast (4 quarter turns + a side wobble + a
-//          yaw, stepped π/16 angles), its 2:1 ink shadow running over the floor, smaller the higher it is — e_dieThrow
-//   D+646  BOUNCE 1: lands flat — "TA-K" (e_dieTak: corner + face slap), a 1-px dip, a ring of floor-grey puffs +
-//          gold chips, a gold floor ring and a light flash; up again 16 px (180 ms, 2 quarter turns)
-//   D+826  BOUNCE 2: "tak" (softer, higher), smaller dust; up 6 px (110 ms, 1 quarter turn)
-//   D+936  BOUNCE 3: "tak" (softest) + a little dust; it ROLLS edge over edge twice (120 + 160 ms, the centre lifting
-//          over the front edge each time, a puff on the first face landing) — e_dieRoll (knocks on the landings)
-//   D+1216 TEETER: it rocks up on its front edge (80 ms) and falls back flat (30 ms) — e_dieStop (tick + last clack)
-//   D+1326 STOP: the rolled face flashes gold4 for three frames, a gold floor ring, the pool swells.
-//          ONE: no teeter, no flash — a single dull "tok" (e_dieDud), grey dust squeezed out sideways along the floor,
-//          the die sags 1 px and its light dims
-//   D+1386 PIPS LIFT: one pip after another (62 ms apart; the ONE's lone pip slowly, 300 ms) lifts out of the top face
-//          (its socket goes dim) on a small arc to the FACE IN THE AIR 46 px above the die — the rolled face redrawn
-//          flat and big, facing the viewer (5×5 gold pips in a 30×30 gold frame that inks itself in three steps), so
-//          the number reads at a glance; each pip rings the next note of a rising major pentatonic run (e_diePip,
-//          pitched per pip: the roll is COUNTED in notes)
-//   +40    SPARKS: each pip in turn (36 ms apart) bursts in a 3-frame star and sends one gold spark per boosted
-//          monster on a curved path (220 ms, a 4-px stepped trail); every arrival STEPS that monster's badge by
-//          exactly +100, no roll (1700 → 1800 → 1900; e_dieTick pitched up the run, the plate blinks gold for two
-//          frames, a small gold burst + light on its body) — the badge counts
-//   last   every spark in: each monster's edge climbs gold (rimClimb), ONE gold number "+N00" pinned low on ITS OWN
-//          body (./_lucky_die_number: a 3-px float, gone in 0.8 s, awaited — never above its head, which on this board
-//          is the opponent's row; two that would touch fan apart sideways, 90 ms apart), e_dieBoost (rising run)
-//   SIX:   as the face completes — e_dieJackpot (the struck pentatonic chord) and three fireworks rise from the die
-//          and burst over the CASTER's boosted monsters (gold, the caster's colour, fire): rings in rings, blinking
-//          glitter, a gold glitter rain onto each head; air light only — e_dieFirework ×3 (three pitches)
-//   end    the die dissolves top-down into rising gold motes (e_dieFade, 240 ms), the light fades; the spent card is
-//          born on the floor under it and leaves for the graveyard (cardLeaves)
-// Where it lands: restSpot() scores a grid over the CASTER's side — its half of the bridge through its own monster
-// row (never past the bridge's middle line) — from the live board: no body in front of or under the die, no stat badge
-// under it, close to the boosted monsters (a short spark fan); the face in the air may slide sideways to keep clear
-// of badges, enemy bodies and the portrait screens. At rest the die sits above the badges (FX − 10) unless a body
-// stands in front of it. With the stock boards it lands on the caster's own empty lane.
+//          "TALİH ZARI" plate, short hover
+//   ~330   RELEASE: a gold orb leaves the card for the caster's cupped light just in front of it, over the BOARD floor
+//   D+0    FORM: the die condenses in four native sizes (white, hot gold, then its faces), motes pulled in — e_dieForm
+//   D+100  RATTLE: four hard shakes, a quarter turn each (the faces flicker) — e_dieRattle
+//   D+290  WIND-UP: a 3-px dip back and up
+//   D+346  THROW: an arc to the first bounce (higher for a long throw past a crowded row: it flies OVER the bodies and
+//          badges, never along them), tumbling, its 2:1 ink shadow on the floor — e_dieThrow
+//   +air   BOUNCES 1-3: "TA-K" (e_dieTak, wooden: 1.5 kHz body + 780 Hz formant + floor knock), dust ring, gold floor
+//          ring, light; every contact on FREE floor (planned with the rest spot — see below)
+//   then   ROLL edge over edge twice (e_dieRoll), TEETER (e_dieStop), STOP: the face flashes (ONE: no teeter, no flash,
+//          a dull "tok" — e_dieDud — grey dust squeezed out sideways, the light dims)
+//   +60    PIPS LIFT one by one (58 ms apart; the ONE's lone pip in 200 ms) to the FACE IN THE AIR (the rolled face
+//          redrawn flat and big, 30×30 gold frame), each ringing the next note of a rising major pentatonic run
+//          (e_diePip). ONE: as the lone pip settles the frame SAGS a pixel (its top dips, its corners droop).
+//          SIX: the struck pentatonic chord as the face completes (e_dieJackpot)
+//   then   SPARK WAVES, 62 ms apart: pip i bursts and sends one gold spark to every boosted monster; each arrival steps
+//          that badge by exactly +100 (blink, small burst, light) and ONE e_dieTick per wave rings pip i's note an
+//          octave up — the count is heard again, never a ratchet
+//   each   monster's last spark: its "+N00" (1×, one white frame then gold, no double-size pop) placed so it covers
+//          no stat plate, no other number, no enemy body; its edge climbs gold (not on a ONE); e_dieBoost on the first
+//   SIX:   150 ms after the last spark, three fireworks rise from the die and burst on CLEAR air on the caster's side
+//          (scored against enemy bodies and badges, the portrait screens, the duelists, the numbers, each other); the
+//          glitter rains from just above each boosted head onto that monster only — e_dieFirework ×3
+//   +200   the die dissolves top-down into rising motes (e_dieFade) while the spent card leaves for the graveyard
+//          from under it (at the same time, not after)
+// Where it lands and HOW: restSpot() scores a grid over the CASTER's side together with the whole path — each of the
+// three bounce contacts and the roll (no body in front of it, no stat badge under it, never on a monster's tile so
+// no dust under its feet, never on a deck / graveyard stack or a duelist, never on the opponent's half), the flight
+// samples (over badges, low over bodies), the bounces bent sideways and the rolls turned up to 60° off the throw when
+// that is clearer; the face in the air slides / lifts / sits beside the die to keep clear of badges (padded 6 px),
+// enemy bodies, duelists and the portrait screens. A hand card may set the die's floor point a little toward the
+// viewer; a set card throws from whichever side of its tile runs clearer. Low (rolling, at rest) the die is sorted
+// with the bodies by its floor point, always under the stat badges.
 // P2: everything mirrored — thrown from P2's side; its own monsters boosted.
 // The diceRoll event is this card's (registerLaneE): the activation hook plays it inside its own scene; a diceRoll that
 // reaches the director on its own (v3) plays the same die from the caster's cast spot.
@@ -737,7 +728,6 @@ function restSpot(ctx: AnyCtx, player: PlayerId, from: XY, targets: readonly XY[
     }
   const solid = [...avatars, ...props];
   let best: RestPlan | null = null;
-  const DBG: { q: XY; restC: number; face: number; path: number; score: number }[] = [];
   for (let k = 0.15; k <= Math.min(Math.abs(mr - mid) + 1.0, (BOARD_ROWS - 1) / 2 - 0.1) + 1e-6; k += 0.05)
     for (let col = 0.2; col <= BOARD_COLS - 1.2 + 1e-6; col += 0.1) {
       const row = mid + back * k;
@@ -757,9 +747,10 @@ function restSpot(ctx: AnyCtx, player: PlayerId, from: XY, targets: readonly XY[
         score += area(die, pad(bd.badge, 3)) * 8;
       }
       for (const a of solid) score += area(die, a) * 6;
-      const restC = score;
+      if (best && score >= best.score) continue;
       const fc = faceSpot(q, bodies, avatars, screens);
       score += fc.cost;
+      if (best && score >= best.score) continue;
       // the path: the cheapest bend
       let pathBest: { path: DiePath; cost: number } | null = null;
       for (const turn of [0, 0.5, -0.5, 1, -1])
@@ -786,12 +777,8 @@ function restSpot(ctx: AnyCtx, player: PlayerId, from: XY, targets: readonly XY[
       }
       if (!pathBest) continue;
       score += pathBest.cost;
-      DBG.push({ q, restC: R(restC), face: R(fc.cost), path: R(pathBest.cost), score: R(score) });
       if (!best || score < best.score) best = { ...q, occluded: bodies.some((bd) => bd.floor > q.y && area(die, bd.box) > 0), faceDx: fc.dx, faceDy: fc.dy, path: pathBest.path, score };
     }
-  DBG.sort((a, b) => a.score - b.score);
-  const seen: XY[] = [];
-  console.log('DIECAND', JSON.stringify(DBG.filter((c) => { if (seen.some((v) => Math.hypot(v.x - c.q.x, v.y - c.q.y) < 30)) return false; seen.push(c.q); return true; }).slice(0, 8)));
   if (!best) {
     const q = isoToScreen(BOARD_MID_COL, (inner + outer) / 2);
     best = { x: R(q.x), y: R(q.y), occluded: false, faceDx: 0, faceDy: 0, path: planPath(f0, q, 0), score: Infinity };
@@ -875,7 +862,6 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
   const axis: readonly [number, number, number] = [-d[1], d[0], 0]; // z × d: a forward roll
   const lerpXY = (a: XY, b: XY, t: number): XY => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
   const final = upright(N);
-  console.log('DIEDBG', JSON.stringify({spawn:r.spawn,floor:r.spawnFloor,rest:{x:rest.x,y:rest.y,fdx:rest.faceDx,fdy:rest.faceDy},b1,b2,b3,apex0}));
   // the tumble, counted backwards from the rest pose: angles (radians) at each contact
   const TH = { start: -QT * 9, b1: -QT * 5, b2: -QT * 3, b3: -QT * 2 };
   const PH = { start: QT * 2, b1: QT, b2: 0 };
@@ -1294,8 +1280,19 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   // a hand card: the die hangs in the air, and the floor point under it (where its shadow lies and the throw starts)
   // may sit a little further toward the viewer when that gives the throw a clearer run
   const options = set
-    ? [born, { spawn: { x: c.x - dir * 22, y: c.y + 4 }, floor: R(ip(set.home).y) }].map((b) => ({ b, extra: 0 }))
+    ? [22, -22, 34, -34].flatMap((dx) => [4, -8].map((dy) => ({ b: { spawn: { x: c.x + dir * dx, y: c.y + dy }, floor: R(ip(set.home).y) }, extra: Math.abs(dx) * 4 + Math.abs(dy) * 4 })))
     : [0, 12, 24].map((k) => ({ b: { spawn: born.spawn, floor: born.floor + k }, extra: k * 25 }));
+  // where the die hangs while it forms and rattles must not sit on a stat badge or a body either
+  const bodiesNow = boardBodies(ctx, player);
+  for (const o of options) {
+    const sp = o.b.spawn;
+    const box: Box = { x0: sp.x - 19, y0: sp.y - 19, x1: sp.x + 19, y1: sp.y + 19 };
+    for (const bd of bodiesNow) o.extra += area(box, pad(bd.badge, 2)) * 10 + area(box, bd.box) * 2;
+    if (set) {
+      for (const a of [avatarBox(0), avatarBox(1)]) o.extra += area(box, pad(a, 4)) * 10;
+      if (ARENA_NT) for (const r of SCREENS) o.extra += area(box, { x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h }) * 6;
+    }
+  }
   let plan: RestPlan | null = null;
   for (const o of options) {
     const pl = restSpot(ctx, player, { x: o.b.spawn.x, y: o.b.floor }, homes);

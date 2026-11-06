@@ -78,7 +78,6 @@ import {
   SUN_H,
   SUN_RISE,
   SUN_W,
-  TONGUE_H,
   TONGUE_X,
   TONGUE_Y,
   bladeSpan,
@@ -86,6 +85,7 @@ import {
   cp,
   footprint,
   frontFoot,
+  latchAt,
   lockAt,
   paintBack,
   paintBadge,
@@ -97,6 +97,7 @@ import {
   rodKs,
   sunAt,
   swordKs,
+  vrAt,
   type CageGeo,
 } from './_dawn_e_paint';
 import { debris, stickOf, type Stick } from './_dawn_e_break';
@@ -126,14 +127,16 @@ export const CAGE_T = Object.freeze({
   /** The dawn wave: per blade, and the left → right stagger of the whole row. */
   waveMs: 460,
   waveSpread: 180,
-  /** After the last reveal flip: a hold, then the door swings and slams. */
+  /** After the wave: a hold, then the door swings and slams (the reveal flips overlap it), its overshoot frame. */
   doorHold: 80,
   swing: 150,
   slamStop: 50,
-  /** After the slam: the hold, the cold (and lean), the padlock, the tongues, the badge, the end. */
-  slamHold: 160,
-  lean: [60, 60, 300, 70, 70] as readonly number[],
-  lockAfterCold: 520,
+  overshoot: 34,
+  /** After the slam: the hold, the cold (and lean; skipped on an empty row), the padlock, the tongues, the badge. */
+  slamHold: 100,
+  lean: [50, 50, 34, 280, 60, 60] as readonly number[],
+  leanStagger: 60,
+  lockAfterCold: 300,
   lockDrop: 100,
   tongue0: 160,
   tongueGap: 140,
@@ -142,7 +145,7 @@ export const CAGE_T = Object.freeze({
   /** A counter, the last counter and the haul. */
   tickMs: 650,
   springAt: 300,
-  haulAt: 620,
+  haulAt: 370,
   haul: 420,
   /** The break: sag, the collapse, the whole. */
   sag: 200,
@@ -154,7 +157,7 @@ export function castLength(): number {
   const T = CAGE_T;
   const land = T.drop + T.landStop + 17;
   const wave = T.sunAt + SUN_RISE * T.sunStep + T.waveMs + T.waveSpread;
-  const slam = T.doorHold + T.swing + T.slamStop;
+  const slam = T.doorHold + T.swing + T.slamStop + T.overshoot;
   const after = T.slamHold + T.lockAfterCold + T.lockDrop + 170 + T.tongue0 + 2 * T.tongueGap + T.badgeAfter + T.endAfter;
   return land + wave + slam + after;
 }
@@ -191,7 +194,7 @@ export function allCages(scene: Phaser.Scene): DawnCage[] {
 const motif = (px: () => import('../../art/pixel').PixelCanvas, ax = 0, ay = 0) => (): Motif => ({ px: px(), ax, ay });
 
 function geoKey(g: CageGeo): string {
-  return `dawnE2:${g.target}:${TILE_W}:${LANE_COLS.join('')}`;
+  return `dawnE3:${g.target}:${TILE_W}:${LANE_COLS.join('')}`;
 }
 
 /** The front layer with its swords dull (`lit` false) or bright; `white` = the land frame; `snapped` = the break. */
@@ -219,10 +222,10 @@ function doorTex(sc: Phaser.Scene, g: CageGeo, deg: number, lit: boolean, white 
   })).key;
 }
 
-type LockLook = { turning?: number; step?: number; open?: boolean; white?: boolean };
+type LockLook = { turning?: number; step?: number; open?: boolean; white?: boolean; pop?: boolean };
 
 function lockTex(sc: Phaser.Scene, lit: number, o: LockLook = {}): { key: string; ox: number; oy: number } {
-  const t = motifTexture(sc, `dawnE2:lock:${lit}:${o.turning ?? -1}:${o.step ?? -1}:${o.open ? 1 : 0}:${o.white ? 1 : 0}`, motif(() => paintLock(lit, o), LOCK_AX, LOCK_AY));
+  const t = motifTexture(sc, `dawnE3:lock:${lit}:${o.turning ?? -1}:${o.step ?? -1}:${o.open ? 1 : 0}:${o.white ? 1 : 0}:${o.pop ? 1 : 0}`, motif(() => paintLock(lit, o), LOCK_AX, LOCK_AY));
   return { key: t.key, ox: t.ax / t.w, oy: t.ay / t.h };
 }
 
@@ -231,7 +234,7 @@ function badgeTex(sc: Phaser.Scene, lit: number, o: { turning?: number; white?: 
 }
 
 function sunTex(sc: Phaser.Scene, lit: number, phase: number, white = false): string {
-  return motifTexture(sc, `dawnE2:sun:${lit}:${phase}:${white ? 1 : 0}`, motif(() => paintSun(lit, phase, white), SUN_C, SUN_CY)).key;
+  return motifTexture(sc, `dawnE3:sun:${lit}:${phase}:${white ? 1 : 0}`, motif(() => paintSun(lit, phase, white), SUN_C, SUN_CY)).key;
 }
 
 function chainTex(sc: Phaser.Scene, len: number): string {
@@ -441,7 +444,7 @@ export class DawnCage {
     let best: number = DOOR_ANGLES[0];
     for (const a of DOOR_ANGLES) if (Math.abs(a - deg) < Math.abs(best - deg)) best = a;
     this.doorDeg = best;
-    this.door.setTexture(doorTex(this.scene, this.g, best, this.bladesLit && best === 0, white));
+    this.door.setTexture(doorTex(this.scene, this.g, best, this.bladesLit, white));
   }
 
   private setLock(lit: number, o: LockLook = {}): void {
@@ -578,7 +581,8 @@ export class DawnCage {
   private badgeSpot(): XY {
     const t = this.tileRef && this.tileRef.active ? this.tileRef : null;
     const h = t ? ip(t.home) : zoneXY(this.owner, 'spellTrap', this.zone);
-    return { x: h.x, y: h.y - 3 };
+    // round 3: on the tile's LEFT corner, the far side from the counter chip (+10 px right) — clear of the stat plates
+    return { x: h.x - 13, y: h.y - 1 };
   }
 
   private setBadge(n: number, pop = false, o: { turning?: number; white?: boolean } = {}): void {
@@ -624,7 +628,7 @@ export class DawnCage {
       this.setSun(0);
       this.lockShown = false;
       this.dy = -T.fallH;
-      this.setDoor(70);
+      this.setDoor(100);
       this.place();
       this.show(true);
       const mid = cp(g.cm, g.rm, 0);
@@ -639,14 +643,14 @@ export class DawnCage {
       await run(sc, T.drop, (t) => {
         const k = E.inQuad(t);
         this.dy = -T.fallH * (1 - k);
-        // the door swings as it falls
-        this.setDoor(t < 0.5 ? 56 + 14 * Math.round(Math.sin(t * 12) * 0.5 + 0.5) : 70);
+        // the door hangs WIDE OPEN toward the camera and swings as the cage falls (the viewer waits for it)
+        this.setDoor(t < 0.6 ? (Math.floor(t * 10) % 2 ? 90 : 100) : 100);
         this.place();
         drawShadow(t < 0.4 ? 0.25 : t < 0.8 ? 0.5 : 0.75);
       });
       // ---- LAND
       this.dy = 0;
-      this.setDoor(70);
+      this.setDoor(100);
       this.place();
       shadow.destroy();
       playV3('e_dawnLand', { volume: 0.95, pan: panAt(mid.x) });
@@ -664,13 +668,14 @@ export class DawnCage {
       await wait(sc, 17);
       hit.destroy();
       this.setWhite(false);
-      this.setDoor(70);
-      // the bounce
+      this.setDoor(100);
+      // the bounce (the open door rocks with it: 100 → 90 → 100)
       bg((async () => {
-        for (const b of T.bounce) {
+        for (const [i, b] of T.bounce.entries()) {
           await wait(sc, T.bounceStep);
           if (this.dead) return;
           this.dy = b;
+          if (this.busy && this.doorDeg >= 90) this.setDoor(i === 0 || i === 1 ? 90 : 100);
           this.place();
         }
       })());
@@ -685,15 +690,14 @@ export class DawnCage {
         if (k === 1) this.setSun(1);
       }
       this.setSun(SUN_RISE);
-      // … and the dawn wave runs down every sword
+      // … and the dawn wave runs down every sword (the reveal flips start as it reaches their lanes)
       const flips: Promise<unknown>[] = [];
       await this.dawnWave((z) => {
         const p = o.onReach?.(z);
         if (p) flips.push(p);
       });
-      await Promise.all(flips);
       await wait(sc, T.doorHold);
-      // ---- THE DOOR swings shut … SLAM
+      // ---- THE DOOR swings shut … SLAM (the flips run on under it)
       playV3('e_dawnSwing', { volume: 0.7, pan: panAt(lockAt(g).x) });
       const d0 = this.doorDeg;
       await run(sc, T.swing, (t) => {
@@ -705,14 +709,25 @@ export class DawnCage {
       this.slamSparks();
       bg(shake(sc, 100, 1));
       await freeze(sc, T.slamStop);
+      // the overshoot: the door bangs past the frame (−8°) and back
+      this.setDoor(-8);
+      await wait(sc, T.overshoot);
       this.setDoor(0);
       bg(this.rattle(3));
+      await Promise.all(flips);
       await wait(sc, T.slamHold);
-      // ---- CAGED: the cold and the lean (the frost stays)
+      // ---- CAGED: the cold and the lean (the frost stays); an empty row goes straight to the padlock
       if (this.dead) return;
-      const cold = this.cold(this.unitsFn());
-      await wait(sc, T.lockAfterCold);
-      // ---- THE PADLOCK
+      const units = this.unitsFn().filter((u) => u.active && u.visible);
+      let cold: Promise<void> = Promise.resolve();
+      if (units.length) {
+        cold = this.cold(units);
+        await wait(sc, T.lockAfterCold);
+      } else {
+        this.coldOn(220);
+        this.frostOn();
+      }
+      // ---- THE PADLOCK (it drops while the caged monsters ease back off the bars)
       if (this.dead) return;
       await this.dropLock();
       await wait(sc, T.tongue0);
@@ -852,18 +867,36 @@ export class DawnCage {
     for (let i = 0; i < LANE_COLS.length; i++) if (!reached.has(i)) onReach?.(i);
   }
 
-  /** The slam: sparks burst from the latch, a white flare. */
+  /** The slam: sparks burst from the latch, a white ring spreads off the latch post, a white flare. */
   private slamSparks(): void {
     const sc = this.scene;
-    const l = lockAt(this.g);
+    const l = latchAt(this.g);
     const sp = new Sparks(sc, this.depthFront + 0.3);
-    for (let i = 0; i < fxCount(12); i++) {
-      const a = rr(-Math.PI, 0);
-      const v = rr(40, 110);
-      sp.add({ x: l.x, y: l.y + 6, vx: Math.cos(a) * v, vy: Math.sin(a) * v, ay: 260, drag: 1, life: rr(180, 320), ramp: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], tex: i < 2 ? TEX.plus : TEX.px1, fade: 0.4 });
+    for (let i = 0; i < fxCount(14); i++) {
+      const a = rr(-Math.PI * 1.1, 0.1);
+      const v = rr(50, 120);
+      sp.add({ x: l.x, y: l.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, ay: 260, drag: 1, life: rr(180, 340), ramp: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], tex: i < 3 ? TEX.plus : TEX.px1, fade: 0.4 });
     }
     sp.close();
-    void lightFlash(sc, l.x, l.y + 6, PAL.gold4, 26, 200, { floorY: cp(this.g.bars[this.g.kl], this.g.rB, 0).y, intensity: 0.8 });
+    bg(this.airRing(l.x, l.y, 3, 12, 170));
+    void lightFlash(sc, l.x, l.y, PAL.gold4, 30, 220, { floorY: cp(this.g.bars[this.g.kl], this.g.rB, 0).y, intensity: 0.9, air: 0.8 });
+  }
+
+  /** A ring in the AIR (a circle in screen space, 1 px: white → gold4 → gold3) spreading from r0 to r1. */
+  private async airRing(x: number, y: number, r0: number, r1: number, ms: number): Promise<void> {
+    const ras = new Raster(this.scene, x - r1 - 2, y - r1 - 2, 2 * r1 + 5, 2 * r1 + 5, this.depthFront + 0.31);
+    await run(this.scene, ms, (t) => {
+      const r = R(lerp(r0, r1, E.outQuad(t)));
+      const c = t < 0.34 ? PAL.white : t < 0.67 ? PAL.gold4 : PAL.gold3;
+      ras.draw((q) => {
+        const n = Math.max(12, R(r * 7));
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2;
+          q.px(R(x + Math.cos(a) * r), R(y + Math.sin(a) * r), c);
+        }
+      });
+    });
+    ras.destroy();
   }
 
   /** The front bars rattle ±1 px for `n` frames (34 ms). */
@@ -886,18 +919,18 @@ export class DawnCage {
     this.lock.setVisible(true);
     playV3('e_dawnLockDrop', { volume: 0.55, pan: panAt(lockAt(this.g).x) });
     await run(sc, CAGE_T.lockDrop, (t) => {
-      this.lockDy = -R(12 * (1 - E.inQuad(t)));
+      this.lockDy = -R(14 * (1 - E.inQuad(t)));
       this.place();
     });
     this.lockDy = 0;
     playV3('e_dawnShackle', { volume: 1, pan: panAt(lockAt(this.g).x) });
-    this.setLock(0, { white: true });
+    this.setLock(0, { white: true, pop: true });
     const l = lockAt(this.g);
-    this.twinkle(l.x, l.y + 2);
+    this.twinkle(l.x, l.y + 3);
     const sp = new Sparks(sc, this.depthFront + 0.3);
-    for (let i = 0; i < fxCount(6); i++) sp.add({ x: l.x + rr(-3, 3), y: l.y + 8, vx: rr(-50, 50), vy: -rr(20, 60), ay: 240, life: rr(160, 260), ramp: [PAL.white, PAL.gold4, PAL.gold3], fade: 0.4 });
+    for (let i = 0; i < fxCount(6); i++) sp.add({ x: l.x + rr(-3, 3), y: l.y + 9, vx: rr(-50, 50), vy: -rr(20, 60), ay: 240, life: rr(160, 260), ramp: [PAL.white, PAL.gold4, PAL.gold3], fade: 0.4 });
     sp.close();
-    void lightFlash(sc, l.x, l.y + 10, PAL.gold4, 18, 200, { intensity: 0.6, air: 0.6, floorY: cp(this.g.bars[this.g.kl], this.g.rB, 0).y });
+    void lightFlash(sc, l.x, l.y + 15, PAL.gold4, 20, 200, { intensity: 0.6, air: 0.6, floorY: cp(this.g.bars[this.g.kl], this.g.rB, 0).y });
     await wait(sc, 34);
     this.setLock(0);
     // the bob: down 2, up, 1, settle
@@ -912,9 +945,10 @@ export class DawnCage {
   private lightTongue(i: number): void {
     const l = lockAt(this.g);
     playV3('e_dawnTongue', { volume: 0.85, pitch: [1, 1.122, 1.335][i], pan: panAt(l.x) });
-    this.setLock(i, { turning: i, step: 1 });
+    // the bolt turns its gilded face out: edge-on white, then lit (and the lock pops)
+    this.setLock(i, { turning: i, step: 1, pop: true });
     bg(wait(this.scene, 34).then(() => this.alive && this.setLock(i + 1)));
-    this.twinkle(l.x - LOCK_AX + TONGUE_X[i] + 1, l.y - LOCK_AY + TONGUE_Y + TONGUE_H + 1);
+    this.twinkle(l.x - LOCK_AX + TONGUE_X[i] + 1, l.y - LOCK_AY + TONGUE_Y + 2);
   }
 
   /** A 4-ray white twinkle at (x, y) for 3 frames. */
@@ -932,8 +966,10 @@ export class DawnCage {
     this.coldOn(220);
     bg(wait(sc, 220).then(() => this.frostOn()));
     const leans: Promise<void>[] = [];
+    let j = 0;
     for (const s of units) {
       if (!s.active || !s.visible) continue;
+      const order = j++;
       bg(rimClimb(sc, s, { ramp: [PAL.water2, PAL.water3, PAL.water4], from: 'head', stepMs: 60, holdMs: 260, fadeMs: 180 }));
       // a cold breath: mist puffs off the top of the body
       const top = { x: s.x, y: s.getBounds().top + 4 };
@@ -943,36 +979,54 @@ export class DawnCage {
       }
       mist.close();
       const rest = { x: s.x, y: s.y };
-      // lean toward the camera side (+row: screen (−x, +y)) — 3 px, held, then back
+      const sx = s.scaleX;
+      const sy = s.scaleY;
+      // LEAN toward the camera side (+row: screen (−x, +y)) — 5 px, a one-frame squash on contact, held, then back;
+      // the monsters go one after another (a wave along the row)
       leans.push(
         (async () => {
           const steps: [number, number][] = [
-            [-1, 0],
             [-2, 1],
+            [-4, 2],
+            [-5, 2],
+            [-5, 2],
             [-3, 1],
-            [-2, 1],
             [-1, 0],
           ];
-          await wait(sc, 120);
-          for (let j = 0; j < steps.length; j++) {
+          await wait(sc, 100 + order * CAGE_T.leanStagger);
+          for (let k = 0; k < steps.length; k++) {
             if (!s.active) return;
-            const [x, y] = steps[j];
+            const [x, y] = steps[k];
             s.setPosition(R(rest.x + x), R(rest.y + y));
-            if (j === 2) {
-              this.barFlash(s.x - 4);
+            if (k === 2) {
+              // contact: squash for a frame, the bar flashes, frost puffs off it
+              s.setScale(sx * 1.06, sy * 0.94);
+              const bx = this.barFlash(s.x - 4);
+              this.frostPuff(bx.x, bx.y);
               playV3('e_dawnLean', { volume: 0.4, pan: panAt(s.x) });
-            }
-            await wait(sc, CAGE_T.lean[j]);
+            } else if (k === 3) s.setScale(sx, sy);
+            await wait(sc, CAGE_T.lean[k]);
           }
-          if (s.active) s.setPosition(rest.x, rest.y);
+          if (s.active) s.setPosition(rest.x, rest.y).setScale(sx, sy);
         })(),
       );
     }
     await Promise.all(leans);
   }
 
+  /** A small frost puff where a caged monster touched a bar: white / water4 motes spreading off the contact point. */
+  private frostPuff(x: number, y: number): void {
+    const sp = new Sparks(this.scene, this.depthFront + 0.08);
+    for (let i = 0; i < fxCount(7); i++) {
+      const a = rr(-Math.PI, Math.PI);
+      sp.add({ x: x + rr(-1, 1), y: y + rr(-3, 3), vx: Math.cos(a) * rr(15, 35), vy: Math.sin(a) * rr(10, 25) - 6, drag: 2.5, life: rr(260, 420), ramp: [PAL.white, PAL.water4, PAL.water3, PAL.water2], fade: 0.5 });
+    }
+    sp.add({ x, y, life: 100, ramp: [PAL.white, PAL.water4], tex: TEX.plus, fade: 0.5 });
+    sp.close();
+  }
+
   /** The front bar nearest screen x flashes white for three frames (a monster leans on it). */
-  private barFlash(x: number): void {
+  private barFlash(x: number): XY {
     const g = this.g;
     let best = 1;
     for (let k = 1; k < g.bars.length - 1; k++) if (Math.abs(frontFoot(g, k).x - x) < Math.abs(frontFoot(g, best).x - x)) best = k;
@@ -986,6 +1040,7 @@ export class DawnCage {
       }
     });
     bg(wait(this.scene, 100).then(() => ras.destroy()));
+    return { x: f.x, y: f.y - Math.round(g.H * 0.5) };
   }
 
   // ---------------------------------------------------------------- restore
@@ -1032,8 +1087,8 @@ export class DawnCage {
       const l = lockAt(g);
       const last = from <= 1;
       playV3(last ? 'e_dawnLast' : 'e_dawnTick', { volume: 0.9, pan: panAt(l.x) });
-      // the whole padlock flashes white, then the tongue TURNS (4 drawings)
-      this.setLock(from, { white: true });
+      // the whole padlock flashes white and POPS (a gold halo, the eye goes to it), then the bolt TURNS (4 drawings)
+      this.setLock(from, { white: true, pop: true });
       this.setBadge(from, false, { white: true });
       await wait(sc, 34);
       const tx = l.x - LOCK_AX + TONGUE_X[i] + 1;
@@ -1041,13 +1096,16 @@ export class DawnCage {
       // the bell rings at 110 ms (the sound's strike): everything after it hangs off this
       bg(wait(sc, 110 - 34).then(() => this.bell()));
       for (let st = 0; st < 4; st++) {
-        this.setLock(from - 1, { turning: i, step: st });
+        this.setLock(from - 1, { turning: i, step: st, pop: st < 2 });
         if (st === 1) {
+          // edge-on: a burst big enough to read at 1× — two crosses, a spray and a small ring off the bolt
           this.setBadge(from - 1, false, { turning: i });
           const sp = new Sparks(sc, this.depthFront + 0.3);
-          for (let j = 0; j < fxCount(5); j++) sp.add({ x: tx, y: ty + rr(-1, 2), vx: rr(-40, 40), vy: -rr(10, 50), ay: 220, life: rr(140, 240), ramp: [PAL.white, PAL.gold4, PAL.gold3], fade: 0.4 });
-          sp.add({ x: tx, y: ty + 1, life: 110, ramp: [PAL.white, PAL.gold4], tex: TEX.plus, fade: 0.5 });
+          for (let j = 0; j < fxCount(9); j++) sp.add({ x: tx, y: ty + rr(-2, 3), vx: rr(-60, 60), vy: -rr(20, 80), ay: 240, life: rr(180, 300), ramp: [PAL.white, PAL.gold4, PAL.gold3], fade: 0.4 });
+          sp.add({ x: tx, y: ty + 1, life: 140, ramp: [PAL.white, PAL.gold4], tex: TEX.plus, fade: 0.5 });
+          sp.add({ x: tx + (i === 2 ? -6 : 6), y: ty - 4, vy: -10, life: 120, delay: 40, ramp: [PAL.white, PAL.gold4], tex: TEX.plus, fade: 0.5 });
           sp.close();
+          bg(this.airRing(tx, ty + 1, 2, 9, 150));
         }
         await wait(sc, 45);
       }
@@ -1095,7 +1153,7 @@ export class DawnCage {
     const N = 8;
     for (let i = 1; i <= N; i++) {
       const phi = (Math.PI / 2) * (i / N);
-      path.push(cp(g.bars[g.kc], g.rm + (g.rB - g.rm) * Math.cos(phi), g.H + g.VR * Math.sin(phi)));
+      path.push(cp(g.bars[g.kc], g.rm + (g.rB - g.rm) * Math.cos(phi), g.H + vrAt(g, g.bars[g.kc]) * Math.sin(phi)));
     }
     const s = sunAt(g);
     path.push({ x: s.x, y: s.y + 6 });
@@ -1181,27 +1239,27 @@ export class DawnCage {
       }),
     );
     await wait(sc, 140);
-    // the door creaks open, the sun goes cold, the cold leaves
+    // the door creaks open (wide: a readable beat), the sun's ray fan collapses in three drawings, the cold leaves
     playV3('e_dawnDoor', { volume: 0.7, pan: panAt(cp(g.bars[g.kh], g.rB, 0).x) });
     bg(
       run(sc, 300, (t) => {
         if (this.dead) return;
-        this.setDoor(56 * E.outQuad(t));
+        this.setDoor(90 * E.outQuad(t));
       }),
     );
     this.coldOff(300);
     this.frostOff();
-    await wait(sc, 80);
-    this.setSun(1);
-    await wait(sc, 40);
-    this.setSun(0);
+    for (const k of [2, 1, 0]) {
+      await wait(sc, 50);
+      this.setSun(k, k === 2);
+    }
     void this.sunPool?.fadeOut(300);
     this.sunPool = null;
     this.stopIdle?.();
     this.stopIdle = null;
     this.glint.setVisible(false);
     this.chainGlint.setVisible(false);
-    await wait(sc, Math.max(0, CAGE_T.haulAt - 140 - 120));
+    await wait(sc, Math.max(0, CAGE_T.haulAt - 140 - 150));
     // HAUL
     playV3('e_dawnHaul', { volume: 0.85, pan: panAt(cp(g.cm, g.rm, 0).x) });
     const sp = new Sparks(sc, this.depthFront + 0.08);
@@ -1265,7 +1323,7 @@ export class DawnCage {
         const b = { x: f.x, y: f.y - (g.H + 4) };
         const side = f.x < cp(g.cm, g.rB, 0).x ? -1 : 1;
         shards.push({
-          ...stickOf(a, b, { vx: side * rr(30, 70), vy: -rr(110, 170), va: side * rr(9, 15), floor: f.y + rr(4, 10), lit: PAL.white, shade: PAL.gold4, w: 2, guardAt: 0.62 }),
+          ...stickOf(a, b, { vx: side * rr(30, 70), vy: -rr(110, 170), va: side * rr(9, 15), floor: f.y + rr(4, 10), lit: PAL.white, shade: PAL.mist, w: 3, guardAt: (bs.guard - snapH) / (g.H + 4 - snapH), sword: 'top' }),
         });
       }
       const box = { x: g.ox - 60, y: g.oy - 80, w: g.w + 120, h: g.h + 110 };
@@ -1409,6 +1467,8 @@ export class DawnCage {
    * segments that drop, the hoops and the ridge fall from the top, the posts lean and fall.
    */
   private pieces(dy: number, snapH: number): { front: Stick[]; back: Stick[] } {
+    // round 3: FEWER, THICKER pieces (3-px bars, swords drawn as swords); anything whose floor is behind the front
+    // rail (the vault, the dome, the ridge, the back side) falls in the BACK layer, behind the caged monsters
     const g = this.g;
     const front: Stick[] = [];
     const back: Stick[] = [];
@@ -1422,83 +1482,91 @@ export class DawnCage {
       const side = x < midX ? -1 : 1;
       return { vx: side * rr(15, 55), vy: -rr(20, 70) * up, va: side * rr(2, 7) };
     };
-    const floorOf = (c: number, r: number) => cp(c, r, 0).y + rr(1, 5);
-    // the front bars: rods (whole), sword stubs (tip … snap)
-    for (const k of rodKs(g)) {
+    const floorF = (c: number) => cp(c, g.rB, 0).y + rr(2, 6);
+    const floorB = (c: number, r: number) => cp(c, r, 0).y - rr(1, 3);
+    // the front bars: every second rod (whole), the sword stubs (tip … snap, drawn as blades)
+    rodKs(g).forEach((k, i) => {
+      if (i % 2) return;
       const a = at(g.bars[k], g.rB, 2);
       const b = at(g.bars[k], g.rB, g.H - 2);
-      front.push({ ...stickOf(a, b, { ...kick(a.x), floor: floorOf(g.bars[k], g.rB), lit: PAL.gold3, shade: PAL.gold1, w: 2 }) });
-    }
+      front.push(stickOf(a, b, { ...kick(a.x), floor: floorF(g.bars[k]), lit: PAL.gold3, shade: PAL.gold2, w: 3 }));
+    });
     for (const k of swordKs(g)) {
       const a = at(g.bars[k], g.rB, 1);
       const b = at(g.bars[k], g.rB, snapH);
-      front.push({ ...stickOf(a, b, { ...kick(a.x, 0.5), floor: floorOf(g.bars[k], g.rB), lit: PAL.white, shade: PAL.gold4, w: 2, delay: R(rr(0, 60)) }) });
+      front.push(stickOf(a, b, { ...kick(a.x, 0.5), floor: floorF(g.bars[k]), lit: PAL.white, shade: PAL.mist, w: 3, sword: 'tip', delay: R(rr(0, 60)) }));
     }
-    // the door (its stile and the middle sword) and the latch/hinge posts and the corner posts
-    for (const k of [g.kh, g.kc, g.kl]) {
+    // the door (its latch stile and its middle rail), the door posts and the corner posts
+    for (const k of [g.kh, g.kl]) {
       const a = at(g.bars[k], g.rB, 0);
       const b = at(g.bars[k], g.rB, g.H + 1);
-      front.push({ ...stickOf(a, b, { ...kick(a.x, 0.6), floor: floorOf(g.bars[k], g.rB), lit: PAL.gold4, shade: PAL.gold2, w: k === g.kc ? 2 : 3 }) });
+      front.push(stickOf(a, b, { ...kick(a.x, 0.6), floor: floorF(g.bars[k]), lit: PAL.gold4, shade: PAL.gold2, w: 3 }));
     }
+    front.push(stickOf(at(g.bars[g.kh], g.rB, R(g.H * 0.5)), at(g.bars[g.kl], g.rB, R(g.H * 0.5)), { vx: rr(-10, 10), vy: -rr(40, 70), va: rr(-4, 4), floor: floorF(g.cm), lit: PAL.gold4, shade: PAL.gold2, w: 3 }));
     for (const [c, r] of [[g.c0, g.rB], [g.c1, g.rB], [g.c1, g.rA]] as const) {
       const a = at(c, r, 0);
       const b = at(c, r, g.H + 2);
-      front.push({ ...stickOf(a, b, { ...kick(a.x, 0.4), va: (a.x < midX ? -1 : 1) * rr(3, 6), floor: floorOf(c, r), lit: PAL.gold4, shade: PAL.gold2, w: 3 }) });
+      const s = { ...kick(a.x, 0.4), va: (a.x < midX ? -1 : 1) * rr(3, 6), lit: PAL.gold4, shade: PAL.gold2, w: 3 as const };
+      if (r === g.rB) front.push(stickOf(a, b, { ...s, floor: floorF(c) }));
+      else back.push(stickOf(a, b, { ...s, floor: floorB(c, r) }));
     }
-    // the top rails in segments (two bar spacings each), and the foot rail in longer segments
-    for (let k = 0; k < n; k += 2) {
+    // the top rail (lintel) in long segments, the foot rail in longer ones
+    for (let k = 0; k < n; k += 4) {
       const a = at(g.bars[k], g.rB, g.H - 1);
-      const b = at(g.bars[Math.min(n, k + 2)], g.rB, g.H - 1);
-      front.push({ ...stickOf(a, b, { ...kick(a.x, 0.3), floor: floorOf(g.bars[k + 1] ?? g.bars[k], g.rB), lit: PAL.gold4, shade: PAL.gold2, w: 2, delay: R(rr(0, 50)) }) });
+      const b = at(g.bars[Math.min(n, k + 4)], g.rB, g.H - 1);
+      front.push(stickOf(a, b, { ...kick(a.x, 0.3), floor: floorF(g.bars[k]), lit: PAL.gold4, shade: PAL.gold2, w: 3, delay: R(rr(0, 50)) }));
     }
-    for (let k = 0; k < n; k += 5) {
+    for (let k = 0; k < n; k += 6) {
       const a = at(g.bars[k], g.rB, 0);
-      const b = at(g.bars[Math.min(n, k + 5)], g.rB, 0);
-      front.push({ ...stickOf(a, b, { vx: rr(-10, 10), vy: -rr(30, 60), va: rr(-1, 1), floor: cp(g.bars[k], g.rB, 0).y + 3, lit: PAL.gold3, shade: PAL.gold1, w: 2 }) });
+      const b = at(g.bars[Math.min(n, k + 6)], g.rB, 0);
+      front.push(stickOf(a, b, { vx: rr(-10, 10), vy: -rr(30, 60), va: rr(-1, 1), floor: cp(g.bars[k], g.rB, 0).y + 3, lit: PAL.gold3, shade: PAL.gold1, w: 3 }));
     }
-    // the right side's rods and rails
-    for (let j = 1; j < g.sideRows.length - 1; j++) {
-      const a = at(g.c1, g.sideRows[j], 2);
-      const b = at(g.c1, g.sideRows[j], g.H - 2);
-      front.push({ ...stickOf(a, b, { vx: rr(20, 50), vy: -rr(20, 50), va: rr(2, 6), floor: floorOf(g.c1, g.sideRows[j]), lit: PAL.gold3, shade: PAL.gold1, w: 2 }) });
+    // the right side: one rod and its top rail
+    {
+      const a = at(g.c1, g.rm, 2);
+      const b = at(g.c1, g.rm, g.H - 2);
+      back.push(stickOf(a, b, { vx: rr(20, 50), vy: -rr(20, 50), va: rr(2, 6), floor: floorB(g.c1, g.rm), lit: PAL.gold3, shade: PAL.gold1, w: 3 }));
+      back.push(stickOf(at(g.c1, g.rA, g.H - 1), at(g.c1, g.rB, g.H - 1), { vx: rr(20, 40), vy: -rr(20, 40), va: rr(-3, 3), floor: floorB(g.c1, g.rm), lit: PAL.gold3, shade: PAL.gold1, w: 3 }));
     }
-    front.push({ ...stickOf(at(g.c1, g.rA, g.H - 1), at(g.c1, g.rB, g.H - 1), { vx: rr(20, 40), vy: -rr(20, 40), va: rr(-3, 3), floor: floorOf(g.c1, g.rm), lit: PAL.gold3, shade: PAL.gold1, w: 2 }) });
-    // the vault: each front hoop half in two arcs, the ridge in three pieces — they fall from the top
-    for (let k = 0; k <= n; k += 2) {
+    // the vault: every fourth front hoop half as one arc piece (behind: it lands inside the cage), the DOME as its
+    // three big ribs, the ridge in three pieces
+    for (let k = 0; k <= n; k += 4) {
       const c = g.bars[k];
-      const p0 = at(c, g.rB, g.H);
-      const p1 = at(c, g.rm + (g.rB - g.rm) * Math.cos(Math.PI / 4), g.H + g.VR * Math.sin(Math.PI / 4));
-      const p2 = at(c, g.rm, g.H + g.VR);
-      front.push({ ...stickOf(p0, p1, { ...kick(p0.x, 0.6), floor: floorOf(c, g.rB), lit: PAL.gold3, shade: PAL.gold1, w: 1, delay: R(rr(0, 40)) }) });
-      front.push({ ...stickOf(p1, p2, { ...kick(p0.x, 0.8), floor: floorOf(c, g.rm), lit: PAL.gold3, shade: PAL.gold1, w: 1, delay: R(rr(0, 40)) }) });
-      // the back halves (behind the units)
-      const q1 = at(c, g.rm + (g.rA - g.rm) * Math.cos(Math.PI / 4), g.H + g.VR * Math.sin(Math.PI / 4));
-      const q2 = at(c, g.rA, g.H);
-      back.push({ ...stickOf(p2, q1, { ...kick(p2.x, 0.5), floor: floorOf(c, g.rm), lit: PAL.gold2, shade: PAL.gold1, w: 1 }) });
-      back.push({ ...stickOf(q1, q2, { ...kick(q2.x, 0.4), floor: floorOf(c, g.rA), lit: PAL.gold2, shade: PAL.gold1, w: 1 }) });
+      if (Math.abs(c - g.cm) < g.DW) continue;
+      const vr = vrAt(g, c);
+      back.push(stickOf(at(c, g.rB, g.H), at(c, g.rm, g.H + vr), { ...kick(cp(c, g.rB, 0).x, 0.6), floor: floorB(c, g.rm), lit: PAL.gold3, shade: PAL.gold1, w: 2, delay: R(rr(0, 40)) }));
+    }
+    for (const d of [-g.DW * 0.6, 0, g.DW * 0.6]) {
+      const c = g.cm + d;
+      const vr = vrAt(g, c);
+      const a = at(c, g.rB, g.H);
+      const b = at(c, g.rm, g.H + vr);
+      back.push(stickOf(a, b, { vx: (d === 0 ? rr(-10, 10) : Math.sign(d) * rr(20, 40)), vy: -rr(30, 60), va: rr(-5, 5), floor: floorB(c, g.rm), lit: PAL.gold4, shade: PAL.gold2, w: 3 }));
     }
     for (let i = 0; i < 3; i++) {
-      const a = at(g.c0 + ((g.c1 - g.c0) * i) / 3, g.rm, g.H + g.VR);
-      const b = at(g.c0 + ((g.c1 - g.c0) * (i + 1)) / 3, g.rm, g.H + g.VR);
-      front.push({ ...stickOf(a, b, { vx: rr(-20, 20), vy: -rr(10, 40), va: rr(-2, 2), floor: floorOf(g.c0 + ((g.c1 - g.c0) * (i + 0.5)) / 3, g.rm), lit: PAL.gold4, shade: PAL.gold2, w: 2 }) });
+      const c0 = g.c0 + ((g.c1 - g.c0) * i) / 3;
+      const c1 = g.c0 + ((g.c1 - g.c0) * (i + 1)) / 3;
+      const a = at(c0, g.rm, g.H + R(vrAt(g, c0)));
+      const b = at(c1, g.rm, g.H + R(vrAt(g, c1)));
+      back.push(stickOf(a, b, { vx: rr(-20, 20), vy: -rr(10, 40), va: rr(-2, 2), floor: floorB((c0 + c1) / 2, g.rm), lit: PAL.gold4, shade: PAL.gold2, w: 3 }));
     }
-    // the back side: every second rod, the back top rail in segments, the left side
-    for (let k = 1; k < n; k += 2) {
+    // the back side: every fourth rod, the back top rail in long segments, the left side
+    for (let k = 2; k < n; k += 4) {
       const a = at(g.bars[k], g.rA, 2);
       const b = at(g.bars[k], g.rA, g.H - 2);
-      back.push({ ...stickOf(a, b, { vx: rr(-20, 20), vy: -rr(10, 40), va: rr(-5, 5), floor: floorOf(g.bars[k], g.rA), lit: PAL.gold2, shade: PAL.gold1, w: 2 }) });
+      back.push(stickOf(a, b, { vx: rr(-20, 20), vy: -rr(10, 40), va: rr(-5, 5), floor: floorB(g.bars[k], g.rA), lit: PAL.gold2, shade: PAL.gold1, w: 3 }));
     }
-    for (let k = 0; k < n; k += 4) {
+    for (let k = 0; k < n; k += 6) {
       const a = at(g.bars[k], g.rA, g.H - 1);
-      const b = at(g.bars[Math.min(n, k + 4)], g.rA, g.H - 1);
-      back.push({ ...stickOf(a, b, { vx: rr(-10, 10), vy: -rr(10, 30), va: rr(-2, 2), floor: floorOf(g.bars[k + 2] ?? g.bars[k], g.rA), lit: PAL.gold3, shade: PAL.gold1, w: 2 }) });
+      const b = at(g.bars[Math.min(n, k + 6)], g.rA, g.H - 1);
+      back.push(stickOf(a, b, { vx: rr(-10, 10), vy: -rr(10, 30), va: rr(-2, 2), floor: floorB(g.bars[k + 3] ?? g.bars[k], g.rA), lit: PAL.gold3, shade: PAL.gold1, w: 3 }));
     }
-    for (let j = 1; j < g.sideRows.length - 1; j++) {
-      const a = at(g.c0, g.sideRows[j], 2);
-      const b = at(g.c0, g.sideRows[j], g.H - 2);
-      back.push({ ...stickOf(a, b, { vx: -rr(20, 50), vy: -rr(20, 50), va: -rr(2, 6), floor: floorOf(g.c0, g.sideRows[j]), lit: PAL.gold2, shade: PAL.gold1, w: 2 }) });
+    {
+      const a = at(g.c0, g.rm, 2);
+      const b = at(g.c0, g.rm, g.H - 2);
+      back.push(stickOf(a, b, { vx: -rr(20, 50), vy: -rr(20, 50), va: -rr(2, 6), floor: floorB(g.c0, g.rm), lit: PAL.gold2, shade: PAL.gold1, w: 3 }));
     }
-    back.push({ ...stickOf(at(g.c0, g.rA, 0), at(g.c0, g.rA, g.H + 1), { vx: -rr(10, 30), vy: -rr(10, 30), va: -rr(2, 5), floor: floorOf(g.c0, g.rA), lit: PAL.gold3, shade: PAL.gold1, w: 3 }) });
+    back.push(stickOf(at(g.c0, g.rA, 0), at(g.c0, g.rA, g.H + 1), { vx: -rr(10, 30), vy: -rr(10, 30), va: -rr(2, 5), floor: floorB(g.c0, g.rA), lit: PAL.gold3, shade: PAL.gold1, w: 3 }));
     return { front, back };
   }
 

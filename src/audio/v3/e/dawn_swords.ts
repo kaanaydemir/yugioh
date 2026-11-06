@@ -17,10 +17,10 @@
 //     is a single bright click with no body).
 //   No glass partials (Kristal / Boşluk Gözü), no pure-sine light shimmer (the old fence's dawnDissolve).
 //
-//   e_dawnChain    the cage is lowered: a run of heavy links paying out over the pulley ratchet (≈ 0.42 s)
+//   e_dawnChain    the cage is lowered: the pulley ratchet in front, heavy slow low links under it (≈ 0.46 s)
 //   e_dawnLand     the cage's foot rail hits the floor: an iron gong (clank 2.3), a floor thud, all the bars ringing
 //   e_dawnSun      the dawn sun on the cage's crown ignites and its light runs down the sword bars (G-major rise)
-//   e_dawnSlam     the door slams shut: a heavy iron clank, a crack of the latch, the bars rattling after it
+//   e_dawnSlam     the door slams shut: a sharp bright brass latch KLAK (no low gong: the land owns that), a high rattle
 //   e_dawnShackle  the padlock's shackle snaps into the body: "çı-KLAK"
 //   e_dawnTongue   one tongue of the padlock lights (×3, pitch up the ladder): a tick + a tiny bell
 //   e_dawnCold     the caged monsters go cold and lean on the bars: a low cold hum, two bars ringing softly
@@ -47,6 +47,18 @@ function heavyLink(v: Voice, t: number, f: number, g: number, dec = 0.07): void 
   // the iron body: a short, low FM knock
   v.bell(f * 0.31, { t, g: g * 0.55, dec: dec * 0.9, ratio: 2.3, index: 1.2 });
   v.noise('white', { t, g: perc(g * 0.9, 0.005, 0.0002), to: v.filt('bandpass', f * 2.4, 1.6) });
+}
+
+/**
+ * One HEAVY, SLOW link of the lowering chain (round 3, pushed away from Işık Zincirleri's bright link pings): a low
+ * iron knock 480–720 Hz with a long body and no high partials, a dull rub of the link sliding over the next.
+ */
+function slowLink(v: Voice, t: number, f: number, g: number): void {
+  v.tone('sine', f, { t, g: perc(g * 0.7, 0.09, 0.0015) });
+  v.tone('triangle', f * 1.41, { t, g: perc(g * 0.25, 0.05, 0.0015) });
+  v.bell(f * 0.5, { t, g: g * 0.6, dec: 0.12, ratio: 2.3, index: 1.6 });
+  v.noise('white', { t, g: perc(g * 0.5, 0.012, 0.0005), to: v.filt('bandpass', f * 1.6, 1.2) });
+  v.noise('brown', { t: t + 0.005, g: perc(g * 0.6, 0.04, 0.003), to: v.filt('lowpass', 900, 0.8) });
 }
 
 /** The pulley's pawl: a dull low knock (≈140 Hz) with a dry tick on top. */
@@ -106,15 +118,15 @@ export const RECIPES = {
     gap: 0.2,
     verb: 0.2,
     play(v) {
-      // links: 9 knocks, quickening (the cage falls faster), pitch wandering 0.9–1.4 kHz
+      // round 3: the PULLEY RATCHET in front (a big dry pawl on every link), six heavy slow links under it, no pings
       let t = 0;
-      for (let i = 0; i < 9; i++) {
-        heavyLink(v, t, 1400 - i * 50 + v.r(-60, 60), 0.075 + i * 0.009, 0.05);
-        if (i % 2 === 0) pawl(v, t + 0.006, 0.15 + i * 0.012, 95);
-        t += Math.max(0.026, 0.062 - i * 0.0048);
+      for (let i = 0; i < 7; i++) {
+        pawl(v, t, 0.26 + i * 0.012, 92 + i * 4);
+        slowLink(v, t + 0.012, 640 - i * 22 + v.r(-30, 30), 0.12 + i * 0.008);
+        t += Math.max(0.045, 0.085 - i * 0.007);
       }
-      // the pulley's air: a falling band of noise (the drop from above)
-      sweep(v, 0, 0.42, [2400, 1300, 650], 0.07, { kind: 'pink', q: 1.4, peakAt: 0.7 });
+      // the pulley's air: a low falling band of noise (the drop from above)
+      sweep(v, 0, 0.46, [1600, 900, 420], 0.06, { kind: 'pink', q: 1.2, peakAt: 0.7 });
     },
   },
   /** The cage lands: the GILDED BARS ring out (a church-bell partial set on G + the bars' G-major ladder) over a light thud. */
@@ -153,17 +165,24 @@ export const RECIPES = {
   e_dawnSlam: {
     cap: 1,
     gap: 0.15,
-    verb: 0.42,
-    duck: 0.45,
+    verb: 0.34,
+    duck: 0.4,
     play(v) {
-      clank(v, 233, 0, 0.3, 0.5, { ratio: 2.3, index: 3, click: 2.4 });
-      thump(v, 0, 150, 80, 0.16, 0.08);
-      crack(v, 0.002, 0.28, { hp: 2400, n: 2, gap: 0.01 });
-      // the gilded clang: a bell on D5 and the door's bars ringing up the ladder
-      churchBell(v, 0.006, midiHz(G.d5), 0.09, 0.9);
-      [G.g5, G.b5, G.d6].forEach((m, i) => v.bell(midiHz(m), { t: 0.01 + i * 0.016, g: 0.045, dec: 0.45, ratio: 2.3, index: 0.8 }));
-      // the rattle: the bars shiver in their rails (a quick train of small heavy links)
-      for (let i = 0; i < 6; i++) heavyLink(v, 0.05 + i * 0.03 + v.r(0, 0.006), 1250 + v.r(-150, 150), 0.03 * (1 - i * 0.12), 0.05);
+      // round 3: a different event from the land (which owns the low gong): a sharp, bright brass LATCH "KLAK" —
+      // a 2–3 kHz crack, the latch's brass body (≈ 1.4 kHz, short), the door's frame ringing high, a short high
+      // rattle of the bars; no low body
+      crack(v, 0, 0.55, { hp: 2200, n: 2, gap: 0.008 });
+      lockTick(v, 0, 1.1, 2000);
+      clank(v, 1380, 0.002, 0.36, 0.16, { ratio: 2.3, index: 2.2, click: 2.2 });
+      clank(v, 2150, 0.004, 0.1, 0.1, { ratio: 1.6, index: 1.4, click: 0 });
+      v.bell(midiHz(G.b5), { t: 0.006, g: 0.05, dec: 0.32, ratio: 2.3, index: 0.9 });
+      v.bell(midiHz(G.d6), { t: 0.012, g: 0.04, dec: 0.28, ratio: 2.3, index: 0.9 });
+      // the rattle: the bars shiver in their rails — small high clinks, fast and short
+      for (let i = 0; i < 6; i++) {
+        const t = 0.045 + i * 0.024 + v.r(0, 0.005);
+        v.noise('white', { t, g: perc(0.07 * (1 - i * 0.13), 0.004, 0.0002), to: v.filt('bandpass', 3000 + v.r(-400, 500), 4) });
+        v.tone('sine', 2400 + v.r(-200, 300), { t, g: perc(0.025 * (1 - i * 0.13), 0.03, 0.0005) });
+      }
     },
   },
   /** The padlock's shackle snaps home — the beat's hero: a pre-click, the slide, a heavy brass KLAK. "çı-KLAK". */
@@ -252,31 +271,34 @@ export const RECIPES = {
     gap: 0.2,
     verb: 0.35,
     play(v) {
-      lockTick(v, 0, 0.4, 1700);
+      // round 3: +4 dB — the release must land
+      lockTick(v, 0, 0.65, 1700);
+      crack(v, 0, 0.14, { hp: 2600, n: 1 });
       // the spring: a quick FM pitch wobble
-      const tn = v.tone('triangle', [[0, 520], [0.02, 820], [0.05, 600], [0.08, 760], [0.12, 640, 'e']], { t: 0.01, g: [[0, 0], [0.005, 0.08], [0.16, 0.0001, 'e']] });
-      void tn;
-      // the drop: a clatter on the floor (two bounces), small and brassy
-      clank(v, 880, 0.2, 0.14, 0.2, { ratio: 2.3, index: 1.8, click: 1.4 });
-      clank(v, 990, 0.29, 0.08, 0.14, { ratio: 2.3, index: 1.4, click: 1 });
-      clank(v, 940, 0.34, 0.04, 0.1, { ratio: 2.3, index: 1.2, click: 0.8 });
+      v.tone('triangle', [[0, 520], [0.02, 820], [0.05, 600], [0.08, 760], [0.12, 640, 'e']], { t: 0.01, g: [[0, 0], [0.005, 0.13], [0.16, 0.0001, 'e']] });
+      // the drop: a clatter on the floor (two bounces), brassy
+      clank(v, 880, 0.2, 0.22, 0.2, { ratio: 2.3, index: 1.8, click: 1.4 });
+      thump(v, 0.2, 200, 110, 0.08, 0.04);
+      clank(v, 990, 0.29, 0.13, 0.14, { ratio: 2.3, index: 1.4, click: 1 });
+      clank(v, 940, 0.34, 0.07, 0.1, { ratio: 2.3, index: 1.2, click: 0.8 });
     },
   },
-  /** The cage is hauled up: the ratchet clicking fast and upward, the chain running in, a rising air. */
+  /** The cage is hauled up: a RISING chain-and-ratchet line (the pawls climbing in pitch and speed), a rising air. */
   e_dawnHaul: {
     cap: 1,
     gap: 0.3,
     verb: 0.4,
     play(v) {
+      // round 3: ≈ +4 dB, and a clear rising line: pawl and link climb together
       let t = 0;
-      for (let i = 0; i < 12; i++) {
-        pawl(v, t, 0.12 - i * 0.005, 130 + i * 9);
-        if (i % 2 === 1) heavyLink(v, t + 0.01, 1000 + i * 45 + v.r(-50, 50), 0.06, 0.05);
-        t += Math.max(0.028, 0.05 - i * 0.002);
+      for (let i = 0; i < 13; i++) {
+        pawl(v, t, 0.2 - i * 0.006, 110 + i * 14);
+        slowLink(v, t + 0.008, 520 + i * 48 + v.r(-20, 20), 0.1);
+        t += Math.max(0.026, 0.052 - i * 0.0022);
       }
-      sweep(v, 0.05, 0.5, [600, 1800, 3400], 0.06, { kind: 'pink', q: 1.5, peakAt: 0.6 });
+      sweep(v, 0.05, 0.5, [500, 1600, 3200], 0.1, { kind: 'pink', q: 1.5, peakAt: 0.65 });
       // the cage's last ring as it leaves (the bars, softly, G major)
-      [G.d6, G.g6].forEach((m, i) => v.bell(midiHz(m), { t: 0.32 + i * 0.07, g: 0.025, dec: 0.4, ratio: 2.3, index: 0.6 }));
+      [G.d6, G.g6].forEach((m, i) => v.bell(midiHz(m), { t: 0.34 + i * 0.07, g: 0.04, dec: 0.4, ratio: 2.3, index: 0.6 }));
     },
   },
   /** Destroyed early: the swords SNAP one after another — a falling bell arpeggio down the G ladder — the chain whips up. */
@@ -352,8 +374,9 @@ export const RECIPES = {
     gap: 0.1,
     verb: 0.3,
     play(v) {
-      v.noise('white', { g: [[0, 0], [0.06, 0.12], [0.1, 0.0001, 'e']], to: v.filt('bandpass', [[0, 4200], [0.1, 2400, 'e']], 5) });
-      v.bell(midiHz(G.b5), { t: 0, g: 0.07, dec: 0.12, ratio: 3.01, index: 0.5 });
+      v.noise('white', { g: [[0, 0], [0.06, 0.2], [0.1, 0.0001, 'e']], to: v.filt('bandpass', [[0, 4200], [0.1, 2400, 'e']], 5) });
+      v.bell(midiHz(G.b5), { t: 0, g: 0.12, dec: 0.12, ratio: 3.01, index: 0.5 });
+      lockTick(v, 0.02, 0.15, 2600);
     },
   },
   /** A caged monster leans on a bar: a soft gilded "tunk" and the bar's hum. */

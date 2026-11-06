@@ -11,7 +11,7 @@ vi.mock('phaser', async () => (await import('../presentation/_phaser-stub')).pha
 import { PAL } from '../../src/art/palette';
 import type { PixelCanvas } from '../../src/art/pixel';
 import { LANE_COLS, zoneXY } from '../../src/view/layout';
-import { DOOR_ANGLES, cageGeo, cp, lockAt, paintBack, paintBadge, paintChain, paintDoor, paintFront, paintLock, paintSun, sunAt } from '../../src/cinematics/spells/_dawn_e_paint';
+import { DOOR_ANGLES, cageGeo, cp, lockAt, vrAt, paintBack, paintBadge, paintChain, paintDoor, paintFront, paintLock, paintSun, sunAt } from '../../src/cinematics/spells/_dawn_e_paint';
 import { CAGE_T, castLength } from '../../src/cinematics/spells/_dawn_e';
 import { RECIPES } from '../../src/audio/v3/e/dawn_swords';
 import { Voice } from '../../src/audio/synth';
@@ -51,8 +51,13 @@ describe('dawn cage geometry', () => {
         const p = cp(c, g.rB, h);
         expect(Number.isInteger(p.x) && Number.isInteger(p.y)).toBe(true);
       }
-      expect(g.kl - g.kc).toBe(1);
-      expect(g.kc - g.kh).toBe(1);
+      // the door is a real set piece: one column (four bar spacings) wide
+      expect(g.kl - g.kc).toBe(2);
+      expect(g.kc - g.kh).toBe(2);
+      expect(g.dw).toBeGreaterThanOrEqual(1);
+      // a birdcage DOME over the middle lane: its crown stands well above the low vault at the ends
+      expect(vrAt(g, g.cm) - vrAt(g, g.c0)).toBeGreaterThanOrEqual(20);
+      expect(vrAt(g, g.c0)).toBeLessThanOrEqual(vrAt(g, g.cm - g.DW - 0.25));
       expect(g.kc).toBe((g.bars.length - 1) / 2);
       // the sun and the padlock are inside the canvas
       for (const p of [sunAt(g), lockAt(g)]) {
@@ -69,13 +74,21 @@ describe('dawn cage drawings', () => {
   const g = cageGeo(1);
   it('are palette only', () => {
     const all = [paintBack(g), paintFront(g), ...DOOR_ANGLES.map((d) => paintDoor(g, d)), paintDoor(g, 0, true), paintChain(120), paintSun(0, 0), paintSun(1, 0), paintSun(1, 1)];
-    for (let n = 0; n <= 3; n++) all.push(paintLock(n), paintLock(n, { open: true }), paintLock(n, { turning: 0 }), paintLock(n, { turning: 2, step: 0 }), paintLock(n, { turning: 1, step: 2 }), paintFront(g, { lit: false }), paintFront(g, { snapped: true }), paintBadge(n), paintBadge(n, { turning: 1 }));
+    for (let n = 0; n <= 3; n++) all.push(paintLock(n), paintLock(n, { open: true }), paintLock(n, { turning: 0 }), paintLock(n, { turning: 2, step: 0 }), paintLock(n, { turning: 1, step: 2 }), paintLock(n, { pop: true, white: true }), paintFront(g, { lit: false }), paintFront(g, { snapped: true }), paintBadge(n), paintBadge(n, { turning: 1 }));
     for (const p of all) expect(offPalette(p)).toBe(0);
   });
   it('the padlock shows the counter: every count is a different picture; the shackle opens', () => {
     const locks = [0, 1, 2, 3].map((n) => paintLock(n));
     for (let a = 0; a < 4; a++) for (let b = a + 1; b < 4; b++) expect(same(locks[a], locks[b])).toBe(false);
     expect(same(paintLock(0), paintLock(0, { open: true }))).toBe(false);
+    // a lit bolt is gilded, a turned one shows its IRON back (another material, not a darker gold)
+    const tones = (p: PixelCanvas) => {
+      const out = new Set<number>();
+      for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) if (p.alpha(x, y)) out.add(p.get(x, y)!);
+      return out;
+    };
+    expect(tones(paintLock(3)).has(PAL.stone1)).toBe(false);
+    expect(tones(paintLock(0)).has(PAL.stone1)).toBe(true);
     const badges = [1, 2, 3].map((n) => paintBadge(n));
     expect(same(badges[0], badges[1]) || same(badges[1], badges[2])).toBe(false);
   });
@@ -95,7 +108,7 @@ describe('dawn cage timing', () => {
     // (0.7 s opening + 3.0 s storyboard) × 1.35 + 0.3 s slack, in game time
     expect((n + 700) * 1.35).toBeLessThanOrEqual((700 + 3000) * 1.35 + 300);
     // the cold/lean hold reads (≥ 300 ms), the tongues are spaced
-    expect(Math.max(...T.lean)).toBeGreaterThanOrEqual(300);
+    expect(T.lean[2] + T.lean[3]).toBeGreaterThanOrEqual(300);
     expect(T.tongueGap).toBeGreaterThanOrEqual(120);
     expect(T.springAt).toBeLessThan(T.haulAt);
   });
