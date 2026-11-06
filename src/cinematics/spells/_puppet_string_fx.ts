@@ -13,7 +13,9 @@ export const CROSS_KEY = 'e:puppet:cross2';
 export const CROSS_MID_KEY = 'e:puppet:crossM';
 export const CROSS_SMALL_KEY = 'e:puppet:crossS';
 export const STAR_KEY = 'e:puppet:star2';
-export const SPIRAL_KEY = 'e:puppet:spiral3';
+export const SPIRAL_KEY = 'e:puppet:spiral4';
+/** The cross reveal (the orb unspools into the cross): frames 'r0' 'r1' 'r2' of a hot, un-outlined cross. */
+export const CROSS_REVEAL_KEY = 'e:puppet:crossR';
 
 /** Big cross: 43 × 23, origin = its heart knot (21, 7). */
 export const CROSS_W = 43;
@@ -21,6 +23,14 @@ export const CROSS_H = 23;
 export const CROSS_O = { x: 21, y: 7 } as const;
 /** Big cross extent around the knot (for keeping it clear of the HUD): left, top, right, bottom. */
 export const CROSS_EXT = { l: 21, t: 7, r: 21, b: 15 } as const;
+/**
+ * The take's cross extent (HUD clearance): the cross appears POP_DY px over its hanging spot and drops into it,
+ * and its knot glint reaches 4 px over the top of the knob — both stay inside this.
+ */
+export const CROSS_POP_DY = 6;
+export const CROSS_POP_EXT = { l: 22, t: 7 + CROSS_POP_DY + 4, r: 22, b: 15 } as const;
+/** The hop's cross extent: the cross jerks 6 px up on every yank. */
+export const CROSS_HOP_EXT = { l: 21, t: 7 + 6, r: 21, b: 15 } as const;
 /** Mid cross (the settle's in-between frame): 25 × 14, origin (12, 4). */
 export const CROSS_M_O = { x: 12, y: 4 } as const;
 /**
@@ -43,7 +53,7 @@ export const CROSS_S_EXT = { l: 6, t: 3, r: 6, b: 6 } as const;
  * The big cross: a dark-gold wooden marionette control — a knobbed upright, a long hand bar with round caps, a
  * foot bar, and a 5 × 4 heart knot carved at the crossing. Flat tone bands (lit top / mid / shadow), ink outline.
  */
-function paintCross(): PixelCanvas {
+function paintCrossBase(): PixelCanvas {
   const p = new PixelCanvas(CROSS_W, CROSS_H);
   const ox = CROSS_O.x;
   // the upright (3 wide): lit left, mid, shadow right
@@ -94,10 +104,51 @@ function paintCross(): PixelCanvas {
   p.set(ox - 1, 6, PAL.fire3);
   p.set(ox + 1, 7, PAL.fire1);
   p.set(ox, 8, PAL.fire1);
+  return p;
+}
+
+function paintCross(): PixelCanvas {
+  const p = paintCrossBase();
   p.outline(PAL.ink, { corners: false });
   // the hook eyes (light, on top of the outline)
-  for (const h of CROSS_HOOKS) p.set(ox + h.x, CROSS_O.y + h.y, PAL.gold4);
+  for (const h of CROSS_HOOKS) p.set(CROSS_O.x + h.x, CROSS_O.y + h.y, PAL.gold4);
   return p;
+}
+
+/**
+ * The reveal: the orb unspools into the cross in three hot frames before the inked wood (frame 3 = CROSS_KEY).
+ *   r0  the core: the heart knot white-hot (gold4 / fire4) and the upright's first 2 px each way (|dx| ≤ 2, |dy| ≤ 3)
+ *   r1  the bars grow out stepwise: |dx| ≤ 10, all of the upright, everything glowing gold4 / gold3
+ *   r2  full length, still hot and un-outlined (gold4 lit band, gold3 body, gold2 shadow; the heart fire3 / fire4)
+ * Packed side by side, each CROSS_W × CROSS_H, same origin as the big cross.
+ */
+function paintCrossReveal(): PixelCanvas {
+  const base = paintCrossBase();
+  const out = new PixelCanvas(CROSS_W * 3, CROSS_H);
+  const hot: Record<number, readonly [number, number, number]> = {
+    [PAL.gold0]: [PAL.gold3, PAL.gold3, PAL.gold2],
+    [PAL.gold1]: [PAL.gold3, PAL.gold3, PAL.gold2],
+    [PAL.gold2]: [PAL.gold4, PAL.gold4, PAL.gold3],
+    [PAL.gold3]: [PAL.gold4, PAL.gold4, PAL.gold4],
+    [PAL.gold4]: [PAL.white, PAL.gold4, PAL.gold4],
+    [PAL.fire1]: [PAL.fire4, PAL.fire3, PAL.fire2],
+    [PAL.fire2]: [PAL.fire4, PAL.fire4, PAL.fire3],
+    [PAL.fire3]: [PAL.fire4, PAL.fire4, PAL.fire3],
+    [PAL.fire4]: [PAL.white, PAL.fire4, PAL.fire4],
+  };
+  const reach = [
+    (dx: number, dy: number) => Math.abs(dx) <= 2 && Math.abs(dy) <= 3,
+    (dx: number) => Math.abs(dx) <= 10,
+    () => true,
+  ];
+  for (let f = 0; f < 3; f++)
+    for (let y = 0; y < CROSS_H; y++)
+      for (let x = 0; x < CROSS_W; x++) {
+        const c = base.get(x, y);
+        if (c === null || !reach[f](x - CROSS_O.x, y - CROSS_O.y)) continue;
+        out.set(f * CROSS_W + x, y, (hot[c] ?? [PAL.gold4, PAL.gold4, PAL.gold3])[f]);
+      }
+  return out;
 }
 
 /** The mid cross (the settle shrinks big → mid → small): 25 × 14. */
@@ -150,25 +201,29 @@ function paintStars(): PixelCanvas {
   return p;
 }
 
-/**
- * Spiral glint, one per eye: 4 frames of a 3 × 3 turning arc around a white pupil (teal4 head, teal3 / teal2
- * tail), plus 'fl' — the first-frame flash (a 5 × 5 teal4 star).
- */
+/** The spiral glint: 7 × 7, frame 0 (rotated a quarter per frame for f1..f3). k ink (ring + the gaps), a teal4 core, b teal3, c teal2 tail. */
+export const SPIRAL_SIZE = 7;
+const SPIRAL0 = ['..kkk..', '.kbbbk.', 'kckkkbk', 'kckakak', 'kckaaak', '.kckkk.', '..kkk..'];
+
+/** Spiral glint: 4 frames of a hand-pixelled 7 × 7 spiral turning a quarter per frame (no white core: not a star). */
 function paintSpirals(): PixelCanvas {
-  const ring: [number, number][] = [[0, 0], [1, 0], [2, 0], [2, 1], [2, 2], [1, 2], [0, 2], [0, 1]];
-  const p = new PixelCanvas(17, 5);
-  for (let f = 0; f < 4; f++) {
-    const ox = f * 3;
-    p.set(ox + 1, 1 + 1, PAL.white);
-    const head = f * 2;
-    const cols = [PAL.teal4, PAL.teal3, PAL.teal3, PAL.teal2];
-    cols.forEach((c, k) => {
-      const [x, y] = ring[(head - k + 8) % 8];
-      p.set(ox + x, 1 + y, c);
-    });
-  }
-  const fl = ['..a..', '.aWa.', 'aWWWa', '.aWa.', '..a..'];
-  fl.forEach((row, y) => [...row].forEach((ch, x) => ch !== '.' && p.set(12 + x, y, ch === 'W' ? PAL.white : PAL.teal4)));
+  const S = SPIRAL_SIZE;
+  const p = new PixelCanvas(S * 4, S);
+  const col = (ch: string) => (ch === 'k' ? PAL.ink : ch === 'a' ? PAL.teal4 : ch === 'b' ? PAL.teal3 : ch === 'c' ? PAL.teal2 : null);
+  for (let f = 0; f < 4; f++)
+    for (let y = 0; y < S; y++)
+      for (let x = 0; x < S; x++) {
+        // rotate clockwise f quarters: (x, y) of frame f reads (y, S-1-x) of frame f-1
+        let sx = x;
+        let sy = y;
+        for (let k = 0; k < f; k++) {
+          const nx = sy;
+          sy = S - 1 - sx;
+          sx = nx;
+        }
+        const c = col(SPIRAL0[sy][sx]);
+        if (c !== null) p.set(f * S + x, y, c);
+      }
   return p;
 }
 
@@ -185,8 +240,11 @@ export function puppetTextures(scene: Phaser.Scene): void {
   }
   if (!scene.textures.exists(SPIRAL_KEY)) {
     const t = scene.textures.addCanvas(SPIRAL_KEY, paintSpirals().toCanvas())!;
-    for (let f = 0; f < 4; f++) t.add(`f${f}`, 0, f * 3, 1, 3, 3);
-    t.add('fl', 0, 12, 0, 5, 5);
+    for (let f = 0; f < 4; f++) t.add(`f${f}`, 0, f * SPIRAL_SIZE, 0, SPIRAL_SIZE, SPIRAL_SIZE);
+  }
+  if (!scene.textures.exists(CROSS_REVEAL_KEY)) {
+    const t = scene.textures.addCanvas(CROSS_REVEAL_KEY, paintCrossReveal().toCanvas())!;
+    for (let f = 0; f < 3; f++) t.add(`r${f}`, 0, f * CROSS_W, 0, CROSS_W, CROSS_H);
   }
 }
 
@@ -282,6 +340,60 @@ export function drawString(r: Raster, s: StringSpec, frame: number): void {
       const kink = s.fall > 3 ? (k % 2 ? 1 : -1) * Math.min(2, Math.floor(s.fall / 6)) : 0;
       r.line(prev.x, prev.y + s.fall, p.x + kink, p.y + s.fall, s.fall > 18 ? PAL.gold2 : PAL.gold3);
       prev = { x: p.x + kink, y: p.y };
+    }
+  }
+}
+
+// ================================================================ occlusion (other units vs the strings)
+
+/** Another unit's silhouette the strings pass: `front` units hide them, units behind dim them. */
+export interface Occluder {
+  top: number;
+  bottom: number;
+  spanAt(y: number): [number, number] | null;
+  front: boolean;
+}
+
+/** Does a front occluder cover world pixel (x, y)? */
+export function covered(occ: readonly Occluder[], x: number, y: number): boolean {
+  for (const o of occ) {
+    if (!o.front || y < o.top || y >= o.bottom) continue;
+    const sp = o.spanAt(y + 0.5);
+    if (sp && x >= sp[0] && x < sp[1]) return true;
+  }
+  return false;
+}
+
+/**
+ * After the strings are drawn: a unit standing in front of the puppet hides the string pixels over its
+ * silhouette (cut out); a unit behind it dims them to gold1 (the thread visibly passes in front of it, but never
+ * reads as hooking it). Row spans of the silhouette (spriteBox.spanAt), whole pixels.
+ */
+export function occludeStrings(r: Raster, occ: readonly Occluder[]): void {
+  const d = r.pc.data;
+  const W = r.w;
+  const dim = PAL.gold1;
+  const dr = (dim >> 16) & 255;
+  const dg = (dim >> 8) & 255;
+  const db = dim & 255;
+  for (const o of occ) {
+    const y0 = Math.max(r.y, Math.ceil(o.top));
+    const y1 = Math.min(r.y + r.h, Math.floor(o.bottom));
+    for (let y = y0; y < y1; y++) {
+      const sp = o.spanAt(y + 0.5);
+      if (!sp) continue;
+      const x0 = Math.max(r.x, Math.ceil(sp[0]));
+      const x1 = Math.min(r.x + W, Math.floor(sp[1]));
+      for (let x = x0; x < x1; x++) {
+        const i = ((y - r.y) * W + (x - r.x)) * 4;
+        if (d[i + 3] === 0) continue;
+        if (o.front) d[i + 3] = 0;
+        else {
+          d[i] = dr;
+          d[i + 1] = dg;
+          d[i + 2] = db;
+        }
+      }
     }
   }
 }

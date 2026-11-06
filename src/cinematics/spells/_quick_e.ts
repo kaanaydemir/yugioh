@@ -26,11 +26,11 @@
 
 import Phaser from 'phaser';
 import { PAL } from '../../art/palette';
-import { STAND_H, isoProject } from '../../art/cards';
+import { FLAT_H, FLAT_W, STAND_H, STAND_W, cardMip, isoProject, poseAxes, qSlerp, renderCard, restQuat, standQuat, type Quat } from '../../art/cards';
 import type { CardId } from '../../data/cards';
 import type { GameEvent, PlayerId, Uid } from '../../engine/types';
 import type { TileCard } from '../../view/TileCard';
-import { DEPTH, LANE_MID, type XY, zoneXY } from '../../view/layout';
+import { DEPTH, LANE_MID, type XY, unitDepth, zoneXY } from '../../view/layout';
 import { lightFlash, lightPool } from '../../view/light';
 import { pixelLetters } from '../../ui/text';
 import { shake, wait } from '../../vfx/core';
@@ -450,23 +450,71 @@ export async function prime(ctx: AnyCtx, q: QuickReveal, uid: number): Promise<v
 
 /** A primed (cocked) quick spell firing in the batch that brings its target (see quickFire). */
 export interface QuickFire {
-  /** The standing card (null when it was not on screen). */
+  /** The quick spell's tile (hidden under the leaning proxy; null when it was not on screen). */
   tile: TileCard | null;
   /** Floor point of its zone. */
   at: XY;
-  /** The standing card's top edge: where the spell's orb leaves it. */
+  /** The leaning card's top edge: where the spell's orb leaves it. */
   top: XY;
+  /** The effect has taken over: the card lies back down, dimmed (≈ 120 ms), so the eye goes to the target. */
+  settle(): Promise<void>;
   /** The spent card goes to its owner's graveyard from its tile (consumes toGraveyard `gi`; −1: it just fades). */
   leave(gi: number): Promise<void>;
   /** Nothing to resolve: the card dissolves on its tile. */
   close(): Promise<void>;
 }
 
+/** The lean of a fired quick card: ~60° up off its tile (slerp share of the stand-up), never a full re-reveal. */
+const LEAN = 0.5;
+const LEAN_SCALE = 0.64;
+
+/** A whole-pixel proxy of the quick card hinging up off its tile (the cock-and-release pose). */
+class LeanCard {
+  private readonly ras: Raster;
+  private readonly front;
+  private readonly back;
+  private readonly rest: Quat;
+  constructor(
+    readonly scene: Phaser.Scene,
+    readonly at: XY,
+    cardId: CardId,
+    player: PlayerId,
+    depth: number,
+  ) {
+    this.ras = new Raster(scene, at.x - 48, at.y - 64, 96, 96, depth);
+    this.front = cardMip(cardId, player);
+    this.back = cardMip('back', player);
+    this.rest = restQuat(player, 'up', true);
+  }
+  /** Draw at lean k (0 flat … 1 standing); returns the card's top-edge midpoint on screen. */
+  draw(k: number, o: { dip?: number; squash?: number; light?: number; glint?: number; tint?: number; tintAmt?: number } = {}): XY {
+    const kk = Math.max(0, Math.min(1.1, k));
+    const q = qSlerp(this.rest, standQuat(), kk);
+    const s = o.squash ?? 1;
+    const w = (FLAT_W + (STAND_W * LEAN_SCALE - FLAT_W) * Math.min(1, kk)) * s;
+    const h = (FLAT_H + (STAND_H * LEAN_SCALE - FLAT_H) * Math.min(1, kk)) * s;
+    const z = (h / 2) * Math.sin((Math.min(1, kk) * Math.PI) / 2);
+    const [, py] = isoProject([0, 0, z]);
+    const cy = Math.round(this.at.y + py) + (o.dip ?? 0);
+    if (!this.ras.alive) return { x: this.at.x, y: cy };
+    this.ras.moveTo(this.at.x - 48, cy - 64);
+    this.ras.begin();
+    const { ex, ey, n } = poseAxes(q, w, h);
+    renderCard(this.ras.pc, 48, 64, ex, ey, n, this.front, this.back, { light: o.light, glint: o.glint, tint: o.tint, tintAmt: o.tintAmt });
+    this.ras.end();
+    return { x: Math.round(this.at.x - ey[0] / 2), y: Math.round(cy - ey[1] / 2) };
+  }
+  destroy(): void {
+    this.ras.destroy();
+  }
+}
+
 /**
- * The cocked card FIRES (≤ 130 ms scene, no second opening, no name banner): it snaps upright in one move
- * (90 ms) with a single short turquoise zig-zag tick out of its tile, a teal floor ring and e_quickFire; the
- * caller then launches its effect from `top` at once. The card leaves the field's bookkeeping here (the spell
- * owns it until leave()).
+ * The cocked card FIRES — a small COCK-AND-RELEASE, a follow-through of the reveal, never a second one (≈ 120 ms
+ * scene): the flat card kicks a pixel down into its tile (the cock, e_quickFire's snap), then hinges up to a
+ * ~60° lean with a tiny overshoot while ONE teal spark ticks off its top edge; the caller launches its effect
+ * from `top` at once, then calls settle() when the effect lands (the card lies back down, dimmed). The card
+ * leaves the field's bookkeeping here (the spell owns it until leave()).
  */
 export async function quickFire(ctx: AnyCtx, o: { uid: Uid; cardId: CardId; player: PlayerId; zone: number | null }): Promise<QuickFire> {
   const sc = ctx.scene;
@@ -478,54 +526,75 @@ export async function quickFire(ctx: AnyCtx, o: { uid: Uid; cardId: CardId; play
   const at = tile ? { x: Math.round(tile.home.x), y: Math.round(tile.home.y) } : kept ? kept.at : zoneXY(o.player, 'spellTrap', o.zone ?? LANE_MID);
   void ctx.views.duelists?.get(o.player)?.play('command');
   playV3('e_quickFire', { volume: 0.95 });
-  if (tile) tile.setCard(o.cardId);
-  const stand = tile ? tile.standUp(90, { reveal: true }) : Promise.resolve();
-  // the tick: one short zig-zag (3 strokes, 30 px) out of the tile, a ring, a stepped light
-  void tileFlash(sc, at.x, at.y, [...QUICK_RAMP], 200);
-  void floorRing(sc, at.x, at.y, { r0: 6, r1: 30, ms: 220, ramp: [...QUICK_RAMP], depth: DEPTH.SHADOW - 1 });
-  void lightFlash(sc, at.x, at.y, PAL.teal3, 28, 260, { floorY: at.y, intensity: 0.9 });
-  const ras = new Raster(sc, at.x - 16, at.y - 70, 32, 74, DEPTH.FX + 6);
-  const bolt = zigzag({ x: at.x, y: at.y - 2 }, 66, 3, 5, 0);
-  void run(sc, 160, (k) => {
-    ras.draw((g) => {
-      const grow = Math.ceil(E.outCubic(seg(k, 0, 0.35)) * 3);
-      const gone = Math.floor(seg(k, 0.5, 1) * 4);
-      const vis = bolt.slice(gone);
-      for (let i = 1; i < Math.min(vis.length, grow - gone + 1); i++) {
-        g.line(vis[i - 1].x, vis[i - 1].y, vis[i].x, vis[i].y, PAL.teal3, 1, 3);
-        g.line(vis[i - 1].x, vis[i - 1].y, vis[i].x, vis[i].y, k < 0.5 ? PAL.white : PAL.teal4, 1, 1);
-      }
+  let lean: LeanCard | null = null;
+  if (tile) {
+    tile.setCard(o.cardId);
+    lean = new LeanCard(sc, at, o.cardId, o.player, unitDepth(at.y) - 1);
+    lean.draw(0);
+    tile.setVisible(false);
+    field.release(o.uid);
+  }
+  // the cock: the card dips a pixel into its tile, squashed, darker; a tile tick in the quick teal
+  void tileFlash(sc, at.x, at.y, [PAL.teal3, PAL.teal2, PAL.teal1], 140);
+  await run(sc, 35, () => lean?.draw(0, { dip: 1, squash: 0.94, light: -0.2 }));
+  // the release: it hinges up to its lean with a small overshoot; ONE spark ticks off the top edge
+  void floorRing(sc, at.x, at.y, { r0: 5, r1: 20, ms: 160, ramp: [PAL.teal4, PAL.teal3, PAL.teal2, PAL.teal1], depth: DEPTH.SHADOW - 1 });
+  void lightFlash(sc, at.x, at.y, PAL.teal3, 22, 200, { floorY: at.y, intensity: 0.7 });
+  let top: XY = { x: at.x, y: at.y - 30 };
+  const spark = new Raster(sc, at.x - 20, at.y - 90, 40, 94, DEPTH.FX + 6);
+  await run(sc, 85, (t) => {
+    const k = LEAN * (1 + 0.12 * Math.sin(Math.PI * Math.min(1, t * 1.25))) * E.outCubic(Math.min(1, t * 1.25));
+    top = lean ? lean.draw(k, { light: t < 0.5 ? 0.18 : 0.05 }) : top;
+    spark.draw((g) => {
+      if (t < 0.35 || t > 0.9) return;
+      // the tick: a 3-stroke zig-zag spark, 12 px, standing off the top edge (white core, teal4 ends)
+      const z = zigzag({ x: top.x, y: top.y - 2 }, 12, 3, 2);
+      for (let i = 1; i < z.length; i++) g.line(z[i - 1].x, z[i - 1].y, z[i].x, z[i].y, t < 0.6 ? PAL.white : PAL.teal4);
+      g.px(z[z.length - 1].x, z[z.length - 1].y - 1, PAL.teal3);
     });
-  }).then(() => ras.destroy());
-  await stand;
-  if (tile) field.release(o.uid);
-  const face = tile && tile.active ? standFaceOf(tile) : { x: at.x, y: at.y - 36 };
-  const top = { x: face.x, y: face.y - 24 };
+  });
+  spark.destroy();
+  if (lean) top = lean.draw(LEAN, { light: 0.05 });
+  let settled: Promise<void> | null = null;
+  const settle = (): Promise<void> => {
+    if (settled) return settled;
+    const l = lean;
+    settled = l
+      ? run(sc, 120, (t) => {
+          const e = E.inQuad(t);
+          l.draw(LEAN * (1 - e), { light: -0.25 * t });
+        }).then(() => {
+          l.draw(0, { light: -0.25 });
+        })
+      : Promise.resolve();
+    return settled;
+  };
   return {
     tile,
     at,
     top,
+    settle,
     async leave(gi) {
+      await settle();
       const g = gi >= 0 && !ctx.isConsumed(gi) ? ctx.events[gi] : null;
       if (!g || g.type !== 'toGraveyard') {
-        if (tile && tile.active) {
-          await tile.dissolve(240);
-          tile.destroy();
-        }
+        await close();
         return;
       }
       ctx.consumeAt(gi);
-      if (tile && tile.active) {
-        await tile.layDown(180);
-        return cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from: at, tile });
-      }
-      return cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from: at });
+      // born from the flat proxy on the same frame (the same pose, no re-raise)
+      const p = cardLeaves(ctx, { owner: g.owner, cardId: g.cardId, from: at, tile });
+      lean?.destroy();
+      return p;
     },
-    async close() {
-      if (tile && tile.active) {
-        await tile.dissolve(320);
-        tile.destroy();
-      }
-    },
+    close,
   };
+  async function close(): Promise<void> {
+    const l = lean;
+    if (l) {
+      await run(sc, 240, (t) => l.draw(0, { light: -0.25, tint: PAL.teal1, tintAmt: t }));
+      l.destroy();
+    }
+    if (tile && tile.active) tile.destroy();
+  }
 }

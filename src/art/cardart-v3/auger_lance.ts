@@ -1,23 +1,24 @@
 // Burgu Mızrağı (auger_lance) — v3 card art (style sheet docs/v3/KART_RESIMLERI.md, contract ./_types.ts).
 // "Bir kartı delen sarmal oluklu burgu, talaş kıvrımları" (docs/v3/YENI_KARTLAR.md §7 S7), the image of the scene
-// (src/cinematics/spells/auger_lance.ts): a steel auger lance, TILTED ~25°, drives down-right THROUGH a trap card:
-// its shaft goes in at a bore in the card's face and its bit comes OUT past the card's lower edge in a burst of
-// card shards; steel shavings curl away. The piercing reads at a glance: shaft in front, tip out the back.
-// ONE key light from the top left on the matter; the drilling points are the only other light.
-//   backdrop  the kit's SPELL recipe (mandatory colours): night0 / night1 sky bands, night0 floor; the recipe's
-//             light shape laid flat on the floor as a sigil under the exit (kit `as: 'sigil'`).
-//   lance     matter, ink outlined, bleeding off the top edge, painted in its own rotated frame: a shaft with a
-//             DEEP two-tone helical flute (the groove follows the cylinder — offset ∝ asin(u) — a 2-row night
-//             groove with its own shade, a white / mist lit lip above it, mist | steel | night4 body bands), a dark
-//             collar (big: one teal band — the spell driving it), a tapering bit; behind the card it is hidden.
-//   card      matter: a card rolled ~20°, a thick night frame, a magenta trap face; cracks (night0) out of the bore.
-//   shards    matter: four ink-outlined card fragments (magenta / night) flung out of the exit.
-//   light     the bore's glowing lip (teal), the exit star (white / teal4), the shavings: SOLID 1-px spiral strokes
-//             (white curled-in end → mist → steel tail; never dotted rings).
-// The small picture (44×34) is the same composition painted again at 1× density by the same code (shaft 7 px,
-// the card's frame 2 px), then corrected by hand: the bit's tip and the exit star patched so the "out the back"
-// reads at 1×, two hook-shaped curls.
-// Living art: 4 frames × 110 ms — the flute scrolls (the lance turns), the shavings turn, the stars pulse.
+// (src/cinematics/spells/auger_lance.ts): a steel auger lance, tilted ~32°, has gone THROUGH a trap card.
+//   the card   in FRONT, facing us: a thick night frame, a magenta trap face (its emblem dimmed to mag1 / mag2);
+//              a BORE punched through its face, three radial cracks running from it to the frame, a ring of torn
+//              card-stock BURR flaps bent out toward us round the hole.
+//   the lance  comes in from the sky BEHIND the card (its collar and upper flute seen above the card's top edge),
+//              passes through the bore, and its fluted shaft + tapering bit come out IN FRONT of the face, the
+//              tip punching past the card's lower-right corner. The flute: a deep two-tone helical groove that
+//              follows the cylinder (offset ∝ asin(u)) — a night groove, a white / mist lit lip, mist | steel |
+//              night4 body bands; one teal band on the dark collar (the spell driving it).
+//   the curls  two steel RIBBONS peel off the flute's edges (one off the front shaft, one off the upper shaft):
+//              each is attached to the groove's lip and rolls up into a spiral away from the lance.
+//   the light  ONLY the drilling points glow: the bit's tip (white star, teal4 rays), the contact point where the
+//              shaft leaves the bore (a white glint on its lit side) and the bore's lip (teal3 / teal4).
+//   backdrop   the kit's SPELL recipe (night0 / night1 sky bands, night0 floor), its light shape laid flat on the
+//              floor as a sigil under the tip.
+// The small picture (44×34) is painted again at 1× by the same composition code, with its own hand-placed pieces:
+// a 3-band diagonal helix (ink groove / mist lip / steel) with a clean stair period, two big hook curls, a
+// 3-flap burr and a 5-px tip star.
+// Living art: 4 frames × 110 ms — the flute scrolls (the lance turns), the curls roll, the tip star pulses.
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
@@ -27,88 +28,90 @@ import type { ArtLayers, CardArtV3 } from './_types';
 type XY = readonly [number, number];
 
 const FRAMES = 4;
-/** The exit point (BIG px): where the bit comes out of the card — the focus. */
-const EXIT: XY = [61, 46];
 
 interface Geo {
   k: 1 | 2;
-  /** the bit's tip; the axis direction (unit, pointing down the lance toward the tip) */
-  tip: XY;
+  /** the bore (where the axis crosses the card's face) */
+  hole: XY;
+  /** the axis direction, unit, pointing down the lance toward the tip */
   dir: XY;
-  /** half widths (shaft / collar), bit length, collar span (distance from the tip), flute lead */
+  /** distance hole → tip (the part in front of the card) */
+  front: number;
+  /** half widths (shaft / collar), bit length, collar span (distance from the TIP), flute lead */
   hw: number;
   chw: number;
   bit: number;
   collar: readonly [number, number];
   per: number;
-  /** distance from the tip of the bore (where the shaft enters the card's face) */
-  bore: number;
   /** card centre, half sizes, roll, frame width (px) */
   cc: XY;
   chx: number;
   chy: number;
   roll: number;
   frame: number;
-  /** shards: centre, size (half), roll */
-  shards: readonly { at: XY; s: number; r: number; mag: boolean }[];
-  curls: readonly { at: XY; size: number; ph: number }[];
+  /** the bore's radius across the axis */
+  holeR: number;
+  /** cracks: screen angle (rad) and length */
+  cracks: readonly (readonly [number, number])[];
+  /** burr flaps: screen angle round the bore */
+  burr: readonly number[];
+  /** curls: where they peel off (distance from the tip along the axis, side ±1), roll radius */
+  curls: readonly { a: number; side: 1 | -1; r: number; len: number }[];
 }
 
-const A = (25 * Math.PI) / 180;
+const A = (32 * Math.PI) / 180;
 const DIR: XY = [Math.sin(A), Math.cos(A)];
 
 const BIG: Geo = {
   k: 2,
-  tip: [68, 60],
+  hole: [39, 27],
   dir: DIR,
-  hw: 6,
-  chw: 8,
-  bit: 15,
-  collar: [62, 68],
+  front: 28,
+  hw: 5,
+  chw: 7,
+  bit: 14,
+  collar: [58, 64],
   per: 7,
-  bore: 40,
-  cc: [42, 32],
-  chx: 15,
-  chy: 19,
-  roll: -0.34,
+  cc: [36, 33],
+  chx: 19,
+  chy: 24,
+  roll: -0.14,
   frame: 4,
-  shards: [
-    { at: [76, 46], s: 3, r: 0.5, mag: true },
-    { at: [80, 56], s: 2, r: 1.1, mag: false },
-    { at: [54, 63], s: 2, r: 0.2, mag: true },
-    { at: [70, 64], s: 2, r: 0.9, mag: false },
+  holeR: 10,
+  cracks: [
+    [-2.4, 18],
+    [-0.8, 18],
+    [2.75, 14],
   ],
+  burr: [-2.75, -1.75, 2.45],
   curls: [
-    { at: [20, 18], size: 5, ph: 0 },
-    { at: [72, 18], size: 5, ph: 2.1 },
-    { at: [80, 33], size: 4, ph: 4.0 },
-    { at: [18, 44], size: 4, ph: 1.2 },
+    { a: 19, side: 1, r: 7, len: 5 },
+    { a: 7, side: 1, r: 5, len: 3 },
   ],
 };
 
 const SMALL: Geo = {
   k: 1,
-  tip: [34, 30],
+  hole: [18, 13],
   dir: DIR,
+  front: 14,
   hw: 3,
   chw: 4,
-  bit: 8,
-  collar: [31, 34],
+  bit: 7,
+  collar: [27, 30],
   per: 4,
-  bore: 20,
-  cc: [21, 16],
+  cc: [17, 15],
   chx: 8,
   chy: 10,
-  roll: -0.34,
+  roll: -0.16,
   frame: 2,
-  shards: [
-    { at: [39, 24], s: 1, r: 0.5, mag: true },
-    { at: [38, 30], s: 1, r: 0.2, mag: false },
+  holeR: 4,
+  cracks: [
+    [-2.2, 7],
+    [2.45, 7],
   ],
-  curls: [
-    { at: [9, 12], size: 3, ph: 0 },
-    { at: [37, 10], size: 3, ph: 2.1 },
-  ],
+  burr: [-2.6, -1.3, 2.6],
+  curls: [],
 };
 
 /** A rolled rectangle's corners. */
@@ -134,37 +137,76 @@ function cardUV(g: Geo, x: number, y: number): [number, number] {
   return [(dx * c + dy * s) / g.chx, (-dx * s + dy * c) / g.chy];
 }
 
-/** The axis point at distance `a` from the tip. */
-function axisAt(g: Geo, a: number): XY {
-  return [g.tip[0] - g.dir[0] * a, g.tip[1] - g.dir[1] * a];
+function tipOf(g: Geo): XY {
+  return [g.hole[0] + g.dir[0] * g.front, g.hole[1] + g.dir[1] * g.front];
 }
 
-function paintCard(p: PixelCanvas, g: Geo): void {
-  const one = new PixelCanvas(p.w, p.h);
-  one.poly(rect(g.cc, g.chx, g.chy, g.roll), PAL.night3);
+/** Axis frame of a pixel: a = distance from the tip back up the lance, c = across (− = the lit left side). */
+function axisFrame(g: Geo, x: number, y: number): [number, number] {
+  const tip = tipOf(g);
+  const dx = x + 0.5 - tip[0];
+  const dy = y + 0.5 - tip[1];
+  const a = -(dx * g.dir[0] + dy * g.dir[1]);
+  const c = -(dx * g.dir[1] - dy * g.dir[0]);
+  return [a, c];
+}
+
+/** Is the pixel inside the bore (an ellipse across the axis, squashed along it: the hole seen at a slant)? */
+function inHole(g: Geo, x: number, y: number, grow = 0): boolean {
+  const dx = x + 0.5 - g.hole[0];
+  const dy = y + 0.5 - g.hole[1];
+  const along = dx * g.dir[0] + dy * g.dir[1];
+  const across = dx * g.dir[1] - dy * g.dir[0];
+  const ra = (g.holeR + grow) * 0.78;
+  const rc = g.holeR + grow;
+  return (along * along) / (ra * ra) + (across * across) / (rc * rc) <= 1;
+}
+
+function paintCard(card: PixelCanvas, g: Geo): void {
+  card.poly(rect(g.cc, g.chx, g.chy, g.roll), PAL.night3);
   const fu = g.frame / g.chx;
   const fv = g.frame / g.chy;
-  for (let y = 0; y < p.h; y++)
-    for (let x = 0; x < p.w; x++) {
-      if (!one.isOpaque(x, y)) continue;
+  for (let y = 0; y < card.h; y++)
+    for (let x = 0; x < card.w; x++) {
+      if (!card.isOpaque(x, y)) continue;
       const [u, v] = cardUV(g, x, y);
       let c: number = PAL.night3;
       // a thick frame: lit (top-left) night4, shaded night2, one night3 inner line
       if (Math.abs(u) > 1 - fu || Math.abs(v) > 1 - fv) c = u - v < -0.4 || (v < 0 && u < 0.6) ? PAL.night4 : PAL.night2;
       else if (Math.abs(u) > 1 - fu * 1.6 || Math.abs(v) > 1 - fv * 1.6) c = PAL.night3;
-      // the art window: a magenta trap face (mag1 field, mag0 lower band, a mag3 / mag2 diamond emblem)
+      // the art window: a magenta trap face (mag1 field, mag0 lower band), the emblem dimmed (mag2 ring)
       else if (v < 0.3) {
         c = v < -0.25 ? PAL.mag1 : PAL.mag0;
-        const dd = Math.abs(u + 0.15) + Math.abs(v + 0.32) * 1.3;
-        if (dd < 0.42) c = dd < 0.2 ? PAL.mag3 : PAL.mag2;
       } else if (g.k === 2 && Math.round((v - 0.4) * g.chy) % 3 === 0 && u > -0.7 && u < 0.4) c = PAL.night4; // text lines
-      one.set(x, y, c);
+      card.set(x, y, c);
     }
-  p.blit(one, 0, 0);
+  // cracks out of the bore: jagged night0 lines (1 px; a lit night4 edge on their upper side at 2×)
+  for (const [ang, len] of g.cracks) {
+    const ca = Math.cos(ang);
+    const sa = Math.sin(ang);
+    for (let d = g.holeR - 1; d <= g.holeR + len; d++) {
+      const j = Math.floor(d / (g.k === 2 ? 3 : 2)) % 2 ? 1 : 0;
+      const X = Math.round(g.hole[0] + ca * d - sa * j);
+      const Y = Math.round(g.hole[1] + sa * d + ca * j);
+      if (!card.isOpaque(X, Y)) break;
+      // the crack: an ink line with a lit lower lip (the broken stock catching the key light)
+      const under = card.get(X, Y + 1);
+      card.set(X, Y, PAL.ink);
+      if (g.k === 2 && d < g.holeR + len - 3 && card.isOpaque(X, Y + 1) && under !== PAL.ink)
+        card.set(X, Y + 1, under === PAL.mag1 || under === PAL.mag0 ? PAL.mag2 : PAL.night4);
+    }
+  }
 }
 
-/** Lance pixel colour at local (a from the tip, c across: − = lit left side), or null outside it. */
-function lanceAt(g: Geo, a: number, c: number, phase: number): number | null {
+/** One / two steps darker (the part of the lance behind the card: off it, and deep in the bore). */
+const SHADE: readonly Readonly<Record<number, number>>[] = [
+  {},
+  { [PAL.white]: PAL.mist },
+  { [PAL.white]: PAL.steel, [PAL.mist]: PAL.night4, [PAL.steel]: PAL.night3, [PAL.night4]: PAL.night2, [PAL.night3]: PAL.night1, [PAL.night2]: PAL.night1 },
+];
+
+/** Lance pixel colour at (a, c) (axis frame), or null outside it. The flute scrolls with `phase`. */
+function lanceAt(g: Geo, a: number, c: number, phase: number, x: number, y: number): number | null {
   if (a < -0.5) return null;
   const inCollar = a >= g.collar[0] && a <= g.collar[1];
   const hw = a < g.bit ? ((a + 0.5) * (g.hw + 0.5)) / g.bit : inCollar ? g.chw : g.hw;
@@ -176,166 +218,209 @@ function lanceAt(g: Geo, a: number, c: number, phase: number): number | null {
     if (g.k === 2 && (ca === 2 || ca === 3)) return u < 0.2 ? PAL.teal3 : PAL.teal2;
     return ca === 0 ? PAL.night2 : u < -0.4 ? PAL.steel : PAL.night3;
   }
+  if (g.k === 1) {
+    // small, hand-placed helix: three 1–2 px diagonal bands on a clean stair (x + 2y), period 9 → ~4 px along
+    // the axis: ink groove | mist lip | steel; the shade side steps steel → night4
+    const k = (((x + 2 * y + phase * 2) % 9) + 9) % 9;
+    if (k < 3) return u > 0.5 ? PAL.ink : PAL.night2;
+    if (k < 5) return u > 0.5 ? PAL.steel : PAL.mist;
+    return u > 0.4 ? PAL.night4 : PAL.steel;
+  }
   // the helical flute (the groove bends round the cylinder: offset ∝ asin(u))
   const off = ((g.per * Math.asin(u)) / Math.PI) * 0.9;
   const k = (((Math.floor(a + off + phase) % g.per) + g.per) % g.per) as number;
-  const gw = g.k === 2 ? 2 : 1;
-  if (k < gw) return k === 0 ? (u > 0.3 ? PAL.night1 : PAL.night2) : u < -0.3 ? PAL.night3 : PAL.night2;
-  if (k === gw) return u < -0.1 ? PAL.white : u < 0.45 ? PAL.mist : PAL.steel;
+  if (k < 2) return k === 0 ? (u > 0.3 ? PAL.night1 : PAL.night2) : u < -0.3 ? PAL.night3 : PAL.night2;
+  if (k === 2) return u < -0.1 ? (a < 18 ? PAL.white : PAL.mist) : u < 0.45 ? PAL.mist : PAL.steel;
   return body;
 }
 
-/** The lance in its rotated frame; behind the card (below the bore) it is hidden where the card is. */
+/**
+ * The lance: behind the card above the bore (seen only off the card or inside the hole), in front of the
+ * card from the bore down to the tip. Returns the lance mask (for the curls' attachment).
+ */
 function paintLance(p: PixelCanvas, g: Geo, phase: number, card: PixelCanvas): void {
-  const nx = g.dir[1];
-  const ny = -g.dir[0];
+  const aHole = g.front;
   for (let y = 0; y < p.h; y++)
     for (let x = 0; x < p.w; x++) {
-      const dx = x + 0.5 - g.tip[0];
-      const dy = y + 0.5 - g.tip[1];
-      const a = -(dx * g.dir[0] + dy * g.dir[1]);
-      const c = -(dx * nx + dy * ny);
-      const col = lanceAt(g, a, c, phase);
+      const [a, c] = axisFrame(g, x, y);
+      const col = lanceAt(g, a, c, phase, x, y);
       if (col === null) continue;
-      if (a < g.bore && card.isOpaque(x, y)) continue; // inside the card / behind it
-      p.set(x, y, col);
+      const behind = a > aHole - (g.k === 2 ? 2 : 1);
+      const hole = inHole(g, x, y);
+      if (behind && card.isOpaque(x, y) && !hole) continue;
+      // seen through the bore the shaft sinks into its shadow (two steps darker); off the card, one step
+      p.set(x, y, behind ? SHADE[hole ? 2 : 1][col] ?? col : col);
     }
 }
 
-/** A card shard: a small rolled triangle-ish chip (magenta face or night frame). */
-function shard(p: PixelCanvas, at: XY, s: number, r: number, mag: boolean): void {
-  const pts = rect(at, s + 1, s, r).slice(0, 3);
-  p.poly(pts, mag ? PAL.mag2 : PAL.night4);
-  if (s > 1) p.set(Math.round(at[0]), Math.round(at[1]), mag ? PAL.mag1 : PAL.night2);
+/** A burr flap: a card-stock tooth torn out of the bore's rim and bent toward us (a mag2 face, a night4 tip). */
+function burrFlap(p: PixelCanvas, g: Geo, ang: number): void {
+  const ca = Math.cos(ang);
+  const sa = Math.sin(ang);
+  const along = Math.cos(ang - Math.atan2(g.dir[1], g.dir[0]));
+  const r0 = g.holeR * Math.sqrt(1 / (along * along / 0.49 + (1 - along * along))) - 1;
+  const L = g.k === 2 ? 5 : 2;
+  const W = g.k === 2 ? 2 : 0;
+  const pts: [number, number][] = [
+    [g.hole[0] + ca * r0 - sa * W, g.hole[1] + sa * r0 + ca * W],
+    [g.hole[0] + ca * r0 + sa * W, g.hole[1] + sa * r0 - ca * W],
+    [g.hole[0] + ca * (r0 + L), g.hole[1] + sa * (r0 + L)],
+  ];
+  if (W > 0) p.poly(pts.map(([x, y]) => [Math.round(x), Math.round(y)] as [number, number]), PAL.mag2);
+  for (let d = 0; d <= L; d++) p.set(Math.round(g.hole[0] + ca * (r0 + d)), Math.round(g.hole[1] + sa * (r0 + d)), d >= L - 1 ? PAL.night4 : PAL.mag2);
 }
 
-/** A shaving: a solid 1-px spiral stroke (4-connected), white at its curled-in end, steel at its tail. */
-function curl(p: PixelCanvas, at: XY, size: number, rot: number): void {
-  const n = size * 3;
-  const turn = 7 / n;
-  let px = NaN;
-  let py = NaN;
-  for (let j = 0; j <= n; j++) {
-    const a = rot + j * turn;
-    const r = 0.6 + (j * size) / n;
-    const x = Math.round(at[0] + Math.cos(a) * r);
-    const y = Math.round(at[1] + Math.sin(a) * r * 0.8);
-    if (x === px && y === py) continue;
-    const c = j < n * 0.25 ? PAL.white : j < n * 0.65 ? PAL.mist : PAL.steel;
-    // walk from the last sample with 4-connected steps (x first, then y): one solid stroke, no gaps
-    if (!Number.isNaN(px)) {
-      let wx = px;
-      let wy = py;
+/**
+ * A curl: a steel RIBBON peeling off the flute's edge — attached at the lance's side (distance `a` from the tip),
+ * it leaves the shaft along the groove, then rolls up into a spiral away from it: steel at the root, mist, a
+ * white curled-in end; a second steel line under the root (the ribbon's width).
+ */
+function ribbon(p: PixelCanvas, g: Geo, a: number, side: 1 | -1, r: number, len: number, rot: number): void {
+  const tip = tipOf(g);
+  const nx = g.dir[1] * side;
+  const ny = -g.dir[0] * side;
+  // the root on the lance's edge, the leaving direction: out along the normal, tilted back up the lance
+  const rx = tip[0] - g.dir[0] * a + nx * (g.hw + 1);
+  const ry = tip[1] - g.dir[1] * a + ny * (g.hw + 1);
+  const ox = nx * 0.8 - g.dir[0] * 0.6;
+  const oy = ny * 0.8 - g.dir[1] * 0.6;
+  const cx = rx + ox * (len + r);
+  const cy = ry + oy * (len + r);
+  const pts: [number, number][] = [];
+  for (let d = 0; d <= len; d++) pts.push([rx + ox * d, ry + oy * d]);
+  // the spiral: from the outer radius (continuing the straight run) inwards, 1.6 turns
+  const a0 = Math.atan2(-oy, -ox) + rot;
+  const N = 30;
+  for (let j = 0; j <= N; j++) {
+    const t = j / N;
+    const ang = a0 + side * t * Math.PI * 3.2;
+    const rr = r * (1 - t * 0.85);
+    pts.push([cx + Math.cos(ang) * rr, cy + Math.sin(ang) * rr]);
+  }
+  let lx = NaN;
+  let ly = NaN;
+  pts.forEach(([fx, fy], i) => {
+    const x = Math.round(fx);
+    const y = Math.round(fy);
+    const k = i / (pts.length - 1);
+    const col = k > 0.94 ? PAL.white : k > 0.3 ? PAL.mist : PAL.steel;
+    if (!Number.isNaN(lx)) {
+      let wx = lx;
+      let wy = ly;
       while (wx !== x || wy !== y) {
         if (wx !== x && (Math.abs(x - wx) >= Math.abs(y - wy) || wy === y)) wx += Math.sign(x - wx);
         else wy += Math.sign(y - wy);
-        p.set(wx, wy, c);
+        p.set(wx, wy, col);
       }
     }
-    p.set(x, y, c);
-    px = x;
-    py = y;
-  }
+    p.set(x, y, col);
+    if (i > 0 && i <= len) p.set(x, y + 1, PAL.steel);
+    lx = x;
+    ly = y;
+  });
 }
 
 const L_KEY: Readonly<Record<string, number>> = { w: PAL.white, t: PAL.teal4, s: PAL.teal3, d: PAL.teal2 };
 // prettier-ignore
-const EXIT_BIG: readonly (readonly string[])[] = [
+const TIP_BIG: readonly (readonly string[])[] = [
   ['....s....', '....t....', '.d..t..d.', '..ttwtt..', 'sttwwwtts', '..ttwtt..', '.d..t..d.', '....t....', '....s....'],
   ['.........', '....s....', '....t....', '...twt...', '.stwwwts.', '...twt...', '....t....', '....s....', '.........'],
 ];
 // prettier-ignore
-const EXIT_SMALL: readonly (readonly string[])[] = [
+const TIP_SMALL: readonly (readonly string[])[] = [
   ['..s..', '..t..', 'stwts', '..t..', '..s..'],
   ['.....', '..t..', '.twt.', '..t..', '.....'],
 ];
 const C_KEY: Readonly<Record<string, number>> = { w: PAL.white, m: PAL.mist, s: PAL.steel };
+// prettier-ignore  — the small's two big curls: hooks rolling off the shaft (root at the left / right edge)
+const HOOK_R: readonly (readonly string[])[] = [
+  ['.mmm.', 'm...m', 'm.w.s', 'ss.s.', 's....'],
+  ['.smm.', 's...m', 'm.w.m', 'mm.s.', 's....'],
+];
 // prettier-ignore
-const HOOKS: readonly (readonly string[])[] = [
-  ['mmmm', 'm..s', 'm.ws', 'mss.'],
-  ['.ssm', 'sw.m', 's..m', 'mmmm'],
+const HOOK_L: readonly (readonly string[])[] = [
+  ['.mmm.', 'm...m', 's.w.m', '.s.ss', '....s'],
+  ['.mms.', 'm...s', 'm.w.m', '.s.mm', '....s'],
 ];
 
 function paint(l: ArtLayers, f: number, g: Geo): void {
   const k = g.k;
-  const exit: XY = k === 2 ? EXIT : [EXIT[0] >> 1, EXIT[1] >> 1];
-  paintBackdrop(l.backdrop, 'SPELL', { focus: [EXIT[0], 58], radius: 20, horizon: 52, as: 'sigil' });
+  const tip = tipOf(g);
+  const tx = Math.round(tip[0]);
+  const ty = Math.round(tip[1]);
+  paintBackdrop(l.backdrop, 'SPELL', { focus: [Math.round(tip[0] * (2 / k)), 58], radius: 20, horizon: 52, as: 'sigil' });
   const card = new PixelCanvas(l.subject.w, l.subject.h);
   paintCard(card, g);
-  // cracks from the bore (night0), short jagged lines
-  const bore = axisAt(g, g.bore);
-  const bx = Math.round(bore[0]);
-  const by = Math.round(bore[1]);
-  for (const [dx, dy, n] of (k === 2
-    ? [
-        [-1, -1, 8],
-        [1, -1, 6],
-        [-1, 1, 9],
-        [1, 1, 5],
-      ]
-    : [
-        [-1, -1, 3],
-        [-1, 1, 4],
-      ]) as [number, number, number][]) {
-    let x = bx + dx * (g.hw - 1);
-    let y = by;
-    for (let i = 0; i < n; i++) {
-      if (i % 2 === 0) x += dx;
-      else y += dy;
-      if (card.isOpaque(x, y)) card.set(x, y, PAL.night0);
-    }
-  }
+  // the bore: punched through the face (night0 where the lance does not fill it), the far wall night1
+  for (let y = 0; y < card.h; y++)
+    for (let x = 0; x < card.w; x++) if (card.isOpaque(x, y) && inHole(g, x, y)) card.set(x, y, PAL.night0);
   l.subject.blit(card, 0, 0);
   paintLance(l.subject, g, f % g.per, card);
-  // the bore: a dark crescent round the shaft where it goes in (the hole's far wall), on the card only
+  for (const b of g.burr) burrFlap(l.subject, g, b);
+  // card chips flung out of the bore with the bit (big: three, ink outlined; they tumble with the frames)
+  if (k === 2)
+    for (const [x, y, r, mag] of [
+      [62, 40, 0.4, true],
+      [70, 50, 1.1, false],
+      [60, 58, 0.2, true],
+    ] as const) {
+      const pts = rect([x, y], 2, 1.5, r + f * 0.4).slice(0, 3);
+      l.subject.poly(pts, mag ? PAL.mag2 : PAL.night4);
+    }
+  ink(l.subject);
+  // ---- light: only the drilling points
+  // the bore's lip: a glowing teal rim on the card just outside the hole (the lower / front half brighter)
+  for (let y = 0; y < card.h; y++)
+    for (let x = 0; x < card.w; x++) {
+      if (!card.isOpaque(x, y) || inHole(g, x, y) || !inHole(g, x, y, 1.2)) continue;
+      const own = l.subject.get(x, y);
+      if (own === PAL.ink || own === PAL.steel || own === PAL.mist || own === PAL.night4 || own === PAL.white) continue;
+      const below = y + 0.5 > g.hole[1];
+      l.light.set(x, y, below ? ((x + f) % 3 === 0 ? PAL.teal4 : PAL.teal3) : PAL.teal2);
+    }
+  // the contact point: a white / teal4 glint on the shaft's lit side right where it leaves the bore
   const nx = g.dir[1];
   const ny = -g.dir[0];
-  for (let c = -g.hw - 2; c <= g.hw + 2; c++) {
-    for (let d = 0; d <= (k === 2 ? 2 : 1); d++) {
-      const x = Math.round(bore[0] + nx * c + g.dir[0] * d);
-      const y = Math.round(bore[1] + ny * c + g.dir[1] * d);
-      if (Math.abs(c) <= g.hw && d === 0) continue;
-      if (card.isOpaque(x, y)) l.subject.set(x, y, PAL.night0);
-    }
-  }
-  for (const s of g.shards) shard(l.subject, s.at, s.s, s.r + f * 0.1, s.mag);
-  ink(l.subject);
-  // light: the bore's glowing lip (teal, just outside the dark wall, below the shaft)
-  for (let c = -g.hw - 1; c <= g.hw + 1; c++) {
-    const d = k === 2 ? 3 : 2;
-    const x = Math.round(bore[0] + nx * c + g.dir[0] * d);
-    const y = Math.round(bore[1] + ny * c + g.dir[1] * d);
-    if (card.isOpaque(x, y)) l.light.set(x, y, Math.abs(c) < 3 ? (f % 2 ? PAL.teal4 : PAL.white) : PAL.teal3);
-  }
-  // the exit star where the bit bursts out of the card's lower edge + the bit's hot tip
-  const st = (k === 2 ? EXIT_BIG : EXIT_SMALL)[f % 2];
-  patch(l.light, st as string[], L_KEY, exit[0] - (st[0].length >> 1), exit[1] - (st.length >> 1));
-  l.light.set(g.tip[0], g.tip[1], PAL.white);
+  const cpx = g.hole[0] + g.dir[0] * (g.holeR * 0.62 + 1) - nx * (g.hw - 1);
+  const cpy = g.hole[1] + g.dir[1] * (g.holeR * 0.62 + 1) - ny * (g.hw - 1);
+  l.light.set(Math.round(cpx), Math.round(cpy), PAL.white);
   if (k === 2) {
-    l.light.set(g.tip[0] - 1, g.tip[1] - 1, PAL.teal4);
-    // the burst's rays: four short teal lines flung down-right out of the exit
+    l.light.set(Math.round(cpx + g.dir[0] * 1), Math.round(cpy + g.dir[1] * 1), PAL.white);
+    l.light.set(Math.round(cpx - nx), Math.round(cpy - ny), PAL.teal4);
+    l.light.set(Math.round(cpx + g.dir[0] * 2), Math.round(cpy + g.dir[1] * 2), PAL.teal4);
+  }
+  // the tip: a pulsing white / teal star, and (big) the burst's rays flung down-right
+  const st = (k === 2 ? TIP_BIG : TIP_SMALL)[f % 2];
+  patch(l.light, st as string[], L_KEY, tx - (st[0].length >> 1), ty - (st.length >> 1));
+  if (k === 2) {
     for (const [dx, dy, n] of [
-      [1, 0, 5],
+      [1, 0, 4],
       [1, 1, 4],
       [0, 1, 3],
       [2, -1, 3],
     ] as const) {
       for (let i = 0; i < n; i++) {
-        const x = exit[0] + 6 + i * dx + (dx === 2 ? i : 0);
-        const y = exit[1] + 2 + i * dy;
+        const x = tx + 5 + i * dx + (dx === 2 ? i : 0);
+        const y = ty + 2 + i * dy;
         if (!l.subject.isOpaque(x, y)) l.light.set(x, y, i < 2 ? PAL.teal4 : PAL.teal2);
       }
     }
-    g.curls.forEach((c, i) => curl(l.light, c.at, c.size, c.ph + f * 0.8 * (i % 2 ? -1 : 1)));
+    // the ribbons peel off the flute edges, rolling as the lance turns
+    g.curls.forEach((c, i) => ribbon(l.light, g, c.a + (f % 2), c.side, c.r, c.len, f * 0.5 * (i % 2 ? -1 : 1)));
   } else {
-    // small (hand-made): two 4×4 hook curls turning, and the tip patched to read out the back of the card
-    g.curls.forEach((c, i) => patch(l.light, HOOKS[(f + i) % 2] as string[], C_KEY, c.at[0] - 2, c.at[1] - 2));
+    // small (hand-made): two big hook curls rolling off the shaft's two sides
+    const nxS = g.dir[1];
+    const nyS = -g.dir[0];
+    const r1: XY = [Math.round(tip[0] - g.dir[0] * 7 + nxS * (g.hw + 3)), Math.round(tip[1] - g.dir[1] * 7 + nyS * (g.hw + 3))];
+    const r2: XY = [Math.round(tip[0] - g.dir[0] * 5 - nxS * (g.hw + 3)), Math.round(tip[1] - g.dir[1] * 5 - nyS * (g.hw + 3))];
+    patch(l.light, HOOK_R[f % 2] as string[], C_KEY, r1[0] - 1, r1[1] - 2);
+    patch(l.light, HOOK_L[(f + 1) % 2] as string[], C_KEY, r2[0] - 3, r2[1] - 2);
   }
 }
 
 const art: CardArtV3 = {
   id: 'auger_lance',
-  focus: EXIT,
+  focus: [45, 38],
   frames: FRAMES,
   holdMs: 110,
   big: (l, f) => paint(l, f, BIG),

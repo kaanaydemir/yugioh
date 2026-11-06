@@ -44,7 +44,7 @@ import Phaser from 'phaser';
 import type { CardId } from '../../data/cards';
 import type { GameEvent, GameState, PlayerId, Uid } from '../../engine/types';
 import { PAL } from '../../art/palette';
-import { BRIDGE_ROWS, DEPTH, LOOK_V3, type Rect, type XY, isoToScreen, screenToIso, unitDepth, zoneXY } from '../../view/layout';
+import { BOARD_COLS, BOARD_ROWS, DEPTH, LOOK_V3, type Rect, type XY, isoToScreen, screenToIso, unitDepth, zoneXY } from '../../view/layout';
 import { KEEP_OUT, SCREENS } from '../../view/board-nt/layout-nt';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { FieldView } from '../../duel/FieldView';
@@ -59,6 +59,13 @@ import { GOLD_FX, bg, evAt, idxOf, lightFlash, lightPool, relax, setTileOf, spel
 import {
   CROSS_EXT,
   CROSS_HOOKS,
+  CROSS_HOP_EXT,
+  CROSS_POP_DY,
+  CROSS_POP_EXT,
+  CROSS_REVEAL_KEY,
+  covered,
+  occludeStrings,
+  type Occluder,
   CROSS_KEY,
   CROSS_MID_KEY,
   CROSS_M_O,
@@ -139,24 +146,222 @@ function borrowedByPuppet(s: GameState, uid: Uid): boolean {
 // ================================================================ routing and HUD clearance
 
 /**
- * The walk between two monster zones in three legs, along a lane (never straight through the other units):
- * out of the source row onto the bridge (same column), along the bridge to the target's column, in to the
- * target. Same column: three even thirds (nothing stands between).
+ * Something standing on the board the walking body should not pass through: a unit's silhouette (its row spans,
+ * every ROW_STEP px) or a pile's box. `w`: weight of an overlap (units 1, piles less).
  */
-function route(from: XY, to: XY): XY[] {
-  const a = screenToIso(from.x, from.y);
-  const b = screenToIso(to.x, to.y);
-  const ca = R(a.col);
-  const ra = R(a.row);
-  const cb = R(b.col);
-  const rb = R(b.row);
+interface Obstacle {
+  /** Its floor y (depth: a unit standing lower on screen is in front). */
+  foot: number;
+  top: number;
+  rows: ([number, number] | null)[];
+  area: number;
+  w: number;
+}
+
+/** The body's silhouette relative to its floor point: row spans from `top` (negative: above the floor). */
+interface RelShape {
+  top: number;
+  rows: ([number, number] | null)[];
+  area: number;
+}
+
+const ROW_STEP = 2;
+
+function shapeRows(top: number, bottom: number, spanAt: (y: number) => [number, number] | null, dx: number, dy: number): { top: number; rows: ([number, number] | null)[]; area: number } {
+  const rows: ([number, number] | null)[] = [];
+  let area = 0;
+  const t0 = Math.ceil(top);
+  for (let y = t0; y < bottom; y += ROW_STEP) {
+    const sp = spanAt(y + 0.5);
+    // a little shrunk: a neighbour may graze the outline
+    const r: [number, number] | null = sp && sp[1] - sp[0] > 4 ? [sp[0] + 2 - dx, sp[1] - 2 - dx] : null;
+    rows.push(r);
+    if (r) area += (r[1] - r[0]) * ROW_STEP;
+  }
+  return { top: t0 - dy, rows, area };
+}
+
+/** Other units (their silhouettes) and the two deck piles. */
+function obstaclesFor(sc: Phaser.Scene, field: FieldView, self: MonsterUnit | null): Obstacle[] {
+  const out: Obstacle[] = [];
+  for (const u of field.units()) {
+    if (u === self || u.retired || !u.sprite.active || !u.sprite.visible) continue;
+    const bx = spriteBox(sc, u.sprite);
+    out.push({ ...shapeRows(bx.top, bx.bottom, bx.spanAt, 0, 0), foot: bx.bottom + u.hover, w: 1 });
+  }
+  for (const p of [0, 1] as PlayerId[]) {
+    const d = zoneXY(p, 'deck');
+    // the pile draws over the units (its own depth band): never pass behind it
+    out.push({ ...shapeRows(d.y - 14, d.y + 14, () => [d.x - 21, d.x + 21], 0, 0), foot: 9999, w: 2 });
+  }
+  return out;
+}
+
+/**
+ * How much of the smaller of the two silhouettes the body covers with its floor point at `g`, `lift` px in the air
+ * (0..1, × weight; × 2 when the other stands in front: a body hopping BEHIND a unit reads as clipping into it).
+ */
+function overlapFrac(g: XY, lift: number, me: RelShape, o: Obstacle): number {
+  const gx = Math.round(g.x);
+  const gy = Math.round(g.y - lift);
+  let sum = 0;
+  for (let i = 0; i < me.rows.length; i++) {
+    const r = me.rows[i];
+    if (!r) continue;
+    const y = gy + me.top + i * ROW_STEP;
+    const k = Math.floor((y - o.top) / ROW_STEP);
+    if (k < 0 || k >= o.rows.length) continue;
+    const q = o.rows[k];
+    if (!q) continue;
+    const w = Math.min(gx + r[1], q[1]) - Math.max(gx + r[0], q[0]);
+    if (w > 0) sum += w * ROW_STEP;
+  }
+  return sum > 0 ? ((o.foot > g.y ? 2 : 1) * o.w * sum) / Math.max(1, Math.min(o.area, me.area)) : 0;
+}
+
+/**
+ * The walk between two monster zones in three legs (the puppet's three hops / the three lurches home), around
+ * whatever stands on the board. Waypoints on a half-cell grid; a route is scored by how much of another unit (or a
+ * deck) the body's silhouette covers on the way — in the air too (`lifts`: its height on each leg) — the summed
+ * overlap, the stops (where it lands and stands a beat) and the worst frame weigh most, each only above what the
+ * destination itself already overlaps (its neighbours there are unavoidable); then length and evenness of the legs.
+ */
+/** The lift scale per leg of the last route() (1: full hop). */
+let lastScales: number[] = [1, 1, 1];
+
+function route(from: XY, to: XY, me: RelShape, obs: readonly Obstacle[], lifts: readonly number[] = [0, 0, 0]): XY[] {
+  // waypoints: the half-cell grid between the two rows (half a row of slack each way), off the board's outer
+  // columns (the piles); never through the far rows (the cross would climb into the HUD)
+  const fa = screenToIso(from.x, from.y);
+  const ta = screenToIso(to.x, to.y);
+  const r0 = Math.max(0, Math.min(fa.row, ta.row) - 0.5);
+  const r1 = Math.min(BOARD_ROWS - 1, Math.max(fa.row, ta.row) + 0.5);
+  const cells: XY[] = [];
+  for (let c = 0.5; c <= BOARD_COLS - 1.5; c += 0.5) for (let r = r0; r <= r1 + 0.01; r += 0.5) cells.push(isoToScreen(c, r));
+  const memo = new Map<number, number>();
+  const clash = (x: number, y: number, lift = 0) => {
+    const key = ((Math.round(x / 2) + 1000) * 4096 + Math.round(y / 2) + 1000) * 64 + Math.round(lift);
+    let v = memo.get(key);
+    if (v === undefined) {
+      const g = { x: Math.round(x / 2) * 2, y: Math.round(y / 2) * 2 };
+      v = obs.reduce((s, o) => s + overlapFrac(g, lift, me, o), 0);
+      memo.set(key, v);
+    }
+    return v;
+  };
+  const legOf = (a: XY, b: XY, lift: number) => {
+    const d = Math.hypot(b.x - a.x, b.y - a.y);
+    const n = Math.max(2, Math.ceil(d / 6));
+    let s = 0;
+    let mx = 0;
+    for (let k = 1; k < n; k++) {
+      const v = clash(a.x + ((b.x - a.x) * k) / n, a.y + ((b.y - a.y) * k) / n, lift);
+      s += v;
+      mx = Math.max(mx, v);
+    }
+    return { s: (s * d) / n / 6, d, mx };
+  };
+  const base = clash(to.x, to.y);
+  // what the destination overlaps anyway is half forgiven (the neighbours there are unavoidable)
+  const over = (x: number) => Math.max(0, x - base * 0.5);
+  // each leg may also be hopped lower (a lift scale; costs a little: the hops should stay big and jerky)
+  const SCALES = [1, 0.6, 0.3] as const;
+  const SCALE_COST = [0, 25, 60] as const;
+  type Leg = { s: number; d: number; mx: number; k: number };
+  const pick = (a: XY, b: XY, lift: number): Leg => {
+    let bestLeg: Leg | null = null;
+    let bc = Infinity;
+    SCALES.forEach((sc, k) => {
+      const l = legOf(a, b, Math.round(lift * sc));
+      const c = l.s * 60 + over(l.mx) * 400 + SCALE_COST[k];
+      if (c < bc) {
+        bc = c;
+        bestLeg = { ...l, k };
+      }
+    });
+    return bestLeg!;
+  };
+  let best: XY[] = [];
+  let bestScales: number[] = [1, 1, 1];
+  let bestCost = Infinity;
+  const legs1 = cells.map((w) => pick(from, w, lifts[0]));
+  const legs3 = cells.map((w) => pick(w, to, lifts[2]));
+  const stop = cells.map((w) => clash(w.x, w.y));
+  for (let i = 0; i < cells.length; i++) {
+    const l1 = legs1[i];
+    if (l1.d < 20 || l1.d > 110) continue;
+    for (let j = 0; j < cells.length; j++) {
+      const l3 = legs3[j];
+      if (l3.d < 20 || l3.d > 110) continue;
+      const dd = Math.hypot(cells[j].x - cells[i].x, cells[j].y - cells[i].y);
+      if (dd < 20 || dd > 110) continue;
+      const l2 = pick(cells[i], cells[j], lifts[1]);
+      const len = l1.d + l2.d + l3.d;
+      const even = Math.max(l1.d, l2.d, l3.d) - Math.min(l1.d, l2.d, l3.d);
+      const peak = Math.max(l1.mx, l2.mx, l3.mx, stop[i], stop[j]);
+      const cost =
+        (l1.s + l2.s + l3.s) * 60 + (over(stop[i]) + over(stop[j])) * 300 + over(peak) * 400 + len + even * 0.5 + SCALE_COST[l1.k] + SCALE_COST[l2.k] + SCALE_COST[l3.k];
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = [{ ...cells[i] }, { ...cells[j] }, { ...to }];
+        bestScales = [SCALES[l1.k], SCALES[l2.k], SCALES[l3.k]];
+      }
+    }
+  }
+  lastScales = bestScales;
+  if (best.length) return best;
   const lerp = (k: number): XY => ({ x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k });
-  if (ca === cb || ra === rb) return [lerp(1 / 3), lerp(2 / 3), { ...to }];
-  // the bridge row nearest each end (one bridge row in the v3 board: both the same)
-  const near = (r: number) => BRIDGE_ROWS.reduce((best, x) => (Math.abs(x - r) < Math.abs(best - r) ? x : best), BRIDGE_ROWS[0]);
-  const w1 = isoToScreen(ca, near(ra));
-  const w2 = isoToScreen(cb, near(rb));
-  return [w1, w2, { ...to }];
+  lastScales = [1, 1, 1];
+  return [lerp(1 / 3), lerp(2 / 3), { ...to }];
+}
+
+/** The body's silhouette relative to its floor point (a face-down card: its flat diamond). */
+function relShapeOf(sc: Phaser.Scene, b: Body): RelShape {
+  if (b.unit) {
+    const bx = spriteBox(sc, b.unit.sprite);
+    const a = bodyAnchor(b);
+    const gy = R(a.y + b.hover + b.lift - b.ny);
+    return shapeRows(bx.top, bx.bottom, bx.spanAt, a.x, gy);
+  }
+  return shapeRows(-8, 8, (y) => [-14 + Math.abs(y) * 2, 14 - Math.abs(y) * 2], 0, 0);
+}
+
+/** The units around the body as string occluders (in front of it: cut; behind: dimmed). */
+function occludersFor(sc: Phaser.Scene, field: FieldView, b: Body): Occluder[] {
+  const myDepth = b.unit && b.unit.sprite.active ? b.unit.sprite.depth : unitDepth(R(b.ground.y));
+  const out: Occluder[] = [];
+  for (const u of field.units()) {
+    if (u === b.unit || u.retired || !u.sprite.active || !u.sprite.visible) continue;
+    const bx = spriteBox(sc, u.sprite);
+    out.push({ top: bx.top, bottom: bx.bottom, spanAt: bx.spanAt, front: u.sprite.depth > myDepth });
+  }
+  return out;
+}
+
+/**
+ * Hook only what can be seen: a limb point hidden behind a unit in front moves up the body's own silhouette to
+ * the nearest visible pixel (a foot behind the golem is hooked at the hip / the cape hem instead).
+ */
+function hookVisible(sc: Phaser.Scene, field: FieldView, b: Body): void {
+  if (!b.unit) return;
+  const occ = occludersFor(sc, field, b);
+  if (!occ.some((o) => o.front)) return;
+  const bx = spriteBox(sc, b.unit.sprite);
+  const a = bodyAnchor(b);
+  b.limbs = b.limbs.map((l) => {
+    const p = { x: a.x + l.x, y: a.y + l.y };
+    if (!covered(occ, p.x, p.y) && !covered(occ, p.x, p.y + STAR_DY)) return l;
+    for (let y = p.y - 1; y > bx.top + 1; y--) {
+      const sp = bx.spanAt(y + 0.5);
+      if (!sp) continue;
+      // try the limb's own x clamped into the body, then a few px either way
+      for (const dx of [0, 1, -1, 2, -2, 3, -3, 4, -4, 6, -6]) {
+        const x = Math.max(Math.ceil(sp[0]) + 1, Math.min(Math.floor(sp[1]) - 2, p.x + dx));
+        if (!covered(occ, x, y) && !covered(occ, x, y + STAR_DY) && !covered(occ, x, y + STAR_DY + 3)) return { x: x - a.x, y: y - a.y };
+      }
+    }
+    return l;
+  });
 }
 
 /** Screen rects the puppeteer's cross must keep clear of (the arena's portrait screens, the HUD plates). */
@@ -199,6 +404,60 @@ function placeCross(want: XY, e: { l: number; t: number; r: number; b: number },
     }
   }
   return best ?? w;
+}
+
+/** How many px of the straight string a → b run over a HUD rect / portrait screen. */
+function stringInKeep(a: XY, b: XY): number {
+  const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 2));
+  let c = 0;
+  for (let k = 0; k <= n; k++) {
+    const x = a.x + ((b.x - a.x) * k) / n;
+    const y = a.y + ((b.y - a.y) * k) / n;
+    for (const r of KEEP)
+      if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) {
+        c += 2;
+        break;
+      }
+  }
+  return c;
+}
+
+/**
+ * The small lingering cross over a head: 34 px up by default; when that (or its string) would cross a portrait
+ * screen / HUD plate, the nearest spot whose cross is clear and whose string runs over as little of it as possible
+ * — sideways, or lower on a shorter string (never closer than 9 px over the head).
+ */
+const LINGER_SPOT = new Map<number, XY>();
+function placeLinger(head: XY): XY {
+  const key = R(head.x) * 1000 + R(head.y);
+  const hit = LINGER_SPOT.get(key);
+  if (hit) return hit;
+  if (LINGER_SPOT.size > 256) LINGER_SPOT.clear();
+  const spot = placeLingerAt(head);
+  LINGER_SPOT.set(key, spot);
+  return spot;
+}
+
+function placeLingerAt(head: XY): XY {
+  const e = CROSS_S_EXT;
+  const want = { x: R(head.x), y: R(Math.max(HANG_MIN, head.y - 34)) };
+  if (!hitsKeep(want.x, want.y, e) && stringInKeep({ x: want.x, y: want.y + 5 }, head) === 0) return want;
+  let best = want;
+  let cost = Infinity;
+  for (let dy = 34; dy >= 9; dy -= 1) {
+    const y = R(head.y - dy);
+    if (y - e.t < 22) continue;
+    for (let dx = -44; dx <= 44; dx++) {
+      const x = want.x + dx;
+      if (x - e.l < 2 || x + e.r > 638 || hitsKeep(x, y, e)) continue;
+      const c = stringInKeep({ x, y: y + 5 }, head) * 6 + Math.abs(dx) + (34 - dy) * 1.5;
+      if (c < cost) {
+        cost = c;
+        best = { x, y };
+      }
+    }
+  }
+  return best;
 }
 
 // ================================================================ the puppet body (unit or face-down tile)
@@ -394,7 +653,7 @@ function crossHook(r: Rig, i: number): XY {
 /** The star hangs just under the limb point: the string visibly ends in it. */
 const STAR_DY = 4;
 
-function makeRig(sc: Phaser.Scene, b: Body, at: XY): Rig {
+function makeRig(sc: Phaser.Scene, field: FieldView, b: Body, at: XY): Rig {
   puppetTextures(sc);
   const cross = sc.add.image(at.x, at.y, CROSS_KEY).setOrigin(CROSS_O.x / CROSS_W, CROSS_O.y / CROSS_H).setDepth(DEPTH.FX + 7);
   const layer = stringLayer(sc);
@@ -407,6 +666,7 @@ function makeRig(sc: Phaser.Scene, b: Body, at: XY): Rig {
     frame++;
     cross.setPosition(R(rig.at.x), R(rig.at.y));
     rig.light?.setPosition(R(rig.at.x), R(rig.at.y), R(b.ground.y));
+    const occ = occludersFor(sc, field, b);
     layer.draw((r) => {
       if (rig.tether?.on) {
         // the equip's link: a thin gold1 line from its card to the feet, a gold3 pixel every 5
@@ -426,11 +686,12 @@ function makeRig(sc: Phaser.Scene, b: Body, at: XY): Rig {
         if (s.buzz > 0) s.buzz -= dt;
         drawString(r, s, frame);
       });
+      occludeStrings(r, occ);
     });
     strings.forEach((s, i) => {
       const st = stars[i];
       if (!st.active) return;
-      const show = s.star && s.cut === null;
+      const show = s.star && s.cut === null && !covered(occ, s.b.x, s.b.y + STAR_DY - 1);
       st.setVisible(show);
       if (show) st.setPosition(s.b.x, s.b.y + STAR_DY - 1);
     });
@@ -528,7 +789,7 @@ function lingerString(sc: Phaser.Scene, field: FieldView, uid: Uid, start: XY | 
       return fadeK > 0;
     }
     // the cross trails the body (eased, whole pixels), clear of the HUD, bobbing 1 px every 450 ms, swaying ±1 px
-    const want = placeCross({ x: last.x, y: Math.max(HANG_MIN, last.y - 34) }, CROSS_S_EXT, last.y, 8);
+    const want = placeLinger(last);
     cx = cx === null ? want.x : cx + (want.x - cx) * Math.min(1, dt / 120);
     cy = cy === null ? want.y : cy + (want.y - cy) * Math.min(1, dt / 120);
     const sway = Math.floor(el / 700) % 4 === 1 ? 1 : Math.floor(el / 700) % 4 === 3 ? -1 : 0;
@@ -614,9 +875,59 @@ function crossBreak(sc: Phaser.Scene, at: XY): void {
 type CCCtx = LaneECtx<'controlChange'>;
 
 /** The cross's spot over a body standing at `ground` (HUD-clear). */
-function hangOver(b: Body, ground: XY): XY {
+function hangOver(b: Body, ground: XY, ext: { l: number; t: number; r: number; b: number } = CROSS_EXT): XY {
   const top = bodyTop(b) - bodyAnchor(b).y + R(ground.y - b.hover);
-  return placeCross({ x: ground.x, y: top - HANG }, CROSS_EXT, top);
+  return placeCross({ x: ground.x, y: top - HANG }, ext, top);
+}
+
+/** Where the 7 × 7 spirals go: one per eye, or one between two eyes closer than 9 px (they would overlap). */
+function spiralSpots(eyes: XY[]): XY[] {
+  if (eyes.length === 2 && Math.abs(eyes[0].x - eyes[1].x) < 9 && Math.abs(eyes[0].y - eyes[1].y) < 5)
+    return [{ x: R((eyes[0].x + eyes[1].x) / 2), y: R((eyes[0].y + eyes[1].y) / 2) }];
+  return eyes.map((e) => ({ x: R(e.x), y: R(e.y) }));
+}
+
+/** The knot's glint as the cross is born: the star hook's bite frame, then the star, then a tiny star (whole px). */
+function knotGlint(sc: Phaser.Scene, at: XY): void {
+  const st = sc.add.image(R(at.x), R(at.y), STAR_KEY, 'f').setDepth(DEPTH.FX + 9);
+  sc.time.delayedCall(70, () => st.active && st.setFrame('s'));
+  sc.time.delayedCall(150, () => st.active && st.setFrame('t'));
+  sc.time.delayedCall(220, () => st.active && st.destroy());
+}
+
+/**
+ * The light runs out along the new wood: from the knot two gold4 beads (a white head) run to the hand bar's caps
+ * and one down the upright, in 6 stepped frames; each cap pops a 3-px plus as they arrive.
+ */
+async function barShine(sc: Phaser.Scene, rig: Rig): Promise<void> {
+  const ras = new Raster(sc, R(rig.at.x) - 26, R(rig.at.y) - 10, 52, 28, DEPTH.FX + 8);
+  await run(sc, 150, (t) => {
+    const k = q(t, 6);
+    const o = { x: R(rig.at.x), y: R(rig.at.y) };
+    ras.moveTo(o.x - 26, o.y - 10);
+    ras.draw((r) => {
+      if (k >= 1) {
+        for (const sx of [-1, 1]) {
+          const cx = o.x + sx * 20;
+          r.px(cx, o.y - 2, PAL.gold4);
+          r.px(cx - 1, o.y - 1, PAL.gold4);
+          r.px(cx + 1, o.y - 1, PAL.gold4);
+          r.px(cx, o.y - 1, PAL.white);
+        }
+        return;
+      }
+      for (const sx of [-1, 1]) {
+        const x = o.x + sx * R(19 * k);
+        r.px(x, o.y - 1, PAL.white);
+        r.px(x - sx, o.y - 1, PAL.gold4);
+        r.px(x - 2 * sx, o.y - 1, PAL.gold4);
+      }
+      const y = o.y + R(12 * k);
+      r.px(o.x, y, PAL.white);
+      r.px(o.x, y - 1, PAL.gold4);
+    });
+  });
+  ras.destroy();
 }
 
 async function takeScene(ctx: CCCtx, hint: { crossAt?: XY } = {}): Promise<void> {
@@ -640,23 +951,30 @@ async function takeScene(ctx: CCCtx, hint: { crossAt?: XY } = {}): Promise<void>
   const eqSlot = ctx.state.players.flatMap((p) => p.spellTraps).find((s) => s && s.equippedTo === ev.uid) ?? null;
   const eqTile = eqSlot ? field.tileOf(eqSlot.uid) : null;
 
-  // ---- the cross: a two-frame silhouette pop (2× white, 1× gold4), then the wood, dropping with a pendulum
-  const hang: XY = hint.crossAt ? { x: hint.crossAt.x, y: hint.crossAt.y + 8 } : hangOver(b, from);
-  const rig = makeRig(sc, b, { x: hang.x, y: hang.y - 8 });
+  // ---- the cross: the orb unspools into it — a hot core, the bars growing out stepwise, the full hot cross, then
+  // the inked wood (35 ms a frame); the knot glints, light runs out along the bars; it drops CROSS_POP_DY px onto
+  // its strings with a pendulum overshoot. Its extent (pop + glint included) is kept clear of the HUD.
+  hookVisible(sc, field, b);
+  const hang: XY = hint.crossAt ? { x: hint.crossAt.x, y: hint.crossAt.y + CROSS_POP_DY } : hangOver(b, from, CROSS_POP_EXT);
+  const rig = makeRig(sc, field, b, { x: hang.x, y: hang.y - CROSS_POP_DY });
   if (eqTile) rig.tether = { from: { x: R(eqTile.home.x), y: R(eqTile.home.y) }, on: false };
   rig.light = lightPool(sc, hang.x, hang.y, { color: PAL.gold4, radius: 2, ry: 1, spill: null, floorY: from.y, air: 0.7, airRadius: 14, intensity: 0, fadeIn: 0, anim: 'flicker' });
   rig.light.setIntensity(1, 160);
-  bg(starFlare(sc, { x: hang.x, y: hang.y - 8 }, 240, GOLD_FX, 26));
-  void lightFlash(sc, hang.x, hang.y - 8, PAL.gold4, 34, 320, { floorY: from.y, intensity: 1 });
+  void lightFlash(sc, hang.x, hang.y - CROSS_POP_DY, PAL.gold4, 24, 300, { floorY: from.y, intensity: 0.9 });
   playV3('e_puppetCross', { volume: 1, pan: panAt(hang.x) });
-  rig.cross.setScale(2).setTintFill(PAL.white);
-  await wait(sc, 40);
-  rig.cross.setScale(1).setTintFill(PAL.gold4);
-  await wait(sc, 40);
-  rig.cross.clearTint();
-  // the drop with a pendulum overshoot (stepped): -8 → +3 → -1 → 0
+  rig.cross.setTexture(CROSS_REVEAL_KEY, 'r0').setOrigin(CROSS_O.x / CROSS_W, CROSS_O.y / CROSS_H);
+  knotGlint(sc, { x: hang.x, y: hang.y - CROSS_POP_DY });
+  await wait(sc, 35);
+  rig.cross.setFrame('r1');
+  await wait(sc, 35);
+  rig.cross.setFrame('r2');
+  await wait(sc, 35);
+  crossSize(rig, 'big');
+  bg(barShine(sc, rig));
+  // the drop with a pendulum overshoot (stepped): -POP → +3 → -1 → 0
+  const P0 = -CROSS_POP_DY;
   await run(sc, CROSS_DROP, (t) => {
-    const k = t < 0.45 ? -8 + 11 * (t / 0.45) : t < 0.7 ? 3 - 4 * ((t - 0.45) / 0.25) : -1 + (t - 0.7) / 0.3;
+    const k = t < 0.45 ? P0 + (3 - P0) * (t / 0.45) : t < 0.7 ? 3 - 4 * ((t - 0.45) / 0.25) : -1 + (t - 0.7) / 0.3;
     rig.at.y = hang.y + R(k);
   });
   rig.at.y = hang.y;
@@ -700,11 +1018,12 @@ async function takeScene(ctx: CCCtx, hint: { crossAt?: XY } = {}): Promise<void>
     placeBody(b);
   });
   rig.strings.forEach((s) => (s.buzz = 90));
-  // ---- the spiral glint: a turning spiral in each eye, a teal flash over the face
+  // ---- the spiral glint: a 7 × 7 inked teal spiral turns once in its eyes (4 quarter frames × 60 ms, the last held
+  // 2 frames more); a 2-frame teal tint over the body as it starts (no white: it must not read as a star sparkle)
   const spirals: Phaser.GameObjects.Image[] = [];
-  const eyes = eyesAt(b);
+  const eyes = spiralSpots(eyesAt(b));
   if (unit && eyes.length) {
-    for (let k = 0; k < eyes.length; k++) spirals.push(sc.add.image(0, 0, SPIRAL_KEY, 'fl').setDepth(DEPTH.FX + 9).setFlipX(unit.sprite.flipX));
+    for (let k = 0; k < eyes.length; k++) spirals.push(sc.add.image(0, 0, SPIRAL_KEY, 'f0').setOrigin(3 / 7, 3 / 7).setDepth(DEPTH.FX + 9));
     playV3('e_puppetGlint', { volume: 0.9, pan: panAt(from.x) });
     const e = eyes[0];
     void lightFlash(sc, e.x, e.y, PAL.teal4, 14, 380, { intensity: 0.9 });
@@ -714,20 +1033,19 @@ async function takeScene(ctx: CCCtx, hint: { crossAt?: XY } = {}): Promise<void>
     playV3('e_puppetGlint', { volume: 0.6, pitch: 1.2, pan: panAt(from.x) });
     bg(starFlare(sc, { x: R(from.x) + 4, y: R(from.y) - 2 }, 260, GOLD_FX, 12));
   }
+  const SPIN = 60;
   const spiralTick = spirals.length
     ? onFrame(sc, (_dt, el) => {
-        const es = eyesAt(b);
-        if (unit && el > 66 && unit.sprite.isTinted) unit.sprite.clearTint();
+        const es = spiralSpots(eyesAt(b));
+        if (unit && el > 50 && unit.sprite.isTinted) unit.sprite.clearTint();
         spirals.forEach((sp, k) => {
           if (!sp.active || !es[k]) return;
-          // the first two frames: a star flash; then the 3 × 3 spiral turns (70 ms a quarter)
-          if (el < 66) sp.setFrame('fl').setPosition(es[k].x, es[k].y);
-          else sp.setFrame(`f${Math.floor((el - 66) / 70) % 4}`).setPosition(es[k].x, es[k].y);
+          sp.setFrame(`f${Math.min(3, Math.floor(el / SPIN))}`).setPosition(es[k].x, es[k].y);
         });
         return true;
       })
     : () => undefined;
-  await wait(sc, spirals.length ? 380 : 260);
+  await wait(sc, spirals.length ? SPIN * 6 : 260);
   spiralTick();
   if (unit && unit.sprite.isTinted) unit.sprite.clearTint();
   spirals.forEach((sp) => sp.destroy());
@@ -737,15 +1055,17 @@ async function takeScene(ctx: CCCtx, hint: { crossAt?: XY } = {}): Promise<void>
   // ---- three jerky hops along the lane (out to the bridge, along it, in)
   if (rig.tether) rig.tether.on = true;
   if (eqTile) eqTile.tileFlash(PAL.gold3, 260);
-  const legs = route(from, to);
+  const legs = route(from, to, relShapeOf(sc, b), obstaclesFor(sc, field, unit), HOP_LIFT.map((l) => l + 2));
+  const hopScale = lastScales.slice();
   let g0: XY = { ...from };
   const crossDy = hang.y - from.y;
   for (let h = 0; h < legs.length; h++) {
     const g1 = legs[h];
     const c0 = { ...rig.at };
     const want = { x: g1.x, y: g1.y + crossDy };
-    const c1 = placeCross(want, CROSS_EXT, g1.y + (bodyTop(b) - bodyAnchor(b).y) - b.hover);
-    const lift = HOP_LIFT[h] ?? 18;
+    const c1 = placeCross(want, CROSS_HOP_EXT, g1.y + (bodyTop(b) - bodyAnchor(b).y) - b.hover);
+    // a hop passing in front of another unit is yanked lower (route() picks the scale), never under 6 px
+    const lift = Math.max(6, Math.round((HOP_LIFT[h] ?? 18) * (hopScale[h] ?? 1)));
     const dir = Math.sign(R(g1.x - g0.x)) || (h % 2 ? 1 : -1);
     // anticipation: the cross jerks ahead and up first (the strings slant), the body is yanked up in 3 steps,
     // leaning toward the pull, its legs left hanging
@@ -856,6 +1176,8 @@ async function takeScene(ctx: CCCtx, hint: { crossAt?: XY } = {}): Promise<void>
   playV3('e_puppetSettle', { volume: 0.95, pan: panAt(to.x) });
   if (rig.tether) rig.tether.on = false;
   const ups = [2, 1, 3, 0, 4];
+  // the cross shrinks while the last strings are still drawing up (big → mid at 60 %, → small at the end)
+  let shrunk = 0;
   await run(sc, 220, (t) => {
     ups.forEach((i, k) => {
       const s = rig.strings[i];
@@ -865,14 +1187,16 @@ async function takeScene(ctx: CCCtx, hint: { crossAt?: XY } = {}): Promise<void>
         s.drop = 1 - q(local, 5);
       }
     });
+    if (t >= 0.6 && shrunk === 0) {
+      shrunk = 1;
+      void lightFlash(sc, rig.at.x, rig.at.y, PAL.gold4, 14, 200, { intensity: 0.8 });
+      crossSize(rig, 'mid');
+    }
   });
   rig.stars.forEach((s) => s.setVisible(false));
-  void lightFlash(sc, rig.at.x, rig.at.y, PAL.gold4, 14, 200, { intensity: 0.8 });
-  crossSize(rig, 'mid');
-  await wait(sc, 50);
   crossSize(rig, 'small');
   motesFall(sc, rig.at, 8, [PAL.gold4, PAL.gold3, PAL.gold2]);
-  await wait(sc, 40);
+  await wait(sc, 30);
   const lingerAt = { ...rig.at };
   destroyRig(rig);
   undim();
@@ -889,8 +1213,9 @@ async function takeScene(ctx: CCCtx, hint: { crossAt?: XY } = {}): Promise<void>
 // ================================================================ the return
 
 /** The five strings come back down from the hanging cross and snap; the body jerks. Resolves after the cross breaks. */
-async function snapAll(sc: Phaser.Scene, b: Body, crossAt: XY): Promise<void> {
-  const rig = makeRig(sc, b, crossAt);
+async function snapAll(sc: Phaser.Scene, field: FieldView, b: Body, crossAt: XY): Promise<void> {
+  hookVisible(sc, field, b);
+  const rig = makeRig(sc, field, b, crossAt);
   // the small cross grows back: small → mid → big
   crossSize(rig, 'small');
   rig.light = lightPool(sc, crossAt.x, crossAt.y, { color: PAL.gold4, radius: 2, ry: 1, spill: null, floorY: b.ground.y, air: 0.7, airRadius: 12, intensity: 0, fadeIn: 0, anim: 'flicker' });
@@ -969,10 +1294,11 @@ async function returnScene(ctx: CCCtx): Promise<void> {
   placeBody(b);
   const undim = badgeDimmer(sc, field, b);
   const crossAt: XY = where ? placeCross({ x: R(where.x), y: R(where.y) - 6 }, CROSS_EXT, bodyTop(b)) : hangOver(b, from);
-  await snapAll(sc, b, crossAt);
+  await snapAll(sc, field, b, crossAt);
   if (unit) b.pose = puppetPose(sc, unit.sprite);
-  // ---- it staggers home along the lane in three uneven lurches (facing the wrong way: stumbling backwards)
-  const legs = route(from, to);
+  // ---- it staggers home in three uneven lurches, around whatever stands in the way (facing the wrong way:
+  // stumbling backwards)
+  const legs = route(from, to, relShapeOf(sc, b), obstaclesFor(sc, field, unit), [3, 2, 1]);
   const shape = [
     { lift: 5, over: 2, lean: 2 },
     { lift: 3, over: -2, lean: -2 },
@@ -1016,10 +1342,10 @@ async function returnScene(ctx: CCCtx): Promise<void> {
     b.hover = unit.hover;
     const p = puppetPose(sc, unit.sprite);
     if (p) {
-      eyes0 = p.eyes.map((e) => ({ x: unit.sprite.flipX ? p.mirror - e.x : e.x, y: e.y }));
+      eyes0 = spiralSpots(p.eyes.map((e) => ({ x: unit.sprite.flipX ? p.mirror - e.x : e.x, y: e.y })));
       p.restore();
     }
-    spirals = eyes0.map(() => sc.add.image(0, 0, SPIRAL_KEY, 'f2').setDepth(DEPTH.FX + 9).setFlipX(unit.sprite.flipX));
+    spirals = eyes0.map(() => sc.add.image(0, 0, SPIRAL_KEY, 'f2').setOrigin(3 / 7, 3 / 7).setDepth(DEPTH.FX + 9));
   }
   await run(sc, 160, (t) => {
     b.nx = t < 0.9 ? (Math.floor(t * 8) % 2 ? 1 : -1) : 0;
@@ -1070,13 +1396,13 @@ async function noRoomScene(ctx: DestroyCtx): Promise<void> {
   if (unit) unit.settle();
   const b = makeBody(sc, unit, unit ? null : tile, home);
   const crossAt: XY = where ? placeCross({ x: R(where.x), y: R(where.y) - 6 }, CROSS_EXT, bodyTop(b)) : hangOver(b, home);
-  await snapAll(sc, b, crossAt);
+  await snapAll(sc, field, b, crossAt);
   if (unit) b.pose = puppetPose(sc, unit.sprite);
   // it lurches toward its owner's row (the first leg of the way home: onto the bridge) … and hits a wall: the
   // owner's row is full — every tile there flashes crimson, a white impact, a "tok" and a denied buzz
   const owner = ctx.owner(ev.uid);
   const homeOf = zoneXY(owner, 'monster', 0);
-  const leg = route(home, homeOf)[0];
+  const leg = route(home, homeOf, relShapeOf(sc, b), obstaclesFor(sc, field, unit))[0];
   const d = Math.hypot(leg.x - home.x, leg.y - home.y) || 1;
   const ux = (leg.x - home.x) / d;
   const uy = (leg.y - home.y) / d;
@@ -1145,13 +1471,46 @@ async function noRoomScene(ctx: DestroyCtx): Promise<void> {
   b.nx = 0;
   b.ny = 0;
   b.lift = 0;
+  dust(sc, home, 6);
+  // no dead air before its death: it slumps on its broken strings (head down, legs hanging, 1 px lower) while the
+  // last spark of the head string falls from where the cross broke onto it — the death takes over on the hit
+  pose(b, -dir * 2, 3);
+  b.ny = 1;
+  placeBody(b);
+  const head = limbAt(b, 2);
+  await lastSpark(sc, { x: R(crossAt.x), y: R(crossAt.y) + 6 }, head, 220);
   pose(b, 0, 0);
   b.pose?.restore();
   b.pose = null;
+  b.ny = 0;
   placeBody(b);
-  dust(sc, home, 6);
   if (unit) unit.settle();
-  await wait(sc, 60);
+}
+
+/** The last spark of a broken string: a gold bead falls (stepped, accelerating) onto `to`, a tiny star on the hit. */
+async function lastSpark(sc: Phaser.Scene, from: XY, to: XY, ms: number): Promise<void> {
+  const x0 = Math.min(from.x, to.x) - 4;
+  const y0 = Math.min(from.y, to.y) - 4;
+  const ras = new Raster(sc, x0, y0, Math.abs(to.x - from.x) + 9, Math.abs(to.y - from.y) + 9, DEPTH.FX + 9);
+  await run(sc, ms, (t) => {
+    const k = q(t * t, 10);
+    const x = R(from.x + (to.x - from.x) * k);
+    const y = R(from.y + (to.y - from.y) * k);
+    ras.draw((r) => {
+      r.px(x, y, PAL.white);
+      r.px(x, y - 1, PAL.gold4);
+      r.px(x, y - 2, PAL.gold3);
+      if (k > 0.3) r.px(x, y - 3, PAL.gold2);
+    });
+  });
+  ras.destroy();
+  playV3('e_puppetHook', { volume: 0.6, pitch: 0.8, pan: panAt(to.x) });
+  const st = sc.add.image(to.x, to.y, STAR_KEY, 'f').setDepth(DEPTH.FX + 9);
+  void lightFlash(sc, to.x, to.y, PAL.gold3, 12, 200, { intensity: 0.6 });
+  sc.time.delayedCall(60, () => st.active && st.setFrame('s'));
+  sc.time.delayedCall(130, () => st.active && st.setFrame('t'));
+  sc.time.delayedCall(200, () => st.active && st.destroy());
+  motesFall(sc, to, 6, [PAL.gold4, PAL.gold3, PAL.gold2]);
 }
 
 // ================================================================ registration
@@ -1180,8 +1539,8 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   const u = field.unit(cc.uid);
   const g = zoneXY(cc.from, 'monster', cc.fromZone);
   const top = u && u.sprite.visible ? spriteBox(sc, u.sprite).top : g.y - 10;
-  const c = placeCross({ x: g.x, y: top - HANG }, CROSS_EXT, top);
-  const point = { x: c.x, y: c.y - 8 };
+  const c = placeCross({ x: g.x, y: top - HANG }, CROSS_POP_EXT, top);
+  const point = { x: c.x, y: c.y - CROSS_POP_DY };
   await op.release(point, { path: 'line', ms: 190, size: 2, light: false });
   const spent = wait(sc, 160).then(() => (op.leave ? op.leave(gi) : undefined));
   await ctx.play(ci, { puppetOrb: true });

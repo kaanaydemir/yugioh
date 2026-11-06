@@ -101,6 +101,16 @@ const S: Record<string, Scenario> = {
     },
     steps: [{ type: 'attack', player: 0, attackerZone: 1, targetZone: 1 }, respond('auger_lance', 1), choose(1, 0, 'spellTrap', 1)],
   },
+  eAugerAttackBase: {
+    desc: 'Kamera karşılaştırması: eAugerAttack ile aynı tahta, Burgu Mızrağı yok (düz saldırı)',
+    stage: {
+      zones: 5,
+      phase: 'battle',
+      p0: { monsters: five(N, 'crag_axeman'), spellTraps: fiveST(N, { id: 'dragon_blade', equippedTo: 1 }) },
+      p1: { monsters: five(N, golemDef), spellTraps: fiveST(N, N, N, N) },
+    },
+    steps: [{ type: 'attack', player: 0, attackerZone: 1, targetZone: 1 }],
+  },
   eAugerAttackP2: {
     desc: 'Hızlı yanıt (P2 saldırır): P1 kapalı Burgu Mızrağı ile P2’nin Ejder Kılıcı’nı deler',
     stage: {
