@@ -20,3 +20,22 @@ for (const m of Object.values(mods)) {
     p.blit(renderArt(art, 0).smallPx, 0, 0);
   };
 }
+
+/**
+ * The same pictures' BIG version (88×68, ART_BIG) per living-art frame — for the 2× card (inspect panel,
+ * gallery stage), which per KART_RESIMLERI §1 / §10 must show the big picture 1:1. Nothing in the game
+ * consumes this yet: the 2× face is the 1× face texture scaled ×2 (src/view/v3/inspectV3.ts), so today it
+ * shows the 44×34 picture in 2×2 blocks. Additive registry, ready for that path (owner: lane A5-B / A6).
+ */
+export const LANE_E_ART_BIG: Partial<Record<CardId, { frames: number; holdMs: number; paint: (p: PixelCanvas, f?: number) => void }>> = {};
+for (const m of Object.values(mods)) {
+  const art = m.default;
+  if (!art) continue;
+  LANE_E_ART_BIG[art.id] = {
+    frames: art.frames ?? 1,
+    holdMs: art.holdMs ?? 140,
+    paint: (p, f = 0) => {
+      p.blit(renderArt(art, f).bigPx, 0, 0);
+    },
+  };
+}

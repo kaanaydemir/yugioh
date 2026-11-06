@@ -51,6 +51,11 @@ describe('abyss_magus card picture', () => {
         // the focus (the near eye) sits in the focus box
         const b = geom.focusBox;
         expect(focus[0] >= b.x0 && focus[0] <= b.x1 && focus[1] >= b.y0 && focus[1] <= b.y1, tag).toBe(true);
+        // §2 / §3: air in front of the head (≥ 4 big / 2 small) and the brightest pixels gather on the focus
+        expect(st.lead, tag).toBeGreaterThanOrEqual(l.size === 'big' ? 4 : 2);
+        expect(st.brightOff, tag).toBeLessThanOrEqual(8);
+        // IŞ-10 on the subject itself (the hand pass leaves no 1-px grit on the robe and plates)
+        expect(st.subjectIsolated, tag).toBeLessThanOrEqual(ISOLATED_MAX);
         // the big subject fills 60–75 % of the visible window (the small is the closer crop)
         if (l.size === 'big') {
           expect(st.subjectFill, tag).toBeGreaterThanOrEqual(SUBJECT_FILL[0]);
@@ -70,14 +75,47 @@ describe('abyss_magus card picture', () => {
       // the violet cloth / horns / orb are the big mass, the slate armour a clear second
       expect(count(l.subject, VOID) / area, l.size).toBeGreaterThan(0.12);
       expect(count(l.subject, SLATE) / area, l.size).toBeGreaterThan(0.08);
-      // the DARK recipe: the eclipse's corona is void (the closer hand crop pushes it out to the corners)
-      expect(count(l.backdrop, [PAL.void1, PAL.void2, PAL.void3]) / area, l.size).toBeGreaterThan(l.size === 'big' ? 0.2 : 0.04);
+      // the DARK recipe (one step quiet): the eclipse's void1 / void2 corona rings the head in both sizes
+      expect(count(l.backdrop, [PAL.void1, PAL.void2]) / area, l.size).toBeGreaterThan(l.size === 'big' ? 0.1 : 0.06);
       // the visor slit: white pixels right at the focus
       let white = 0;
       for (let dy = -1; dy <= 1; dy++) for (let dx = -3; dx <= 3; dx++) if (pic.get(focus[0] + dx, focus[1] + dy) === PAL.white) white++;
       expect(white, l.size).toBeGreaterThanOrEqual(2);
       // the void flame and the orb's heart live in the light layer
       expect(count(l.light, [PAL.void4, PAL.white]), l.size).toBeGreaterThan(0);
+    }
+  });
+
+  it('reads at 1×: the horned helm is the lightest broad shape, the corona stays under the subject\'s lit planes', () => {
+    const r = renderArt(card, 0);
+    const luma = (c: number) => ((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11;
+    for (const [l, focus] of [
+      [r.big, card.focus],
+      [r.small, card.focusSmall!],
+    ] as const) {
+      // the eclipse is the quiet DARK recipe: nothing in the backdrop reaches void3 (the subject's rim / horn body)
+      expect(count(l.backdrop, [PAL.void3, PAL.void4, PAL.white, PAL.mist, PAL.steel]), l.size).toBe(0);
+      // white is the visor's alone: every white pixel of the picture sits on the eye row
+      const pic = l.size === 'big' ? r.bigPx : r.smallPx;
+      for (let y = 0; y < pic.h; y++)
+        for (let x = 0; x < pic.w; x++) if (pic.get(x, y) === PAL.white) expect(Math.abs(y - focus[1]), `${l.size} white ${x},${y}`).toBeLessThanOrEqual(1);
+      // value order: the head band (above the visor) is lighter on average than the body under the pauldrons
+      const k = l.size === 'big' ? 1 : 0.5;
+      const mean = (y0: number, y1: number) => {
+        let s = 0;
+        let n = 0;
+        for (let y = Math.max(0, y0); y < Math.min(l.subject.h, y1); y++)
+          for (let x = 0; x < l.subject.w; x++) {
+            const c = l.subject.get(x, y);
+            if (c === null || c === PAL.ink) continue;
+            s += luma(c);
+            n++;
+          }
+        return n ? s / n : 0;
+      };
+      const head = mean(focus[1] - Math.round(16 * k), focus[1]);
+      const body = mean(focus[1] + Math.round(14 * k), l.subject.h);
+      expect(head, l.size).toBeGreaterThan(body * 1.3);
     }
   });
 
