@@ -1,4 +1,4 @@
-// Title screen: animated NEON DÜELLO logotype over the arena, a monster showcase, the main
+// Title screen: animated PRISM DUEL logotype over the arena, a monster showcase, the main
 // menu and its sub-screens (how to play, card gallery, settings), and the wipe into the duel.
 //
 // Layers: the arena (BoardView) and the showcase live in world space and drift with the title

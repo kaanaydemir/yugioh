@@ -1,4 +1,4 @@
-// Card database: the 20 cards of Neon Düello.
+// Card database: the 20 cards of Prism Duel.
 // UI strings and identifiers are English.
 // This file is a shared contract — other modules key art, VFX and cinematics by CardId.
 

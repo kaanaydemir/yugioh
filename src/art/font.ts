@@ -1,4 +1,4 @@
-// Hand-designed proportional bitmap fonts for Neon Düello + the atlas builders behind
+// Hand-designed proportional bitmap fonts for Prism Duel + the atlas builders behind
 // src/ui/text.ts.
 //
 // Two fonts, both authored here as glyph bitmaps ('#' = ink, '.' = empty):

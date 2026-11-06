@@ -1,13 +1,17 @@
-// NEON DÜELLO logotype — chunky neon-tube letters drawn with PixelCanvas.
+// PRISM DUEL logotype — chunky neon-tube letters drawn with PixelCanvas.
 //
 // Every letter is a set of centre-line paths rendered as a lit glass tube (white-hot core,
-// ramp bands, lit from the top-left, 1px ink outline). Per letter we build four textures:
+// ramp bands, lit from the top-left, 1px ink outline). One letter family: straight tubes, 45°
+// chamfers instead of curves, flat-cut stroke ends. PRISM burns in the cyan ramp, DUEL in crimson.
+// Per letter we build four textures:
 //   on   — the lit tube              off  — the unlit glass (dim night tones)
 //   glow — stepped white halo (ADD + tint)   sil — white silhouette (chromatic fringes, flashes)
-// plus one composite strip of light-sweep frames for the whole word.
+// plus two composite strips for the whole logo: the white light-sweep frames and the prism pass
+// (a diagonal band that re-lights the tubes through the spectrum, tone band for tone band).
 //
-// TitleLogo assembles them into a container (scrollFactor 0) and animates: flicker-on reveal,
-// ignition flash, breathing glow, random flickers, chromatic glitches and sheen sweeps.
+// TitleLogo assembles them into a container (scrollFactor 0) and animates: flicker-on reveal
+// (PRISM, a breath, DUEL, the stubborn I last), ignition flash + white sweep chased by the prism
+// pass, breathing glow, random flickers, chromatic glitches and sheen / prism sweeps.
 
 import Phaser from 'phaser';
 import { PAL, RAMPS, type Ramp } from '../../art/palette';
@@ -35,10 +39,45 @@ const GAP = 5;
 const WORD_GAP = 16;
 
 function glyph(ch: string): GlyphDef {
+  // One family: straight tubes, 45° chamfers (c = 8–12) instead of curves, sharp joints only where
+  // two strokes meet at a point (N/M apexes), stroke ends cut flat. Bowls sit on the half line.
   switch (ch) {
-    case 'N': {
+    case 'P': {
+      const w = 24;
+      const c = 9;
+      const m = H / 2 + 1;
+      return { w, paths: [{ pts: [[0, H], [0, 0], [w - c, 0], [w, c], [w, m - c], [w - c, m], [0, m]] }] };
+    }
+    case 'R': {
+      const w = 25;
+      const c = 9;
+      const m = H / 2 + 1;
+      return {
+        w,
+        paths: [
+          { pts: [[0, H], [0, 0], [w - c, 0], [w, c], [w, m - c], [w - c, m], [0, m]] },
+          // the leg leaves the bowl's lower chamfer and lands flat on the baseline
+          { pts: [[w - c - 2, m], [w, H]] },
+        ],
+      };
+    }
+    case 'I':
+      return { w: 0, paths: [{ pts: [[0, 0], [0, H]] }] };
+    case 'S': {
+      // 180°-symmetric: the top bowl opens right, the bottom bowl left
+      const w = 24;
+      const c = 8;
+      const m = H / 2;
+      return { w, paths: [{ pts: [[w, 0], [c, 0], [0, c], [0, m - c], [c, m], [w - c, m], [w, m + c], [w, H - c], [w - c, H], [0, H]] }] };
+    }
+    case 'M': {
+      const w = 34;
+      return { w, paths: [{ pts: [[0, H], [0, 0], [w / 2, 25], [w, 0], [w, H]] }] };
+    }
+    case 'U': {
       const w = 28;
-      return { w, paths: [{ pts: [[0, H], [0, 0], [w, H], [w, 0]] }] };
+      const c = 10;
+      return { w, paths: [{ pts: [[0, 0], [0, H - c], [c, H], [w - c, H], [w, H - c], [w, 0]] }] };
     }
     case 'E': {
       const w = 23;
@@ -51,28 +90,10 @@ function glyph(ch: string): GlyphDef {
         ],
       };
     }
-    case 'O': {
-      const w = 30;
-      const c = 10;
-      return { w, paths: [{ pts: [[c, 0], [w - c, 0], [w, c], [w, H - c], [w - c, H], [c, H], [0, H - c], [0, c]], closed: true }] };
-    }
     case 'D': {
       const w = 28;
       const c = 12;
       return { w, paths: [{ pts: [[0, 0], [w - c, 0], [w, c], [w, H - c], [w - c, H], [0, H]], closed: true }] };
-    }
-    case 'Ü': {
-      const w = 28;
-      const c = 10;
-      const top = 15;
-      return {
-        w,
-        paths: [{ pts: [[0, top], [0, H - c], [c, H], [w - c, H], [w, H - c], [w, top]] }],
-        dots: [
-          [3, 1.5],
-          [w - 3, 1.5],
-        ],
-      };
     }
     case 'L': {
       const w = 21;
@@ -137,6 +158,8 @@ interface GlyphPixels {
   sil: PixelCanvas;
   /** Brightest tube pixels (twinkle spots). */
   bright: Pt[];
+  /** Per pixel: the tube's tone band 0..4 (4 = white-hot core), 255 = not tube (outline / empty). */
+  band: Uint8Array;
   w: number;
   h: number;
 }
@@ -154,6 +177,7 @@ function renderGlyph(ch: string, ramp: Ramp): GlyphPixels {
   const glow = new PixelCanvas(w, h);
   const sil = new PixelCanvas(w, h);
   const bright: Pt[] = [];
+  const bandMap = new Uint8Array(w * h).fill(255);
   const offRamp = [PAL.night1, mix(PAL.night2, ramp[0], 0.35), mix(PAL.night3, ramp[1], 0.3), mix(PAL.night4, ramp[1], 0.35), mix(PAL.steel, ramp[2], 0.25)];
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
@@ -166,6 +190,7 @@ function renderGlyph(ch: string, ramp: Ramp): GlyphPixels {
         const band = b > 0.8 ? 4 : b > 0.6 ? 3 : b > 0.36 ? 2 : b > 0.12 ? 1 : 0;
         const lit = [ramp[1], ramp[2], ramp[3], ramp[4], PAL.white][band];
         on.set(x, y, lit);
+        bandMap[y * w + x] = band;
         if (band === 4 && (x + y * 3) % 5 === 0) bright.push([x, y]);
         off.set(x, y, offRamp[band]);
         sil.set(x, y, 0xffffff);
@@ -182,7 +207,7 @@ function renderGlyph(ch: string, ramp: Ramp): GlyphPixels {
   off.outline(PAL.ink);
   // the outline belongs to the silhouette too (fringes hug the inked edge)
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (on.isOpaque(x, y)) sil.set(x, y, 0xffffff);
-  return { on, off, glow, sil, bright, w, h };
+  return { on, off, glow, sil, bright, band: bandMap, w, h };
 }
 
 // ---------------------------------------------------------------- textures
@@ -209,11 +234,22 @@ export interface LogoLayout {
   padH: number;
   sheenKey: string;
   sheenFrames: number;
+  /** The prism pass: frames of a diagonal band in which the tubes are re-lit in spectral ramps. */
+  prismKey: string;
+  prismFrames: number;
 }
 
-const TEXT = ['NEON', 'DÜELLO'];
+const TEXT = ['PRISM', 'DUEL'];
 export const LOGO_RAMPS: [Ramp, Ramp] = [RAMPS.cyan, RAMPS.crim];
 const SHEEN_FRAMES = 18;
+const PRISM_FRAMES = 34;
+/**
+ * The dispersion order of the prism pass, trailing behind its white-hot leading edge — like white
+ * light leaving a prism. Each entry re-lights the tube with that ramp, band for band.
+ */
+const SPECTRUM: readonly Ramp[] = [RAMPS.crim, RAMPS.fire, RAMPS.gold, RAMPS.leaf, RAMPS.cyan, RAMPS.water, RAMPS.void];
+/** Width of one spectral stripe along the sweep axis (px). */
+const PRISM_STRIPE = 5;
 
 let cachedLayout: LogoLayout | null = null;
 
@@ -271,7 +307,50 @@ export function buildLogo(scene: Phaser.Scene): LogoLayout {
     const tex = scene.textures.addCanvas(sheenKey, strip.toCanvas())!;
     for (let f = 0; f < SHEEN_FRAMES; f++) tex.add(`s:${f}`, 0, 0, f * padH, padW, padH);
   }
-  cachedLayout = { letters, w: inkW, h: inkH, padW, padH, sheenKey, sheenFrames: SHEEN_FRAMES };
+  // composite tone-band map → prism frames. Inside the band each tube pixel takes the SAME tone
+  // step of a spectral ramp (core stays white-hot, rims go deep), so the rainbow is shaded like the
+  // glass it runs through; the ink outline is never touched. Stripes are cut on the same 0.6 slant
+  // as the white sheen and stepped in whole pixels.
+  const prismKey = 'title:logo:prism';
+  if (!scene.textures.exists(prismKey)) {
+    const bands = new Uint8Array(padW * padH).fill(255);
+    letters.forEach((l, i) => {
+      const px = pixels[i];
+      const ox = l.x + PAD;
+      const oy = l.y + PAD;
+      for (let y = 0; y < px.h; y++)
+        for (let x = 0; x < px.w; x++) {
+          const b = px.band[y * px.w + x];
+          if (b === 255) continue;
+          const tx = ox + x;
+          const ty = oy + y;
+          if (tx < 0 || ty < 0 || tx >= padW || ty >= padH) continue;
+          bands[ty * padW + tx] = b;
+        }
+    });
+    const tail = SPECTRUM.length * PRISM_STRIPE;
+    const strip = new PixelCanvas(padW, padH * PRISM_FRAMES);
+    for (let f = 0; f < PRISM_FRAMES; f++) {
+      const bx = -4 + ((padW + tail + 8 + padH * 0.6) * f) / (PRISM_FRAMES - 1);
+      for (let y = 0; y < padH; y++)
+        for (let x = 0; x < padW; x++) {
+          const b = bands[y * padW + x];
+          if (b === 255) continue;
+          const u = Math.floor(bx - (x + (y - padH / 2) * 0.6)); // 0 = leading edge, grows backwards
+          if (u < -2 || u >= tail) continue;
+          let c: number;
+          if (u < 0) c = b >= 2 ? PAL.white : mix(PAL.white, SPECTRUM[0][3], 0.5); // white-hot front
+          else {
+            const r = SPECTRUM[Math.floor(u / PRISM_STRIPE)];
+            c = [r[1], r[2], r[3], r[4], r[4]][b];
+          }
+          strip.set(x, y + f * padH, c);
+        }
+    }
+    const tex = scene.textures.addCanvas(prismKey, strip.toCanvas())!;
+    for (let f = 0; f < PRISM_FRAMES; f++) tex.add(`p:${f}`, 0, 0, f * padH, padW, padH);
+  }
+  cachedLayout = { letters, w: inkW, h: inkH, padW, padH, sheenKey, sheenFrames: SHEEN_FRAMES, prismKey, prismFrames: PRISM_FRAMES };
   return cachedLayout;
 }
 
@@ -314,6 +393,7 @@ export class TitleLogo {
   readonly root: Phaser.GameObjects.Container;
   private readonly letters: LetterView[] = [];
   private readonly sheen: Phaser.GameObjects.Image;
+  private readonly prism: Phaser.GameObjects.Image;
   private readonly rnd: () => number;
   private readonly sound: boolean;
   private chroma = 1;
@@ -357,8 +437,9 @@ export class TitleLogo {
       .setOrigin(0)
       .setBlendMode(Phaser.BlendModes.ADD)
       .setVisible(false);
-    // draw order: glows, shadows, chroma fringes, letter bodies, sheen
-    this.root.add([...glows, ...shadows, ...chromas, ...bodies, this.sheen]);
+    this.prism = scene.add.image(-PAD, -PAD, this.layout.prismKey, 'p:0').setOrigin(0).setVisible(false);
+    // draw order: glows, shadows, chroma fringes, letter bodies, prism pass, sheen
+    this.root.add([...glows, ...shadows, ...chromas, ...bodies, this.prism, this.sheen]);
     this.onUpdate = (t) => this.update(t);
     scene.events.on(Phaser.Scenes.Events.UPDATE, this.onUpdate);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
@@ -434,9 +515,11 @@ export class TitleLogo {
       },
     });
     this.glowLevel = 1;
-    // ignition order: NEON left → right, a breath, then DÜELLO, one stubborn letter last
+    // ignition order: PRISM left → right — except its I, which stays dark — a breath, then DUEL;
+    // the stubborn I sputters last and completes the name just before the ignition flash
     const order = this.letters.map((_, i) => i);
-    const stubborn = 8; // the second L
+    const stubborn = Math.max(0, this.letters.findIndex((L) => L.def.word === 0 && L.def.ch === 'I'));
+    const lastOfFirst = this.letters.reduce((k, L, i) => (L.def.word === 0 ? i : k), 0);
     const seq = order.filter((i) => i !== stubborn);
     const jobs: Promise<void>[] = [];
     let t = 0;
@@ -444,7 +527,7 @@ export class TitleLogo {
       const word = this.letters[i].def.word;
       jobs.push(this.igniteAt(i, t, 2 + Math.floor(this.rnd() * 2)));
       t += word === 0 ? 85 : 95;
-      if (i === 3) t += 170;
+      if (i === lastOfFirst) t += 170;
     }
     jobs.push(this.igniteAt(stubborn, t + 260, 5));
     await Promise.all(jobs);
@@ -494,7 +577,9 @@ export class TitleLogo {
     void tween(s, { targets: this.root, y: y0, duration: 260, ease: 'Back.Out' });
     void tween(s, { targets: this, chroma: 1, duration: 520, ease: 'Expo.Out' });
     await tween(s, { targets: this.letters, boost: 0, duration: 420, ease: 'Quad.Out' });
+    // white light in, spectrum out: the sheen runs first and the prism pass follows on its heels
     this.sweep();
+    void wait(s, 260).then(() => this.prismSweep(900, 0.14));
   }
 
   /** Instantly show the logo fully lit (skip the reveal). */
@@ -526,7 +611,8 @@ export class TitleLogo {
       };
       go();
     };
-    loop(3200, 2600, () => this.sweep());
+    // every third-ish light sweep breaks into the spectrum instead
+    loop(3200, 2600, () => (this.rnd() < 0.34 ? this.prismSweep() : this.sweep()));
     loop(2600, 4200, () => void this.flickerRandom());
     loop(5200, 5200, () => void this.glitch());
     this.sparkleTimer = s.time.addEvent({ delay: 240, loop: true, callback: () => this.twinkle() });
@@ -552,6 +638,24 @@ export class TitleLogo {
       ease: 'Sine.InOut',
       onUpdate: () => this.sheen.setFrame(`s:${Math.round(o.f)}`),
     }).then(() => this.sheen.setVisible(false));
+  }
+
+  /**
+   * The prism pass: a diagonal band crosses the logo and re-lights every tube it touches through the
+   * spectrum (white-hot front, then red → violet stripes), with a soft glass chime.
+   */
+  prismSweep(ms = 900, volume = 0.06): void {
+    const s = this.scene;
+    const o = { f: 0 };
+    if (this.sound && volume > 0) sfx.play('holyChime', { volume, pitch: 1.6, pan: -0.4 });
+    this.prism.setVisible(true).setFrame('p:0');
+    void tween(s, {
+      targets: o,
+      f: this.layout.prismFrames - 1,
+      duration: ms,
+      ease: 'Sine.InOut',
+      onUpdate: () => this.prism.setFrame(`p:${Math.round(o.f)}`),
+    }).then(() => this.prism.setVisible(false));
   }
 
   /** A neon hiccup: one letter stutters off and on. */

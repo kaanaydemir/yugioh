@@ -239,7 +239,7 @@ export class Scoreboard {
 
   private showTurn(): void {
     this.lines.turn.scheme = 'w';
-    const txt = this.turn === null ? 'NEON DÜELLO' : `TURN ${this.turn}`;
+    const txt = this.turn === null ? 'PRISM DUEL' : `TURN ${this.turn}`;
     this.setText('turn', txt, this.sx + SCORE_SCREEN.w / 2, 'center');
     for (const im of this.lines.turn.imgs) im.setAlpha(1);
   }

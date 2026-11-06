@@ -1,4 +1,4 @@
-// Master palette for Neon Düello. All art and VFX should draw from these ramps so the
+// Master palette for Prism Duel. All art and VFX should draw from these ramps so the
 // game reads as one image. Each ramp runs dark (0) → light (4). Colors are 0xRRGGBB.
 
 import type { Attribute } from '../data/cards';

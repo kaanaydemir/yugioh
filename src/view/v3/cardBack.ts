@@ -127,8 +127,13 @@ function paintHex(p: PixelCanvas, ox: number, oy: number, x0: number, x1: number
   for (const [x, y] of h.lit) p.set(ox + x, oy + y, lit);
 }
 
-/** The "N" of Neon Düello, 8×8 and the same when turned 180° (P2's cards lie rotated on the board). */
-const N8 = ['##....##', '###...##', '####..##', '##.##.##', '##.##.##', '##..####', '##...###', '##....##'];
+/**
+ * The Prism Duel mark: an upright hexagonal crystal prism (pointed caps, three faces), shaded face by
+ * face. 8×8 and the same shape when turned 180° (P2's cards lie rotated on the board), so no letter
+ * (a "P" would not survive the turn). Its silhouette has straight sides on purpose: the hand's lean
+ * (handV3 tiltBake) must keep this symbol whole up to ±3.5°, which a pure 45° diamond does not.
+ */
+const MARK8 = ['...##...', '.######.', '########', '########', '########', '########', '.######.', '...##...'];
 
 // ================================================================ levels
 
@@ -170,17 +175,25 @@ function paintFull(p: PixelCanvas, ox: number, oy: number, t: BackTones): void {
   p.rect(ox + cx0, oy + 7, 2, 1, R[4]);
   p.rect(ox + cx0 - 1, oy + H - 9, 4, 2, R[1]);
   p.rect(ox + cx0, oy + H - 9, 2, 1, R[3]);
-  // the emblem: an owner-dark hex plate with a lit rim, an engraved inner ring and the N
+  // the emblem: an owner-dark hex plate with a lit rim, an engraved inner ring and the prism mark
   paintHex(p, ox, oy, 10, 37, 25, 42, R[3], R[2], R[0]);
   paintHex(p, ox, oy, 13, 34, 27, 40, R[2], R[1], null);
   // the lit vertex of the plate catches one bright pixel
   p.set(ox + 10, oy + 25, R[4]);
   const nx = W / 2 - 4;
   const ny = H / 2 - 4;
-  p.stamp(N8, { '#': PAL.ink }, ox + nx + 1, oy + ny + 1);
-  p.stamp(N8.slice(0, 4), { '#': R[4] }, ox + nx, oy + ny);
-  p.stamp(N8.slice(4), { '#': R[3] }, ox + nx, oy + ny + 4);
-  p.set(ox + nx, oy + ny, PAL.white);
+  p.stamp(MARK8, { '#': PAL.ink }, ox + nx + 1, oy + ny + 1);
+  // an upright hexagonal crystal: lit left face, mid-tone front ridge, shaded right face; the
+  // pointed caps take a step lighter (top) and darker (bottom); glints on the lit tip and face
+  for (let y = 0; y < 8; y++)
+    for (let x = 0; x < 8; x++) {
+      if (MARK8[y][x] !== '#') continue;
+      const face = x <= 2 ? 2 : x <= 4 ? 1 : 0;
+      const cap = y <= 1 ? 1 : y >= 6 ? -1 : 0;
+      p.set(ox + nx + x, oy + ny + y, R[Math.max(1, Math.min(4, 2 + face + cap))]);
+    }
+  p.set(ox + nx + 3, oy + ny, PAL.white);
+  p.set(ox + nx + 1, oy + ny + 2, PAL.white);
 }
 
 /** 24×34: the pose renderer's half level (cards turning / flying at about half size). */

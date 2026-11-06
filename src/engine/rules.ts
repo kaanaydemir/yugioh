@@ -1,4 +1,4 @@
-// Neon Düello rules engine. Pure TypeScript, deterministic (mulberry32 in state.rng),
+// Prism Duel rules engine. Pure TypeScript, deterministic (mulberry32 in state.rng),
 // never mutates its input. See docs/GAME_DESIGN.md §2–§3 and src/engine/types.ts.
 //
 // Resolution model: an action performs its immediate effects, then pushes follow-up steps
