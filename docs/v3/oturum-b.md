@@ -61,3 +61,16 @@ after setting the scratchpad paths (SCR) to the new session's scratchpad; build 
   mkdir -p $SCR/pwb/chromium-1243 && ln -sfn /opt/pw-browsers/chromium-1243/chrome-linux64 $SCR/pwb/chromium-1243/chrome-linux
 v1 baselines (shots/, gitignored) must be re-filmed at 684e290 in a fresh container before the filmdiff gates
 (`git worktree add /tmp/base 684e290`, npm ci there, filmdiff --write into this checkout's shots/ paths).
+
+## wisp_imp — FINISHED (2026-11-05, d9df6a4)
+3 critique rounds after the resume; gate verify pass: typecheck 0; vitest only known fails (+ lane C crag_axeman WIP);
+wisp tests 12/12; filmdiff v1 17/17 + a6v1 26/26 IDENTICAL vs main 6d507fa baselines; camera gate 0 FAIL; palcheck off-palette
+pixels traced to the merged arena/hologram/shared pixelText (none from wisp). Evidence: shots/v3/kart-b/wisp_imp/verify/.
+
+## hollow_ogre — FINISHED (2026-11-06 ~00:30 UTC; files landed in WIP checkpoints up to 0629989)
+3 critique rounds + gate verify pass: typecheck 0; vitest only known fails (+ lane C crag_axeman); ogre tests 14/14;
+filmdiff v1 17/17 + a6v1 26/26 IDENTICAL; camera gate: 3 FAIL only on scenarios targeting reed_heron (base taken 10-31,
+before lane C's reed_heron rig changed) — same attack vs other targets matches the base; re-take the ho* camera base.
+Palcheck: arena-driven absolute rule fails for every film incl. references; Δoff within reference spikes.
+Banish presentation: `registerEvent('banish', …, priority 1)` in src/cinematics/kart-b/hollow_ogre.ts (defers to ctx.base()
+for other sources); shared edits: one line each in DEATH_PRESETS and MONSTER_GLOW.
