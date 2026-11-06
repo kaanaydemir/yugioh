@@ -565,13 +565,8 @@ function plateStep(sc: Phaser.Scene, a: MonsterUnit, atk: number, def: number, y
   if (!img || !img.active) return;
   sc.tweens.killTweensOf(img);
   img.setScale(1);
-  // StatBadge keeps its flash state private; it is the same white-digits frame its own pop() shows
-  const b = a.badge as unknown as { flashT?: number; render?: () => void };
-  const flash = (on: boolean) => {
-    if (typeof b.render !== 'function' || typeof b.flashT !== 'number') return;
-    b.flashT = on ? 1 : 0;
-    b.render.call(a.badge);
-  };
+  // the same white-digits frame the badge's own pop() shows
+  const flash = (on: boolean) => a.badge.flashDigits(on);
   flash(true);
   img.setY(y0 - 2);
   void sleep(sc, 34).then(() => {
@@ -639,7 +634,7 @@ async function defendV3(ctx: Ctx<'battle'>): Promise<void> {
       if (w && !w.done) {
         // the titan's copper OWNS this beat (round 2 #2): the battle's generic block clang / impact sounds, played
         // synchronously right after this event (vfx/combat blockClang, combatImpact), stay off for this call and
-        // anything already ringing fades; the hex glint and the water-blue clang graphics are hidden — the masonry
+        // anything already ringing fades; the water-blue clang graphics are hidden (and no hex glint is drawn) — the masonry
         // rampart is the only shield on screen (precedents: kite_fencer, steppe_spiralhorn, wing_lady, reed_heron)
         setCombatSfx(false);
         // round 3 #5: the reaction kit's own generic blow (_v3/react guardReact / hitReact → sfx.play impactLight,
@@ -729,18 +724,15 @@ function recoilNumberLayer(ctx: Ctx<'damage'>): Promise<void> {
   return ctx.base();
 }
 
-/** Hide the generic guard presentation made after this tick (≤ 420 ms): the hex glint (MonsterUnit guardGlint, an ADD
- *  raster at the body's depth + 0.5) and the battle's hex-plate clang (vfx blockClang graphics at DEPTH.FX + 0.1 / 0.2). */
+/** Hide the generic guard presentation made after this tick (≤ 420 ms): the battle's hex-plate clang (vfx blockClang
+ *  graphics at DEPTH.FX + 0.1 / 0.2) and the guard reaction's impact burst. The hex glint is never drawn for him
+ *  (his art's `guardGlint: false`, MonsterUnit.guardHit). */
 function hideGenericGuard(sc: Phaser.Scene, u: MonsterUnit): void {
   const before = new Set(sc.children.list);
   onFrame(sc, (_dt, el) => {
-    const want = u.sprite.depth + 0.5;
     for (const o of sc.children.list) {
       if (before.has(o)) continue;
-      if (o.type === 'Image') {
-        const im = o as Phaser.GameObjects.Image;
-        if (im.blendMode === 1 && Math.abs(im.depth - want) < 0.01 && im.texture.key.startsWith('fx:set:')) im.setVisible(false);
-      } else if (o.type === 'Graphics') {
+      if (o.type === 'Graphics') {
         const g = o as Phaser.GameObjects.Graphics;
         if (Math.abs(g.depth - (DEPTH.FX + 0.1)) < 1e-6 || Math.abs(g.depth - (DEPTH.FX + 0.2)) < 1e-6) g.setVisible(false);
         // round 3 #6: the guard reaction's water-blue impact burst (vfx/combat impact via _v3/react guardReact,

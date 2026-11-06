@@ -310,16 +310,29 @@ export function paintEmblem(r: Raster, cx: number, by: number, side: -1 | 1, o: 
     const [x, y] = k.split(',').map(Number);
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (!solid.has(`${x + dx},${y + dy}`)) ink.add(`${x + dx},${y + dy}`);
   }
-  if (o.halo !== false)
+  if (o.halo !== false) {
+    const halo = new Set<string>();
     for (const k of ink) {
       const [x, y] = k.split(',').map(Number);
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const q = `${x + dx},${y + dy}`;
         if (solid.has(q) || ink.has(q)) continue;
+        halo.add(q);
         const litSide = side < 0 ? x + dx <= 4 : x + dx >= 4;
         P(x + dx, y + dy, o.white ? PAL.white : o.flash ? PAL.gold4 : o.dormant ? PAL.gold1 : litSide ? PAL.gold3 : PAL.gold2);
       }
     }
+    // follow-up (ksBoard5: gold on gold): a 1-px ink rim outside the gold halo, so the emblem reads as its own framed
+    // glyph over a gold neighbour behind it (Işık Perisi's hair and wings) as well as over the dark wall
+    for (const k of halo) {
+      const [x, y] = k.split(',').map(Number);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const q = `${x + dx},${y + dy}`;
+        if (solid.has(q) || ink.has(q) || halo.has(q)) continue;
+        P(x + dx, y + dy, PAL.ink);
+      }
+    }
+  }
   for (const k of ink) {
     const [x, y] = k.split(',').map(Number);
     P(x, y, PAL.ink);

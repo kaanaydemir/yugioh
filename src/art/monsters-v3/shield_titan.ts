@@ -51,6 +51,10 @@ function drawSled(p: PixelCanvas, kind: TitanSledFrame, lightFrom: 'left' | 'rig
 const art: MonsterArt & { titanSled: typeof drawSled } = {
   id: 'shield_titan', w: W, h: H, anchorX: AX, anchorY: GY, hover: 0, muzzle: MUZZLE, core: { x: 47, y: 50 },
   anims: ANIMS, attackImpactFrame: IMPACT, weight: 'heavy', p2: 'relight',
+  // the guard is masonry, never the generic hex glint (MonsterUnit.guardHit)
+  guardGlint: false,
+  // a blocked strike is answered on the slab rim that struck, not as a blob over the sunstone (battleV3 counter)
+  counterAt: 'clash',
   draw(p: PixelCanvas, a: MonsterAnim, f: number, o?: DrawOpts) { drawTitan(p, framePose(a, f), o?.lightFrom ?? 'left'); },
   extraAnims: EXTRA_ANIMS,
   drawExtra(p: PixelCanvas, a: MonsterAnimExtra, f: number, o?: DrawOpts) { drawTitan(p, framePose(a, f), o?.lightFrom ?? 'left'); },

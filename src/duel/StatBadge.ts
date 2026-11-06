@@ -133,6 +133,15 @@ export class StatBadge {
     await tween(this.scene, { targets: this.image, scale: 1, duration: 160, ease: 'Back.Out' });
   }
 
+  /**
+   * Show (true) or clear (false) the white-digits flash frame — the same frame pop() shows on its
+   * way in — and re-render now. Nothing is tweened; a later roll or pop takes the flash over.
+   */
+  flashDigits(on: boolean): void {
+    this.flashT = on ? 1 : 0;
+    this.render();
+  }
+
   /** Set values; animate = roll the digits (green/red), punch at the end. */
   async set(atk: number, def: number, animate = true): Promise<void> {
     const token = ++this.rollToken;
