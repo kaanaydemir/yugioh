@@ -1015,3 +1015,65 @@ included.
 - Timing: no hold, frame count or mark changed, so camera, budgets and contact are as `verify1`. v1: art-only change
   in a v3-only rig, so v1 films are unaffected. filmdiff was not re-run.
 - Shared touches: none. Files: `src/art/monsters-v3/wing_lady-anims.ts`, this doc.
+
+## Gate fix 2 (2026-11-06) — adversarial verifier `verify2` (sameness KK-15 open: blind test not scored; no passing critic)
+
+Evidence: `shots/v3/kart-f/wing_lady/gfix/blind-score-t{1..7,6b}.txt` (+ `.json`), the filled
+`gfix/blind-pages/t*/form.json`, `gfix/blind-pages/t6b/` + `gfix/blind-keys/t6b/` (retake), `gfix2/same/` (sameness re-run),
+`gfix2/clips/khAttack.{mp4,wav,json}`. No art, rig, cinematic or sound file changed in this round.
+
+### 1. Blind eye test (A3 §9.5 / REHBER KK-15): scored, all 7 UYARI pairs pass
+- **Reviewer:** the gate-fix agent of this round. It did not build the card, and before filling the forms it had not opened
+  the art files, the distinction header, this doc or any `key.json`. It saw only `ref.png`, `sil.png`, `motion.png` and the
+  members' names. (A3 §9.5 (2) asks for an agent the orchestrator starts. This agent was started by the orchestrator for the
+  gate fix; it is not the builder. If the owner wants a reviewer that has never touched the card at all, the pages stay valid
+  for a re-read.)
+- Each form also records the reviewer in a `reviewer` field.
+- **Scores** (`sameness.ts --score … --note gfix/blind-score-tN.txt`):
+
+| test | pair | silhouettes | motion "farklı" | controls "aynı" | result |
+|---|---|---|---|---|---|
+| t1 | × shade_assassin | 8/8 | 1/1 | 2/2 | **PASS** |
+| t2 | × steel_silencer | 8/8 | 1/1 | 2/2 | **PASS** |
+| t3 | × seal_leg_l | 8/8 | 1/1 | 2/2 | **PASS** |
+| t4 | × tide_harpooner | 8/8 | 1/1 | 2/2 | **PASS** |
+| t5 | × hollow_ogre | 8/8 | 1/1 | 2/2 | **PASS** |
+| t6 | × mudgrasp_spirit (seed 106) | 7/8 | 1/1 | 2/2 | FAIL (S04) |
+| t6b | × mudgrasp_spirit retake (seed 6107) | 8/8 | 1/1 | 2/2 | **PASS** |
+| t7 | × straw_decoy_token | 8/8 | 1/1 | 2/2 | **PASS** |
+
+- **About t6.** S04 (mudgrasp's roar peak, the raised mud arm over the mound) was written as `wing_lady`. This was a mistake
+  when the answer was copied into the form: the 8-letter answer string had one letter wrong. It was not a perception
+  error, since no silhouette on that page reads as a winged biped except hers. The key was seen once the test was scored,
+  so t6 could not be corrected honestly. Per §9.5 (4) the pair was re-tested on a **new blind page** (seed 6107). The new
+  key went to `blind-keys/t6b/` and was not read before scoring. The retake passed 8/8, 1/1, 2/2. t6 stays on disk as
+  scored (FAIL).
+- **What the reviewer read:** in every pairing she is the only winged biped. Her coded silhouettes all carry the raised
+  kestrel "V" over a standing human or the flat stoop. The partners read by their own masses: the assassin's crouch and
+  scarf, the silencer's block, the seal leg's slab, the harpooner's sail and harpoon, the ogre's hump and club, the mud
+  mound and arm, and the straw cross. Her motion strips are recognisable by the long diagonal stoop on the attack row and the
+  small wing pumps in the idle. The motion near-pairs (MOTsig/MOTloop over the line) did not confuse the reader.
+- **Sameness re-run** (`gfix2/same/`, exit 1): the same 7 out-of-plan UYARI pairs, 0 KALIR, the art unchanged. The
+  distinction header is at the top of `src/art/monsters-v3/wing_lady-anims.ts` (lines 4–…) and `wing_lady.ts` (line 4).
+  The §9 lines were not lowered. **KK-15: closed** (UYARI + distinction header + blind test 7/7 pass).
+
+### 2. Critic round r4 (verification pass, verdict: **pass**)
+The same outside agent looked at the result as a critic and checked the r1–r3 findings against filmed evidence:
+- `verify2/khSummon.png`: the gold shadow-bird arrives first (#6). Her shadow and glide land at #8–#11 and she comes down on
+  the tile. The salute and the gold current run to the allies. Each hawk gets +300 (#21–#23), and the FIRE wolf is skipped.
+  It reads, it is unique, and nothing pops.
+- `verify2/khAttack-contact.png`: crouch, then a hover with the blade aimed, then a flat sword-first stoop (#2–#6). The clap
+  and −300 land on the same frame (#7, 1250 ms), the green ring rolls off the hawk, and she sweeps back. The contact is
+  readable at 1×.
+- `verify2/khKill.png`: the wolf's lunge (−400). Then her cape falls, she lies flat (#12–#14) and the shadow bird lifts off
+  and flies (#15–#20). The card flies to her graveyard, and the hawk's badge rolls 1300 → 1000 as the bird leaves.
+  The death ending is unique (YENI_KARTLAR §5.2).
+- r3 #1 tribute: `r3-fix/khTribute-hawk.png` shows the gold wing folding and the badge rolling 1300 → 1000 inside the beat,
+  with no stale +300. r3 #2 losing attack: `r3-fix/khAttackLose-contact.png` shows the clap, then open, then the sweep,
+  then the cape. There is no pop from air to floor, no hex block plate and no skid.
+- Sound (`gfix2/clips/khAttack.json`, fresh render, music off): `khHover` 117 ms, `khStoop` 967, `khClap` on the contact
+  frame 1250 with the shared `impactHeavy` dropped by the game's own rules, then `khWingBeat` ×2 and `khToe`. Peak −2.3 dBFS,
+  RMS −22.8, 0 clipped samples. Every signature cue is a `kh*` recipe of her own.
+- Open items (non-blocking): the agent cannot hear, so the MP4s are for the owner's ears. Palcheck under the default frame-0
+  reference is shared scene material (see Gate fix §2 and `verify2`).
+- Verdict: **pass**. The card meets the shipping bar on VFX readability and uniqueness. The SFX is verified on its timeline and levels.
