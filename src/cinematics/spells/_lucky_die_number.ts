@@ -4,7 +4,7 @@
 //   boostNumber(scene, x, y, 600, { rise: 3 })   // pops at (x, y), floats ≤ 3 px, gone after NUMBER_LIFE ms
 //
 // Same digit sheets as every number (fx:num:*, built by buildNumberTextures): one white flash frame, then the GOLD
-// "buff" sheet (the die's colour). Whole pixels: two frames one size up (2×), then 1×; a 4-px hop that settles back,
+// "buff" sheet (the die's colour). Whole pixels, always 1× (no double-size pop over the plates); a 4-px hop that settles back,
 // a tiny float, a stepped fade (alpha 1 → .6 → .3). Runs on scene time (the show's tempo), so the scene can await it
 // and hand control back only once every number is gone.
 
@@ -14,9 +14,9 @@ import { buildNumberTextures } from '../../vfx/numbers';
 import { onFrame } from '../../vfx/setpieces';
 
 /** Whole life of a number (scene ms). */
-export const NUMBER_LIFE = 800;
-const BIG_MS = 34;
-const FLASH_MS = 50;
+export const NUMBER_LIFE = 640;
+/** One white frame (same 1× size: no double-size pop over the stat plates — critic round 2), then gold. */
+const FLASH_MS = 34;
 
 /** Glyph cell widths of the digit sheet (frame width − 3, as numbers.ts lays them out). */
 function widthOf(scene: Phaser.Scene, ch: string): number {
@@ -56,7 +56,6 @@ export function boostNumber(scene: Phaser.Scene, x: number, y: number, amount: n
         swapped = true;
         for (const g of gs) g.img.setTexture('fx:num:buff', g.ch);
       }
-      c.setScale(el < BIG_MS ? 2 : 1);
       // a 4-px hop that lands back 1 px over its start, then the small float
       const hop = el < 180 ? Math.round(Math.sin((el / 180) * Math.PI) * 4) : 0;
       const drift = Math.round(Math.min(1, el / life) * rise);

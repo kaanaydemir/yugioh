@@ -22,7 +22,8 @@
 //   e_strawHand    one scarecrow's straw hands flick open (played per decoy, staggered, panned on it)
 //   e_strawEye     one scarecrow's button eyes light: two tiny bright "tik"s (played per decoy as the crow passes)
 //   e_strawPerch   the crow lands on the last scarecrow's arm: two short wingbeats, claws grip the wood, the arm creaks
-//   e_strawCrow    the crow caws: "gaak … gak" (FM-roughened saw through crow formants, in the evening air)
+//   e_strawCrow / e_strawCrow2  the crow caws: "GAAK" … "gak" (a nasal saw falling 560 → 400 Hz through two narrow
+//                  crow formants, a light rasp; distance is reverb, not level) — two recipes, each on its beak mark
 //   e_strawWake    the decoys come alive (hand-over to the token): a straw bristle rising, the stakes settle into the
 //                  earth (creak + low settle), the startled crow beats off (three quick flaps)
 //   e_strawLure    the attacker's pick: the chosen decoy's straw shivers, its stake creaks, an eye ticks
@@ -34,18 +35,23 @@ import type { Voice } from '../../synth';
 import { perc } from '../../synth';
 import { sweep, thump } from '../kit';
 
-/** The stake's voice: a pointed stake driven INTO EARTH, its body at `f` (Hz) — damped by the ground (no free ring). */
+/**
+ * The stake's voice: a pointed DRY WOODEN stake driven into earth, its body at `f` (Hz). The wood is the voice (a
+ * clear, damped triangle knock + a 2–3 kHz dry "tk" on the attack); the earth is only a short, low support under it
+ * (no free ring — S12 owns the "tak-tak").
+ */
 function tok(v: Voice, t: number, f: number, g: number): void {
-  // the point bites: a short "thk" — mid noise, 5 ms, no bright snap
-  v.noise('white', { t, g: perc(g * 0.9, 0.006, 0.0002), to: v.filt('bandpass', f * 2.2, 1.1) });
-  // the stake's body: a damped, slightly falling knock (fundamental + a weak octave), choked by the earth
-  v.tone('triangle', [[0, f * 1.12], [0.03, f * 0.94, 'e']], { t, g: perc(g * 0.85, 0.036, 0.0006) });
-  v.tone('sine', f * 2, { t, g: perc(g * 0.12, 0.018, 0.0005) });
-  // the earth takes it: a long low thud, then the soil settles round the stake
-  thump(v, t + 0.003, 120, 75, g * 0.75, 0.14);
-  v.noise('brown', { t: t + 0.004, g: perc(g * 0.7, 0.06, 0.002), to: v.filt('lowpass', 420, 0.8) });
-  // a short soil scatter (grains of dirt landing round it)
-  v.crackle({ t: t + 0.03, d: 0.09, n: 7, g: g * 0.12, f: 1500, q: 1.1, dec: 0.006, curve: 1.4, kind: 'pink' });
+  // the dry "tk": the point and the grain of the wood biting — a very short bright click
+  v.noise('white', { t, g: perc(g * 0.75, 0.005, 0.0002), to: v.filt('bandpass', 2600, 1.6) });
+  v.tone('square', [[0, f * 4.1], [0.006, f * 3.6, 'e']], { t, g: perc(g * 0.09, 0.008, 0.0002), to: v.filt('bandpass', 2400, 2) });
+  // the stake's body: a damped, slightly falling wooden knock (fundamental, a weak twelfth), choked by the earth
+  v.tone('triangle', [[0, f * 1.1], [0.025, f * 0.96, 'e']], { t, g: perc(g * 1.15, 0.055, 0.0005) });
+  v.tone('triangle', [[0, f * 3.02], [0.02, f * 2.9, 'e']], { t, g: perc(g * 0.22, 0.022, 0.0004) });
+  v.noise('white', { t, g: perc(g * 0.3, 0.03, 0.0004), to: v.filt('bandpass', f * 1.6, 3.5) });
+  // the earth takes it: a short low support (6 dB under the old thud), then a little soil settles round the stake
+  thump(v, t + 0.002, 110, 80, g * 0.36, 0.06);
+  v.noise('brown', { t: t + 0.004, g: perc(g * 0.22, 0.035, 0.002), to: v.filt('lowpass', 380, 0.8) });
+  v.crackle({ t: t + 0.03, d: 0.08, n: 6, g: g * 0.1, f: 1700, q: 1.1, dec: 0.006, curve: 1.4, kind: 'pink' });
 }
 
 /** The dusk field wind: low pink noise in a wide 150–500 Hz band, gusting (slow wander), over `d` s. */
@@ -95,6 +101,24 @@ function wrap(v: Voice, dir: 1 | -1): void {
   v.tone('sawtooth', [[0, 900], [0.05, 1280, 'e']], { t: 0.93, g: perc(0.022, 0.05, 0.004), to: v.filt('bandpass', 1400, 3) });
 }
 
+/**
+ * A crow's call far over the field: a nasal saw falling clearly f0 → f1 (the "aa" of "gaak"), a pinched attack
+ * (the formants open from closed), a light rasp (a gentle flutter, FM ≈ 0.05·f — grit, not static), through two narrow
+ * crow formants (1.1 / 1.9 kHz). Far away: little low end, a soft top — the distance is the reverb, not the level.
+ */
+function caw(v: Voice, t: number, d: number, f0: number, f1: number, g: number): void {
+  const far = v.filt('lowpass', 4200, 0.7, { t });
+  const hp = v.filt('highpass', 380, 0.7, { t, to: far });
+  const f1n = v.filt('bandpass', [[0, 800], [0.03, 1100, 'e'], [d, 1000]], 8, { t, to: hp });
+  const f2n = v.filt('bandpass', [[0, 1500], [0.03, 1900, 'e'], [d, 1750]], 9, { t, to: hp });
+  const rasp = v.flutter(62, 0.16, { t, d, base: 0.5, to: f1n });
+  rasp.connect(f2n);
+  const o = v.tone('sawtooth', [[0, f0 * 1.06], [0.025, f0], [d, f1, 'e']], { t, g: [[0, 0], [0.01, g], [d * 0.55, g * 0.8], [d, 0.0001, 'e']], to: rasp });
+  v.tone('sine', f0 * 0.5, { t, d: d + 0.02, g: [[0, f0 * 0.06], [d, f0 * 0.04]], to: o.osc.frequency });
+  // the nasal "g" of the attack: a short pinched burst high in the beak
+  v.noise('white', { t, g: perc(g * 0.35, 0.012, 0.0003), to: v.filt('bandpass', 2400, 3, { t, to: hp }) });
+}
+
 export const RECIPES = {
   e_strawGust: {
     cap: 1,
@@ -117,7 +141,7 @@ export const RECIPES = {
     verb: 0.25,
     play(v) {
       // a stake falling point-first: a short, falling air streak ("fsst")
-      sweep(v, 0, 0.13, [3200, 2200, 900], 0.2, { q: 2.5, peakAt: 0.6 });
+      sweep(v, 0, 0.13, [3200, 2200, 900], 0.28, { q: 2.5, peakAt: 0.6 });
     },
   },
   e_strawTok1: {
@@ -125,7 +149,7 @@ export const RECIPES = {
     gap: 0.03,
     verb: 0.28,
     play(v) {
-      tok(v, 0, 540, 0.62);
+      tok(v, 0, 480, 0.6);
     },
   },
   e_strawTok2: {
@@ -133,7 +157,7 @@ export const RECIPES = {
     gap: 0.03,
     verb: 0.28,
     play(v) {
-      tok(v, 0, 660, 0.6);
+      tok(v, 0, 640, 0.58);
     },
   },
   e_strawTok3: {
@@ -141,7 +165,7 @@ export const RECIPES = {
     gap: 0.03,
     verb: 0.28,
     play(v) {
-      tok(v, 0, 800, 0.62);
+      tok(v, 0, 860, 0.56);
     },
   },
   e_strawWrap: {
@@ -165,22 +189,26 @@ export const RECIPES = {
     gap: 0.08,
     verb: 0.3,
     play(v) {
-      // the old coat drops on: two cloth flaps (a mid-band whump of air in the fabric) …
-      v.bursts([0, 0.07], [0.34, 0.26], { dec: [0.05, 0.04], f: 700, q: 0.9, kind: 'pink' });
-      // … and SNAPS tight on the shoulders: a sharp cloth crack
-      v.noise('white', { t: 0.13, g: perc(0.6, 0.016, 0.0003), to: v.filt('bandpass', 2400, 1.4) });
-      v.noise('white', { t: 0.136, g: perc(0.12, 0.03, 0.0005), to: v.filt('highpass', 4200, 0.8) });
+      // the old coat drops on: a low cloth "fwup" (air caught in heavy fabric, 300–600 Hz) and a second flap …
+      v.noise('pink', { g: [[0, 0], [0.035, 0.62, 'e'], [0.1, 0.0001, 'e']], to: v.filt('bandpass', [[0, 300], [0.08, 600, 'e']], 1.1) });
+      v.bursts([0.075], [0.36], { dec: 0.04, f: 520, q: 1, kind: 'pink' });
+      // … and SNAPS tight on the shoulders: "ŞAK" — a hard, crisp cloth crack with a body under it
+      v.noise('white', { t: 0.12, g: perc(1.25, 0.018, 0.0002), to: v.filt('bandpass', 2300, 1.3) });
+      v.noise('white', { t: 0.122, g: perc(0.5, 0.04, 0.0004), to: v.filt('bandpass', 900, 1.2) });
+      v.noise('white', { t: 0.126, g: perc(0.22, 0.03, 0.0005), to: v.filt('highpass', 4200, 0.8) });
     },
   },
   e_strawHead: {
     cap: 2,
     gap: 0.08,
-    verb: 0.28,
+    verb: 0.24,
     play(v) {
-      // the burlap sack lands on the stake's top: a coarse crunch of stuffed straw, then the hat seats with a dry tap
-      v.crackle({ d: 0.09, n: 9, g: 0.22, f: 2900, q: 1.6, dec: 0.007, curve: 1.6 });
-      v.noise('white', { g: perc(0.2, 0.04, 0.002), to: v.filt('bandpass', 1300, 1.2) });
-      v.tone('triangle', [[0, 470], [0.02, 430, 'e']], { t: 0.06, g: perc(0.26, 0.03, 0.0005) });
+      // the burlap sack lands on the stake's top: a DULL stuffed thud (low, soft, no crack) with a few coarse fibres,
+      // then the hat seats on it with a dry little wooden tap
+      v.noise('brown', { g: perc(0.75, 0.07, 0.003), to: v.filt('lowpass', [[0, 700], [0.06, 260, 'e']], 0.9) });
+      thump(v, 0.002, 190, 120, 0.34, 0.07);
+      v.crackle({ t: 0.01, d: 0.06, n: 5, g: 0.1, f: 1500, q: 1.2, dec: 0.006, curve: 1.6, kind: 'pink' });
+      v.tone('triangle', [[0, 470], [0.02, 430, 'e']], { t: 0.075, g: perc(0.24, 0.028, 0.0005) });
     },
   },
   e_strawArms: {
@@ -205,30 +233,28 @@ export const RECIPES = {
     play(v) {
       // two button eyes catch the light: tiny bright ticks with a glassless ping (a sewn button, not a bell)
       for (const [t, f] of [[0, 1760], [0.045, 2093]] as const) {
-        v.noise('white', { t, g: perc(0.12, 0.004, 0.0002), to: v.filt('highpass', 3500, 0.8) });
-        v.tone('sine', f, { t, g: perc(0.07, 0.05, 0.001) });
+        v.noise('white', { t, g: perc(0.18, 0.004, 0.0002), to: v.filt('highpass', 3500, 0.8) });
+        v.tone('sine', f, { t, g: perc(0.1, 0.06, 0.001) });
+        v.tone('sine', f * 2.01, { t, g: perc(0.025, 0.02, 0.001) });
       }
     },
   },
   e_strawCrow: {
-    cap: 1,
-    gap: 0.5,
-    verb: 0.6,
+    cap: 2,
+    gap: 0.12,
+    verb: 0.62,
     play(v) {
-      // a crow far over the field: "gaak … gak". A nasal saw at ~480 Hz falling, roughened by FM noise (the rasp),
-      // through two crow formants (1.1 / 1.9 kHz); far: little low end, a soft top, a lot of room
-      const far = v.filt('lowpass', 3600, 0.7);
-      const caw = (t: number, d: number, f: number, g: number) => {
-        const f1 = v.filt('bandpass', 1150, 4, { t, to: far });
-        const f2 = v.filt('bandpass', 1900, 5, { t, to: far });
-        const rasp = v.flutter(70, 0.55, { t, d, base: 0.55, to: f1 });
-        rasp.connect(f2);
-        const o = v.tone('sawtooth', [[0, f * 1.12], [d * 0.25, f], [d, f * 0.82, 'e']], { t, g: [[0, 0], [0.012, g], [d * 0.6, g * 0.7], [d, 0.0001, 'e']], to: rasp });
-        // FM grit: a fast modulator on the carrier's frequency
-        v.tone('sine', f * 0.5, { t, d: d + 0.02, g: [[0, f * 0.35], [d, f * 0.15]], to: o.osc.frequency });
-      };
-      caw(0, 0.26, 480, 0.2);
-      caw(0.36, 0.17, 455, 0.15);
+      // the first call: "GAAK" (see caw())
+      caw(v, 0, 0.27, 560, 400, 0.62);
+    },
+  },
+  e_strawCrow2: {
+    cap: 2,
+    gap: 0.12,
+    verb: 0.62,
+    play(v) {
+      // the second, shorter call: "gak"
+      caw(v, 0, 0.17, 530, 410, 0.5);
     },
   },
   e_strawHand: {
@@ -237,8 +263,8 @@ export const RECIPES = {
     verb: 0.28,
     play(v) {
       // one scarecrow's straw hands fan open: a quick dry flick of straw and a tiny crisp tick of a stem
-      rustle(v, 0, 0.09, 0.14, { f0: 2600, f1: 3600, rate: 40, q: 1.5 });
-      v.bursts([0.012, 0.04], [0.11, 0.08], { dec: 0.008, f: 3200, q: 1.5 });
+      rustle(v, 0, 0.09, 0.2, { f0: 2600, f1: 3600, rate: 40, q: 1.5 });
+      v.bursts([0.012, 0.04], [0.16, 0.12], { dec: 0.008, f: 3200, q: 1.5 });
     },
   },
   e_strawPerch: {

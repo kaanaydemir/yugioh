@@ -109,6 +109,15 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
   e_strawHand, e_strawPerch, e_strawWake, e_strawHook.
 - Senaryolar: `src/duel/scenarios/e_straw_decoys.ts` (eStrawAttack, eStrawAttackP2, eStrawAttackWait, eStrawAttack3,
   eStrawOwn, eStrawOwnP2, eStrawSet, eStrawSetP2, eStrawOne, eStrawSummon); test `tests/e/straw_decoys.test.ts`.
+- Kritik turu 2 düzeltmeleri: saman artık görünür turlarla sarılır (eğik tur kenarı, her karede bir satır tırmanan
+  2–3 çapraz sicim bandı, rüzgarla gelip önden dolanan şerit, 1 px taşmayla beliren tutamlar, başıboş uçlar);
+  rüzgar = takla atan bükük 3 px saplar + yavaş tutamlar, bir kısmı kazığa konup önünden dolanır. El değiştirme:
+  ceket bütün parça olarak rüzgarda uçar, şapka takla atıp yere düşer, 8 karelik yeniden sarma + altın kenar ışığı.
+  Karga: süzülüş yolu sahadaki tüm gerçek birimlerin tepesinden ≥ 6 px geçer, zemin gölgesi, alt kenar sekme ışığı,
+  "flare" pozu dolu açık kanat + tüy çentikleri. Ses: tok = kuru ahşap (480/640/860 Hz, 2.6 kHz "tk", orta bant
+  %83, cMean 463/607/809), gak = belirgin 560→400 Hz düşüş + dar formantlar, +5 dB; ikinci gak ayrı tarif
+  (e_strawCrow2) kendi gaga işaretinde; ceket "ŞAK" +8 dB (kafa ile LSD 19,6 dB), göz +3,7 dB. Süreler (r5 ölçümü):
+  eStrawAttack 4,78 s → handoff 285 / morphFrame 30 ile ≈ 4,74 s; eStrawOwn 4,32 s, eStrawSummon 4,45 s.
 - Kanıt: `shots/e/straw_decoys/r4/` (own_hero2.png, crow_perch3.png, ownP2_morph2.png, attack.png, lure.png,
   measure.json), `art4/`, `sfx3/`.
 - Açık: jeton sprite'ı D lane'inin; şimdiki yer tutucuda ceket/şapka yok, dönüşüm bunu kırıntıyla dürüstçe

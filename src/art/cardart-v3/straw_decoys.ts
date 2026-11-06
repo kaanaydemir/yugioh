@@ -24,7 +24,7 @@ import type { ArtLayers, CardArtV3 } from './_types';
 
 const FRAMES = 4;
 /** The focus: the front scarecrow's right button eye (its white core), BIG px. */
-const FOCUS = [50, 22] as const;
+const FOCUS = [45, 22] as const;
 
 type P = PixelCanvas;
 
@@ -38,9 +38,12 @@ interface Crow {
   s: number;
 }
 
-const FRONT: Crow = { cx: 45, base: 66, s: 1 };
-const LEFT: Crow = { cx: 15, base: 56, s: 0.62 };
-const RIGHT: Crow = { cx: 74, base: 58, s: 0.62 };
+// the front scarecrow a little left of centre; the side ones smaller and LOWER (in depth: further down the field
+// toward the viewer would be bigger, so they stand behind, their arms well under the front one's), the sky open on
+// the right for the crow (direction space: the scarecrows face right)
+const FRONT: Crow = { cx: 40, base: 66, s: 1 };
+const LEFT: Crow = { cx: 12, base: 60, s: 0.5 };
+const RIGHT: Crow = { cx: 70, base: 63, s: 0.5 };
 
 /** One scarecrow (subject), big geometry × s, density k. Returns its eye points (canvas px). */
 /** The side scarecrows at 44×34, drawn natively (a dark hat over a pale sack, one eye): 11 × 14 px, stake col 5. */
@@ -215,8 +218,8 @@ function scarecrow(p: P, c: Crow, k: number, f: number): { eyes: [number, number
  * a gold4 eye; wings by frame. Facing left, toward the field. */
 function paintCrow(p: P, f: number): void {
   // crossing the low teal spell-sun right of the front hat: an ink silhouette against the light
-  const cx = 64;
-  const cy = 18;
+  const cx = 74;
+  const cy = 12;
   const up = f % 2 === 0;
   // body, head, tail
   p.rect(cx - 3, cy, 7, 2, PAL.ink);
@@ -243,10 +246,16 @@ function paintCrow(p: P, f: number): void {
 
 /** The crow's light: the teal evening rim on its upper edges and the gold eye (light layer, never outlined). */
 function lightCrow(L: P, s: P, f: number): void {
-  // (the sun behind it does the reading; only the eye catches the light)
-  void s;
+  // the evening light catches its upper edges (the picture's teal3 rim light, no new tone) so it reads against the
+  // sky; the gold eye
   void f;
-  L.set(64 - 4, 17, PAL.gold4);
+  for (let y = 4; y < 22; y++)
+    for (let x = 64; x < 84; x++) {
+      if (s.get(x, y) !== PAL.ink) continue;
+      const above = s.get(x, y - 1);
+      if (above === null) L.set(x, y, PAL.teal3);
+    }
+  L.set(74 - 4, 11, PAL.gold3);
 }
 
 /** Straws streaming off the hands in the wind (subject; they drift right one step per frame), plus a few loose ones. */
@@ -255,14 +264,14 @@ function paintStraws(p: P, k: number, f: number): void {
   // streamers: [x, y, length] big px, trailing right from the front scarecrow's right hand and the right one's
   const streams: [number, number, number][] = k === 2
     ? [
-        [70, 17, 6],
-        [72, 21, 5],
-        [84, 30, 4],
-        [26, 24, 4],
+        [62, 22, 6],
+        [66, 27, 5],
+        [84, 36, 3],
+        [22, 34, 4],
       ]
     : [
-        [70, 17, 6],
-        [26, 24, 4],
+        [62, 22, 6],
+        [22, 34, 4],
       ];
   for (const [x0, y0, len] of streams) {
     const x = q(x0, k) + (k === 2 ? drift : drift >> 1);
@@ -272,8 +281,8 @@ function paintStraws(p: P, k: number, f: number): void {
   }
   if (k === 2)
     for (const [x0, y0, tone] of [
-      [56, 6, PAL.gold3],
-      [34, 44, PAL.gold2],
+      [58, 6, PAL.gold3],
+      [30, 46, PAL.gold2],
     ] as const) {
       p.set(x0 + drift, y0, tone);
       p.set(x0 + 1 + drift, y0, tone);
@@ -304,7 +313,8 @@ function paintField(b: P, k: number): void {
     const d = Math.max(2, q(dash, k));
     const g = Math.max(1, q(gap, k));
     for (let x = (dy * 5) % (d + g); x < b.w; x += d + g)
-      for (let i = 0; i < d; i++) if (b.get(x + i, y) === PAL.night0) b.set(x + i, y, PAL.night1);
+      // the near furrows are turned earth (earth1 clods), the far ones fade into the dusk (night1)
+      for (let i = 0; i < d; i++) if (b.get(x + i, y) === PAL.night0) b.set(x + i, y, dy >= 13 ? PAL.earth1 : PAL.night1);
   }
 }
 
@@ -327,7 +337,7 @@ function paint(l: ArtLayers, f: number, k: number): void {
     return c === null || c === PAL.ink;
   };
   const side = (x: number, y: number) => k === 1 && y >= 14 && (x < 14 || x > 30);
-  rim(s, PAL.teal3, { skip: [PAL.gold3, PAL.gold2, PAL.gold1, PAL.leaf3], only: (x, y) => open(x + 1, y) && !side(x, y) && !(k === 2 && y < 24 && y > 11 && x > 55 && x < 72) });
+  rim(s, PAL.teal3, { skip: [PAL.gold3, PAL.gold2, PAL.gold1, PAL.leaf3], only: (x, y) => open(x + 1, y) && !side(x, y) && !(k === 2 && y < 22 && y > 4 && x > 62 && x < 86) });
   // light: the button eyes (2×2 big / 1 px small), the front ones brightest, glinting by frame
   const L = l.light;
   if (k === 2) lightCrow(L, s, f);
@@ -336,6 +346,14 @@ function paint(l: ArtLayers, f: number, k: number): void {
     if (k === 2 && e.main) {
       L.rect(x, y, 2, 2, PAL.gold3);
       L.set(x + (f % 2), y, PAL.white);
+      // the glint: a short gold3 cross off the brighter eye (the picture's brightest cluster sits on the focus)
+      if (x === Math.max(...eyes.filter((q) => q.main).map((q) => q.at[0]))) {
+        L.set(x + 2, y, PAL.gold3);
+        L.set(x + 3, y, PAL.gold3);
+        L.set(x, y - 1, PAL.gold3);
+        L.set(x + 1, y - 2, PAL.gold3);
+        L.set(x + 1, y + 2, PAL.gold3);
+      }
     } else if (k === 2) {
       L.set(x, y, PAL.gold2);
     } else {

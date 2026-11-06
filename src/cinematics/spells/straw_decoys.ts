@@ -16,7 +16,8 @@
 //   hand / own set card (own Main Phase): the common v3 spell opening (spells/_kit spellOpening, keepCard,
 //        releaseFrom 'top': the orb leaves the card's top edge for the dusk sky over the empty zones).
 //   QUICK ANSWER (a set card in the opponent's attackDeclared / summoned window): the quick-spell reveal
-//        (spells/_quick_e.ts: the turquoise zig-zag snap, "HIZLI BÜYÜ!"), then the orb leaves the standing card's
+//        (spells/_quick_e.ts: the turquoise zig-zag snap, "HIZLI BÜYÜ!" with a shorter hold; the burst waits until the
+//        plate has wiped out and is placed off the kept attack arc), then the orb leaves the standing card's
 //        top for the sky and the card lies straight back down; the same signature plays; the spent card leaves.
 //        Answering a DIRECT attack the attacker's controller then picks a decoy (a later batch): the `target` hook
 //        plays the LURE — the picked scarecrow waves (roar pose), a straw tuft lashes out along a 2-px gold line and
@@ -29,27 +30,33 @@
 //   R+0      RELEASE: the orb flies to the BURST point over the decoys' row (clamped under the HUD band, y ≥ 40)
 //   S+0      BURST: a gold star in the dusk sky, e_strawGust (a low, wide dusk field wind swelling in); the orb splits
 //            into one thin streak per empty zone
-//   S+100 + i·110   STAKE i appears in the sky over its zone (its fall height fits the frame: ≤ 100 px, top ≥ 44 px)
-//            and FALLS point-first (130 ms) — e_strawDrop
+//   S+100 + i·100   STAKE i appears in the sky over its zone (its fall height fits the frame: ≤ 100 px, top ≥ 44 px)
+//            and FALLS point-first (130 ms; its lit side rimmed earth4, a gold4 tip, so it reads on the back wall) — e_strawDrop
 //   contact  STAB: "tok" (e_strawTok1/2/3, into earth), the stake SQUASHES (2 frames: 1 px shorter + 1 px wider, then
 //            back), a white frame, a dirt ring on the floor (earth ramp), ink cracks, dirt chips, the token's card
 //            pinned on the tile with a gold tile flash, a warm pool; the last stab: 2 px shake + a 40 ms hit-stop
 //   W0 = the last stab (after its hit-stop)
-//   W+20     THE WIND crosses the row (P1 left → right, P2 right → left: from the field's edge outward), straws streak
-//            and curl into the stakes, e_strawWrap / e_strawWrapR travels with it; straw winds on each stake
-//            (r·70 apart, 300 ms) — it overlaps the last stake's quiver (no dead air)
-//   W+340 + r·80    THE COAT drops on, flaps, SNAPS — e_strawCoat
-//   W+600 + r·80    THE SACK HEAD + HAT — e_strawHead
-//   A = W + max(900, last head + 200)  ARMS SPREAD together (4 stepped angles) — e_strawArms; a dusk light sweeps the
-//            row and each pair of straw hands flicks open (e_strawHand per decoy, 25 ms apart)
-//   C0       THE CROW (hero beat): 30×18 px, light-rimmed, enters from the left edge and glides DOWN the row over the
-//            scarecrows' hats; each scarecrow's 2×2 button eyes light as it passes (white core + gold4 cross → gold4 →
-//            gold3 → gold2, 120 ms a stage, a face light) — e_strawEye per decoy; it flares and LANDS on the last
-//            scarecrow's outer arm (the arm dips under it) — e_strawPerch; ≥ 150 ms after the last eye it CAWS twice,
-//            beak wide, head up, bobbing after each call — e_strawCrow; the straw shivers at the caw
-//   H = caw + 520   COMES ALIVE: the crow beats off the arm (startled) and away; the straw bristles up each scarecrow
-//            from the foot (a gold4/gold3 edge, 6 frames) re-winding it into the token unit's own pixels; what the
-//            token does not wear is shed as chips on the wind — e_strawWake; badges pop, pools fade
+//   W+20     THE WIND crosses the row (P1 left → right, P2 right → left: from the field's edge outward): bent 3-px
+//            straw stems tumble across (their bend flips frame by frame) with a few slow tufts; ~45 % of them end ON a
+//            stake and curl round its front; e_strawWrap / e_strawWrapR travels with it. Straw WINDS on each stake in
+//            visible turns (r·70 apart, 300 ms): a slanted turn edge in gold4, 2–3 diagonal twine bands climbing one row
+//            per frame, the strand being wound coming in on the wind across the front, tufts popping on with a 1-px
+//            overshoot, stray ends breaking the silhouette
+//   W+320 + r·80    THE COAT drops on, flaps, SNAPS — e_strawCoat
+//   W+570 + r·80    THE SACK HEAD + HAT — e_strawHead
+//   A = W + max(860, last head + 110)  ARMS SPREAD together (4 stepped angles) — e_strawArms; a dusk light sweeps
+//            the row and each pair of straw hands flicks open (e_strawHand per decoy, 25 ms apart)
+//   C0       THE CROW (hero beat): light-rimmed (stone3 / mist on top, a stone1 bounce light under), a moving shadow on
+//            the floor; enters from the left edge and glides DOWN the row over the scarecrows' hats AND over every real
+//            unit it crosses (≥ 6 px clear of its top); each scarecrow's 2×2 button eyes light as it passes (white core
+//            + gold4 cross → gold4 → gold3 → gold2) — e_strawEye per decoy; it flares (solid spread wings, notched
+//            primaries) and LANDS on the last scarecrow's outer arm — e_strawPerch; 80 ms later it CAWS — e_strawCrow,
+//            and 250 ms after that again — e_strawCrow2 (each call its own recipe on its beak mark); the spent card
+//            has already left (from the first eye)
+//   H = caw + 285   COMES ALIVE: the crow is startled off mid second call; each scarecrow sheds its COAT (it flaps away
+//            downwind, whole, sleeves flailing) and its HAT (it tumbles once and lands on the ground, then fades); the
+//            straw bristles up from the foot (8 frames, a ragged gold4/gold3 edge with a gold RIM LIGHT on the token's
+//            outline just under it) re-winding it into the token unit's own pixels — e_strawWake; badges pop
 // EDGES — one decoy: the same beats, one stake (the crow lands on it); summoned in answer to a SUMMON: no lure.
 // P2: everything mirrors with the zones; the scarecrows face left (their raster is flipped about the stake); the crow
 // works in screen space (left → right down the row) for both players.
@@ -90,36 +97,38 @@ export const STRAW_T = Object.freeze({
   release: 170,
   fan: 110,
   stake0: 100,
-  stakeGap: 110,
+  stakeGap: 100,
   fall: 130,
   /** after the last stab (W0): the wind */
   wind: 20,
   wrapGap: 70,
   wrapMs: 300,
-  coat: 340,
+  coat: 320,
   coatGap: 80,
   coatDrop: 110,
-  head: 600,
+  head: 570,
   headGap: 80,
   headDrop: 90,
   /** arms: at least this, and ≥ last head landed + armsAfterHead */
-  arms: 900,
+  arms: 860,
   armsAfterHead: 110,
   armStep: 45,
   /** the first eye lights no sooner than arms + eyesAfterArms */
-  eyesAfterArms: 220,
+  eyesAfterArms: 160,
   eyeStage: 120,
   /** the crow's glide (scaled by distance within these) */
   crowMin: 650,
-  crowMax: 1000,
+  crowMax: 860,
   flare: 130,
   /** the caw: ≥ landing + cawAfterLand and ≥ last eye + cawAfterEye */
-  cawAfterLand: 150,
+  cawAfterLand: 80,
   cawAfterEye: 200,
-  caw2: 360,
-  /** handoff: caw + handoff */
-  handoff: 460,
-  morphFrame: 36,
+  /** the second call: 0.36 s of real time after the first ≈ 270 scene ms at the 1.35 tempo — its own recipe and mark */
+  caw2: 250,
+  /** handoff: caw + handoff (the crow is startled off mid second call) */
+  handoff: 285,
+  morphFrame: 30,
+  morphSteps: 8,
 });
 
 // ================================================================ the scarecrow (local raster geometry)
@@ -153,6 +162,8 @@ interface Build {
   streak: number;
   /** straw wound on (0..1) */
   wrap: number;
+  /** the twine turns' phase (rows climbed while winding) */
+  twine: number;
   /** the coat: null = not yet, else its offset above (px); its hem flap (px) */
   coatY: number | null;
   flap: number;
@@ -172,7 +183,7 @@ interface Build {
 }
 
 function freshBuild(): Build {
-  return { stake: false, stakeY: -SKY, sink: 0, wob: 0, squash1: 0, white: false, cracks: 0, streak: 0, wrap: 0, coatY: null, flap: 0, headY: null, hatY: null, squash: 0, arm: 0, dipDir: 1, dip: 0, eyes: 0, shiver: 0 };
+  return { stake: false, stakeY: -SKY, sink: 0, wob: 0, squash1: 0, white: false, cracks: 0, streak: 0, wrap: 0, twine: 0, coatY: null, flap: 0, headY: null, hatY: null, squash: 0, arm: 0, dipDir: 1, dip: 0, eyes: 0, shiver: 0 };
 }
 
 /** Sleeve angles (radians, + = down) per arm step: hanging, 45°, 15°, 8° over the level, level (a hair of droop). */
@@ -181,6 +192,23 @@ const ARM_L = 8;
 /** The head's centre (local) and the eyes. */
 const HEAD_CX = FX + 1;
 const HEAD_CY = FY - 25;
+/** The straw bundle's half-width per row, from the foot (FY − 4) up (hand-tuned: a flared skirt, a waist, a chest). */
+const WRAP_HW = [6, 6, 5, 5, 4, 4, 3, 4, 4, 4, 3, 4, 4, 4, 3, 3, 3, 3] as const;
+/** Tufts [row, side, length] that pop on as the wind reaches them. */
+const WRAP_TUFTS: readonly (readonly [number, number, number])[] = [
+  [3, -1, 3],
+  [7, 1, 3],
+  [11, -1, 2],
+  [14, 1, 2],
+];
+/** Stray single ends [row, side] poking out of the bundle. */
+const WRAP_STRAYS: readonly (readonly [number, number])[] = [
+  [1, 1],
+  [5, -1],
+  [9, 1],
+  [12, -1],
+  [16, 1],
+];
 
 /** Paint one scarecrow in its build state on the raster (local pixels; the raster is flipped for P2). */
 function paintDecoy(r: Raster, b: Build, el: number): void {
@@ -204,34 +232,48 @@ function paintDecoy(r: Raster, b: Build, el: number): void {
       const w = !planted && fromBot < 3 ? fromBot + 1 : W;
       const x0 = FX - 1 + dx + (W - w > 1 ? 1 : 0) - (W > 3 && planted ? 0 : 0);
       for (let i = 0; i < w; i++) {
-        const tone = y === top ? PAL.earth4 : i === 0 ? PAL.earth3 : i === w - 1 && w > 1 ? PAL.earth1 : PAL.earth2;
+        // falling, the lit side catches the dusk (a 1-px earth4 rim, a gold4 tip) so it reads over the back wall
+        const tone = y === top ? (planted ? PAL.earth4 : PAL.gold4) : i === 0 ? (planted ? PAL.earth3 : PAL.earth4) : i === w - 1 && w > 1 ? PAL.earth1 : PAL.earth2;
         p.set(x0 + i, y, C(tone));
       }
       // bark notches
       if ((y - top) % 7 === 4) p.set(x0 + 1, y, C(PAL.earth1));
     }
   }
-  // ---- the straw bundle wound round the stake (from the ground up)
+  // ---- the straw bundle WOUND round the stake in turns (from the ground up): the wound edge is a slanted turn (higher
+  // on the far side), 2–3 diagonal twine bands climb one row per frame while it winds (b.twine), the strand being
+  // wound comes in on the wind (local left) and crosses the front, tufts pop on with a 1-px overshoot, stray ends
+  // break the silhouette
   if (b.wrap > 0) {
     const yBot = FY - 4;
-    const yTop = FY - 21;
-    const yEdge = Math.floor(yBot - (yBot - yTop + 1) * b.wrap);
-    for (let y = yBot; y > yEdge && y >= yTop; y--) {
-      const skirt = y > FY - 11;
-      const rag = (y * 7) % 5 === 0 ? 1 : 0;
-      const hw = (skirt ? 3 + Math.min(3, Math.floor((y - (FY - 11)) * 0.6)) : y < FY - 19 ? 3 : 4) + rag;
+    const rows = WRAP_HW.length;
+    const wound = b.wrap * rows;
+    const winding = b.wrap < 1;
+    for (let i = 0; i < rows; i++) {
+      const y = yBot - i;
+      const hw = WRAP_HW[i];
       for (let x = FX - hw; x <= FX + hw; x++) {
         const u = x - FX;
+        // the turn's slant: the far (right) side is wound a row or two ahead of the near side
+        const lim = wound + (winding ? Math.floor((u + 6) / 3) - 2 : 0);
+        if (i >= lim) continue;
         let tone: number;
         if (u <= -hw + 1) tone = PAL.gold3;
         else if (u >= hw - 1) tone = PAL.gold1;
         else if (u < 0) tone = (u & 1) === 0 ? PAL.gold3 : PAL.gold2;
         else tone = (u & 1) === 0 ? PAL.gold2 : PAL.gold1;
-        if (y === FY - 15 && b.wrap > 0.65) tone = Math.abs(u) <= 3 ? PAL.earth1 : tone; // the twine at the waist
-        if (y === yEdge + 1 && b.wrap < 1) tone = PAL.gold4; // the fresh straw just wound on
+        // the twine turns: diagonal bands (rising to the right), a lit edge over each
+        if (i >= 3 && i <= rows - 2) {
+          const m = (((i - b.twine + Math.floor((u + 8) / 2)) % 7) + 7) % 7;
+          if (m === 0) tone = PAL.earth1;
+          else if (m === 1 && u < 2) tone = PAL.gold4;
+        }
+        // the fresh straw just wound on (the edge of the turn)
+        if (winding && i >= lim - 1) tone = PAL.gold4;
         p.set(x, y, C(tone));
       }
     }
+    // the straws hanging at the foot
     if (b.wrap >= 0.2)
       for (const [x, len] of [
         [FX - 5, 2],
@@ -239,10 +281,28 @@ function paintDecoy(r: Raster, b: Build, el: number): void {
         [FX + 1, 2],
         [FX + 4, 3],
       ] as const)
-        for (let k = 1; k <= len; k++) p.set(x + (k === len ? sway : 0), yBot + k - 1, C(x < FX ? PAL.gold3 : PAL.gold2));
-    if (b.wrap < 1 && yEdge > yTop) {
-      p.set(FX - 5 - (fr & 1), yEdge + 2, C(PAL.gold3));
-      p.set(FX + 5 + (fr & 1), yEdge + 3, C(PAL.gold2));
+        for (let k = 1; k <= len; k++) p.set(x + (k === len ? sway : 0), yBot + k, C(x < FX ? PAL.gold3 : PAL.gold2));
+    // tufts: pop on as the wind reaches their row (one frame 1 px long), then sway
+    for (const [ti, side, len] of WRAP_TUFTS) {
+      if (wound < ti + 1) continue;
+      const pop = winding && wound - (ti + 1) < 2.2 ? 1 : 0;
+      const y = yBot - ti;
+      const x0 = FX + side * (WRAP_HW[ti] + 1);
+      const n = len + pop;
+      for (let k = 0; k < n; k++) p.set(x0 + side * k + (k === n - 1 && side < 0 ? sway : 0), y - Math.floor((k + 1) / 2), C(side < 0 ? PAL.gold3 : PAL.gold2));
+    }
+    // stray ends (1 px, swaying) once the bundle is there
+    for (const [ti, side] of WRAP_STRAYS)
+      if (wound >= ti + 1) p.set(FX + side * (WRAP_HW[ti] + 1) + (side < 0 ? Math.min(0, sway) : Math.max(0, sway)), yBot - ti, C(side < 0 ? PAL.gold3 : PAL.gold2));
+    // the strand being wound: in on the wind from the near side, across the front to the far side, just over the edge
+    if (winding && wound > 1) {
+      const ei = Math.min(rows - 1, Math.floor(wound));
+      const ey = yBot - ei;
+      const wv = (Math.floor(el / 36) & 1) as number;
+      const pts: [number, number][] = [];
+      for (let k = 0; k <= 9; k++) pts.push([FX - 11 + k, ey + 3 - Math.floor(k / 3) + (k < 3 ? wv : 0)]);
+      for (let k = 1; k <= 4; k++) pts.push([FX - 2 + k, ey - Math.floor(k / 2)]);
+      pts.forEach(([x, y], k) => p.set(x, y, C(k < 3 ? PAL.gold2 : k < 9 ? PAL.gold3 : PAL.gold4)));
     }
   }
   // ---- the coat (torso + sleeves + straw hands)
@@ -353,7 +413,7 @@ function paintDecoy(r: Raster, b: Build, el: number): void {
     const top = FY - STAKE_TOP + R(b.stakeY);
     for (let k = 1; k <= b.streak; k++) {
       if (k % 3 === 0) continue;
-      p.set(FX - 2, top - k, k < 4 ? PAL.gold4 : PAL.earth4);
+      p.set(FX - 2, top - k, k < 6 ? PAL.gold4 : PAL.earth4);
       if (k % 2) p.set(FX + 2, top - k - 2, PAL.earth3);
     }
   }
@@ -468,7 +528,19 @@ function paintCrow(r: Raster, pose: CrowPose): void {
   let beakOpen = false;
   if (flying) {
     const far: XY = pose === 'up' ? { x: 17, y: 1 } : pose === 'mid' ? { x: 21, y: 7 } : pose === 'down' ? { x: 17, y: 16 } : { x: 20, y: 0 };
-    p.thickLine(14, 8, far.x, far.y, 2, PAL.stone0);
+    if (pose === 'flare') {
+      // braking: both wings thrown up and forward as SOLID spread sails, the primaries notched at the tips
+      p.poly(
+        [
+          [13, 8],
+          [16, 7],
+          [22, 1],
+          [19, 0],
+          [14, 2],
+        ],
+        PAL.stone0,
+      );
+    } else p.thickLine(14, 8, far.x, far.y, 2, PAL.stone0);
     p.ellipse(13, 9, 6, 2, ink);
     head = { x: 20, y: pose === 'flare' ? 6 : 8 };
     p.disc(head.x, head.y, 2, ink);
@@ -476,9 +548,31 @@ function paintCrow(r: Raster, pose: CrowPose): void {
       p.tri(8, 10, 2, 12, 5, 15, ink); // the tail fans down to brake
       p.vline(12, 11, 15, PAL.stone1);
       p.vline(15, 11, 15, PAL.stone1);
-    } else p.tri(8, 9, 2, 7, 2, 11, ink);
-    const near: XY = pose === 'up' ? { x: 10, y: 0 } : pose === 'mid' ? { x: 5, y: 6 } : pose === 'down' ? { x: 10, y: 17 } : { x: 15, y: 0 };
-    p.thickLine(12, 8, near.x, near.y, 2, ink);
+      p.poly(
+        [
+          [10, 9],
+          [14, 8],
+          [17, 1],
+          [15, 0],
+          [11, 0],
+          [7, 1],
+          [5, 3],
+          [7, 6],
+        ],
+        ink,
+      );
+      // three feather notches on the trailing edge (the sky shows between the primaries)
+      for (const [x, y] of [
+        [8, 1],
+        [11, 0],
+        [6, 3],
+      ] as const)
+        p.erase(x, y);
+    } else {
+      p.tri(8, 9, 2, 7, 2, 11, ink);
+      const near: XY = pose === 'up' ? { x: 10, y: 0 } : pose === 'mid' ? { x: 5, y: 6 } : { x: 10, y: 17 };
+      p.thickLine(12, 8, near.x, near.y, 2, ink);
+    }
   } else {
     // perched, upright on the sleeve: body, folded wing, tail down behind, legs gripping
     const hy = pose === 'caw' ? 5 : pose === 'bob' ? 8 : 6;
@@ -501,7 +595,12 @@ function paintCrow(r: Raster, pose: CrowPose): void {
       if (c === null || c === PAL.stone1) continue;
       if (p.get(x, y - 1) === null) rim.push({ x, y });
     }
+  // … and a cooler bounce light from the floor on every lower edge, so the ink reads on the dark floor and wall too
+  const under: XY[] = [];
+  for (let y = 0; y < CH; y++)
+    for (let x = 0; x < CW; x++) if (p.get(x, y) === ink && p.get(x, y + 1) === null && p.get(x, y - 1) !== null) under.push({ x, y });
   for (const q of rim) p.set(q.x, q.y, Math.abs(q.x - head.x) <= 2 && q.y <= head.y ? PAL.mist : PAL.stone3);
+  for (const q of under) p.set(q.x, q.y, PAL.stone1);
   // the beak (open on the caw) and the eye's gold glint
   const bx = head.x + 2;
   const by = head.y;
@@ -530,6 +629,8 @@ interface CrowPlan {
   xp: number;
   profile: XY[];
   perch: XY;
+  /** the floor of the row it flies over (its shadow) */
+  floorY: number;
   /** the calls (absolute) and the take-off */
   caw: number;
   takeoff: number;
@@ -556,6 +657,10 @@ function profileY(pl: CrowPlan, x: number): number {
 /** Fly the crow through its plan (glide → flare → perch → caws → take off and away); resolves when it is gone. */
 function crowRun(sc: Phaser.Scene, clk: { readonly t: number }, pl: CrowPlan, onLand: () => void): Promise<void> {
   const ras = new Raster(sc, -CW, 0, CW, CH, DEPTH.FX - 6);
+  // its shadow on the floor of the row: a flat dark ellipse that shrinks the higher it flies
+  const shadow = new Raster(sc, -20, 0, 13, 3, DEPTH.SHADOW);
+  shadow.img.setAlpha(0.45);
+  let shadowR = -1;
   let landed = false;
   let lastPose: CrowPose | null = null;
   let away: XY = { x: 0, y: 0 };
@@ -585,6 +690,7 @@ function crowRun(sc: Phaser.Scene, clk: { readonly t: number }, pl: CrowPlan, on
         const k = now - pl.takeoff;
         if (k > 700) {
           ras.destroy();
+          shadow.destroy();
           resolve();
           return false;
         }
@@ -595,6 +701,15 @@ function crowRun(sc: Phaser.Scene, clk: { readonly t: number }, pl: CrowPlan, on
         foot = away;
       }
       ras.moveTo(foot.x - CFX, foot.y - CFY);
+      const h = pl.floorY - foot.y;
+      const sr = h > 90 ? 0 : h > 55 ? 3 : h > 25 ? 4 : 5;
+      if (sr !== shadowR) {
+        shadowR = sr;
+        shadow.begin();
+        if (sr > 0) shadow.pc.ellipse(6, 1, sr, 1, PAL.night0);
+        shadow.end();
+      }
+      shadow.moveTo(foot.x - 6 - 2, pl.floorY - 1);
       if (pose !== lastPose) {
         paintCrow(ras, pose);
         lastPose = pose;
@@ -632,7 +747,8 @@ function tokenPixels(d: Decoy, unit: MonsterUnit): PixelCanvas | null {
 
 /**
  * One frame of the re-wind: rows under `edge` are the token, rows over it the built scarecrow, the two rows at the
- * edge a bristle of straw (both silhouettes, gold4 / gold3, with a whisker each side).
+ * edge a bristle of straw (gold4 / gold3, ragged like a bundle's end); the token's silhouette just under the edge
+ * catches a gold RIM LIGHT (gold4 for 2 rows, gold3 for 2 more) on its outer pixels.
  */
 function paintMorph(r: Raster, from: PixelCanvas, to: PixelCanvas, edge: number): void {
   const p = r.pc;
@@ -645,13 +761,107 @@ function paintMorph(r: Raster, from: PixelCanvas, to: PixelCanvas, edge: number)
       const t = to.get(x, y);
       const f = from.get(x, y);
       if (y > e + 1) {
-        if (t !== null) p.set(x, y, t);
+        if (t === null) continue;
+        const d = y - (e + 1);
+        const rimmed = d <= 4 && t !== PAL.ink && (to.get(x - 1, y) === null || to.get(x + 1, y) === null || to.get(x - 1, y) === PAL.ink || to.get(x + 1, y) === PAL.ink);
+        p.set(x, y, rimmed ? (d <= 2 ? PAL.gold4 : PAL.gold3) : t);
       } else if (y < e) {
         if (f !== null) p.set(x, y, f);
       } else if (t !== null || f !== null) p.set(x, y, t !== null ? (y === e ? PAL.gold4 : PAL.gold3) : PAL.gold2);
     }
   }
   r.end();
+}
+
+/** A raster over the decoy (same place, same flip) holding one of its pieces, painted from a build state. */
+function pieceRaster(sc: Phaser.Scene, d: Decoy, b: Partial<Build>): Raster {
+  const r = new Raster(sc, d.ras.x, d.ras.y, RW, RH, d.ras.img.depth + 0.01);
+  r.img.setFlipX(d.flip);
+  paintDecoy(r, { ...freshBuild(), stake: false, ...b }, 0);
+  return r;
+}
+
+/**
+ * The coat comes off WHOLE: it lifts off the shoulders and flaps away on the wind (screen direction `wdir`), its
+ * sleeves flailing (repainted between arm angles and hem flaps every other frame), and fades out far downwind.
+ */
+async function shedCoat(sc: Phaser.Scene, d: Decoy, wdir: number): Promise<void> {
+  const pose = (k: number): Partial<Build> => ({ coatY: 0, flap: [2, 0, 1, 2][k % 4], arm: [4, 3, 2, 3][k % 4], headY: null, hatY: null });
+  const r = pieceRaster(sc, d, pose(0));
+  const x0 = r.x;
+  const y0 = r.y;
+  let last = -1;
+  await run(sc, 460, (t, el) => {
+    const k = Math.floor(el / 50);
+    if (k !== last) {
+      last = k;
+      paintDecoy(r, { ...freshBuild(), stake: false, ...pose(k) }, 0);
+    }
+    r.moveTo(R(x0 + wdir * (10 * t + 80 * E.inQuad(t))), R(y0 - 3 - 26 * E.outQuad(t) + Math.sin(el / 45) * 2));
+    r.img.setAlpha(t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3);
+  });
+  r.destroy();
+}
+
+/** The hat tipped on its side (17 × 9): 1 = earth1 (crown, shade), 2 = earth2 (brim, lit). */
+const HAT_TILT = [
+  '..........11.....',
+  '.........1111....',
+  '........21111....',
+  '.......221111....',
+  '......22.111.....',
+  '....222..........',
+  '...22............',
+  '.222.............',
+  '.................',
+];
+
+/** The hat's three tumble poses, drawn on its own small raster (17 × 9; the brim's centre at (8, 6)). */
+function paintHat(r: Raster, pose: number): void {
+  const p = r.pc;
+  r.begin();
+  if (pose === 0 || pose === 2) {
+    // upright (0) or upside-down (2): brim + crown
+    const up = pose === 0 ? -1 : 1;
+    p.hline(1, 15, 6, PAL.earth2);
+    p.set(15, 6 - up, PAL.earth1);
+    for (let k = 1; k <= 4; k++) {
+      const hw = k === 4 ? 2 : 3;
+      for (let x = 8 - hw; x <= 8 + hw - (k === 4 ? 1 : 0); x++) p.set(x, 6 + up * k, x < 7 ? PAL.earth2 : PAL.earth1);
+    }
+    if (pose === 0) p.set(12, 3, PAL.gold3);
+  } else {
+    // tipped on its side: the brim a stepped diagonal (2-px steps), the crown off to the upper right
+    p.stamp(HAT_TILT, { '1': PAL.earth1, '2': PAL.earth2 }, 0, 0);
+  }
+  p.outline(PAL.ink);
+  r.end();
+}
+
+/** The hat pops off, tumbles once and lands on the ground downwind (a 1-px bounce), sits a moment, then fades. */
+async function shedHat(sc: Phaser.Scene, d: Decoy, wdir: number, rnd: () => number): Promise<void> {
+  const brim = toWorld(d, HEAD_CX, FY - 30);
+  const r = new Raster(sc, brim.x - 8, brim.y - 6, 17, 9, unitDepth(d.floor.y) + 0.6);
+  let pose = -1;
+  const land = { x: R(brim.x + wdir * (14 + Math.floor(rnd() * 5))), y: d.floor.y + 3 };
+  await run(sc, 420, (t) => {
+    // up 8 px, then down to the floor (a parabola), drifting downwind
+    const x = brim.x + (land.x - brim.x) * t;
+    const y = t < 0.3 ? brim.y - 8 * E.outQuad(t / 0.3) : brim.y - 8 + (land.y - (brim.y - 8)) * E.inQuad((t - 0.3) / 0.7);
+    const ps = t < 0.25 ? 0 : t < 0.5 ? 1 : t < 0.75 ? 2 : t < 0.92 ? 1 : 0;
+    if (ps !== pose) {
+      pose = ps;
+      paintHat(r, ps);
+    }
+    r.moveTo(R(x) - 8, R(y) - 6);
+  });
+  // the bounce
+  r.moveTo(land.x - 8, land.y - 7);
+  await wait(sc, 50);
+  r.moveTo(land.x - 8, land.y - 6);
+  await wait(sc, 260);
+  await run(sc, 200, (t) => r.img.setAlpha(1 - t));
+  r.destroy();
 }
 
 // ================================================================ the signature
@@ -765,27 +975,36 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   const headLand = (r: number) => T.head + r * T.headGap + T.headDrop;
   const A = Math.max(T.arms, headLand(n - 1) + T.armsAfterHead);
 
-  // ---- the wind (straight into the last stake's quiver): straws lift off the ground, then the gust
-  for (const d of order)
-    for (let k = 0; k < 3; k++)
-      straws.add({ x: d.floor.x + R((rnd() - 0.5) * 16), y: d.floor.y + 1, vx: wdir * (20 + rnd() * 30), vy: -30 - rnd() * 30, ay: -10, life: 260 + rnd() * 160, colors: [PAL.gold3, PAL.gold2], shape: 'px', fadeAt: 0.7 });
-  const left = Math.min(...xs) - 60;
-  const right = Math.max(...xs) + 60;
+  // ---- the wind (straight into the last stake's quiver): straws lift off the ground, then the gust carries bent
+  // straw stems (tumbling: their bend flips frame by frame) and slow tufts across the row; a share of the stems ends ON
+  // a stake and curls round it (the straw being wound on)
+  const left = Math.min(...xs) - 70;
+  const right = Math.max(...xs) + 70;
   const up = wdir > 0 ? left : right;
+  const rowY = Math.min(...ds.map((d) => d.floor.y));
+  const stems = new Stems(sc, left - 10, rowY - 70, right - left + 20, Math.max(...ds.map((d) => d.floor.y)) - rowY + 84, DEPTH.FX - 1);
+  for (const d of order)
+    for (let k = 0; k < 3; k++) stems.add({ x: d.floor.x + (rnd() - 0.5) * 16, y: d.floor.y, vx: wdir * (20 + rnd() * 30), vy: -30 - rnd() * 30, life: 300 + rnd() * 160, kind: 'stem', ph: k });
   bg(
     at(T.wind).then(() => {
       playV3(wdir > 0 ? 'e_strawWrap' : 'e_strawWrapR', { volume: 0.85, pan: 0 });
       let gusting = true;
+      let acc = 0;
       onFrame(sc, (dt) => {
         if (!gusting) return false;
-        const m = dt / 9;
-        for (let k = 0; k < m; k++) {
+        acc += dt;
+        while (acc > 14) {
+          acc -= 14;
           const d = order[Math.floor(rnd() * n)];
-          const y = d.floor.y - 4 - rnd() * 22;
-          if (rnd() < 0.45) {
-            straws.add({ x: up - wdir * rnd() * 30, y, tx: d.floor.x + (rnd() - 0.5) * 6, ty: d.floor.y - 6 - rnd() * 14, curl: (1.1 + rnd() * 0.6) * wdir, life: 260 + rnd() * 140, colors: [PAL.gold4, PAL.gold3, PAL.gold2], shape: 'streak', len: 0.02, fadeAt: 0.9 });
+          const y = d.floor.y - 4 - rnd() * 20;
+          const r0 = rnd();
+          if (r0 < 0.45) {
+            // lands on the stake and winds round it
+            stems.add({ x: up - wdir * rnd() * 20, y: y - 8 - rnd() * 10, life: 280 + rnd() * 120, kind: 'stem', ph: Math.floor(rnd() * 4), to: { x: d.floor.x, y: R(d.floor.y - 8 - rnd() * 12) }, curlR: 5 + Math.floor(rnd() * 3), dir: wdir });
+          } else if (r0 < 0.85) {
+            stems.add({ x: up - wdir * rnd() * 40, y: y - 10, vx: wdir * (200 + rnd() * 120), vy: (rnd() - 0.6) * 30, life: ((right - left) / 260) * 1000, kind: 'stem', ph: Math.floor(rnd() * 4) });
           } else {
-            straws.add({ x: up - wdir * rnd() * 40, y: y - 6, vx: wdir * (280 + rnd() * 160), vy: (rnd() - 0.5) * 20, life: ((right - left) / 380) * 1000, colors: rnd() < 0.3 ? [PAL.earth4, PAL.gold3] : [PAL.gold3, PAL.gold2, PAL.gold1], shape: rnd() < 0.5 ? 'streak' : 'px', len: 0.03, fadeAt: 0.8 });
+            stems.add({ x: up - wdir * rnd() * 30, y: y - 14 - rnd() * 16, vx: wdir * (90 + rnd() * 50), vy: -6 + rnd() * 12, life: 900, kind: 'tuft', ph: Math.floor(rnd() * 4) });
           }
         }
         return true;
@@ -795,8 +1014,9 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
       return Promise.all(
         up2.map(async (d, r) => {
           await at(T.wind + r * T.wrapGap);
-          await run(sc, T.wrapMs, (t) => {
-            d.b.wrap = Math.ceil(E.outQuad(t) * 9) / 9;
+          await run(sc, T.wrapMs, (t, el) => {
+            d.b.wrap = E.outQuad(t);
+            d.b.twine = Math.floor(el / 36);
           });
           d.b.wrap = 1;
         }),
@@ -875,8 +1095,28 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   const hatTop = (d: Decoy) => d.floor.y - 36;
   const xs0 = -20;
   const profile: XY[] = [{ x: xs0, y: Math.max(SKY_MIN_Y + 6, hatTop(order[0]) - 46) }, ...order.slice(0, -1).map((d) => ({ x: d.floor.x, y: hatTop(d) - 6 })), { x: perchD.floor.x, y: Math.min(hatTop(perchD) - 6, perch.y - 8) }, perch];
-  const dur = Math.max(T.crowMin, Math.min(T.crowMax, (perch.x - xs0) / 0.42));
-  const plan: CrowPlan = { t0: 0, dur, xs: xs0, xp: perch.x, profile, perch, caw: 0, takeoff: 0 };
+  // every REAL unit on the field the glide would cross: lift the path over its top with ≥ 6 px clearance (the crow
+  // must never fly through a monster's body)
+  const decoyUids = new Set(ds.map((d) => d.ev.uid));
+  for (const pl of ctx.state.players)
+    for (const m of pl.monsters) {
+      if (!m || decoyUids.has(m.uid)) continue;
+      const u = ctx.unit(m.uid);
+      if (!u) continue;
+      const top = u.worldPoint('top');
+      const foot = u.home;
+      const hw = Math.max(10, Math.round(u.art.w * 0.35));
+      if (foot.x + hw < xs0 || foot.x - hw > perch.x - 10) continue;
+      const clear = top.y - CH + 2 - 6;
+      const py = (x: number) => profileY({ profile } as unknown as CrowPlan, x);
+      // only when the path at that x would be inside its body (between its top and its feet)
+      if (Math.min(py(foot.x - hw), py(foot.x), py(foot.x + hw)) > clear && Math.min(py(foot.x - hw), py(foot.x), py(foot.x + hw)) < foot.y) {
+        for (const x of [foot.x - hw, foot.x, foot.x + hw]) profile.push({ x: R(x), y: Math.max(SKY_MIN_Y, R(clear)) });
+        profile.sort((a, b) => a.x - b.x);
+      }
+    }
+  const dur = Math.max(T.crowMin, Math.min(T.crowMax, (perch.x - xs0) / 0.5));
+  const plan: CrowPlan = { t0: 0, dur, xs: xs0, xp: perch.x, profile, perch, floorY: perchD.floor.y + 2, caw: 0, takeoff: 0 };
   const eyeU = order.map((d) => glideU(plan, d.floor.x - 2));
   // the first eye no sooner than the arms are out
   const C0 = Math.max(A - 400, A + T.eyesAfterArms - eyeU[0] * dur);
@@ -909,34 +1149,40 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
         b.eyes = 0;
       }),
     );
-  // the caws: the straw shivers on each call
+  // the caws (two recipes, each on its beak mark): the straw shivers on each call
   for (const [k, t] of [
     [0, caw],
     [1, caw + T.caw2],
   ] as const)
     bg(
       at(t).then(() => {
-        if (k === 0) playV3('e_strawCrow', { volume: 0.85, pan: panAt(perch.x) });
+        playV3(k === 0 ? 'e_strawCrow' : 'e_strawCrow2', { volume: 0.9, pan: panAt(perch.x) });
         for (const d of ds) d.b.shiver = 1;
         return wait(sc, k === 0 ? 160 : 110).then(() => {
           for (const d of ds) d.b.shiver = 0;
         });
       }),
     );
-  // the spent card leaves while the crow sits
-  await at(caw);
+  // the spent card leaves during the eyes (gone before the scarecrows wake)
+  await at(Math.min(eyeAt[0], caw));
   const gone = s.leave();
   await at(H);
 
-  // ---- COMES ALIVE: the straw bristles up each scarecrow and re-winds it into the token unit
+  // ---- COMES ALIVE: the coat flaps off on the wind and the hat tumbles to the ground (whole pieces), then the straw
+  // bristles up each scarecrow and re-winds it into the token unit, a gold rim light riding the edge
   ticking = false;
   stopTick();
   playV3('e_strawWake', { volume: 0.9, pan: panAt((Math.min(...xs) + Math.max(...xs)) / 2) });
   const morphs: { d: Decoy; from: PixelCanvas; to: PixelCanvas | null; unit: MonsterUnit | null; top: number; bot: number }[] = [];
   for (const d of ds) {
-    // the final built frame (eyes dark, arms level, the crow's weight gone)
+    // the pieces it sheds
+    bg(shedCoat(sc, d, wdir));
+    bg(shedHat(sc, d, wdir, rnd));
+    // the frame it re-winds from: the straw body and the sack head (eyes dark, arms level, the crow's weight gone)
     d.b.dip = 0;
     d.b.shiver = 0;
+    d.b.coatY = null;
+    d.b.hatY = null;
     paintDecoy(d.ras, d.b, 0);
     const from = d.ras.pc.clone();
     ctx.consumeAt(d.idx);
@@ -956,20 +1202,17 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
     const bot = Math.max(bf ? bf.y + bf.h : FY + 2, bt ? bt.y + bt.h : FY + 2);
     morphs.push({ d, from, to, unit, top, bot });
   }
-  const steps = 6;
+  const steps = T.morphSteps;
   for (let k = 0; k <= steps; k++) {
     for (const m of morphs) {
-      const edge = R(m.bot - ((m.bot - m.top) * k) / steps);
+      const edge = R(m.bot - ((m.bot - m.top) * E.inOutSine(k / steps)));
       const to = m.to ?? new PixelCanvas(RW, RH);
       paintMorph(m.d.ras, m.from, to, edge);
-      // what the token does not wear is shed on the wind as the edge passes it
-      const lo = R(m.bot - ((m.bot - m.top) * (k - 1)) / steps);
-      for (let y = edge; y < lo; y++)
-        for (let x = 0; x < RW; x += 2) {
-          const c = m.from.get(x, y);
-          if (c === null || c === PAL.ink || (m.to && m.to.get(x, y) !== null) || rnd() > 0.45) continue;
-          const w = toWorld(m.d, x, y);
-          chips.add({ x: w.x, y: w.y, vx: wdir * (40 + rnd() * 70), vy: -20 - rnd() * 40, ay: 200, floor: m.d.floor.y + 2, bounce: 0.2, life: 300 + rnd() * 220, colors: [c], shape: 'px', fadeAt: 0.7 });
+      // a few straws bristle off the edge on the wind
+      if (k > 0 && k < steps)
+        for (const side of [-1, 1]) {
+          const w = toWorld(m.d, FX + side * (5 + Math.floor(rnd() * 3)), edge);
+          stems.add({ x: w.x, y: w.y, vx: wdir * (40 + rnd() * 50) + side * 10, vy: -30 - rnd() * 30, life: 220 + rnd() * 120, kind: 'stem', ph: k + side });
         }
     }
     if (k === 1)
@@ -985,6 +1228,7 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
     }
     void m.d.pool?.fadeOut(300);
   }
+  void wait(sc, 420).then(() => stems.destroy());
   chips.release();
   straws.release();
   relax(ctx, 300);
@@ -992,6 +1236,114 @@ async function signature(ctx: AnyCtx, s: SigArgs): Promise<void> {
   await Promise.all(stakes);
   // the crow flies on out of the picture on its own; the clock lives until it is gone
   void crow.then(() => clk.dispose());
+}
+
+// ================================================================ the wind's straw (bent stems, tumbling)
+
+interface Stem {
+  x: number;
+  y: number;
+  vx?: number;
+  vy?: number;
+  life: number;
+  kind: 'stem' | 'tuft';
+  /** the tumble phase */
+  ph: number;
+  /** fly to this point (on a stake), then curl round it (radius curlR, the wind's direction dir) */
+  to?: XY;
+  curlR?: number;
+  dir?: number;
+  /** internal */
+  age?: number;
+  x0?: number;
+  y0?: number;
+}
+
+/** The four bends of a 3-px straw stem (it tumbles through them). */
+const STEM_BENDS: readonly (readonly [number, number][])[] = [
+  [[0, 0], [1, 0], [2, -1]],
+  [[0, 0], [0, -1], [1, -2]],
+  [[0, 0], [1, 0], [2, 1]],
+  [[0, 0], [1, 1], [1, 2]],
+];
+
+/** Straw carried by the wind, drawn on whole pixels on one raster over the row. */
+class Stems {
+  private readonly ras: Raster;
+  private items: Stem[] = [];
+  private readonly stop: () => void;
+  constructor(sc: Phaser.Scene, x: number, y: number, w: number, h: number, depth: number) {
+    this.ras = new Raster(sc, x, y, w, h, depth);
+    this.stop = onFrame(sc, (dt) => {
+      if (!this.ras.alive) return false;
+      this.step(dt);
+      return true;
+    });
+  }
+  add(s: Stem): void {
+    s.age = 0;
+    s.x0 = s.x;
+    s.y0 = s.y;
+    this.items.push(s);
+  }
+  get count(): number {
+    return this.items.length;
+  }
+  private step(dt: number): void {
+    const p = this.ras.pc;
+    this.ras.begin();
+    const ox = this.ras.x;
+    const oy = this.ras.y;
+    this.items = this.items.filter((s) => (s.age = (s.age ?? 0) + dt) < s.life);
+    for (const s of this.items) {
+      const a = s.age ?? 0;
+      const u = a / s.life;
+      let x: number;
+      let y: number;
+      let bend = (s.ph + Math.floor(a / 50)) % 4;
+      if (s.to) {
+        // fly in (ease-in) for 60 %, then curl round the stake: the front half of a flat ellipse, then gone into it
+        const fly = 0.6;
+        const dir = s.dir ?? 1;
+        const r = s.curlR ?? 5;
+        const sx = s.to.x - dir * r;
+        if (u < fly) {
+          const e = E.inQuad(u / fly);
+          x = (s.x0 ?? s.x) + (sx - (s.x0 ?? s.x)) * e;
+          y = (s.y0 ?? s.y) + (s.to.y - (s.y0 ?? s.y)) * e + Math.sin(e * Math.PI) * -6;
+        } else {
+          const k = (u - fly) / (1 - fly);
+          x = s.to.x - dir * Math.cos(k * Math.PI * 1.2) * r;
+          y = s.to.y + Math.sin(k * Math.PI * 1.2) * 2;
+          bend = k < 0.5 ? (dir > 0 ? 2 : 0) : 1;
+        }
+      } else {
+        x = (s.x0 ?? s.x) + (s.vx ?? 0) * (a / 1000);
+        y = (s.y0 ?? s.y) + (s.vy ?? 0) * (a / 1000) + Math.sin(a / 90 + s.ph) * (s.kind === 'tuft' ? 2 : 1);
+      }
+      const px = Math.round(x) - ox;
+      const py = Math.round(y) - oy;
+      const fade = u > 0.85;
+      if (s.kind === 'tuft') {
+        p.set(px, py, fade ? PAL.gold2 : PAL.gold4);
+        p.set(px + 1, py, PAL.gold3);
+        p.set(px, py - 1 + (Math.floor(a / 80) & 1), PAL.gold3);
+        if (!fade) p.set(px - 1, py + 1, PAL.gold2);
+      } else {
+        const b = STEM_BENDS[bend];
+        const flip = (s.vx ?? s.dir ?? 1) < 0 ? -1 : 1;
+        b.forEach(([dx, dy], i) => {
+          if (fade && i === 2) return;
+          p.set(px + dx * flip, py + dy, i === 0 ? PAL.gold4 : i === 1 ? PAL.gold3 : PAL.gold2);
+        });
+      }
+    }
+    this.ras.end();
+  }
+  destroy(): void {
+    this.stop();
+    this.ras.destroy();
+  }
 }
 
 /**
@@ -1033,6 +1385,40 @@ function burstOver(ds: Decoy[]): XY {
   return { x: R((Math.min(...xs) + Math.max(...xs)) / 2), y: Math.max(40, R(Math.min(...tops) - 26)) };
 }
 
+/**
+ * Answering an attack, the kept attack arc is on screen: keep the burst off it (the arc must not cut through the
+ * star). Tries the row's centre and steps sideways; picks the candidate farthest from the arc (sampled as the arrow's
+ * curve: a quadratic bulging up between its ends).
+ */
+function clearOfArc(ctx: AnyCtx, burst: XY, ds: Decoy[]): XY {
+  const h = ctx.take('attack');
+  if (!h) return burst;
+  ctx.keep('attack', h);
+  if (!isHold(h)) return burst;
+  const a = h.from;
+  const b = h.to;
+  // (vfx/combat attackArrow: control = the midpoint lifted by 2 × clamp(dist × 0.32, 14, 46))
+  const hh = Math.max(14, Math.min(46, Math.hypot(b.x - a.x, b.y - a.y) * 0.32));
+  const c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - hh * 2 };
+  const arc: XY[] = [];
+  for (let k = 0; k <= 24; k++) {
+    const t = k / 24;
+    const u = 1 - t;
+    arc.push({ x: u * u * a.x + 2 * u * t * c.x + t * t * b.x, y: u * u * a.y + 2 * u * t * c.y + t * t * b.y });
+  }
+  const dist = (q: XY) => Math.min(...arc.map((r) => Math.hypot(r.x - q.x, r.y - q.y)));
+  if (dist(burst) >= 34) return burst;
+  const xs = ds.map((d) => d.floor.x);
+  const lo = Math.min(...xs) - 20;
+  const hi = Math.max(...xs) + 20;
+  let best = burst;
+  for (const dx of [-40, 40, -70, 70, -100, 100]) {
+    const q = { x: Math.max(lo, Math.min(hi, burst.x + dx)), y: burst.y };
+    if (dist(q) > dist(best)) best = q;
+  }
+  return { x: R(best.x), y: best.y };
+}
+
 // ================================================================ hooks
 
 registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
@@ -1055,10 +1441,11 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
   const burst = burstOver(ds);
   const response = ev.from === 'spellTrap' && ctx.state.activePlayer !== ev.player;
   if (response) {
-    const q = await quickReveal(ctx);
+    // a shorter hold on the word: the orb leaves as the plate wipes out and bursts once it is gone
+    const q = await quickReveal(ctx, { hold: -60 });
     const top = { x: q.face.x, y: q.face.y - 28 };
     await signature(any, {
-      burst,
+      burst: clearOfArc(any, burst, ds),
       player: ev.player,
       uid: ev.uid,
       decoys: ds,
@@ -1069,7 +1456,7 @@ registerCardHook(ID, 'activate', async (ctx: ActCtx) => {
         q.stopAura();
         const t = q.tile;
         if (t && t.active && t.standing) bg(t.layDown(150).then(() => t.active && t.tileFlash(PAL.teal2, 200)));
-        await fly;
+        await Promise.all([fly, q.word]);
       },
       leave: async () => {
         const g = gi >= 0 ? ctx.events[gi] : null;

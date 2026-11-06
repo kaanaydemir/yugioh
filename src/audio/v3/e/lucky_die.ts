@@ -11,12 +11,13 @@
 //   e_dieForm      the card condenses into the die: a gold glint (three quick pentatonic sparkles) + the die's first click
 //   e_dieRattle    the die rattles in the caster's cupped light: an irregular run of small wooden clicks, swelling
 //   e_dieThrow     the throw: a wrist flick (a short low swish) and a rising air whoosh as it flies
-//   e_dieTak       one bounce on the floor: the card's "tak" — a hard bright knock + a short wood body + a floor thud
+//   e_dieTak       one bounce on the floor: the card's "tak" — a corner tick, a wooden face slap (1.2–2 kHz body, 780 Hz
+//                  formant) and a 15 ms floor knock
 //                  (the scene plays it ×3, each softer and higher: the bounces shrink)
 //   e_dieRoll      the roll: two edge-over-edge knocks on the floor with a dry scraping tumble, slowing down
 //   e_dieStop      the die settles: a teeter (one light tick), the last clack and a tiny wooden ring-out
 //   e_diePip       one pip lifts off: a marimba note (the scene picks the step of the pentatonic run with `pitch`)
-//   e_dieTick      a pip's spark reaches a monster: a small bright wooden tick with a gold shimmer (+100)
+//   e_dieTick      a pip wave's sparks reach the monsters (+100): that pip's marimba note an octave up + a soft wooden tap
 //   e_dieBoost     every spark has landed: a quick rising pentatonic marimba flourish under the +N00 numbers
 //   e_dieJackpot   a SIX: a bright struck chord (marimba + bells, the pentatonic chord) with a sparkling tail
 //   e_dieFirework  one firework: a short whistle up, a pop, a crackle of glitter (×3 on a six)
@@ -107,21 +108,25 @@ export const RECIPES = {
     gap: 0.05,
     verb: 0.36,
     play(v) {
-      // one bounce: "TA—K" — the die's CORNER strikes (a tiny, very bright tick), then 30 ms later its FACE slaps flat
-      // (the main clack): a small hard cube, so the body is short and HIGH (2.1 / 1.75 kHz) and the slap rings a
-      // glassy-dry cube resonance at 3.7 kHz — brighter and shorter than any lane-E knock (a straw "tok", a windlass
-      // click); two tiny chatter re-hits as it leaves, a light floor tap under it
-      dieKnock(v, 0, 3000, 0.24, { snap: 1.8, body: 0.6, dec: 0.016 });
-      dieKnock(v, 0.03, 2150, 0.44, { snap: 1.2, body: 0.9, dec: 0.03 });
-      v.noise('white', { t: 0.03, g: perc(0.4, 0.004, 0.0002), to: v.filt('bandpass', 7200, 1.6) });
-      dieKnock(v, 0.058, 2600, 0.06, { snap: 0.6, body: 0.35, dec: 0.01 });
-      dieKnock(v, 0.08, 2900, 0.035, { snap: 0.5, body: 0.3, dec: 0.008 });
-      // (no floor thump: the die is light — the low end belongs to the logs and the straw)
-      // the cube's own ring on the slap (Q 11: a pitched, glassy-dry "k")
-      const ring = v.filt('bandpass', 4700, 12);
-      v.noise('white', { t: 0.03, g: perc(3.4, 0.03, 0.0003), to: ring });
-      v.tone('sine', 4700, { t: 0.03, g: perc(0.09, 0.05, 0.0004) });
-      v.tone('sine', 4700 * 1.47, { t: 0.03, g: perc(0.025, 0.025, 0.0004) });
+      // one bounce: "TA—K" — a hard little WOODEN die. Its corner strikes first (a short, soft-edged tick), 30 ms later
+      // its face slaps flat: the main clack, its body at 1.2–2 kHz with a short 600–900 Hz wood formant (the "tok"
+      // inside the "tak"), a 15 ms 300–400 Hz floor knock for weight, then two tiny chatter re-hits as it leaves. A faint,
+      // wide 4.7 kHz cube ring stays only as the hard-wood edge (critic round 2: the old Q12 ring read as glass).
+      dieKnock(v, 0, 1900, 0.22, { snap: 0.5, body: 0.8, dec: 0.016 });
+      dieKnock(v, 0.03, 1500, 0.5, { snap: 0.3, body: 1.3, dec: 0.06 });
+      // the wooden body rings on for a breath (a little warmth: it is a cube of wood, not a click)
+      v.tone('sine', 1180, { t: 0.032, g: perc(0.1, 0.09, 0.002) });
+      // the wood formant: a short resonant band at ~780 Hz + its tone
+      v.noise('white', { t: 0.03, g: perc(0.9, 0.045, 0.002), to: v.filt('bandpass', 780, 4) });
+      v.tone('triangle', [[0, 860], [0.02, 760, 'e']], { t: 0.03, g: perc(0.2, 0.05, 0.0015) });
+      // the floor knock (15 ms, 380 → 300 Hz)
+      thump(v, 0.03, 380, 300, 0.34, 0.016, { att: 0.0015 });
+      // the hard-wood edge (wide, quiet)
+      v.noise('white', { t: 0.03, g: perc(0.6, 0.02, 0.001), to: v.filt('bandpass', 4700, 5) });
+      v.tone('sine', 4700, { t: 0.03, g: perc(0.035, 0.03, 0.0006) });
+      // chatter as it leaves the floor
+      dieKnock(v, 0.058, 1750, 0.07, { snap: 0.5, body: 0.6, dec: 0.012 });
+      dieKnock(v, 0.08, 1950, 0.04, { snap: 0.4, body: 0.5, dec: 0.009 });
     },
   },
   e_dieRoll: {
@@ -163,14 +168,15 @@ export const RECIPES = {
     },
   },
   e_dieTick: {
-    cap: 5,
-    gap: 0.025,
-    verb: 0.3,
+    cap: 6,
+    gap: 0.04,
+    verb: 0.4,
     play(v) {
-      // a spark lands on a monster: a short bright wooden tick + a tiny gold shimmer (one +100)
-      dieKnock(v, 0, 1500, 0.22, { snap: 0.5, body: 0.6, dec: 0.02 });
-      v.tone('sine', midiHz(ROOT + 12), { t: 0.004, g: perc(0.07, 0.1, 0.001) });
-      v.tone('sine', midiHz(ROOT + 19), { t: 0.02, g: perc(0.045, 0.08, 0.001) });
+      // one pip WAVE lands (+100 on every boosted badge): the pip's own marimba note an octave above its lift (the scene
+      // pitches it to the pip's pentatonic step, one per wave — the count is heard a second time, never a ratchet),
+      // with a soft wooden tap under it
+      marimba(v, 0, midiHz(ROOT + 12), 0.16, 0.24);
+      dieKnock(v, 0, 1300, 0.09, { snap: 0.3, body: 0.6, dec: 0.018 });
     },
   },
   e_dieBoost: {
