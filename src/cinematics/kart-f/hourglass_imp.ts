@@ -34,7 +34,7 @@ import { lightOf } from '../../art/rigkit/light';
 import type { AnyMonsterAnim } from '../../art/types';
 import { paintGlass, glassFrame, GLASS0, type GlassPose } from '../../art/monsters-v3/hourglass_imp-glass';
 import { drawImp } from '../../art/monsters-v3/hourglass_imp-rig';
-import { BLOCKED_CATCH, BLOCKED_RESUME, DEATH_TOPPLE, SPECIAL_THUNK, framePose } from '../../art/monsters-v3/hourglass_imp-anims';
+import { BLOCKED_CATCH, BLOCKED_RESUME, DEATH_TOPPLE, SPECIAL_DRAIN, SPECIAL_THUNK, framePose } from '../../art/monsters-v3/hourglass_imp-anims';
 import { BADGE_DEPTH } from '../../duel/StatBadge';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { Disposable } from '../../duel/types';
@@ -395,6 +395,7 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
   const pan = panAt(home.x);
   const panImp = panAt(u ? u.home.x : home.x);
   let thread: { stop(ms?: number): void } | null = null;
+  let fill: { stop(ms?: number): void } | null = null;
   let held = false;
   let label: Phaser.GameObjects.BitmapText | null = null;
   let bump: { u: MonsterUnit; d: number } | null = null;
@@ -403,28 +404,40 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
     bump = null;
   };
   try {
-    // ---- 1. the flip: the glass goes up overhead and turns over (special f2–f4), the release on f5
+    // ---- 1. the turn: the glass goes up and back over his far shoulder, behind his head, and is held inverted overhead
+    //      (special f2–f4, Round 2 #1); the release on f5 lights its now-upper bulb
     const from = aim ? 2 : 0;
     const REL = u ? u.markFrame('special', 'release', 5) : 5;
     const CON = u ? u.markFrame('special', 'contact', 6) : 6;
+    const DRAIN_END = SPECIAL_DRAIN[SPECIAL_DRAIN.length - 1];
+    /** Hold the imp on one of his drain frames (his upper bulb empties a step as the cage's lower bulb fills a step). */
+    const drainStep = (i: number) => {
+      if (u && u.sprite.active && !u.retired && u.frameInfo().anim === 'special') u.pose('special', SPECIAL_DRAIN[Math.max(0, Math.min(SPECIAL_DRAIN.length - 1, i))]);
+    };
     let imp: Promise<void> = Promise.resolve();
     if (u && u.has('special')) {
       // Round 1 #4: the flip is the "who did it" beat — for its length the imp is drawn over every stat plate (a
       // back-row neighbour's plate sits right in the band the glass turns through); restored after the pour / finally
       bump = { u, d: u.sprite.depth };
       u.sprite.setDepth(BADGE_DEPTH + 1);
-      play('hgiFlip', { volume: 0.85, pan: panImp });
-      imp = u.playRange('special', from, CON);
+      play('hgiInvert', { volume: 0.95, pan: panImp });
+      imp = u.playRange('special', from, REL);
       await until(sc, () => !u.sprite.active || (u.frameInfo().anim === 'special' && u.frameInfo().frame >= REL), u.rangeMs('special', from, REL) + 120);
     } else await sleep(sc, 200);
-    // ---- 2. the time line: still grains light up one by one from his glass to the cap's place
-    const src = u ? rint(pointOf(u, 'special', CON, 'muzzle')) : { x: home.x, y: home.y - 40 };
+    // ---- 2. the time line: still grains light up one by one from his glass to the cap's place — a STRAIGHT line from
+    //      his raised glass (Round 2 #7: never a parabola, so it cannot read as a projectile or as the attack's jet)
+    // from the glowing upper bulb of his inverted glass (frame point → world)
+    const srcF = u ? glassFrame(framePose('special', REL).g).at(5, 0) : null;
+    const src = u && srcF ? rint(u.framePoint(srcF[0], srcF[1])) : { x: home.x, y: home.y - 40 };
     const capAt = { x: cage.cx, y: cage.top - 4 };
-    const dots = timeLine(src, capAt, clamp(Math.hypot(capAt.x - src.x, capAt.y - src.y) * 0.16, 16, 34));
+    const dots = timeLine(src, capAt, 0);
     thread = start('hgiThread', { volume: 0.9, pan: panImp });
     const LINE_MS = 240;
+    let ticked = 0;
     await animate(sc, LINE_MS, (k) => {
       const lit = Math.floor(k * dots.length);
+      // one tiny tick per lit grain (every 2nd grain: ≤ 8 voices)
+      for (; ticked < Math.floor(lit / 2); ticked++) play('hgiLitTick', { volume: 0.7 + 0.3 * k, pan: panAt(dots[Math.min(dots.length - 1, ticked * 2)].x) });
       line.draw((r) => {
         for (let i = 0; i <= Math.min(lit, dots.length - 1); i++) {
           const d = dots[i];
@@ -442,6 +455,7 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
     });
     // ---- 3. the cage steps out from the stream (3 whole-px steps), the stream pours down from the cap
     play('hgiCage', { volume: 0.9, pan });
+    drainStep(0);
     let ph = 0;
     const drawLine = (dim: number) =>
       line.draw((r) => {
@@ -458,18 +472,29 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
       const step = Math.min(3, 1 + Math.floor(k * 3));
       fx.draw((r) => paintCage(r, cage, { grow: step / 3, fill: 0, ph, stream: true, caps: 2 }));
     });
-    // ---- 4. the lower bulb fills over its feet (3 steps) — in sync with the imp's own glass pouring
-    play('hgiFill', { volume: 0.85, pan });
+    // ---- 4. the lower bulb fills over its feet (3 steps) — in sync with the imp's own glass: each cage step is one
+    //      of his drain frames (Round 2 #7: one bulb empties as the other fills). The fill is sustained at its peak
+    //      until the cut; the music is pulled down now so the gap is heard (Round 2 #2).
+    fill = start('hgiFill', { volume: 0.9, pan });
+    play('hgiHush', { volume: 1, pan });
     const FILL = clamp(Math.round((cage.bot - cage.top) * 0.28), 5, 12);
-    await animate(sc, 120, (k, el) => {
+    let lastStep = 0;
+    await animate(sc, 150, (k, el) => {
       ph = Math.floor((200 + el) / 34);
-      const f = Math.round((Math.min(3, 1 + Math.floor(k * 3)) / 3) * FILL);
+      const st = Math.min(3, 1 + Math.floor(k * 3));
+      if (st !== lastStep) {
+        lastStep = st;
+        drainStep(st - 1);
+      }
+      const f = Math.round((st / 3) * FILL);
       fx.draw((r) => paintCage(r, cage, { grow: 1, fill: f, ph, stream: true, caps: 2 }));
     });
-    // ---- 5. THE STOP: the trickle cuts dead; every grain hangs; the target's frame is held; a gold rim
+    // ---- 5. THE STOP: every trickle cuts DEAD in the same frame; every grain hangs; the target's frame is held
     unbump(); // the flip and the pour have been seen; the neighbour's plate reads again
     thread.stop(0);
     thread = null;
+    fill.stop(0);
+    fill = null;
     play('hgiSeal', { volume: 1, pan });
     const t2 = live(ctx.unit(tuid));
     if (t2) {
@@ -522,12 +547,17 @@ async function sealV3(ctx: Ctx<'activate'>): Promise<void> {
     if (u && u.sprite.active) {
       void imp.then(() => {
         if (!u.sprite.active || u.retired) return;
-        atFrame(u, 'special', SPECIAL_THUNK, () => play('hgiRight', { volume: 0.8, pan: panImp }), { late: false, maxMs: 2500 });
-        void u.playRange('special', CON + 1, undefined, { hold: false });
+        // Round 2 #9: the thunk is dropped if the turn has already moved on (it would land on the opponent's bite)
+        const seq0 = phaseSeq;
+        atFrame(u, 'special', SPECIAL_THUNK, () => {
+          if (phaseSeq === seq0) play('hgiRight', { volume: 0.8, pan: panImp });
+        }, { late: false, maxMs: 1500 });
+        void u.playRange('special', DRAIN_END + 1, undefined, { hold: false });
       });
     }
   } finally {
     thread?.stop(40);
+    fill?.stop(40);
     animating.delete(tuid);
     unbump();
     if (held) {
@@ -979,9 +1009,14 @@ function lieDust(sc: Phaser.Scene, u: MonsterUnit): void {
 
 // ================================================================ the seal across turns (no events of its own)
 
+/** Bumped on every phaseChange / turnStart (a background beat of ours checks it so it never spills over a turn). */
+let phaseSeq = 0;
+onDuelStart(() => (phaseSeq = 0));
+
 function turnBeats(ctx: Ctx<'turnStart'>): Promise<void> {
   const st = ctx.stateNext;
-  for (const f of frozenUids(st)) if (f.until === ctx.ev.turn && f.player === ctx.ev.player) biteSeal(f.uid, 160);
+  // Round 2 #6: the bite lands after the turn's own card slide (≈ 180 ms game after turnStart), not under it
+  for (const f of frozenUids(st)) if (f.until === ctx.ev.turn && f.player === ctx.ev.player) biteSeal(f.uid, 300);
   return ctx.base();
 }
 
@@ -1031,6 +1066,7 @@ if (LOOK_V3) {
   registerEvent('phaseChange', phaseBeats, { priority: 20, name: N('seal-phase') });
   // the seals follow the engine's truth (a staged board, a restore, a slot that left the field)
   registerObserver((ev, ctx) => {
+    if (ev.type === 'turnStart' || ev.type === 'phaseChange') phaseSeq++;
     if (ev.type === 'target' || ev.type === 'activate') return;
     if (!frozenUids(ctx.stateNext).length && !sealUids().length) return;
     reconcileSeals(ctx.scene, ctx.views, ctx.stateNext);

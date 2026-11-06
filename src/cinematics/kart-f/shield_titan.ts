@@ -26,7 +26,7 @@
 //   lane boss-up throwing a whole-pixel dust wake (kdSledScrape) and slams into the duelist (contact = arrival);
 //   he hauls it home by its strap (a stepped leather line, kdStrapHaul) and heaves it upright.
 // Death — "Kapak Kapanır" (the gate closes over him): the sprite's death (he folds, the shield teeters alone, falls
-//   back over him like a tomb lid); the cinematic adds the rectangular dust ring + shake on the slam, the copper
+//   back over him like a tomb lid); the cinematic adds floor dust clumps off the lid's long edges + a 1-px thud + shake on the slam, the copper
 //   cooling (kdTarnish), the boss's last gold pulse, and the ward's light rising out of the dead copper on the burst.
 // Position — toGuard's "DUNK" (kdPlant on f3); back to attack: the shield drum (kdFistBang on roar f3 / f5).
 // No camera moves of its own (EF-8).

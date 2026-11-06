@@ -141,8 +141,8 @@ export const SHIELD_TITAN_RECIPES = {
       const D = 0.3;
       const bp = v.filt('bandpass', [[0, 260], [D, 430, 'e']], 4);
       const fr = v.flutter(19, 0.8, { d: D + 0.02, base: 0.3, to: bp });
-      v.tone('sawtooth', [[0, 58], [D * 0.7, 66, 'e'], [D, 61]], { g: [[0, 0], [0.03, 0.55], [D * 0.75, 0.45], [D, 0.0001, 'e']], to: fr });
-      creak(v, 0, D, 0.55, { f: [190, 400], rate: 24 });
+      v.tone('sawtooth', [[0, 58], [D * 0.7, 66, 'e'], [D, 61]], { g: [[0, 0], [0.03, 0.8], [D * 0.75, 0.65], [D, 0.0001, 'e']], to: fr });
+      creak(v, 0, D, 0.8, { f: [190, 400], rate: 24 });
       thump(v, 0, 74, 50, 0.22, 0.08);
     },
   },
@@ -437,9 +437,9 @@ export const SHIELD_TITAN_RECIPES = {
       // played ≈ 420 ms before the slam (deathLayers): a long creaking GROAN as the slab goes over, the plate's ring
       // swelling as it falls, and the air SUCKED under the lid — all of it peaking right before the slam, cut by it
       const D = 0.42;
-      creak(v, 0, D, 0.9, { f: [160, 460], rate: 26 });
+      creak(v, 0, D, 1.2, { f: [160, 460], rate: 26 });
       const bp = v.filt('bandpass', [[0, 240], [D, 520, 'e']], 4);
-      v.tone('sawtooth', [[0, 55], [D, 82, 'e']], { g: [[0, 0], [0.1, 0.25], [D - 0.05, 0.5], [D, 0.0001, 'e']], to: v.flutter(16, 0.7, { d: D + 0.02, base: 0.35, to: bp }) });
+      v.tone('sawtooth', [[0, 55], [D, 82, 'e']], { g: [[0, 0], [0.1, 0.35], [D - 0.05, 0.7], [D, 0.0001, 'e']], to: v.flutter(16, 0.7, { d: D + 0.02, base: 0.35, to: bp }) });
       const wob = v.amp(1);
       v.lfo(wob.gain, [[0, 4], [D, 9]], 0.4, { d: D + 0.02 });
       v.tone('sine', G2 * 2, { g: [[0, 0.0001], [D - 0.04, 0.14, 'e'], [D, 0.0001, 'e']], to: wob });
@@ -473,7 +473,8 @@ export const SHIELD_TITAN_RECIPES = {
       v.noise('white', { g: [[0, 0], [0.05, 0.12], [0.5, 0.0001, 'e']], to: v.filt('highpass', 3500, 0.8) });
       v.tone('sine', [[0, G2 * 2], [0.7, G2 * 2 * 0.84, 'e']], { g: perc(0.24, 0.8, 0.01) });
       v.tone('sine', [[0, G2 * 4], [0.7, G2 * 4 * 0.84, 'e']], { g: perc(0.1, 0.6, 0.01) });
-      [0.12, 0.25, 0.4, 0.58, 0.8].forEach((t, i) => v.bell(2600 + (i % 2) * 500, { t, g: 0.12 - i * 0.015, dec: 0.03, ratio: 1.47, index: 0.8 }));
+      // (kept at 1.6–2.1 kHz and irregular, never C2's 3.2 kHz tick-tock)
+      [0.12, 0.25, 0.4, 0.58, 0.8].forEach((t, i) => v.bell([1650, 2050, 1800, 2100, 1700][i], { t, g: 0.13 - i * 0.015, dec: 0.035, ratio: 1.47, index: 0.8 }));
     },
   },
   kdWardRise: {

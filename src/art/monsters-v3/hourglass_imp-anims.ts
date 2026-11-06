@@ -267,30 +267,35 @@ const RV_HOLDS = [130, 90, 80, 80, 90, 90, 80, 70, 90, 110, 130];
 
 // ------------------------------------------------------------------ special (12 frames): "Kum Mührü"
 
-// Round 1 #4/#12: the aim holds the glass up so its LOWER bulb is in front of his eye (the gold eye shines through
-// the glass); the flip stays at chest / head height IN FRONT of him (never up in a back-row neighbour's plate band),
-// 20 → 45 → 90 → 135 → 180°, both hands pinned to the glass every frame; he rises onto his toes and leans back under
-// its weight, the far arm swinging out for balance at the top of the turn.
+// Round 2 #1/#7 (lens unique): the flip is no longer the cannon's path. From the eye-level aim the glass goes UP and
+// BACK over his far shoulder (−25°), behind his head (−135°), and is held INVERTED OVERHEAD behind the hat (−180°): the
+// glass is behind him (gBack), its neck never points at the target and it never passes the chest-horizontal 45° / 90°
+// frames of the attack. On the release its now-upper bulb glows gold (glowUp) and empties in three visible steps
+// (f6–f8), which the effect holds in sync with the cage's fill steps ("one bulb empties as the other fills"). The
+// way back reverses the arc (−120° → −30°), thunk, dust.
 const AIM: K = { lean: 2, eye: 4, mouth: 3, pinN: 1, ngrip: 1, pinF: 1, fgrip: 1, tx: -1, g: { a: 0, ox: 31, oy: 49, ph: 1 } };
-const UP: K = { by: -1, cy: -1, hat: 2, pinN: 1, ngrip: 1 };
+const UP: K = { by: -1, cy: -1, hat: 2, pinN: 1, ngrip: 1, pinF: 1, fgrip: 1, gBack: 1 };
+const OVER = (sA: number, sB: number, extra: K = {}): K => ({ ...UP, lean: -1, eye: 3, mouth: 1, ffl: 1, nfl: 1, tx: -2, ...extra, g: { ...at(-180, 21, 24), ph: 5, hot: 1, glowUp: 1, sA, sB, ...(extra.g ?? {}) } });
 const SP: K[] = [
   { nhy: 49, ngrip: 1, eye: 3, g: { ph: 1 } },
   { ...AIM }, // charge: held up at eye level, he squints THROUGH the lower bulb (the aim hold)
-  { ...UP, lean: 0, eye: 3, mouth: 2, pinF: 1, tx: -2, g: { ...at(20, 35, 34), ph: 2 } },
-  { ...UP, lean: -1, eye: 3, mouth: 2, fhx: 11, fhy: 46, fgrip: 0, nfl: 1, ffl: 1, tx: -3, ty: 1, g: { ...at(45, 38, 34), ph: 3 } },
-  { ...UP, lean: -1, eye: 3, mouth: 2, fhx: 10, fhy: 44, fgrip: 0, nfl: 1, ffl: 1, tx: -3, g: { ...at(90, 39, 34), ph: 3 } },
-  { ...UP, lean: -1, eye: 3, mouth: 1, fhx: 11, fhy: 45, fgrip: 0, nfl: 1, ffl: 1, tx: -2, ty: 1, g: { ...at(135, 38, 34), ph: 4 } },
-  { ...UP, lean: 0, eye: 3, mouth: 1, pinF: 1, tx: -1, g: { ...at(180, 36, 34), ph: 4 } },
-  { ...UP, lean: 0, eye: 0, mouth: 1, pinF: 1, tx: 0, g: { ...at(180, 36, 34), ph: 5, hot: 1, sA: 0.32, sB: 0.7 } }, // release
-  { ...UP, lean: 0, eye: 0, mouth: 1, pinF: 1, tx: 1, g: { ...at(180, 36, 34), ph: 6, hot: 1, sA: 0.18, sB: 0.84 } }, // contact: the pour
-  { cy: 0, eye: 0, mouth: 1, hat: 2, pinN: 1, ngrip: 1, pinF: 1, tx: 1, g: { ...at(150, 38, 36), ph: 7, sA: 0.14, sB: 0.86 } },
-  { eye: 0, mouth: 0, pinN: 1, ngrip: 1, fhx: 25, fhy: 45, tx: 1, g: { ...at(45, 34, 41), ph: 8, sA: 0.3, sB: 0.7 } }, // recover
+  { ...UP, lean: 0, hy: -1, eye: 3, mouth: 2, tx: -1, g: { ...at(-25, 24, 31), ph: 2 } }, // up and back over the far shoulder
+  { ...UP, lean: -1, hy: -1, eye: 3, mouth: 2, nfl: 1, ffl: 1, tx: 2, ty: 1, g: { ...at(-135, 19, 27), ph: 3 } }, // behind his head
+  { ...UP, by: -2, lean: -2, hy: -1, eye: 3, mouth: 2, nfl: 1, ffl: 1, tx: -3, ty: -1, g: { ...at(-180, 21, 23), ph: 4, sA: 0.82, sB: 0.18 } }, // inverted overhead (overshoot)
+  OVER(0.8, 0.2, { eye: 0, mouth: 1 }), // release: settled, the upper bulb lights
+  OVER(0.6, 0.4, { tx: -1, ty: 1 }), // contact: drains (step 1)
+  OVER(0.42, 0.58, { tx: -2, eye: 4 }), // step 2
+  OVER(0.24, 0.76, { tx: -1, ty: 1, mouth: 3 }), // step 3
+  { ...UP, lean: 0, eye: 0, mouth: 1, tx: 1, g: { ...at(-120, 20, 29), ph: 7, sA: 0.24, sB: 0.76 } }, // recover: back down the same arc
+  { ...UP, gBack: 0, by: 0, cy: 0, lean: 1, eye: 0, mouth: 0, tx: 2, g: { ...at(-30, 28, 40), ph: 8, sA: 0.6, sB: 0.4 } },
   { mouth: 0, nhx: 31, nhy: 49, tx: -1, ty: 1, puff: 1, g: { sA: 0.38, sB: 0.64, ph: 9 } }, // thunk
   { mouth: 1, nhx: 27, nhy: 46, ngrip: 0, fhx: 25, fhy: 47, fgrip: 0, grains: 1, g: { ph: 10 } }, // dusts off his hands
 ];
 const specialPose = (f: number): Pose => (f >= SP.length ? IDLE0 : mk(IDLE0, SP[f]));
 export const SPECIAL_THUNK = 11;
-const SP_HOLDS = [70, 160, 80, 60, 60, 60, 70, 60, 140, 110, 100, 110, 120, 130];
+/** The three drain steps the effect holds in sync with the cage's fill (Round 2 #7). */
+export const SPECIAL_DRAIN = [6, 7, 8] as const;
+const SP_HOLDS = [70, 160, 80, 70, 70, 60, 100, 100, 120, 90, 80, 110, 120, 130];
 
 // ------------------------------------------------------------------ victory (10 frames): balanced on one fingertip
 
@@ -324,7 +329,7 @@ export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
   summon: spec(16, 10, false, SU_HOLDS, { land: 11 }),
   death: spec(14, 12, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 4 }),
   revive: spec(11, 10, false, RV_HOLDS, { land: 7 }),
-  special: spec(14, 10, false, SP_HOLDS, { charge: 1, release: 7, impact: 7, contact: 8, recover: 10 }),
+  special: spec(14, 10, false, SP_HOLDS, { charge: 1, release: 5, impact: 5, contact: 6, recover: 9 }),
   hitHeavy: spec(8, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 4 }),
   hitMagic: spec(8, 12, false, HM_HOLDS, { impact: 0, contact: 0, recover: 4 }),
   victory: spec(10, 10, false, V_HOLDS),

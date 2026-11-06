@@ -15,7 +15,7 @@ const rnd = Math.round;
 
 const spec = (frames: number, fps: number, loop: boolean, holds: number[], marks?: AnimSpec['marks']): AnimSpec => ({ frames, fps, loop, holds, ...(marks ? { marks } : {}) });
 
-// ------------------------------------------------------------------ idle (16 frames, 1960 ms)
+// ------------------------------------------------------------------ idle (16 frames, 2240 ms)
 
 const IDLE_N = 16;
 // Every frame change moves ONE thing (HA-17: no frame carries the whole body): the chest (inhale / exhale), then the head
@@ -48,7 +48,8 @@ export function idlePose(f: number): Pose {
   return pose(o);
 }
 const IDLE0 = idlePose(0);
-const IDLE_HOLDS = [150, 110, 100, 130, 140, 100, 120, 150, 120, 100, 130, 110, 150, 110, 100, 140];
+// 2240 ms: the slowest breath on the board (round 2 #9: the loop no longer shares ashen_drake's 2 s rhythm)
+const IDLE_HOLDS = [170, 130, 110, 150, 160, 110, 140, 170, 130, 110, 150, 120, 170, 120, 110, 190];
 
 const key = (d: Partial<Pose>, base: Pose = IDLE0): Pose => ({ ...base, ...d });
 
@@ -70,7 +71,7 @@ export function guardPose(f: number): Pose {
   return pose({ ...G, cy: GQ.cy[k], by: GQ.by[k], bx: GQ.bx[k], boss: GQ.boss[k], ripple: GQ.ripple[k] });
 }
 const GUARD0 = guardPose(0);
-const GUARD_HOLDS = [180, 150, 140, 160, 180, 150, 140, 160];
+const GUARD_HOLDS = [200, 160, 150, 180, 200, 160, 150, 200];
 
 // ------------------------------------------------------------------ toGuard / fromGuard (6 frames each)
 
@@ -142,8 +143,9 @@ const HT: Partial<Pose>[] = [
   { bx: 1 },
 ];
 const hitPose = (f: number): Pose => (f >= HT.length ? IDLE0 : key(HT[f]));
-// the copper flexes: f1 held long (≈180 ms) before he gives (round 2 #9: his weight, not stone_sentinel's timing)
-const HIT_HOLDS = [50, 180, 90, 100, 110, 120];
+// the copper flexes: the give (f2) held long (≈190 ms) before he recovers late (310 ms) — his weight, not
+// stone_sentinel's timing (round 2 #9; HA-4 keeps f0/f1 snappy and recover ≤ 370 ms)
+const HIT_HOLDS = [50, 70, 190, 140, 120, 130];
 
 // the shield is KNOCKED ASIDE: it swings out one iso step about its foot, away from him (his bare chest and beard
 // exposed for two frames, the rim hand torn off it), his hips stagger 2 px, then he hauls it back in
@@ -157,8 +159,8 @@ const HH: Partial<Pose>[] = [
   { by: 1 },
 ];
 const hitHeavyPose = (f: number): Pose => (f >= HH.length ? IDLE0 : key(HH[f]));
-// the exposed chest held ≈230 ms, the recovery late (≈420 ms): the heaviest body on the board (round 2 #9)
-const HH_HOLDS = [50, 120, 110, 140, 100, 110, 120, 130];
+// the exposed chest held (f2–f3 ≈ 240 ms), the recovery late (360 ms): the heaviest body on the board (round 2 #9)
+const HH_HOLDS = [50, 70, 110, 130, 140, 120, 130, 140];
 
 // the copper conducts: the rim crackles, the beard bristles out, the braid lifts, he tears his rim hand off the copper
 // and shakes it (±1 px), the body jolts 1 px
@@ -172,8 +174,9 @@ const HM: Partial<Pose>[] = [
   { by: 1, bx: 1 },
 ];
 const hitMagicPose = (f: number): Pose => (f >= HM.length ? IDLE0 : key(HM[f]));
-// a jittery static hold: the shaking frames flicker fast (40 ms), then one long stunned beat (round 2 #9)
-const HM_HOLDS = [40, 40, 45, 40, 160, 100, 110, 120];
+// the shaking frames flicker fast (45 / 50 ms), then a long static hold of the bristled pose (f3) before he lets go
+// of the charge (round 2 #9)
+const HM_HOLDS = [45, 50, 80, 120, 140, 110, 120, 130];
 
 // ------------------------------------------------------------------ summon (14 frames, land @ 8): the drawbridge rises
 

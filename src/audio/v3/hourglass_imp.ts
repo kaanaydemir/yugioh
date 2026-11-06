@@ -29,7 +29,13 @@
 //   hgiCage          effect: the glass builds round the target (three stepped glass tings B♭5 D6 F6)
 //   hgiFill          effect: sand fills the cage's lower bulb (short trickle swell)
 //   hgiSeal          effect THE STOP (signature, see above)
-//   hgiCondense      effect: the giant cage collapses into the emblem (a tight glass "zip" up)
+//   hgiCondense      effect: the giant cage collapses into the emblem (a glass "zip" up + a brass clink)
+//   hgiInvert        effect opener (Round 2 #1): the glass turned over overhead — a slow wooden turn, sand sloshing
+//                    from bulb to bulb (falling then rising), a low B♭3 bulb swell (hgiFlip is the attack's only)
+//   hgiLitTick       effect: one grain of the still time line lights
+//   hgiHush          effect: silent; pulls the music down before THE STOP
+//   hgiBounce        death: the lying glass's 1-px bounce re-thud
+//   hgiEep           death f2: the imp's descending "eep" as he clutches the glass
 //   hgiBite          the frozen turn starts: a muffled tick + a refused 80 ms trickle (cap 6, gap 8 ms)
 //   hgiStrain        the frozen monster's battle phase: grains clamp ×3 rising, a choked hum (cap 6)
 //   hgiThaw          the frozen turn is spent: a trickle that runs out + an F6 glass ting
@@ -152,7 +158,11 @@ const SEAL_MS = 0.38;
 
 export const HOURGLASS_IMP_RECIPES = {
   // ---------------------------------------------------------------- summon
-  /** The hanging glass pours: grains thickening onto the tile + the bulb hum swelling (≈ 1.6 s, stopped at the catch). */
+  /**
+   * The hanging glass pours (≈ 1.6 s, stopped at the catch). Round 2 #4: its own layer is the FALLING COLUMN — a hollow
+   * pink "thrum" through a 500 → 900 Hz band that rises as the cone grows — plus a low patter of landing grains
+   * (soft 180–260 Hz knocks); the grains in glass are the shared material, quieter under it.
+   */
   hgiPour: {
     cap: 2,
     gap: 0.1,
@@ -160,10 +170,20 @@ export const HOURGLASS_IMP_RECIPES = {
     duck: 0.3,
     play(v) {
       const d = 1.6;
-      grains(v, 0, d, 70, 0.5, { rate1: 120, shape: (k) => Math.min(1, k * 6) * (k > 0.85 ? (1 - k) / 0.15 : 1) });
-      // the pile receiving it: a soft low hush of sand landing (low, never a broadband hiss)
-      v.noise('pink', { t: 0.08, g: [[0, 0], [0.3, 0.05], [d - 0.2, 0.06], [d, 0.0001, 'e']], to: v.filt('bandpass', [[0, 500], [d, 900, 'e']], 1.4, { t: 0.08 }) });
-      hum(v, 0, BB4, [[0, 0], [0.35, 0.05], [d - 0.3, 0.06], [d, 0.0001, 'e']], { breath: 0.4 });
+      grains(v, 0, d, 60, 0.3, { rate1: 100, shape: (k) => Math.min(1, k * 6) * (k > 0.85 ? (1 - k) / 0.15 : 1) });
+      // the falling column: a hollow thrum, rising with the cone
+      const col = v.filt('bandpass', [[0, 500], [d, 900, 'e']], 3.2);
+      v.noise('pink', { g: [[0, 0], [0.12, 0.22], [d - 0.25, 0.3], [d, 0.0001, 'e']], to: col });
+      v.lfo(col.frequency, 7, 40, { d });
+      // the landing patter: soft low knocks of grains on the pile (aperiodic)
+      const times: number[] = [];
+      const gs: number[] = [];
+      for (let x = 0.1; x < d - 0.1; x += 0.035 + v.rnd() * 0.06) {
+        times.push(x);
+        gs.push(0.12 + v.rnd() * 0.1);
+      }
+      v.bursts(times, gs, { dec: 0.012, f: 220, q: 2.2, kind: 'pink' });
+      hum(v, 0, BB4, [[0, 0], [0.35, 0.04], [d - 0.3, 0.05], [d, 0.0001, 'e']], { breath: 0.35 });
     },
   },
   /** The sculpt: sand slides off him in two soft bands (2.4 → 1.2 kHz). */
@@ -218,6 +238,27 @@ export const HOURGLASS_IMP_RECIPES = {
       grains(v, 0.03, 0.18, 260, 0.34, { shape: (k) => Math.sin(Math.PI * k) });
       thump(v, 0.12, 110, 70, 0.32, 0.16);
       hum(v, 0.05, [[0, BB4 * 0.98], [0.4, BB4, 'e']], [[0, 0], [0.08, 0.025], [0.4, 0.0001, 'e']], { breath: 0.2 });
+    },
+  },
+  /**
+   * Round 2 #1: the EFFECT's own opener (hgiFlip stays the attack's). The glass turned over overhead: a slow wooden
+   * "turn" (no ratchet, no brass tinks: a soft friction swell), the sand SLOSHING from one bulb to the other (grains
+   * in the bulb bands whose band falls, then rises as the sand lands in the other bulb) and a low B♭3 bulb swell.
+   */
+  hgiInvert: {
+    cap: 2,
+    gap: 0.1,
+    verb: 0.3,
+    duck: 0.4,
+    play(v) {
+      const d = 0.5;
+      const turn = v.filt('bandpass', [[0, 260], [d * 0.6, 420, 'e'], [d, 300, 'e']], 3);
+      v.noise('brown', { g: [[0, 0], [0.12, 0.3], [0.3, 0.34], [d, 0.0001, 'e']], to: turn });
+      grains(v, 0.04, 0.2, 240, 0.36, { lo: 1800, hi: 3200, shape: (k) => Math.sin(Math.PI * k) });
+      grains(v, 0.22, 0.24, 280, 0.4, { lo: 1100, hi: 2400, shape: (k) => Math.sin(Math.PI * k) });
+      grains(v, 0.36, 0.2, 160, 0.3, { lo: 1500, hi: 3000, shape: (k) => 1 - k });
+      hum(v, 0, [[0, BB4 / 2], [d, BB4 / 2, 'e']], [[0, 0], [0.25, 0.09], [d, 0.0001, 'e']], { breath: 0.3, partial: 0.3 });
+      thump(v, 0.3, 90, 60, 0.18, 0.14);
     },
   },
   /** The stopper flicked off: a tiny pop. */
@@ -285,15 +326,15 @@ export const HOURGLASS_IMP_RECIPES = {
       thump(v, 0, 130, 80, 0.2, 0.08);
     },
   },
-  /** Direct: the little dune slides off the panel. */
+  /** Direct: the little dune slides off the panel (Round 2 #6: +8 dB). */
   hgiDune: {
     cap: 2,
     gap: 0.05,
     verb: 0.3,
-    duck: 0.15,
+    duck: 0.2,
     play(v) {
-      sweep(v, 0, 0.22, [1600, 1400, 900], 0.06, { q: 2, kind: 'pink', peakAt: 0.3 });
-      grains(v, 0, 0.26, 90, 0.2, { rate1: 30, shape: (k) => 1 - k });
+      sweep(v, 0, 0.22, [1600, 1400, 900], 0.15, { q: 2, kind: 'pink', peakAt: 0.3 });
+      grains(v, 0, 0.26, 90, 0.5, { rate1: 30, shape: (k) => 1 - k });
     },
   },
   /** Re-cork + right: a thumb press, the glass turned upright and thunked, two jumps of sand, the trickle back. */
@@ -312,45 +353,80 @@ export const HOURGLASS_IMP_RECIPES = {
     },
   },
   // ---------------------------------------------------------------- effect: "Kum Mührü"
-  /** The thread (sustained ≈ 0.6 s): a thin grain trickle at the upper resonance + the hum rising B♭4 → F5. */
+  /**
+   * The time line (sustained; cut DEAD at the seal). Round 2 #4: no flowing grains — the line hangs still. A thin
+   * BOWED-GLASS whistle: a narrow noise band at F5 (q 30) with a slow swell, a sine under it, still loud at the cut.
+   * The grains lighting "one by one" are hgiLitTick (fired per grain).
+   */
   hgiThread: {
     cap: 2,
     gap: 0.05,
-    verb: 0.4,
+    verb: 0,
     duck: 0.35,
     play(v) {
-      const d = 0.65;
-      grains(v, 0, d, 60, 0.36, { rate1: 90, lo: 2000, hi: 2800, shape: (k) => Math.min(1, k * 8) });
-      hum(v, 0, [[0, BB4], [d * 0.9, F5, 'e']], [[0, 0], [0.08, 0.04], [d, 0.05]], { breath: 0.45 });
+      const d = 1.4;
+      const env: Pt[] = [[0, 0], [0.18, 0.05], [0.5, 0.075], [d, 0.09]];
+      const bp = v.filt('bandpass', F5, 30);
+      v.noise('white', { g: env.map(([x, y]) => [x, y * 3.2] as Pt), to: bp });
+      const a = v.tone('sine', F5, { g: env.map(([x, y]) => [x, y * 0.5] as Pt) });
+      v.lfo(a.osc.detune, 5.2, 6, { d });
+      v.tone('sine', F5 * 2, { g: env.map(([x, y]) => [x, y * 0.08] as Pt) });
     },
   },
-  /** The glass builds round the target: three stepped glass tings B♭5 D6 F6 + the pour inside. */
+  /** One grain of the time line lighting: a tiny bright glass tick (cap 8, gap 8 ms). */
+  hgiLitTick: {
+    cap: 8,
+    gap: 0.008,
+    verb: 0,
+    duck: 0,
+    vary: 0.06,
+    play(v) {
+      tick(v, 0, 0.32, { f: 5200 });
+      v.tone('sine', F5 * 4, { g: perc(0.03, 0.03, 0.0005) });
+    },
+  },
+  /** The glass builds round the target: three stepped glass tings B♭5 D6 F6 (dry: no tail may fill the seal's gap). */
   hgiCage: {
     cap: 6,
     gap: 0.008,
-    verb: 0.45,
+    verb: 0,
     duck: 0.4,
     play(v) {
-      ting(v, midiHz(82), 0, 0.09, 0.07);
-      ting(v, midiHz(86), 0.075, 0.08, 0.07);
-      ting(v, midiHz(89), 0.15, 0.08, 0.09);
-      grains(v, 0, 0.28, 120, 0.26);
-    },
-  },
-  /** Sand fills the cage's lower bulb: a short trickle swell at the lower resonance. */
-  hgiFill: {
-    cap: 3,
-    gap: 0.02,
-    verb: 0.3,
-    duck: 0.2,
-    play(v) {
-      grains(v, 0, 0.13, 240, 0.34, { lo: 1400, hi: 2200, shape: (k) => Math.sin(Math.PI * Math.min(1, k * 1.1)) });
-      puff(v, 0.02, 0.08, 0.12, 700, { kind: 'pink' });
+      ting(v, midiHz(82), 0, 0.11, 0.07);
+      ting(v, midiHz(86), 0.075, 0.1, 0.07);
+      ting(v, midiHz(89), 0.15, 0.1, 0.07);
     },
   },
   /**
-   * THE STOP: (the caller cuts every trickle dead first) 60 ms of silence, one dry 4 kHz "tık", then a flat B♭4 + F5
-   * glass tone held 380 ms that stops with a 2 ms cut — no decay, no reverb tail on it.
+   * Sand fills the cage's lower bulb (sustained, at its PEAK rate right up to the cut — Round 2 #2: the seal stops it
+   * dead, so the stop is heard as a stop, not a fade). Dry (verb 0).
+   */
+  hgiFill: {
+    cap: 3,
+    gap: 0.02,
+    verb: 0,
+    duck: 0.3,
+    play(v) {
+      const d = 1.0;
+      grains(v, 0, d, 300, 0.42, { lo: 1400, hi: 2200, shape: (k) => Math.min(1, k * 12) });
+      v.noise('pink', { g: [[0, 0], [0.04, 0.08], [d, 0.09]], to: v.filt('bandpass', 700, 1.6) });
+    },
+  },
+  /** Round 2 #2: a silent recipe whose only job is to pull the music down ~150 ms before THE STOP (deepest duck). */
+  hgiHush: {
+    cap: 1,
+    gap: 0.1,
+    verb: 0,
+    duck: 1,
+    play(v) {
+      v.tone('sine', 40, { g: [[0, 0], [0.01, 0.00001], [0.02, 0.0000001, 'e']] });
+    },
+  },
+  /**
+   * THE STOP: (the caller cuts every trickle dead first) 80 ms of silence, one dry 4 kHz "tık", then FROZEN GLASS held
+   * 380 ms that stops with a 2 ms cut — no decay, no reverb. Round 2 #2: not a sine beep any more — the trickle itself
+   * "frozen" as a static noise band through the SAME two bulb resonances (1.4 / 2.8 kHz, q 12, no modulation), a
+   * B♭4 under it and a faint 3rd partial; ≈ 5 dB lower so the silence and the click carry the moment.
    */
   hgiSeal: {
     cap: 1,
@@ -358,38 +434,43 @@ export const HOURGLASS_IMP_RECIPES = {
     verb: 0,
     duck: 0.75,
     play(v) {
-      const t0 = 0.06;
+      const t0 = 0.08;
       tick(v, t0, 0.7);
       const t1 = t0 + 0.004;
       const flat = (g: number): Pt[] => [[0, 0], [0.004, g], [SEAL_MS, g], [SEAL_MS + 0.002, 0.0001, 'l']];
-      v.tone('sine', BB4, { t: t1, g: flat(0.13) });
-      v.tone('sine', F5, { t: t1, g: flat(0.04) });
-      v.tone('sine', BB4 * 2, { t: t1, g: flat(0.018) });
+      v.tone('sine', BB4, { t: t1, g: flat(0.06) });
+      v.tone('sine', BB4 * 3, { t: t1, g: flat(0.008) });
+      v.noise('white', { t: t1, g: flat(0.5), to: v.filt('bandpass', 1400, 12, { t: t1 }) });
+      v.noise('white', { t: t1, g: flat(0.34), to: v.filt('bandpass', 2800, 12, { t: t1 }) });
     },
   },
-  /** Condense: the cage collapses into the emblem — a tight glass "zip" up + a tiny brass tick. */
+  /** Condense: the cage collapses into the emblem — a glass "zip" up, the hum gliding up, a brass CLINK as it snaps shut (Round 2 #6: +10 dB). */
   hgiCondense: {
     cap: 2,
     gap: 0.05,
-    verb: 0.3,
-    duck: 0.3,
+    verb: 0.25,
+    duck: 0.35,
     play(v) {
-      sweep(v, 0, 0.18, [1200, 2600, 4000], 0.09, { q: 5, kind: 'white', peakAt: 0.7 });
-      v.tone('sine', [[0, BB4], [0.17, BB4 * 3, 'e']], { g: [[0, 0], [0.12, 0.03], [0.18, 0.0001, 'e']] });
-      tink(v, 0.18, 0.05, { f: 2360, dec: 0.1 });
+      sweep(v, 0, 0.2, [1200, 2600, 4200], 0.24, { q: 5, kind: 'white', peakAt: 0.7 });
+      v.tone('sine', [[0, BB4], [0.19, BB4 * 3, 'e']], { g: [[0, 0], [0.12, 0.07], [0.2, 0.0001, 'e']] });
+      grains(v, 0, 0.2, 200, 0.3, { rate1: 60, shape: (k) => 1 - k * 0.6 });
+      tink(v, 0.2, 0.16, { f: 2360, dec: 0.12 });
+      tink(v, 0.215, 0.09, { f: 1180, dec: 0.16 });
     },
   },
   // ---------------------------------------------------------------- the seal across turns
-  /** The frozen turn starts: a muffled tick + an 80 ms trickle that is refused (stops dead). */
+  /** The frozen turn starts: a 3 kHz identity click + a muffled tick + an 80 ms trickle that is refused (Round 2 #6: +6 dB, played after the turn's card slide). */
   hgiBite: {
     cap: 6,
     gap: 0.008,
-    verb: 0.2,
-    duck: 0.15,
+    verb: 0.15,
+    duck: 0.25,
     play(v) {
-      tick(v, 0, 0.3, { f: 1800 });
-      grains(v, 0.03, 0.08, 220, 0.2);
-      v.tone('sine', BB4, { t: 0.03, g: [[0, 0], [0.01, 0.03], [0.08, 0.03], [0.082, 0.0001, 'l']] });
+      tick(v, 0, 0.6, { f: 3000 });
+      tick(v, 0.012, 0.5, { f: 1800 });
+      grains(v, 0.03, 0.08, 240, 0.4);
+      v.tone('sine', BB4, { t: 0.03, g: [[0, 0], [0.01, 0.06], [0.08, 0.06], [0.082, 0.0001, 'l']] });
+      tink(v, 0.11, 0.06, { f: 1580, dec: 0.08 });
     },
   },
   /** The strain: grains clamping ×3 rising, a choked hum cut at 150 ms. */
@@ -416,41 +497,82 @@ export const HOURGLASS_IMP_RECIPES = {
       v.tone('sine', [[0, F5], [0.25, BB4, 'e']], { g: [[0, 0], [0.03, 0.025], [0.26, 0.0001, 'e']] });
     },
   },
-  /** The sealed monster leaves the field: the emblem falls — a falling glass blip + a short grain scatter. */
+  /** The sealed monster leaves the field: the emblem falls — a falling glass blip + a short grain scatter (Round 2 #6: +8 dB). */
   hgiEmblemDrop: {
     cap: 3,
     gap: 0.02,
     verb: 0.3,
-    duck: 0.15,
+    duck: 0.2,
     play(v) {
-      v.tone('sine', [[0, F5], [0.12, BB4 * 0.75, 'e']], { g: perc(0.04, 0.13, 0.003) });
-      tick(v, 0.12, 0.18, { f: 3200 });
-      grains(v, 0.12, 0.16, 160, 0.2, { shape: (k) => 1 - k });
+      v.tone('sine', [[0, F5], [0.12, BB4 * 0.75, 'e']], { g: perc(0.1, 0.13, 0.003) });
+      tick(v, 0.12, 0.45, { f: 3200 });
+      grains(v, 0.12, 0.16, 160, 0.5, { shape: (k) => 1 - k });
     },
   },
   // ---------------------------------------------------------------- death: "Kendi kum saatine akar"
-  /** The drain (sustained ≈ 0.55 s): a fast inward trickle + the hum gliding DOWN B♭4 → F4. */
+  /**
+   * The drain (sustained ≈ 0.6 s). Round 2 #4: its own layer is a SUCKING INWARD swell — a crackle with a reversed
+   * envelope (grows, then cuts) through a closing band — and a short descending imp "eep" (1000 → 600 Hz): he is heard
+   * going into the glass. The hum glides down B♭4 → F4.
+   */
   hgiDrain: {
     cap: 2,
     gap: 0.05,
-    verb: 0.35,
+    verb: 0.3,
     duck: 0.45,
     play(v) {
       const d = 0.6;
-      grains(v, 0, d, 160, 0.42, { rate1: 220, shape: (k) => Math.min(1, k * 8) });
-      hum(v, 0, [[0, BB4], [d, BB4 * 0.749, 'e']], [[0, 0], [0.05, 0.06], [d, 0.03]], { breath: 0.4 });
+      grains(v, 0, d, 120, 0.26, { rate1: 200, shape: (k) => Math.min(1, k * 8) });
+      const suck = v.filt('bandpass', [[0, 3200], [d * 0.9, 900, 'e']], 2.2);
+      v.crackle({ d: d * 0.92, n: 90, g: 0.5, f: 2400, q: 1, dec: 0.004, to: suck, curve: 3 });
+      v.noise('pink', { g: [[0, 0], [d * 0.88, 0.16, 'e'], [d * 0.9, 0.0001, 'l']], to: suck });
+      blip(v, 0.03, 1000, 600, 0.2, 0.11);
+      hum(v, 0, [[0, BB4], [d, BB4 * 0.749, 'e']], [[0, 0], [0.05, 0.05], [d, 0.03]], { breath: 0.4 });
     },
   },
-  /** The topple: the glass tips over — a dull thud + a glass crack (3 re-strikes). */
+  /**
+   * The topple (Round 2 #5): a pre-tip creak of the wood cap rocking on its rim (60 ms), the main thud + the glass
+   * crack, the sand SLOSHING inside (a grain burst with a falling contour), and the crack ringing 150 ms on harmonic
+   * partials only. The 1-px bounce re-thud is hgiBounce, fired on the sprite's bounce frame.
+   */
   hgiTopple: {
     cap: 2,
     gap: 0.05,
     verb: 0.35,
-    duck: 0.55,
+    duck: 0.6,
     play(v) {
-      base(v, 0, 0.6, { f0: 130, f1: 70 });
-      crack(v, 0.025, 0.22, { hp: 4000, lp: 11000, n: 3, gap: 0.006, dec: 0.01 });
-      tink(v, 0.01, 0.04, { f: 1580, dec: 0.12 });
+      // creak: a slow scraped friction on the cap's rim
+      const cr = v.filt('bandpass', [[0, 420], [0.06, 300, 'e']], 6);
+      v.tone('sawtooth', [[0, 92], [0.06, 70, 'e']], { g: [[0, 0], [0.01, 0.07], [0.06, 0.0001, 'e']], to: cr });
+      const t = 0.07;
+      base(v, t, 0.75, { f0: 130, f1: 62 });
+      crack(v, t + 0.02, 0.26, { hp: 4000, lp: 11000, n: 3, gap: 0.006, dec: 0.01 });
+      // the crack rings: harmonic partials of B♭5 only, 150 ms
+      for (const [k, g] of [[1, 0.06], [2, 0.035], [3, 0.02]] as const) v.tone('sine', BB4 * 2 * k, { t: t + 0.02, g: perc(g, 0.15, 0.001) });
+      // the slosh inside: a grain burst whose rate and band fall
+      grains(v, t + 0.03, 0.32, 280, 0.42, { rate1: 40, lo: 1400, hi: 2000, shape: (k) => (1 - k) * (1 - k) });
+    },
+  },
+  /** The 1-px bounce of the lying glass: a small re-thud ≈ −9 dB under the topple + a tiny grain shiver. */
+  hgiBounce: {
+    cap: 2,
+    gap: 0.04,
+    verb: 0.3,
+    duck: 0.2,
+    play(v) {
+      base(v, 0, 0.27, { f0: 120, f1: 70 });
+      grains(v, 0.01, 0.1, 200, 0.2, { shape: (k) => 1 - k });
+    },
+  },
+  /** Death f2–f3, the clutch: a small descending imp "eep" (Round 2 #5: the character is heard as he dries). */
+  hgiEep: {
+    cap: 2,
+    gap: 0.08,
+    verb: 0.25,
+    duck: 0.3,
+    play(v) {
+      blip(v, 0, 1000, 600, 0.2, 0.12);
+      blip(v, 0.13, 760, 520, 0.1, 0.08);
     },
   },
   /** The bleed: the trickle thinning from 80 grains / s to 4 and stopping (≈ 0.4 s). */
@@ -464,19 +586,19 @@ export const HOURGLASS_IMP_RECIPES = {
       hum(v, 0, [[0, BB4 * 0.749], [0.4, BB4 * 0.7, 'e']], [[0, 0], [0.04, 0.016], [0.42, 0.0001, 'e']], { breath: 0.5 });
     },
   },
-  /** The last grain: one dry tick + a tiny B♭6 ping (30 ms) — then silence. */
+  /** The last grain: one dry tick + a tiny B♭6 ping with a 120 ms decay — "the clock stops" (Round 2 #5: +4 dB). */
   hgiLastGrain: {
     cap: 2,
     gap: 0.1,
     verb: 0.45,
-    duck: 0.3,
+    duck: 0.35,
     play(v) {
-      tick(v, 0, 0.9, { f: 3500 });
-      ting(v, midiHz(94), 0.004, 0.2, 0.05);
+      tick(v, 0, 1, { f: 3500 });
+      ting(v, midiHz(94), 0.004, 0.32, 0.12);
     },
   },
   // ---------------------------------------------------------------- revive
-  /** The sand runs back up (sustained ≈ 1.1 s): grains rising + the hum rising F4 → B♭4 (the drain reversed). */
+  /** The sand runs back up (sustained ≈ 1.1 s). Round 2 #4: the drain REVERSED (the suck played backwards: a swell that opens) + the giggle voice rising at the end; the hum rising F4 → B♭4. */
   hgiReviveGather: {
     cap: 2,
     gap: 0.1,
@@ -484,8 +606,13 @@ export const HOURGLASS_IMP_RECIPES = {
     duck: 0.4,
     play(v) {
       const d = 1.1;
-      grains(v, 0, d, 20, 0.36, { rate1: 200, shape: (k) => 0.3 + 0.7 * k });
+      grains(v, 0, d, 20, 0.26, { rate1: 160, shape: (k) => 0.3 + 0.7 * k });
+      const un = v.filt('bandpass', [[0, 900], [d, 3200, 'e']], 2.2);
+      v.noise('pink', { g: [[0, 0.0001], [0.02, 0.14], [d * 0.7, 0.04, 'e'], [d, 0.0001, 'e']], to: un });
       hum(v, 0, [[0, BB4 * 0.749], [d, BB4, 'e']], [[0, 0], [0.2, 0.03], [d, 0.06]], { breath: 0.45 });
+      blip(v, d - 0.24, 600, 760, 0.1);
+      blip(v, d - 0.16, 760, 900, 0.12);
+      blip(v, d - 0.08, 880, 1060, 0.14, 0.07);
     },
   },
   /** Revive land: the sandal plant + the sand sneeze "pff". */

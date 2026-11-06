@@ -111,6 +111,9 @@ export interface Pose {
   cut: number;
   /** 1: the hat stays dry sand even off the head (death: it re-colours only once it lands) */
   hatDry: number;
+  /** Round 2 #1: 1 = the glass is BEHIND him (held up over the far shoulder / overhead behind the hat): drawn first,
+   *  its light only where the glass itself shows */
+  gBack?: number;
 }
 
 export const NEUTRAL: Pose = {
@@ -369,6 +372,7 @@ export function drawImp(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right' = '
   const glass = o.gShow ? paintGlass(W, H, o.g, light) : null;
   const lights: number[] = [];
 
+  if (glass && o.gBack) cp.add(glass.layer, Part.glass, {});
   if (o.body) {
     drawArm(cp, sk, o, light, false);
     drawFoot(cp, sk, false, light);
@@ -379,7 +383,7 @@ export function drawImp(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right' = '
   }
   if (o.heap > 0) drawHeap(cp, o.heap, light);
   if (o.cone > 0) drawCone(cp, o.cone, o.g.ph, light, lights);
-  if (glass && !o.gFront) cp.add(glass.layer, Part.glass, {});
+  if (glass && !o.gFront && !o.gBack) cp.add(glass.layer, Part.glass, {});
   if (o.body && !o.cone) drawArm(cp, sk, o, light, true);
   if (glass && o.gFront) cp.add(glass.layer, Part.glass, {});
   if (o.body && o.gFront && o.ngrip !== 3) {
@@ -430,7 +434,13 @@ export function drawImp(p: PixelCanvas, o: Pose, lightFrom: 'left' | 'right' = '
   p.outline(PAL.ink);
 
   // ---------------- light pass (never outlined)
-  if (glass) for (let i = 0; i < glass.light.length; i += 3) setLight(p, glass.light[i], glass.light[i + 1], glass.light[i + 2], true);
+  if (glass)
+    for (let i = 0; i < glass.light.length; i += 3) {
+      const x = glass.light[i];
+      const y = glass.light[i + 1];
+      if (o.gBack && cp.id[y * W + x] !== Part.glass) continue;
+      setLight(p, x, y, glass.light[i + 2], true);
+    }
   for (let i = 0; i < lights.length; i += 3) setLight(p, lights[i], lights[i + 1], lights[i + 2], false);
   if (o.body) eyes(p, sk, o);
   if (o.pour) pourLight(p, o);

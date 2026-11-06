@@ -59,6 +59,9 @@ export interface GlassPose {
   jet: number;
   /** 1: the sand sloshes (surface tilted) */
   slosh: number;
+  /** Round 2 #1/#7: the screen-UPPER bulb's sand glows (light pass: a gold4 surface row over gold3) — the effect's
+   *  inverted glass "spending" time; 0 none */
+  glowUp?: number;
 }
 
 export const GLASS0: GlassPose = { a: 0, ox: 37, oy: 61, sx: 1, sA: 0.42, sB: 0.6, flow: 1, ph: 0, per: 4, hot: 0, lump: 0, crack: 0, dark: 0, open: 0, jet: 0, slosh: 0 };
@@ -279,7 +282,17 @@ export function paintGlass(w: number, h: number, g0: GlassPose, light: Light): G
       if (q.isOpaque(x, y)) q.set(x, y, PAL.mist);
     }
   }
-  // ---------------- light: stream, landing grain, lump, jet
+  // ---------------- light: the glowing upper bulb (Round 2), stream, landing grain, lump, jet
+  if (!dark && g.glowUp && vertical) {
+    const up = upper === Tex.inA ? A : B;
+    for (let j = 0; j < up.length; j += 2) {
+      const x = up[j];
+      const y = up[j + 1];
+      if (!sand[y * w + x]) continue;
+      const top = y === 0 || !sand[(y - 1) * w + x];
+      out.push(x, y, top ? PAL.gold4 : PAL.gold3);
+    }
+  }
   if (!dark) {
     const col = Math.floor(neck[0]);
     const hotC = g.hot ? PAL.gold4 : PAL.gold3;
