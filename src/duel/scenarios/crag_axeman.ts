@@ -51,6 +51,16 @@ const scenarios: Record<string, Scenario> = {
     stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'crag_axeman', N, N] }, p1: { monsters: [N, N, { id: 'stone_sentinel', position: 'defense' }, N, N] } },
     steps: [attack(2, 2)],
   },
+  caxDirectP2: {
+    desc: 'direct attack as player 2: the seam runs off the board toward the P1 duelist',
+    stage: { zones: 5, phase: 'battle', active: 1, p1: { monsters: [N, N, 'crag_axeman', N, N] } },
+    steps: [attack(2, null, 1)],
+  },
+  caxBlockedP2: {
+    desc: 'blocked as player 2: the seam starts at the buried blade, forks into a "Y" at the guard, he staggers back',
+    stage: { zones: 5, phase: 'battle', active: 1, p0: { monsters: [N, N, { id: 'stone_sentinel', position: 'defense' }, N, N] }, p1: { monsters: [N, N, 'crag_axeman', N, N] } },
+    steps: [attack(2, 2, 1)],
+  },
   caxLoser: {
     desc: 'the attacker loses (1600 vs shade_assassin 1900): struck where he bit, he splits there',
     stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'crag_axeman', N, N] }, p1: { monsters: [N, N, { id: 'shade_assassin', position: 'attack' }, N, N] } },

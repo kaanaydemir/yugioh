@@ -164,7 +164,7 @@ export const ROCK_FAR: Tones = { L: PAL.stone3, M: PAL.stone2, S: PAL.stone1, D:
 /** The beard: stone braids. */
 export const BEARD: Tones = { L: PAL.stone3, M: PAL.stone2, S: PAL.stone1, D: PAL.stone0 };
 /** The haft. */
-export const WOOD: Tones = { L: PAL.earth3, M: PAL.earth2, S: PAL.earth1, D: PAL.earth0 };
+export const WOOD: Tones = { L: PAL.earth3, M: PAL.earth1, S: PAL.earth0, D: PAL.ink };
 /** Dark legging cloth (stone-grey wool). */
 export const WOOL: Tones = { L: PAL.stone2, M: PAL.stone1, S: PAL.stone0, D: PAL.ink };
 export const WOOL_FAR: Tones = { L: PAL.stone1, M: PAL.stone0, S: PAL.stone0, D: PAL.ink };

@@ -3,15 +3,18 @@
 // seam runs up its face and it splits clean; he steps out of it and shouts the nara.
 //
 //   0–220      the card slam (the summon kit)
-//   +0–400     summon f0–3: a ~28 px BOULDER (the art's 4 drawn roll frames, never setAngle) rolls in sideways from off
-//              the tile's back edge along the iso axis; it bounces twice (the second a 1 px shake), stops and rocks 1 px
-//              twice (caxRoll, caxBounce ×2)
+//   +0–400     summon f0–3: a ~46 px BOULDER (big enough to have held him; the art's 4 drawn roll frames, never
+//              setAngle) rolls in sideways from the tile's back edge ON the floor along the iso axis (lit, its shadow
+//              under it from the first frame); it bounces twice (the second a 1 px shake), stops on its resting roll
+//              frame and rocks 1 px twice (caxRoll, caxBounce ×2)
 //   +400–600   f4: a still beat — the rock is silent
 //   +600       f5: the blade punches out through the boulder's front (caxPunch: stone chips, one white spark)
-//   +680–850   f6–f7: one vertical light seam runs up the boulder's face; it splits clean and the halves fall apart
-//              (caxSplit, caxHalves); a short Yarık opens on the floor where it split
-//   +850       f8 'land': he steps out (caxStepOut: 2 px shake, dust at the boots)
-//   +960       f9: the NARA, axe raised one-handed (caxNara), the ATK/DEF badge pops
+//   +680–850   f6–f8: one vertical light seam runs up the boulder's face; it splits clean and the halves fall apart IN
+//              FRONT of him while he rises from a crouch behind them (caxSplit, caxHalves); a short Yarık on the floor
+//   +850       f10 'land': he steps out (caxStepOut: 2 px shake, dust at the boots)
+//   +960       the NARA (the roar's frames): head thrown back, mouth wide, the axe thrust up overhead (caxNara); the held
+//              shout a living three-frame cycle (jaw, axe tremble, chest, beads, hem, the floor seam breathing), a
+//              stepped dust ring + hopping pebbles on the voice's beats; the ATK/DEF badge pops mid-shout
 //   → idle     f10–11: the axe back onto the shoulder; the floor seam fades in three steps
 // No hologram build (the boulder is matter), no magic circle, no floor ring: C6's log drops vertically and opens like
 // doors; the sentinel's rocks orbit; this one rolls in and is CUT. No camera move.
@@ -22,7 +25,7 @@ import type { MonsterUnit } from '../../duel/MonsterUnit';
 import { LOOK_V3, unitDepth, type XY } from '../../view/layout';
 import { lightFlash } from '../../view/light';
 import { shake } from '../../vfx/core';
-import { E, Sparks, onFrame, sleep } from '../../vfx/combat';
+import { E, Px, Sparks, onFrame, sleep } from '../../vfx/combat';
 import { PixelCanvas } from '../../art/pixel';
 import { framePose } from '../../art/monsters-v3/crag_axeman-anims';
 import { H, W, drawAxeman, type Pose } from '../../art/monsters-v3/crag_axeman-rig';
@@ -31,7 +34,7 @@ import { registerCardHook } from '../api';
 import { atFrame, fade, panAt, play } from '../_v3/sound';
 import { poseEntrance } from '../_v3/summon';
 import { runSummon, type Stage } from '../summon-a/_kit';
-import { biteChips, plantDust } from './crag_axeman';
+import { biteChips, idleTap, plantDust } from './crag_axeman';
 import { Seam, SEAM_DEPTH } from './crag_axeman-yarik';
 
 const ID = 'crag_axeman';
@@ -55,10 +58,44 @@ function rigCanvas(key: string, pose: Pose, light: 'left' | 'right'): PixelCanva
   }
   return pc;
 }
-/** The rolling boulder two palette steps down (night-tinted as it comes in from the dark, then one step lit). */
-const dimBoulder = (roll: number, dim: number, light: 'left' | 'right') => rigCanvas(`dim${dim}:${roll}`, { ...framePose('summon', roll), dim }, light);
 /** The two fallen halves lying on the floor, sinking in palette steps (0…3). */
 const lyingHalves = (sink: number, light: 'left' | 'right') => rigCanvas(`halves:${sink}`, { ...framePose('summon', 9), hide: true, bould: 5, bk: sink, fseam: 0, chips: 0, dust: 0 }, light);
+
+/**
+ * One beat of the shout on the floor: a stepped iso dust ring spreading from his boots (earth3 → earth2 → earth1, whole
+ * pixels, broken dots — never a glowing ring) and 2–4 pebbles hopping 1–2 px. `k` 2 = the burst (the biggest).
+ */
+function shoutBeat(sc: Phaser.Scene, at: XY, k: number): void {
+  const g = new Px(sc.add.graphics().setDepth(SEAM_DEPTH + 1));
+  const R0 = 14;
+  const R1 = 24 + k * 5;
+  const steps = [PAL.earth4, PAL.earth3, PAL.earth2];
+  onFrame(
+    sc,
+    (_dt, el) => {
+      const t = el / 240;
+      if (t >= 1) return false;
+      g.clear();
+      const r = Math.round(R0 + (R1 - R0) * E.outQ(t));
+      const c = steps[Math.min(2, Math.floor(t * 3))];
+      for (let a = 0; a < 40; a++) {
+        if ((a + Math.floor(t * 6)) % 3 === 0) continue;
+        const th = (a / 40) * Math.PI * 2;
+        g.dot(Math.round(at.x + Math.cos(th) * r), Math.round(at.y + Math.sin(th) * r * 0.5), c);
+      }
+      return true;
+    },
+    () => {
+      if (g.g.active) g.g.destroy();
+    },
+  );
+  const sp = new Sparks(sc, unitDepth(at.y) + 0.3);
+  for (let i = 0; i < 2 + k; i++) {
+    const side = i % 2 ? 1 : -1;
+    sp.add({ x: Math.round(at.x + side * (8 + i * 3)), y: at.y + (i % 3) - 1, vx: side * 6, vy: -(28 + k * 6), ay: 420, life: 220, colors: [PAL.stone3, PAL.stone2], shape: 'px', floor: at.y + 1 + (i % 3), bounce: 0.25, fadeAt: 1 });
+  }
+  sp.release();
+}
 
 async function boulderEntrance(S: Stage): Promise<void> {
   const sc: Phaser.Scene = S.scene;
@@ -73,41 +110,31 @@ async function boulderEntrance(S: Stage): Promise<void> {
   // a tribute's riser (if any) gives way: the boulder is the arrival
   fade(['summonCharge'], 140);
   const landF = u.markFrame('summon', 'land', 10);
-  // from 1.5 tiles out beyond the tile's back edge (P1 the back-left, P2 mirrored), along the iso axis: a long roll in
-  const from: XY = { x: home.x - S.dir * 58, y: home.y - 29 };
-  const ROLL_MS = 340;
+  // from the tile's back edge (P1 the back-left, P2 mirrored), ON the floor along the iso axis: a heavy roll in (r3: it
+  // is matter from its first frame — lit, its ground shadow under it — never a dark shape drifting in the air)
+  const from: XY = { x: home.x - S.dir * 36, y: home.y - 18 };
+  const ROLL_MS = 360;
   const STILL_MS = 130;
-  u.pose('summon', 0);
+  const total = Math.hypot(home.x - from.x, home.y - from.y);
+  // the 4 drawn roll frames by the distance rolled, phased so the roll STOPS on frame 0 — the resting silhouette the
+  // blade then punches out of (no shape pop when it stops)
+  const rollAt = (d: number) => (((Math.floor(d / 6) - Math.floor(total / 6)) % 4) + 4) % 4;
+  u.pose('summon', rollAt(0));
   placeAt(u, from);
-  // it comes in out of the dark in two palette steps (no pop-in): two dim rig canvases over the hidden sprite, then lit
-  const ov = overlay(u, dimBoulder(0, 2, light), { depth: u.sprite.depth });
-  u.sprite.setVisible(false);
+  u.showSprite();
+  u.sprite.setVisible(true).setAlpha(1);
   play('caxRoll', { volume: 0.9, pan: panAt(from.x) });
   // ---- the roll: the 4 drawn frames cycled by the distance rolled (never setAngle), two bounces (2 px, then 1 px) with
   // a dust kick on each touch, then the stop and two 1-px rocks in the silent still beat
   let bounce = 0;
   const bounceAt = [0.5, 0.8];
-  let ovLive = true;
-  const total = Math.hypot(home.x - from.x, home.y - from.y);
   await new Promise<void>((resolve) => {
     onFrame(sc, (_dt, el) => {
       if (!u.sprite.active) return false;
       const t = Math.min(1, el / ROLL_MS);
       const e = E.outQ(t);
       const p = { x: from.x + (home.x - from.x) * e, y: from.y + (home.y - from.y) * e };
-      const roll = Math.floor((total * e) / 6) % 4;
-      const dim = t < 0.18 ? 2 : t < 0.36 ? 1 : 0;
-      if (ovLive) {
-        if (dim === 0) {
-          ov.destroy();
-          ovLive = false;
-          u.showSprite();
-          u.sprite.setVisible(true);
-        } else {
-          ov.redraw(dimBoulder(roll, dim, light));
-        }
-      }
-      if (!ovLive) u.pose('summon', roll);
+      u.pose('summon', rollAt(total * e));
       // the hops: 2 px before the first touch, 1 px before the second (held a frame at the top so they read)
       let lift = 0;
       if (t < bounceAt[0]) lift = Math.min(2, Math.sin((t / bounceAt[0]) * Math.PI) * 2.6);
@@ -132,11 +159,7 @@ async function boulderEntrance(S: Stage): Promise<void> {
       placeAt(u, p, Math.round(lift));
       return true;
     }, () => {
-      if (ovLive) {
-        ov.destroy();
-        ovLive = false;
-      }
-      u.sprite.setVisible(true);
+      u.sprite.setVisible(true).setAlpha(1);
       placeAt(u, home);
       resolve();
     });
@@ -170,6 +193,7 @@ async function boulderEntrance(S: Stage): Promise<void> {
       spark: false,
       quiet: true,
       light: false,
+      noPool: true,
     });
   });
   // the halves fall apart (f7, f8) and land (f9): the landing thumps
@@ -197,19 +221,27 @@ async function boulderEntrance(S: Stage): Promise<void> {
   });
   await u.playRange('summon', 4, landF);
   await sleep(sc, u.frameMs('summon', landF));
-  // ---- the NARA: the roar's own drawn frames (build, the axe raised one-handed with the mouth open held ~300 ms, the
-  // release) — the shout lasts as long as its picture
+  // ---- the NARA: the roar's own drawn frames — the gather (the axe swung down low by the knee, the chest filling), the
+  // BURST (one underhand swing from the floor to overhead, head thrown back, mouth wide), the held shout, the release
   if (u.has('roar') && u.sprite.active) {
-    const beats: [number, number][] = [[2, 100], [3, 90], [4, 150], [5, 150], [7, 90], [8, 90]];
+    // the held shout is ALIVE (r3): a three-frame cycle on the voice's beats — jaw wide / half / wide, the raised axe
+    // trembling a px, the chest heaving, beads and hem shaking, the floor seam between the halves breathing — held
+    // ~240 ms, the ATK/DEF plate popping in the middle of it; the floor answers each beat (a stepped dust ring, pebbles)
+    const beats: [number, number][] = [[1, 70], [2, 100], [3, 80], [4, 60], [5, 60], [6, 60], [4, 60], [7, 100], [8, 90]];
+    let i = 0;
     for (const [f, ms] of beats) {
       if (!u.sprite.active) break;
       u.pose('roar', f);
       if (f === 2) play('caxNara', { volume: 0.95, pan });
-      if (f === 3) void u.badge.pop();
+      if (i === 6) void u.badge.pop();
+      if (f === 3 || i === 4 || i === 6) shoutBeat(sc, home, f === 3 ? 2 : i === 4 ? 1 : 0);
+      i++;
       await sleep(sc, ms);
     }
+    if (!u.badge.visible) void u.badge.pop();
   } else void u.badge.pop();
   placeAt(u, home);
+  idleTap(sc, u);
 }
 
 if (LOOK_V3)

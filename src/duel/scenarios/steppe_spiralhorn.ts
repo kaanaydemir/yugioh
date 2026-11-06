@@ -47,7 +47,7 @@ const scenarios: Record<string, Scenario> = {
     steps: [attack(2, null)],
   },
   sshBlocked: {
-    desc: 'blocked: stone_sentinel in defense (DEF 2100): the horns lock with a clack, he slides back 4 px, no seeds (600 recoil)',
+    desc: 'blocked: stone_sentinel in defense (DEF 2100): the horns lock with a clack, he slides back 6 px, no seeds (600 recoil)',
     stage: { zones: 5, phase: 'battle', p0: { monsters: [N, N, 'steppe_spiralhorn', N, N] }, p1: { monsters: [N, N, { id: 'stone_sentinel', position: 'defense' }, N, N] } },
     steps: [attack(2, 2)],
   },
