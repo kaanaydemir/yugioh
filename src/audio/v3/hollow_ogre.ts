@@ -573,6 +573,24 @@ export const HOLLOW_OGRE_RECIPES = {
       });
     },
   },
+  /** Summon f3 (critic r3): the seam TEARS into an ember slit — a dry fibre rip running down the seam, a short creak
+   *  and a hiss of light breathing out of the gap (low cavity under it: the hollow behind the bark). */
+  hoSlit: {
+    cap: 1,
+    gap: 0.2,
+    verb: 0.4,
+    play(v) {
+      trim(v, 1.5, () => {
+        // the rip runs DOWN the seam: fibre snaps whose band falls 5.5 → 2.6 kHz
+        v.crackle({ t: 0, d: 0.12, n: 11, g: 0.09, f: 4400, q: 1.6, dec: 0.004, curve: 0.7 });
+        rustle(v, 0, 0.14, 0.05, { c0: 5200, c1: 2600, rate: 60 });
+        creak(v, 0.01, 0.13, 0.12, { f0: 210, f1: 175, rate: 48, body: 1.1 });
+        // the ember breath out of the slit, and the hollow answering under it
+        v.noise('white', { t: 0.05, g: [[0, 0], [0.03, 0.05], [0.2, 0.0001, 'e']], to: v.filt('bandpass', [[0, 2600], [0.2, 4600, 'e']], 2.2, { t: 0.05 }) });
+        v.tone('sine', [[0, 80], [0.2, 72, 'e']], { t: 0.03, g: perc(0.07, 0.2, 0.02) });
+      });
+    },
+  },
   /** Summon f4: the ember eyes ignite in the hollow — two soft rising knot toks (left eye, right eye) and a glow. */
   hoEyes: {
     cap: 1,

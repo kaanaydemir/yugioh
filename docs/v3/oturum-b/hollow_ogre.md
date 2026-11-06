@@ -623,3 +623,74 @@ Evidence: `shots/v3/kart-b/hollow_ogre/fix-r2/`, clips `shots/v3/kart-b/clips/{h
 - Struck-wood material sound when the ogre is hit: unchanged (decision 4). Root fingers on the handle: unchanged.
 - In the losing strike (hoTrade / hoEatDie) the shared battle claims the attacker on the contact (hitMagic / counter):
   the held f6 applies to wins only.
+
+## Stage: FIX — round 3 (independent critic round 3, `critic-r3/`)
+
+Evidence: `shots/v3/kart-b/hollow_ogre/fix-r3/`. Measure (`--look v3`) in scratch
+`/tmp/claude-0/-home-user-yugioh/77596f6a-069b-5204-8bfc-ba0d0b8509ca/scratchpad/hollow_ogre/r4/m.json` + `m2.json`.
+
+### Findings → what changed
+1. **BLOCKER — death split across two tiles (hoEatDie / hoTrade).** `rootsDeathV3` takes every floor beat from the
+   sprite's LIVE foot (`foot() = sprite.x, sprite.y + hover`): rootsIntoTile, loam, caveIn, the sprout ending and the
+   knot-seed fall target (`ft.y − 1`). `home` is only the card's birth / tile dissolve. The two knot seeds now hop 6 px
+   out of the hollow and fall with the body (600 ms, ease-in) instead of hanging 15 px over it.
+   `fix-r3/hoEatDie-death.png`, `hoEatDie-death-zoom.png` (roots, cave-in, sprout and seeds all beside the wyrm, nothing
+   on the home tile).
+2. **MAJOR — contact a horizontal jab, nothing on the frozen beat.** Rig: new `Pose.smear` (a banded, ink-edged
+   crescent of matter where the club head just was: earth4 leading edge, earth3 body, earth2 tail); attack f4 = the club
+   over the top (hand 50,24 / −30°), f5 = release with a 44° smear, f6 contact = the club coming DOWN at 46° from a high
+   hand (55,27). Strike: aims the club head at the target's shoulder line (core → top, 40 %); the payoff is on the
+   frozen frame — `frozenStar` (10 jagged rays, white → earth4 → gold4 tips, flung split-wood shards, white/gold core;
+   drawn on the first tick, held through the hit-stop, two shrinking steps after) and the body chips are spawned already
+   OUT on a 4–13 px ring (a ring of splinters on the frozen frame, not one dot). Boosted: `frozenPollen` puts the buds'
+   first violet bloom (14 squares/pixels in an upward fan + white/void4 star) on the frozen frame too; the fountain flies
+   after. Floor crack stays on the fall-through f7. `fix-r3/hoAttack-contact-zoom.png`, `hoEatAttack-contact.png`.
+3. **MAJOR — doors pop in one frame.** Summon 13 → 15 frames (revive 10 → 8 pays for it; 127 frames, 3.58 MB). The rig's
+   `drawDoor` was rebuilt: two bark slabs that COVER the hollow when shut; `door < DOOR_SLIT (0.25)` = the seam opens
+   as a straight ember slit (3 → 5 px, gold lips, white-hot middle rows, `seamLight`), then the slabs hinge outward
+   symmetrically (outer face foreshortened by cos φ, edge-on, round to a wedge past the trunk, heartwood lip on the torn
+   edge). Shut seam = one straight crease + a straight gold4 column with a gold3 glow (no zigzag); the cinematic's
+   `emberCrack` scribble beside it was removed. Frames: f2 seam glows → f3 slit (new `hoSlit`: a fibre rip running down
+   the seam, a creak, an ember breath) → f4 slabs hinge (hoBarkSplit) → f5 edge-on → f6 open, eyes ignite (hoEyes). The
+   moss / mushrooms unfold over two frames (small cushion at door 0.6–0.8, full after). Cinematic summon beats remapped
+   (+2 from f3 on). `fix-r3/hoSummon-zoom.png` #16–#22, sheet `sheet/hollow_ogre-v3-summon.png`.
+4. **MAJOR — effect slow and far from the giant.** The root now runs only ~22 px toward the pile and rises into its cup
+   BY THE GIANT; the seed ARCS through the air from the pile to it (lift 44). The ghost is the real monster at FULL
+   sprite size (every pixel, void ramp) for its rise + hold before it collapses into the seed. Timeline: rise 90, hold
+   140, shrink 160, flight 430 (+30 first, small apex hang), carry 100, climb 150, sprout 90, finale 300; stab holds
+   f0/f1/f2 70/110/60; root grow 160. The giant HAULS on every catch (f4 + the log 2 px back, then 1) and SQUASHES on
+   each knot burn (2 px down into its roots + the jolt). measure: **k = 1 2.97 s** (activate 566 + banish 2400; was
+   4.77), **k = 2 3.77 s** (was 5.92). `fix-r3/hoEat2.png` (1×), `hoEat2-zoom.png`, `hoEat2P2.png`.
+5. **MAJOR — sprite readability.** Both eyes 2×2 (near: gold4/white core; far: gold3/4) each with its own gold2/gold1
+   lower lid (a gap between them, never one line); near moss banded leaf2 lit top / leaf1 body / leaf0 underside with a
+   scalloped cushion top; toadstools = 1-px stem, dark earth1 gill row, domed earth4 cap (7 and 3 wide); bracket fungi
+   with a dark earth1 underside; the idle club now HANGS diagonally from the hand (CA_OFF 33 → 15, PLANT [AX+33, GY−15])
+   instead of lying along the floor like a third leg; the pale end-grain dot and the second knot hole near the club
+   head removed; the lit edge of the upper trunk is pushed to earth4 (3 of 4 rows). `sheet/hollow_ogre-v3-idle.png`.
+6. minor — sprout ending: the sprite's sprout frame hands over to a drawn `sproutEnd` (6-px two-tone stem, two leaves,
+   3×3 ink-edged violet bud with a gold4 glint, turned-soil mound, gold3 light pool): stands 180 ms, bends, droops and
+   greys (hoWilt, the pool steps down), a leaf falls, sinks in two steps — the card is born on the sink (≈ 620 ms). The
+   sprite is cropped to nothing (not hidden) so the unit keeps its shadow on the tile. `fix-r3/hoKill-sprout.png`.
+7. minor — summon slam debris: the sprite's own splinter heap on the last summon frame removed; the cinematic SLAM /
+   crumble chips fewer (7 / 2×5) and drawn at the unit's depth (under the badges). `fix-r3/hoSummonP2-slam.png`.
+8. minor — log fall: the column's lower end is a torn root snag (hashed charred teeth, ink tips, earth0 → earth1).
+   `fix-r3/hoSummon-zoom.png` #8–#9.
+9. minor — +400 numbers: the second no longer destroys the first (seed 1 back side +10, seed 2 front side −7: 17 px
+   apart, 4 px higher); no blink-out (they stay lit and step up 2 px twice before they go).
+10. minor — SFX stacking: hoGhost 80 ms after the cup (`GHOST_LAG`; measure hoCupOpen@583 → hoGhost@700); the eye flick
+   no longer plays hoIdleCreak; seed 2's ghost forms early in seed 1's flight (shrink@1517 vs catch@1767: 250 ms); the
+   next whistle leaves 70 ms after the climb's tok.
+
+### Gates
+- monster-gates `--class medium` P1|P2: **21 ok, 0 FAIL** (`gates.txt`; sheets regenerated in `sheet/`, `sheet-p2/`).
+  127 frames, 3.58 MB. (An intermediate f4 with the club 1 px from the top edge failed Sİ-2 margin; fixed.)
+- `vitest tests/art/hollow_ogre*` 14/14; `tsc` clean for our files; v1 filmdiff (`--set v1 --base shots/v3/a3/baseline/v1films`): all 17 IDENTICAL.
+- measure (hoEat1Auto, hoEat2, hoEatAttack, hoEatDie, hoKill, hoSummon, hoAttack): errors 0, zoom 1 everywhere,
+  number − contact 0.
+
+### Open issues (after round 3)
+- Struck-wood material sound when the ogre is hit: unchanged (decision 4). Root fingers on the handle: unchanged.
+- The f5 smear crescent is pale and reads a little like a horn on a still frame (60 ms in motion it reads as a swing).
+- On P2 the full-size ghost rises over the graveyard pile in the top-left corner and briefly overlaps the HUD portrait.
+- Effect k = 1 is 2.97 s (critic target ≈ 2.5 s); the full-size ghost beat and the arc were kept over a further cut.
+- Sameness / blind test still owed.

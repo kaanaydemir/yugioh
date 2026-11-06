@@ -457,8 +457,11 @@ function mushroom(q: PixelCanvas, at: Pt, w: number, light: Light, stem = 3): vo
 
 function drawFarMoss(f: Frame): void {
   const { sk, o } = f;
-  if (o.collapse > 0.45 || o.door >= 0 && o.door < 0.2) return;
-  mossClump(f, [sk.shF[0] + 1, sk.shF[1] - 3], 4, MOSS_FAR, Part.farMoss, 3, true);
+  if (o.collapse > 0.45 || o.door >= 0 && o.door < 0.6) return;
+  // the moss unfolds over two frames of the summon (a small cushion first, then the full clump and its mushroom)
+  const small = o.door >= 0 && o.door < 0.8;
+  mossClump(f, [sk.shF[0] + 1, sk.shF[1] - 3], small ? 2 : 4, MOSS_FAR, Part.farMoss, small ? 1 : 3, true);
+  if (small) return;
   const q = layer();
   mushroom(q, [sk.shF[0] - 1, sk.shF[1] - 4], 5, f.light);
   // the mushroom is matter of the far side: one value down
@@ -720,63 +723,83 @@ function drawTrunk(f: Frame): void {
   f.comp.add(q, Part.trunk, { out: CREASE });
 }
 
+/** The summon's door phases on `door` 0…1: shut < 0.05 · the ember SLIT widening (slabs flat) < 0.25 · the swing. */
+export const DOOR_SLIT = 0.25;
+
 function drawDoor(f: Frame): void {
   const { sk, o, light, p } = f;
   if (o.door < 0 || o.doorFall >= 1) return;
   const [hx, hy] = sk.hollow;
   const k = clamp(o.door, 0, 1);
   if (k < 0.05) {
-    // shut: the bark is whole over the hollow, a jagged split runs down where the doors will open
-    for (let y = hy - sk.hry - 1; y <= hy + sk.hry + 1; y++) {
-      const x = hx + ((y >> 1) % 2 ? 1 : 0);
-      if (p.isOpaque(x, y)) p.set(x, y, CREASE);
-    }
+    // shut (critic r3: no curly scribble): the bark is whole over the hollow, ONE straight split runs down the middle
+    for (let y = hy - sk.hry - 1; y <= hy + sk.hry + 1; y++) if (p.isOpaque(hx, y)) p.set(hx, y, CREASE);
     return;
   }
   const q = layer();
   const fall = clamp(o.doorFall, 0, 1);
   const ph = sk.hry * 2 + 5;
   const DW = 8;
-  // two thick bark slabs hinged on the hollow's sides swing OUTWARD past the trunk's silhouette like shutters thrown
-  // open (critic r2: the pale heartwood face read as a sheet of paper / a sign). What we see is the slab's OUTER bark
-  // face, foreshortened into a wedge that sticks out sideways (wide at the hinge, the free edge dropping 2:1 as it
-  // swings), with only a 1-px heartwood lip where the split tore it. The SLAM shakes them loose: they sag on the
-  // hinge, slide down behind the root feet and are gone (the cinematic breaks them into chips on the tile).
-  const theta = lerp(Math.PI * 0.92, 1.05, k);
-  const proj = Math.abs(Math.cos(theta));
+  const half = sk.hrx + 1;
+  // critic r3 (the doors popped open in one frame): two bark slabs hinged on the hollow's sides that COVER it when
+  // shut. Phase 1 (door < DOOR_SLIT): the slabs stay flat and the seam between their free edges widens into a straight
+  // ember slit (1 → 3 px). Phase 2: they hinge outward symmetrically — the outer bark face foreshortens toward the
+  // hinge (cos φ), passes edge-on, and comes round as a wedge sticking out past the trunk. The SLAM shakes them loose.
+  const slit = k < DOOR_SLIT ? 3 + rnd(((k - 0.05) / (DOOR_SLIT - 0.05)) * 2) : 0;
+  const phi = k < DOOR_SLIT ? 0 : ((k - DOOR_SLIT) / (1 - DOOR_SLIT)) * Math.PI * 0.86;
+  const c = Math.cos(phi);
   for (const s of [-1, 1]) {
-    const hinge = hx + s * (sk.hrx + 1);
-    const reach = Math.max(2, DW * (k < 0.5 ? 1 - k * 1.2 : proj + 0.2) * (1 - fall * 0.5));
-    const free = hinge + s * reach;
-    const x0 = Math.min(hinge, free);
-    const x1 = Math.max(hinge, free);
+    const hinge = hx + s * half;
+    let x0: number;
+    let x1: number;
+    let inward: boolean;
+    if (c > 0.08) {
+      // covering the hollow: from the hinge toward the seam, its width foreshortened
+      inward = true;
+      const len = phi === 0 ? half - slit / 2 : Math.max(1, half * c);
+      const free = hinge - s * len;
+      x0 = Math.min(hinge, free);
+      x1 = Math.max(hinge, free);
+    } else {
+      // swung past edge-on: a wedge sticking out of the hinge
+      inward = false;
+      const reach = Math.max(2, DW * Math.min(1, -c + 0.25) * (1 - fall * 0.5));
+      const free = hinge + s * reach;
+      x0 = Math.min(hinge, free);
+      x1 = Math.max(hinge, free);
+    }
     const sag = rnd(fall * fall * 10);
     const vis = Math.max(2, rnd(ph * (1 - fall * 0.8)));
     const top0 = rnd(hy - ph / 2) + sag;
+    const span = Math.max(1, x1 - x0);
     for (let x = rnd(x0); x <= rnd(x1); x++) {
-      const u = Math.abs(x - hinge) / Math.max(1, reach);
-      // the wedge: the free edge is shorter (perspective) and drops as it comes round
-      const yt = top0 + rnd(u * (1.5 + k * 2) + u * fall * 6);
-      const yb = top0 + vis - rnd(u * (1 + k));
+      const u = Math.abs(x - hinge) / span;
+      // perspective: the free edge drops and shortens as the slab turns (none while flat)
+      const turn = inward ? Math.sin(phi) : 1;
+      const yt = top0 + rnd(u * turn * (1.5 + k * 2) + u * fall * 6);
+      const yb = top0 + vis - rnd(u * turn * (1 + k));
       for (let y = yt; y <= yb; y++) {
         if (y > GY - 2) continue;
-        if (Math.abs(x - rnd(free)) === 0 && hash2(x, y, 31) > 0.6) continue;
+        if (!inward && x === rnd(s > 0 ? x1 : x0) && hash2(x, y, 31) > 0.6) continue;
         q.set(x, y, BARK.M);
       }
     }
   }
+  // the slit: the seam's columns stay open (the hollow's dark shows; the light layer lights its edges)
+  if (slit > 0) for (let y = 0; y < H; y++) for (let x = hx - (slit >> 1); x <= hx + ((slit - 1) >> 1); x++) q.erase(x, y);
   bands(q, BARK, light, 1, 1, { top: 1, bottom: 1 });
-  // bark grain on the outer face (vertical seams one step down), the 1-px heartwood lip on the torn free edge
   const src = q.clone();
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
       if (!src.isOpaque(x, y)) continue;
       const s = x < hx ? -1 : 1;
-      const hinge = hx + s * (sk.hrx + 1);
+      const hinge = hx + s * half;
       const d = Math.abs(x - hinge);
-      const freeEdge = !src.isOpaque(x + s, y);
+      const freeIn = !src.isOpaque(x - s, y) && x !== hinge;
+      const freeOut = !src.isOpaque(x + s, y);
       if (d === 0) q.set(x, y, CREASE);
-      else if (freeEdge && k > 0.3) q.set(x, y, s === light.side ? PAL.earth3 : PAL.earth2);
+      // the torn free edge: a 1-px heartwood lip (inward while covering, outward once round)
+      else if ((freeIn && phi > 0.15 && c > 0.08) || (freeOut && c <= 0.08 && k > 0.3)) q.set(x, y, s === light.side ? PAL.earth3 : PAL.earth2);
       else if (d % 3 === 1 && (y + d) % 5 !== 0) q.set(x, y, src.get(x, y) === BARK.L ? BARK.M : BARK.S);
       else if (d === 2 && (y - hy) % 6 === 1) q.set(x, y, CREASE);
     }
@@ -875,10 +898,11 @@ function drawNearArm(f: Frame): void {
 
 function drawNearMoss(f: Frame): void {
   const { sk, o, light } = f;
-  if (o.collapse > 0.45 || (o.door >= 0 && o.door < 0.2)) return;
-  // the near-shoulder moss sits UP on the shoulder ridge in two dim tufts (a big saturated clump beside the hollow read
-  // as a green cheek at 1×): a leaf0 body under a leaf2 lit lip
-  mossClump(f, [sk.shN[0] - 2, sk.shN[1] - 4], 3, MOSS_NEAR, Part.nearMoss, 1, false);
+  if (o.collapse > 0.45 || (o.door >= 0 && o.door < 0.6)) return;
+  // the near-shoulder moss sits UP on the shoulder ridge (banded, scalloped); in the summon it unfolds over two frames
+  const small = o.door >= 0 && o.door < 0.8;
+  mossClump(f, [sk.shN[0] - 2, sk.shN[1] - 4], small ? 2 : 3, MOSS_NEAR, Part.nearMoss, small ? 0 : 1, false);
+  if (small) return;
   mossClump(f, [sk.shN[0] + 3, sk.shN[1] - 3], 2, MOSS_NEAR, Part.nearMoss, 0, false);
   const q = layer();
   // two pale toadstools on long stems rise out of the moss, clear of the log top (they read against the sky)
@@ -1185,13 +1209,27 @@ function budLight(f: Frame, bud: Pt | null, groundBud: Pt | null): void {
 }
 
 function seamLight(f: Frame): void {
-  const { p, o, sk } = f;
-  if (o.door < 0 || o.door > 0.05 || o.eye <= 0.3) return;
+  const { p, o, sk, comp } = f;
+  if (o.door < 0 || o.door >= 0.6 || o.eye <= 0.3) return;
   const [hx, hy] = sk.hollow;
-  for (let y = hy - 4; y <= hy + 1; y++) {
-    const x = hx + (y % 3 === 0 ? 1 : 0);
-    if (p.isOpaque(x, y) && p.get(x, y) !== PAL.ink) p.set(x, y, y === hy - 2 ? PAL.gold4 : PAL.gold2);
+  if (o.door < 0.05) {
+    // the shut seam glows: one straight gold4 column, gold3 glow beside its middle rows
+    for (let y = hy - sk.hry; y <= hy + sk.hry; y++) {
+      if (!p.isOpaque(hx, y)) continue;
+      p.set(hx, y, Math.abs(y - hy) <= sk.hry - 2 ? PAL.gold4 : PAL.gold3);
+      if (Math.abs(y - hy) <= 2) for (const dx of [-1, 1]) if (p.isOpaque(hx + dx, y) && p.get(hx + dx, y) !== PAL.ink) p.set(hx + dx, y, PAL.gold3);
+    }
+    return;
   }
+  // the ember slit: its dark (the hollow) burns gold at both lips, white-hot in the middle rows
+  for (let y = hy - sk.hry; y <= hy + sk.hry; y++)
+    for (let x = hx - 4; x <= hx + 4; x++) {
+      if (comp.id[y * W + x] !== Part.trunk) continue;
+      const c = p.get(x, y);
+      if (c !== PAL.void0 && c !== PAL.void1) continue;
+      const mid = Math.abs(y - hy) <= 2;
+      p.set(x, y, x === hx && mid ? PAL.white : (mid && Math.abs(x - hx) <= 1) || x === hx ? PAL.gold4 : Math.abs(x - hx) <= 2 ? PAL.gold3 : PAL.gold2);
+    }
 }
 
 function glintLight(f: Frame): void {

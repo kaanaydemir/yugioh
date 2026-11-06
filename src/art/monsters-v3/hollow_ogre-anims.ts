@@ -188,7 +188,7 @@ const ATTACK_KEYS: Partial<Pose>[] = [
   // full wind-up: club behind the shoulder, the log leaning back (the long hold)
   { ...hand(50, 9, 162), nb: -1, crouch: 3, lean: -8, bob: 1, eye: 2, mane: 0.7, fx: -20, fy: -28, fc: 1, fs: 30, maneSway: -6, probe: -1, fly: -1 },
   // swing: the club comes OVER the top, straight up above the crown
-  { ...hand(50, 22, -32), nb: -1, crouch: 1, lean: -3, eye: 2, mane: 0.5, fx: -18, fy: -24, fc: 1, maneSway: -10, probe: -1, fly: -1 },
+  { ...hand(50, 24, -30), nb: -1, crouch: 1, lean: -3, eye: 2, mane: 0.5, fx: -18, fy: -24, fc: 1, maneSway: -10, probe: -1, fly: -1 },
   // release: the club whips forward over the head (a smear crescent behind it), the log pitching over
   { ...hand(54, 24, 8), crouch: 2, lean: 6, eye: 2, mane: 0.2, fx: -15, fy: -18, fc: 0.8, maneSway: -4, smear: 44, probe: -1, fly: -1 },
   // contact (critic r3: not a horizontal jab): the head comes DOWN at about 45° from above onto the target's head /
@@ -278,7 +278,7 @@ const HM_HOLDS = [50, 60, 90, 110, 120, 130, 140, 150];
 
 // ------------------------------------------------------------------ summon (13): the log lands, the bark opens, the giant steps out and slams
 
-const SU_N = 13;
+const SU_N = 15;
 const SEALED: Partial<Pose> = { legs: 0, unfurl: 0, door: 0, eye: 0, probe: -1, fly: -1, mane: 0 };
 const SUMMON_KEYS: Partial<Pose>[] = [
   // the sealed log (falling: the cinematic drops it)
@@ -287,9 +287,14 @@ const SUMMON_KEYS: Partial<Pose>[] = [
   { ...SEALED, sink: 4, bob: 2, dust: 0.3, splinter: 0.2, sx: 1, sy: -1 },
   // the shudder: the door seam glows
   { ...SEALED, sink: 4, bob: 1, shake: 1, eye: 0.8, dust: 0.65, splinter: 0.5, sx: 1, sy: -1 },
-  // the bark doors burst open from inside
-  { ...SEALED, sink: 4, shake: 2, door: 0.4, eye: 1.5, splinter: 0.25, sx: 8, sy: -36 },
-  { ...SEALED, sink: 4, door: 0.75, eye: 2, unfurl: 0.3, splinter: 0.6, sx: 8, sy: -36 },
+  // critic r3 (the doors popped in one frame): the seam widens into an ember slit …
+  { ...SEALED, sink: 4, shake: 1, door: 0.16, eye: 0.6, dust: 0.85, sx: 1, sy: -1 },
+  // … the two bark slabs start to hinge out (the slit a dark gap, the light behind it) …
+  { ...SEALED, sink: 4, shake: 2, door: 0.5, eye: 0.7, splinter: 0.2, sx: 8, sy: -36 },
+  // … swing (edge-on, the moss starting to unfold) …
+  { ...SEALED, sink: 4, door: 0.7, eye: 1.6, splinter: 0.45, sx: 8, sy: -36 },
+  // … and come round past the trunk: the eyes ignite in the dark
+  { ...SEALED, sink: 4, door: 0.85, eye: 2, unfurl: 0.3, splinter: 0.7, sx: 8, sy: -36 },
   // shoulders out: the arms unfurl, the log rises out of its hole on root legs
   { ...SEALED, sink: 2, door: 1, eye: 2, unfurl: 0.7, legs: 0.45, mane: 0.4, ...hand(56, 34, -110), splinter: 0.9, sx: 8, sy: -36 },
   // out: club in hand, the near root foot steps
@@ -300,12 +305,13 @@ const SUMMON_KEYS: Partial<Pose>[] = [
   // SLAM: the club head hits the ground in front, the door plates are shaken loose
   { door: 1, doorFall: 0.3, eye: 2, nfx: 2, crouch: 3, lean: 6, ...hand(60, 51, 45), dust: 0.3, splinter: 0.15, sx: 38, sy: -3, maneSway: 6, probe: -1, fly: -1 },
   { door: 1, doorFall: 0.7, eye: 1.8, nfx: 1, crouch: 2, lean: 4, ...hand(59, 49, 42), dust: 0.65, splinter: 0.55, sx: 38, sy: -3, maneSway: 8, probe: -1, fly: -1 },
-  { door: 1, doorFall: 1, eye: 1.4, crouch: 1, lean: 1, ...planted(52), dust: 0.9, splinter: 0.85, sx: 38, sy: -3, maneSway: 2, glint: 2, probe: -1, fly: -1 },
+  // (critic r3: no heap of planks left lying in front — the chips have settled and broken by now)
+  { door: 1, doorFall: 1, eye: 1.4, crouch: 1, lean: 1, ...planted(52), dust: 0.9, maneSway: 2, glint: 2, probe: -1, fly: -1 },
 ];
 export function summonPose(f: number): Pose {
   return table(SUMMON_KEYS, f, SU_N);
 }
-const SU_HOLDS = [100, 90, 90, 70, 80, 80, 80, 80, 170, 60, 100, 120, 140];
+const SU_HOLDS = [100, 90, 90, 70, 60, 60, 80, 80, 80, 80, 170, 60, 100, 120, 140];
 
 // ------------------------------------------------------------------ death (10): roots unravel into the tile, the trunk caves in, one sprout wilts
 
@@ -336,14 +342,13 @@ const D_HOLDS = [50, 60, 70, 70, 80, 70, 70, 80, 90, 110, 130];
 
 // ------------------------------------------------------------------ revive (10): the sprout perks up, roots braid up, the trunk rebuilds
 
-const RV_N = 10;
+const RV_N = 8;
 const REVIVE_KEYS: Partial<Pose>[] = [
   { ...DEATH_KEYS[10] },
-  { ...DEATH_KEYS[9], sproutG: 1 },
+  // the sprout perks up as the roots braid up round it
   { unravel: 1, roots: 0.6, collapse: 1, sink: 22, legs: 0, eye: 0, sproutG: 1, clubFree: 1, cfx: 13, cfy: 20, probe: -1, fly: -1 },
   { unravel: 1, roots: 1, collapse: 0.8, sink: 12, legs: 0.1, eye: 0, sproutG: 1, clubFree: 1, cfx: 13, cfy: 20, probe: -1, fly: -1 },
-  { unravel: 0.7, roots: 0.9, collapse: 0.5, sink: 6, legs: 0.4, eye: 0.3, clubFree: 1, cfx: 13, cfy: 20, probe: -1, fly: -1 },
-  { unravel: 0.35, roots: 0.6, collapse: 0.2, sink: 2, legs: 0.8, eye: 0.7, lid: 1, unfurl: 0.6, probe: -1, fly: -1 },
+  { unravel: 0.35, roots: 0.6, collapse: 0.3, sink: 3, legs: 0.7, eye: 0.6, lid: 1, unfurl: 0.6, probe: -1, fly: -1 },
   { roots: 0.2, collapse: 0, sink: 0, legs: 1, eye: 1.5, lid: 0, ...planted(48), probe: -1, fly: -1 },
   // land: whole again, a creak down, eyes ignite
   { bob: 2, crouch: 1, eye: 2, dust: 0.35, ...planted(52), glint: 2, probe: -1, fly: -1 },
@@ -353,7 +358,7 @@ const REVIVE_KEYS: Partial<Pose>[] = [
 export function revivePose(f: number): Pose {
   return table(REVIVE_KEYS, f, RV_N);
 }
-const RV_HOLDS = [90, 90, 90, 90, 90, 100, 100, 110, 130, 140];
+const RV_HOLDS = [100, 110, 110, 110, 110, 120, 140, 150];
 
 // ------------------------------------------------------------------ special (13): "Kovuğa ekim" — the seed planting
 
@@ -382,7 +387,7 @@ const SPECIAL_KEYS: Partial<Pose>[] = [
 export function specialPose(f: number): Pose {
   return table(SPECIAL_KEYS, f, SP_N);
 }
-const SP_HOLDS = [90, 150, 70, 190, 60, 120, 70, 120, 200, 110, 130, 150, 160];
+const SP_HOLDS = [70, 110, 60, 190, 60, 120, 70, 120, 200, 100, 110, 130, 140];
 
 // ------------------------------------------------------------------ tables
 
@@ -399,7 +404,7 @@ export const ANIMS: Record<MonsterAnim, AnimSpec> = {
 export const EXTRA_ANIMS: Partial<Record<MonsterAnimExtra, AnimSpec>> = {
   summon: spec(SU_N, 10, false, SU_HOLDS, { land: 1 }),
   death: spec(D_N, 12, false, D_HOLDS, { impact: 0, contact: 0, dissolve: 4 }),
-  revive: spec(RV_N, 10, false, RV_HOLDS, { land: 7 }),
+  revive: spec(RV_N, 10, false, RV_HOLDS, { land: 5 }),
   special: spec(SP_N, 10, false, SP_HOLDS, { charge: 1, release: 4, impact: 4, contact: 5, recover: 9 }),
   hitHeavy: spec(HH_N, 12, false, HH_HOLDS, { impact: 0, contact: 0, recover: 3 }),
   hitMagic: spec(HM_N, 12, false, HM_HOLDS, { impact: 0, contact: 0, recover: 4 }),

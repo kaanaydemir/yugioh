@@ -149,9 +149,16 @@ export function logColumn(sc: Phaser.Scene, u: MonsterUnit, extra: number, depth
           for (let x = x0; x <= x1; x++) {
             const sx = Math.round(c + (x - c) / f);
             const src = row.reduce((best, p) => (Math.abs(p.x - sx) < Math.abs(best.x - sx) ? p : best), row[0]);
-            let col = x === x0 || x === x1 || end ? PAL.ink : src.c === PAL.ink ? PAL.earth1 : src.c;
             const u = (x - x0) / Math.max(1, x1 - x0);
-            if (col !== PAL.ink) {
+            // critic r3 (a hard cropped bottom): the log's lower end is a torn ROOT SNAG — charred teeth of splintered
+            // wood of uneven length (hashed per 2-px column), ink-tipped, earth0 → earth1 up into the bark
+            const tail = extra - 1 - j;
+            const toothL = (x: number): number => 1 + Math.floor(((Math.sin(((x >> 1) + 3) * 12.9898) * 43758.5453) % 1 + 1) % 1 * 6);
+            if (tail < 6 && toothL(x) <= 5 - tail) continue;
+            const tip = tail < 6 && toothL(x) === 6 - tail;
+            const edgeT = tail < 6 && (toothL(x - 1) <= 5 - tail || toothL(x + 1) <= 5 - tail);
+            let col = x === x0 || x === x1 || end || tip || edgeT ? PAL.ink : tail < 3 ? PAL.earth0 : tail < 6 ? PAL.earth1 : src.c === PAL.ink ? PAL.earth1 : src.c;
+            if (col !== PAL.ink && tail >= 6) {
               // the burl bulges on one side: a lit lip and a dark eye
               if (burl > 1 && (flip ? u > 0.82 : u < 0.18)) col = burl === 3 && Math.abs(u - (flip ? 0.9 : 0.1)) < 0.05 ? PAL.earth0 : PAL.earth3;
               if (ring && u > 0.25 && u < 0.7) col = PAL.earth0;
@@ -420,15 +427,16 @@ export async function shrinkToSeed(sc: Phaser.Scene, cardId: MonsterId, at: XY, 
   const ax = art.anchorX;
   const ay = art.anchorY + (art.hover ?? 0);
   let maxD = 1;
-  for (let y = 0; y < pc.h; y += 2)
-    for (let x = 0; x < pc.w; x += 2) {
+  // critic r3: the ghost stands at FULL sprite size (the real card is recognisable), then collapses into the seed
+  for (let y = 0; y < pc.h; y++)
+    for (let x = 0; x < pc.w; x++) {
       const c = pc.get(x, y);
       if (c === null) continue;
       const lum = ((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11;
       const tone = c === PAL.ink ? PAL.void0 : lum < 60 ? PAL.void1 : lum < 120 ? PAL.void2 : lum < 190 ? PAL.void3 : PAL.void4;
       const fx = flip ? ax - x : x - ax;
-      const px = Math.round(at.x + fx / 2);
-      const py = Math.round(at.y + (y - ay) / 2);
+      const px = Math.round(at.x + fx);
+      const py = Math.round(at.y + (y - ay));
       const d = Math.hypot(px - seedAt.x, py - seedAt.y);
       maxD = Math.max(maxD, d);
       pts.push({ x: px, y: py, c: tone, d });
@@ -662,8 +670,8 @@ export function seedNumber(sc: Phaser.Scene, at: () => XY, amount: number, life 
     const jump = Math.round(Math.min(1, el / 120) * 6) + Math.round(Math.min(1, el / life) * 4);
     c.setPosition(Math.round(p.x), Math.round(p.y - jump));
     c.setScale(el < 34 ? 2 : 1);
-    // the last 160 ms: blink out in steps (no alpha fade)
-    c.setVisible(el < life - 160 || Math.floor((el - (life - 160)) / 40) % 2 === 1);
+    // critic r3 (a one-frame blink read as a flicker): it stays lit to the end and steps up 2 px twice before it goes
+    if (el > life - 120) c.y -= el > life - 60 ? 4 : 2;
   };
   put(0);
   const stop = onFrame(sc, (_dt, el) => {
