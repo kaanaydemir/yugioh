@@ -322,11 +322,11 @@ export function deathPose(f: number): Pose {
       eye: 1.5, core: 3, roseK: 0.5, roseY: 2, poleN: 2.5, poleS: 2.5,
     });
     case 4: return s({ adx: -6, ady: 0, shard: 2, cdx: 8, cdy: 10, ctilt: 0.55, arms: 0, sfree: 1, spx: 18, spy: -10, sa: 18, crack: 1, seam: 0, eye: 0, core: 0, rings: 0, roseK: 0, ring: 0.6, poleN: 2, poleS: 2 });
-    case 5: return s({ adx: -6, shard: 4, cdx: 18, cdy: 24, ctilt: 1, wire: 0.4, arms: 0, spear: 0, rip: 1, sfree: 1, spx: 10, spy: -12, sa: -40, eye: 0, core: 0, rings: 0, roseK: 0, poleN: 2.5, poleS: 0.5, flip: 1, diss: 0.12 });
-    case 6: return s({ adx: -6, shard: 5, cdx: 18, cdy: 24, ctilt: 1, wire: 0.7, arms: 0, spear: 0, rip: 0.5, sfree: 1, spx: 2, spy: -20, sa: -40, eye: 0, core: 0, rings: 0, roseK: 0, poleN: 0.5, poleS: 2.5, diss: 0.35 });
-    case 7: return s({ adx: -6, shard: 5, cdx: 18, cdy: 24, ctilt: 1, wire: 1, arms: 0, spear: 0, eye: 0, core: 0, rings: 0, roseK: 0, poleN: 1, poleS: 1, diss: 0.58 });
-    case 8: return s({ adx: -6, shard: 5, cdx: 18, cdy: 24, ctilt: 1, wire: 1, arms: 0, spear: 0, eye: 0, core: 0, rings: 0, roseK: 0, poleN: 0, poleS: 0, diss: 0.8 });
-    default: return s({ adx: -6, shard: 5, cdx: 18, cdy: 24, ctilt: 1, wire: 1, arms: 0, spear: 0, eye: 0, core: 0, rings: 0, roseK: 0, poleN: 0, poleS: 0, diss: 1.02 });
+    case 5: return s({ adx: -6, shard: 6, cdx: 18, cdy: 24, ctilt: 1, wire: 0.4, arms: 0, spear: 0, rip: 1, sfree: 1, spx: 10, spy: -12, sa: -40, eye: 0, core: 0, rings: 0, roseK: 0, poleN: 2.5, poleS: 0.5, flip: 1, diss: 0.12 });
+    case 6: return s({ adx: -6, shard: 8, cdx: 18, cdy: 24, ctilt: 1, wire: 0.7, arms: 0, spear: 0, rip: 0.5, sfree: 1, spx: 2, spy: -20, sa: -40, eye: 0, core: 0, rings: 0, roseK: 0, poleN: 0.5, poleS: 2.5, diss: 0.35 });
+    case 7: return s({ adx: -6, shard: 8, cdx: 18, cdy: 24, ctilt: 1, wire: 1, arms: 0, spear: 0, eye: 0, core: 0, rings: 0, roseK: 0, poleN: 1, poleS: 1, diss: 0.58 });
+    case 8: return s({ adx: -6, shard: 8, cdx: 18, cdy: 24, ctilt: 1, wire: 1, arms: 0, spear: 0, eye: 0, core: 0, rings: 0, roseK: 0, poleN: 0, poleS: 0, diss: 0.8 });
+    default: return s({ adx: -6, shard: 8, cdx: 18, cdy: 24, ctilt: 1, wire: 1, arms: 0, spear: 0, eye: 0, core: 0, rings: 0, roseK: 0, poleN: 0, poleS: 0, diss: 1.02 });
   }
 }
 const D_HOLDS = [60, 70, 80, 90, 80, 90, 100, 110, 110, 100];
