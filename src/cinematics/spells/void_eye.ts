@@ -162,40 +162,98 @@ function lidAt(el: number): number {
   return 0;
 }
 
-// ================================================================ the night veil (shared by the hook and the wipe)
+// ================================================================ the night (shared by the hook and the wipe)
 
-/** Stepped alpha levels of the night veil going down / coming back up. */
-const NIGHT_DOWN = [0.14, 0.26, 0.38, 0.5] as const;
-const NIGHT_UP = [0.36, 0.22, 0.1, 0] as const;
-const nights = new WeakMap<Phaser.Scene, Phaser.GameObjects.Rectangle>();
+/**
+ * THE LIGHTS GO DOWN — on the palette, never with alpha (REHBER EF-6 / EF-7): a full-opacity INK stamp in world-aligned
+ * 2×2 Bayer quarter steps over the sky, the wall, the platform and the pads (under the tile glows, the cards and the
+ * units). Light is a HOLE in it: where the eye's glow and its gaze fall, the stamp steps back (a quarter-step rim, then
+ * none), so the lit floor shows its own pixels. Every pixel on screen stays an exact PAL colour.
+ */
+interface NightHole {
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+}
+class Night {
+  readonly r: Raster;
+  level = 0;
+  holes: NightHole[] = [];
+  private key = '';
+  constructor(sc: Phaser.Scene) {
+    this.r = new Raster(sc, 0, 0, GAME_W, GAME_H, NIGHT_DEPTH);
+  }
+  /** Redraw only when the level or a hole changed (a stepped stamp, it never drifts). */
+  sync(): void {
+    const key = `${this.level}|${this.holes.map((h) => `${h.x},${h.y},${h.rx},${h.ry}`).join(';')}`;
+    if (key === this.key || !this.r.alive) return;
+    this.key = key;
+    const lv = this.level;
+    const holes = this.holes.filter((h) => h.rx > 0 && h.ry > 0);
+    this.r.draw((r) => {
+      if (lv <= 0) return;
+      for (let y = 0; y < GAME_H; y++) {
+        for (let x = 0; x < GAME_W; x++) {
+          let l = lv;
+          for (const h of holes) {
+            const dx = (x - h.x) / h.rx;
+            const dy = (y - h.y) / h.ry;
+            const d = dx * dx + dy * dy;
+            // inside: no stamp; a rim one quarter step lighter than the night
+            if (d < 1) l = 0;
+            else if (d < 1.6 && l > 0) l = Math.min(l, lv - 0.25);
+          }
+          if (l > 0) r.dpx(x, y, PAL.ink, l);
+        }
+      }
+    });
+  }
+  destroy(): void {
+    this.r.destroy();
+  }
+}
+const nights = new WeakMap<Phaser.Scene, Night>();
+/** The night's levels going down / coming back up (quarter steps, 2×2 Bayer). */
+const NIGHT_DOWN = [0.25, 0.5] as const;
+const NIGHT_UP = [0.25, 0] as const;
 
-/** The lights go down: an ink veil in 4 visible steps (110 ms apart) + the light layer's own full dim. */
+/** The lights go down: the ink stamp in 2 quarter steps (130 ms apart). */
 function nightDown(sc: Phaser.Scene): void {
-  if (nights.get(sc)?.active) return;
-  const r = sc.add.rectangle(-8, -8, GAME_W + 16, GAME_H + 16, PAL.ink, 1).setOrigin(0).setDepth(NIGHT_DEPTH).setAlpha(0);
-  nights.set(sc, r);
+  if (nights.get(sc)?.r.alive) return;
+  const n = new Night(sc);
+  nights.set(sc, n);
   void lightDim(sc, 1, 440);
   NIGHT_DOWN.forEach((a, i) =>
     bg(
-      wait(sc, i * 110).then(() => {
-        if (r.active && nights.get(sc) === r) r.setAlpha(a);
+      wait(sc, i * 130).then(() => {
+        if (nights.get(sc) !== n) return;
+        n.level = a;
+        n.sync();
       }),
     ),
   );
 }
+/** The running night of this scene (light holes are cut into it by the wipe). */
+const nightOf = (sc: Phaser.Scene): Night | null => {
+  const n = nights.get(sc);
+  return n && n.r.alive ? n : null;
+};
 
-/** The lights come back up in 4 steps (90 ms apart); the veil is removed. */
+/** The lights come back up in 2 quarter steps (100 ms apart); the stamp is removed. */
 async function nightUp(sc: Phaser.Scene): Promise<void> {
-  const r = nights.get(sc);
+  const n = nights.get(sc);
   void lightDim(sc, 0, 500);
-  if (!r) return;
+  if (!n) return;
   nights.delete(sc);
+  n.holes = [];
   for (const a of NIGHT_UP) {
-    if (!r.active) return;
-    r.setAlpha(a);
-    await wait(sc, 90);
+    if (!n.r.alive) return;
+    n.level = a;
+    n.sync();
+    await wait(sc, 100);
   }
-  r.destroy();
+  n.destroy();
 }
 
 // ================================================================ the eye (a raster in the sky)
