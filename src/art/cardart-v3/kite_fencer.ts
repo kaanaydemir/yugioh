@@ -18,11 +18,11 @@ import { paintBackdrop, recolor } from './_kit';
 import type { ArtLayers, CardArtV3 } from './_types';
 
 /** Where the sprite frame's (0, 0) lands in the big picture, and the small picture's crop of the big one. */
-const BIG_AT = [12, 4] as const;
-const SMALL_CROP = [19, 5, 44, 34] as const;
+const BIG_AT = [14, 9] as const;
+const SMALL_CROP = [20, 5, 44, 34] as const;
 /** The lit indicator panel (big px) — the brightest point — and the same point in small px. */
-const FOCUS = [40, 22] as const;
-const FOCUS_SMALL = [16, 16] as const;
+const FOCUS = [38, 19] as const;
+const FOCUS_SMALL = [17, 12] as const;
 
 const LOOP: readonly Partial<Pose>[] = [
   { kbl: 2, rph: 0, svib: 0 },
@@ -34,27 +34,29 @@ const LOOP: readonly Partial<Pose>[] = [
 /** The picture pose: lifted, hanging under the open kite, the rapier forward, the panel lit, the string taut. */
 function cardPose(f: number): Pose {
   return pose({
-    lift: 3,
+    // lifted clear of the floor, hanging under the open kite: the legs DANGLE (feet pointed, knees a little bent, both
+    // trailing back — the special's lift-off pose), the rapier forward, the rear hand up on the spar
+    lift: 8,
     sink: 0,
-    lean: 1,
-    f1x: -5,
-    f1y: -2,
-    f2x: 3,
-    f2y: -1,
-    hx: 14,
-    hy: 0,
-    ba: -8,
-    fx: -2,
-    fy: -16,
+    lean: -1,
+    f1x: -8,
+    f1y: -3,
+    f2x: 1,
+    f2y: -2,
+    hx: 13,
+    hy: 1,
+    ba: -6,
+    fx: -4,
+    fy: -19,
     kx: -8,
-    ky: -11,
+    ky: -12,
     ka: 2,
-    ko: 1.1,
-    kh: 0.9,
+    ko: 1.22,
+    kh: 1,
     smode: 1,
-    pinX: 4,
-    pinY: 80,
-    rlift: 2,
+    pinX: 2,
+    pinY: 82,
+    rlift: 3,
     lamp: 2,
     glint: 0,
     ...LOOP[f % LOOP.length],
