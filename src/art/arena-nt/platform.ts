@@ -204,7 +204,8 @@ function topTone(x: number, y: number): Color {
   return Math.hypot(dx, dy) + wave < 0.92 ? G1 : G0;
 }
 /** board-top critique round 2: where the lit stone2 band ends (screen x + 2y). */
-const KEY_BAND = 118 + 2 * 62 + 480 + 70;
+// final arena pass (verifier #2): the lit band pulled back (the +70 widening removed): more of the top is the darker stone1.
+const KEY_BAND = 118 + 2 * 62 + 480;
 
 function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): PlatformArt['dashes'] {
   const dashPx: { x: number; y: number }[][] = Array.from({ length: 13 }, () => []);

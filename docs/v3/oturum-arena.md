@@ -689,3 +689,15 @@ Kalan farklar: sahne L çentiği ve pahlar (sahne maddesi); tahta hedeften serin
 Son: `shots/arena/pixr3-4.png`. palcheck PASS, typecheck temiz, arena testleri 34/34. v1: değişiklikler yalnız board-nt / arena-nt (v3).
 Kalan farklar: tahta hedeften serin; sol kapak uzun (30 px'lik çıkıntıyı yutmak için); kamera sabit olduğundan hedefteki geniş sahne
 payları yalnız P1 tarafında; P2 kürsüsü hâlâ uzak kenarın arkasında (hedefte sahnenin üstünde).
+
+#### Arena geçişi kapıları (2026-11-06)
+Hiçbir düzeltme gerekmedi; tüm kapılar ilk koşuda yeşil. Kod değişikliği yok.
+| Kapı | Sonuç |
+|---|---|
+| `npm run typecheck` | temiz |
+| `npx vitest run` | 1451/1456; 5 hata hepsi bilinen listede (cardface-v3 G1, dusk_ashen, hourglass_imp, shield_titan, crag_axeman ses); cloud_hatchling bu koşuda geçti; arena geometri testleri geçti |
+| filmdiff v1 | 17/17 IDENTICAL |
+| filmdiff a6v1 | 26/26 IDENTICAL |
+| palcheck `shots/arena/gates.png` (a6Hover v3) | PASS (off 0.11 %, white 0.89 %, bands 0) |
+| kamera kapısı (`shots/arena/now.json` vs `shots/kart-a/camera-base.json`) | 15 ok, 0 FAIL; measure errors 0 |
+| sayfa hataları (a6Hover, spBolt, flowTurnP1, tbMirror; v3) | yok |

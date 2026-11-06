@@ -72,7 +72,9 @@ function lightAt(x: number, y: number, jitter: number): number {
     if (d < best) best = d;
   });
   best += jitter;
-  return best < 0.22 ? 4 : best < 0.46 ? 3 : best < 0.76 ? 2 : best < 1 ? 1 : 0;
+  // final arena pass (verifier #3): every warm band reaches ~0.08 of the radius further (one stepped band brighter at any
+  // given distance), the outer rim unchanged — warmer, brighter sconce pools like the target, still hard palette steps.
+  return best < 0.3 ? 4 : best < 0.55 ? 3 : best < 0.84 ? 2 : best < 1 ? 1 : 0;
 }
 
 /** 4×4 ordered-dither offset (−0.5 … 0.47): the pool's band edges cross-hatch over ~0.16 of the radius, so the halo
@@ -305,7 +307,8 @@ function paintPillarAt(s: (x: number, y: number, c: number) => void, x0: number,
       // course seams no longer cut, and soft (shade, not ink) course seams on the face
       const hi = lit >= 3 ? PAL.skin2 : lit >= 1 ? PAL.skin1 : PAL.stone3;
       const face = lit >= 3 ? PAL.skin1 : lit >= 1 ? PAL.skin0 : PAL.stone2;
-      const shade = lit >= 3 ? PAL.skin0 : lit >= 1 ? PAL.stone0 : PAL.stone1;
+      // final arena pass (verifier #3): the unlit shaded third one step darker (stone1 -> stone0): crisper pillar edges
+      const shade = lit >= 3 ? PAL.skin0 : PAL.stone0;
       const i = x - xa;
       const n = xb - xa;
       let c: number;

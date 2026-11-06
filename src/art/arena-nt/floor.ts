@@ -72,7 +72,9 @@ function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): 
   // player's darkest ramp tone, flat).
   // board-top critique round 2 (2026-11-05): the tile floor one stone step up (stone2) — the recess reads by its dark far
   // wall and lit lip, and the tile is a touch lighter than the darker (unlit) slab, as in the target.
-  const floor: Color = empty ? G[2] : ramp[0];
+  // final arena pass (verifier #2): the tile floor one stone step DARKER than the stage top (stone1 vs the stage's lit stone2), as
+  // in the target, so a tile reads as a darker recess, not only by its thin border.
+  const floor: Color = empty ? G[1] : ramp[0];
   // critique round 2 #4: crim3 is darker than cyan3 (luma ≈ 132 vs 177), so the red tiles' inner glow row sits one ramp
   // step higher than the cyan one — equal visual weight of the two sides' borders.
   const redLift = player === 1 ? 1 : 0;

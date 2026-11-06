@@ -62,8 +62,8 @@ describe('neon tower platform painters', () => {
     // the near flat edge (y 262) carries FACE_H rows of wall: last row opaque, the one below clear
     expect(op(346, 262 + FACE_H - 1)).toBe(true);
     expect(op(346, 262 + FACE_H + 1)).toBe(false);
-    // the left wall's column at x 200 starts under the plate edge (y = 187 + (x − 118) / 2) and is FACE_H tall
-    const top = 187 + (200 - 118) / 2;
+    // the left wall's column at x 200 starts under the plate edge (y = 157 + (x − 118) / 2) and is FACE_H tall
+    const top = 157 + (200 - 118) / 2;
     expect(op(200, top + FACE_H - 1)).toBe(true);
     expect(op(200, top + FACE_H + 1)).toBe(false);
     // a banded wall: five or more tones down one column of the lit face
@@ -85,7 +85,7 @@ describe('neon tower platform painters', () => {
     expect(at(521, 173)).toBe(PAL.gold1); // right end cap (last plate column)
     // panel seams: ink columns cut the lit wall's upper band at least every ~30 px
     const seamXs: number[] = [];
-    for (let x = 122; x < 266; x++) if (at(x, 187 + Math.floor((x + 0.5 - 118) / 2) + 8) === PAL.ink) seamXs.push(x);
+    for (let x = 122; x < 326; x++) if (at(x, 157 + Math.floor((x + 0.5 - 118) / 2) + 8) === PAL.ink) seamXs.push(x);
     expect(seamXs.length).toBeGreaterThanOrEqual(6);
     // small lit windows: cyan on the P1 (near-left) wall, crimson on the far half of the right wall
     const count = (x0: number, x1: number, c: number): number => {

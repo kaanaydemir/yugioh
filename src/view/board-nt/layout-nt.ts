@@ -42,9 +42,7 @@ export function ntIso(col: number, row: number): XY {
 export const PLATE_C0 = -0.875;
 export const PLATE_C1 = NT_COLS - 0.5 + 0.375; // 6.875
 export const PLATE_R0 = -1.0625;
-// arena pixel/polish round 3 (#1): the near-left edge moves out 30 px (0.9375 row) so the P1 dais stands ON the stage (one convex
-// block, no L notch round a protruding dais base); the far-right edge stays (the P2 dais keeps its ledge behind it).
-export const PLATE_R1 = NT_ROWS - 0.5 + 1.5; // 6.0
+export const PLATE_R1 = NT_ROWS - 0.5 + 0.5625; // 5.0625
 /**
  * The chamfer lines (screen px): vertical end caps x, flat far / near edges y. Arena pass round 2: BIG cuts so the slab reads as
  * an octagon (hedef-gorunum-3): the side caps cut 20 px off the left / right tips (20-px tall vertical caps, still 10 px clear of
@@ -76,22 +74,22 @@ export function ntGrid(x: number, y: number): [number, number] {
 // The four sharp corners of the tight block are far (294, 49), right (542, 173), near (346, 271), left (98, 147); the
 // chamfer lines cut 13 px off the far tip, 9 px off the near tip and 20 px off the side tips (the near flat edge is 328..364).
 export const PLATE_OUTLINE: readonly [number, number][] = [
-  ntGrid(PLATE_X0, 187), // near-left corner (left face start)
+  ntGrid(PLATE_X0, 157), // near-left corner (left face start)
   ntGrid(PLATE_X0, 137), // left end cap, top
   ntGrid(268, PLATE_Y0), // far flat edge, left end
   ntGrid(320, PLATE_Y0), // far flat edge, right end
   ntGrid(PLATE_X1, 163), // right end cap, top
   ntGrid(PLATE_X1, 183), // right end cap, bottom
   ntGrid(364, PLATE_Y1), // near flat edge, right end (the near corner of the right face)
-  ntGrid(268, PLATE_Y1), // near flat edge, left end
+  ntGrid(328, PLATE_Y1), // near flat edge, left end
 ];
 
 /** The extreme points of the plate's top (screen): the middle of the flat far edge, the right / left end caps, the middle of the flat near edge. */
 export const PLATE_CORNERS = {
   apex: { x: 294, y: PLATE_Y0 },
   right: { x: PLATE_X1, y: 173 },
-  bottom: { x: 316, y: PLATE_Y1 },
-  left: { x: PLATE_X0, y: 162 },
+  bottom: { x: 346, y: PLATE_Y1 },
+  left: { x: PLATE_X0, y: 147 },
 } as const;
 
 /** Screen bounding box of the plate top (duelist pads are inside it). */
