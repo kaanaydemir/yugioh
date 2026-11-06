@@ -27,7 +27,7 @@ export function registerPadsTextures(scene: Phaser.Scene): PadsArt {
 export function createPadsLayer(ctx: NtCtx): NtLayer {
   const scene = ctx.scene;
   registerPadsTextures(scene);
-  const period = [5600, 6700];
+  const period = [2000, 2300]; // a gentle ~2 s breath
   const phase = [0.15, 0.6];
   const imgs: Img[] = DUELIST_PADS.map((r, i) =>
     ctx.add(scene.add.image(r.x + 28 - PAD_CANVAS.cx, r.y + 14 - PAD_CANVAS.cy, NT_PADS_KEY, padFrame(i as 0 | 1, 1)).setOrigin(0).setDepth(NT_DEPTH.pads)),
@@ -42,8 +42,8 @@ export function createPadsLayer(ctx: NtCtx): NtLayer {
   const level = (i: number, t: number): number => {
     if (!lights || t < onAt) return 0;
     const u = (((t / period[i] + phase[i]) % 1) + 1) % 1;
-    let lv = u < 0.55 ? 1 : u < 0.7 ? 2 : u < 0.85 ? 1 : 0;
-    if (active === i) lv = Math.max(lv, 2);
+    let lv = u < 0.25 ? 1 : u < 0.5 ? 2 : u < 0.75 ? 1 : 0;
+    if (active === i) lv = Math.min(3, lv + 1);
     // a quick double pulse as the turn begins
     const k = t - pulseAt[i];
     if (k >= 0 && k < 520) lv = Math.max(lv, Math.floor(k / 130) % 2 === 0 ? 3 : 1);

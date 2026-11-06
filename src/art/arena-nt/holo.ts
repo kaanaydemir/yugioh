@@ -77,7 +77,7 @@ function paintPed(side: 0 | 1): PixelCanvas {
     for (let y = top; y <= bot; y++) {
       const r = y - top;
       let col: number = base;
-      if (r < 2) col = u < 0 ? N.n4 : N.n3;
+      if (r < 2) col = u < 0 ? PAL.stone2 : PAL.stone1; // the ring's grey-blue lip carries down the side
       else if (r === 4) col = u < 0.4 ? R[3] : R[2]; // the neon band
       else if (r === 5) col = R[1];
       else if (r > 5 && (x - cx + 80) % 14 === 0) col = N.n0; // plate seams
@@ -89,11 +89,13 @@ function paintPed(side: 0 | 1): PixelCanvas {
   for (const x of [cx - rx, cx + rx]) c.vline(x, cy, cy + H, N.ink);
   // ---- the top face: ink outline, a 2-px lit rim (brighter on the left), dark graphite, a dithered light pool
   c.ellipse(cx, cy, rx + 1, ry + 1, N.ink);
-  c.ellipse(cx, cy, rx, ry, N.n3);
-  c.ellipse(cx, cy, rx - 2, ry - 1, N.n1);
+  // the rim reads as a light grey-blue metal ring (target hedef-gorunum-3): stone3 band, stone2 inner bevel
+  c.ellipse(cx, cy, rx, ry, PAL.stone3);
+  c.ellipse(cx, cy, rx - 2, ry - 1, PAL.stone2);
+  c.ellipse(cx, cy, rx - 3, ry - 1, N.n1);
   c.ellipse(cx, cy, rx - 4, ry - 2, N.n0);
   // the lit part of the rim: the upper-left half one tone up
-  for (let a = Math.PI * 0.55; a < Math.PI * 1.45; a += 0.012) c.set(Math.round(cx + Math.cos(a) * rx), Math.round(cy + Math.sin(a) * ry), N.n4);
+  for (let a = Math.PI * 0.55; a < Math.PI * 1.45; a += 0.012) c.set(Math.round(cx + Math.cos(a) * rx), Math.round(cy + Math.sin(a) * ry), PAL.mist);
   // the pool: dither rings of the ramp inside the dark face
   for (let y = 0; y < PED_H; y++)
     for (let x = 0; x < PED_W; x++) {
@@ -135,23 +137,11 @@ function paintRing(side: 0 | 1, k: number): PixelCanvas {
 }
 
 function paintCone(side: 0 | 1): PixelCanvas {
-  const R = HOLO_LOOKS[side].ramp;
-  const c = new PixelCanvas(CONE_W, CONE_H);
-  for (let y = 0; y < CONE_H; y++) {
-    const u = 1 - y / (CONE_H - 1); // 1 at the pedestal (bottom) … 0 at the top
-    const half = 36 + (1 - u) * 24;
-    const level = Math.round(u * 5);
-    for (let x = 0; x < CONE_W; x++) {
-      const dx = Math.abs(x - CONE_W / 2 + 0.5);
-      if (dx > half) continue;
-      // vertical streaks: some 2-px columns stay dark
-      if (((x >> 1) + (y >> 4)) % 3 === 0) continue;
-      if (BAYER[(y & 3) * 4 + (x & 3)] < level) c.set(x, y, R[0]);
-      // the cone's two edges: a sparse 1-px line
-      if (dx > half - 1 && (y + (x & 1)) % 3 === 0) c.set(x, y, u > 0.3 ? R[1] : R[0]);
-    }
-  }
-  return c;
+  // pixel compliance pass (2026-11-06): the cone was a Bayer screen-door drawn at 28 % alpha (off-palette mixes). Drawn
+  // opaque, the dither read as dotted fringe and 1-px rays as dark sticks on the floor (shots/arena/pix-3, pix-5), so the
+  // cone frame stays (same atlas layout) but is empty: the pedestal's lit pool and ring carry the projector light.
+  void side;
+  return new PixelCanvas(CONE_W, CONE_H);
 }
 
 const FLARE_RX = [14, 26, 38, 50, 62];

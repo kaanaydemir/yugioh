@@ -12,6 +12,8 @@ import {
   lightFrame,
   torchFrame,
 } from '../../art/arena-nt/lights';
+import { BRICK_TORCHES, NT_WALL_TORCH_KEY, WALL_TORCH, paintWallTorch } from '../../art/arena-nt/brickwall';
+import { BRAZIER, BRAZIERS, paintBrazier } from '../../art/arena-nt/hallfloor';
 import { PAL } from '../../art/palette';
 import { attributeLightColor, lightFlash } from '../light';
 import type { Attribute } from '../../data/cards';
@@ -86,6 +88,7 @@ interface TorchLight {
   phase: number;
   lastFrame: number;
   frameOf: (f: number) => string;
+  wall: boolean;
 }
 
 /**
@@ -94,14 +97,27 @@ interface TorchLight {
  * - 'post': braziers on stone posts standing on the hall floor (left / right of the stage, clear of the HUD).
  */
 const TORCH_SPOTS: readonly { kind: 'sconce' | 'post'; x: number; y: number; depth: number; period: number; phase: number }[] = [
-  // one sconce on the front face of each hall pillar (./backhall.ts HALL_PILLARS: x + 11, under the banner)
-  { kind: 'sconce', x: 133, y: 82, depth: NT_DEPTH.wallLights + 0.5, period: 420, phase: 0 },
-  { kind: 'sconce', x: 255, y: 88, depth: NT_DEPTH.wallLights + 0.5, period: 460, phase: 140 },
-  { kind: 'sconce', x: 385, y: 88, depth: NT_DEPTH.wallLights + 0.5, period: 440, phase: 290 },
-  { kind: 'sconce', x: 507, y: 104, depth: NT_DEPTH.wallLights + 0.5, period: 410, phase: 80 },
-  { kind: 'post', x: 82, y: 212, depth: NT_DEPTH.platform + 1.5, period: 390, phase: 210 },
-  { kind: 'post', x: 566, y: 222, depth: NT_DEPTH.platform + 1.5, period: 450, phase: 340 },
+  // wall sconces on the brick back wall (src/art/arena-nt/brickwall.ts BRICK_TORCHES; their warm pools are baked per brick)
+  ...BRICK_TORCHES.map((b, i) => ({
+    kind: 'sconce' as const,
+    x: b.x,
+    y: b.y,
+    depth: NT_DEPTH.wallLights + 0.5,
+    period: [420, 460, 440, 410][i % 4],
+    phase: [0, 140, 290, 80][i % 4],
+  })),
+  // arena v3 "floor and braziers": stone-post braziers at hedef-gorunum-3's spots (x, y = flame centre); their warm
+  // stepped floor pools are baked into the hall floor (art/arena-nt/hallfloor.ts)
+  ...BRAZIERS.map((b) => ({
+    kind: 'post' as const,
+    x: b.x,
+    y: b.y - BRAZIER.h + 1 + BRAZIER.flameY,
+    depth: NT_DEPTH.platform + 1.5,
+    period: b.period,
+    phase: b.phase,
+  })),
 ];
+const NT_BRAZIER_KEY = (f: number): string => `nt:hall:brazier:${f}`;
 
 export function createLightsLayer(ctx: NtCtx): NtLayer {
   const scene = ctx.scene;
@@ -117,15 +133,47 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
   void FOG_BANK_KEY;
   void FOG_WISP_KEY;
 
-  // 1. back layer: around the hologram plinths (behind the stage)
-  addFog(lightFrame.fogBack(0), -60, 96, false, NT_DEPTH.holo + 0.6, 6, 2, 9200, 0);
-  addFog(lightFrame.fogBack(1), 490, 106, true, NT_DEPTH.holo + 0.6, -6, 2, 9800, 2400);
-  // 2. mid layer: low banks on the hall floor beside the stage
-  addFog(lightFrame.fogFront(0), -70, 210, false, NT_DEPTH.platform - 0.18, 7, 2, 10600, 1500);
-  addFog(lightFrame.fogFront(1), 460, 214, true, NT_DEPTH.platform - 0.18, -7, 2, 11200, 4100);
-  // 3. thin wisps gliding over the low banks
-  addFog(lightFrame.fogWisp(0), 6, 252, false, NT_DEPTH.platform - 0.12, 10, 2, 8600, 2100);
-  addFog(lightFrame.fogWisp(1), 486, 246, true, NT_DEPTH.platform - 0.12, -10, 2, 9000, 4900);
+  // arena v3 "Fog" (hedef-gorunum-3): low cumulus streaks (art/arena-nt/lights.ts FOG_BANKS) lying on the hall floor at
+  // both edges, under the stage's depth (never over the board), clear of the brazier pools; each one sways slowly on its
+  // own period (big banks slow, thin wisps a little faster) so the layers slide past each other.
+  // [bank, x, y, flipX, ampX, ampY, period ms, phase ms] — back banks (0–3) first, then the lit-cap front banks; every
+  // placement has its own baked bank (no flipX), so all caps face the same upper-left light
+  const BANKS: readonly [number, number, number, boolean, number, number, number, number][] = [
+    // back layer
+    [0, -74, 148, false, 6, 1, 26000, 0],
+    [3, -46, 226, false, 7, 1, 23000, 9000],
+    [2, 486, 156, false, -6, 1, 27000, 4000],
+    [1, 518, 228, false, -7, 1, 24000, 15000],
+    [14, -64, 120, false, 6, 1, 25000, 12000],
+    [19, 494, 132, false, -6, 1, 25500, 3000],
+    // left edge, front
+    [15, 18, 136, false, 9, 1, 16500, 4400],
+    [4, -28, 166, false, 9, 1, 17000, 2000],
+    [8, 32, 192, false, 12, 0, 13000, 6400],
+    [5, -52, 204, false, 8, 1, 21000, 5200],
+    [6, -18, 246, false, 9, 1, 15000, 9100],
+    [9, 8, 282, false, 12, 0, 12000, 3300],
+    // right edge, front
+    [12, 578, 150, false, -12, 0, 13500, 8800],
+    [10, 536, 176, false, -9, 1, 18000, 7400],
+    [7, 514, 200, false, -7, 1, 16000, 1800],
+    [11, 552, 252, false, -8, 1, 19000, 11800],
+    [13, 492, 286, false, -12, 0, 12500, 6100],
+    // stage base skirts + right plinth foot
+    [16, 50, 206, false, 8, 1, 17500, 10200],
+    [17, 190, 262, false, 9, 1, 15500, 4700],
+    [18, 408, 258, false, -8, 1, 16500, 12300],
+    [20, 540, 148, false, -8, 1, 18500, 7000],
+    // pixel/polish crit round 2 #3: denser low banks along the floor at the lower left / lower right (target)
+    [2, -118, 222, false, 5, 1, 29000, 6000],
+    [0, 512, 236, false, -5, 1, 28000, 13000],
+    // pixel/polish crit round 3 #3: one more layered front bank in each lower margin (below y 230, clear of the board)
+    [5, 46, 236, false, 7, 1, 22500, 7600],
+    [7, 470, 262, false, -7, 1, 20500, 3900],
+  ];
+  BANKS.forEach(([i, x, y, flip, ax, ay, period, phase], k) =>
+    addFog(lightFrame.fogBank(i), x, y, flip, NT_DEPTH.platform - 0.18 + k * 0.001, ax, ay, period, phase),
+  );
 
   // 4. mounted torches (wall sconces / post braziers) with an ordered-dither warm glow behind them
   const torches: TorchLight[] = TORCH_SPOTS.map((spot) => {
@@ -134,16 +182,26 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
       scene.add
         .image(spot.x - TORCH_GLOW.cx, spot.y - TORCH_GLOW.cy, NT_LIGHTS_KEY, torchFrame.glow(0))
         .setOrigin(0)
-        .setDepth(spot.depth - 0.05),
+        .setDepth(spot.depth - 0.05)
+        // a wall sconce's light is the stepped brick pool baked into the back wall (brickwall.ts): no dithered halo
+        // posts: the pool is baked into the floor; no dithered halo (it read as a dotted fringe)
+        .setAlpha(0),
     );
-    const frameOf = (f: number): string => (spot.kind === 'sconce' ? torchFrame.sconce(f) : torchFrame.post(f));
+    const wall = spot.kind === 'sconce';
+    // wall sconces: the dedicated wall torch of brickwall.ts (own textures); posts: the brazier frames of the lights atlas
+    const frameOf = (f: number): string => (wall ? NT_WALL_TORCH_KEY(f) : NT_BRAZIER_KEY(f));
+    if (wall) for (let f = 0; f < WALL_TORCH.frames; f++) ensureNtTexture(scene, 'brickwall', NT_WALL_TORCH_KEY(f), () => paintWallTorch(f));
+    else for (let f = 0; f < BRAZIER.frames; f++) ensureNtTexture(scene, 'brazier', NT_BRAZIER_KEY(f), () => paintBrazier(f));
+    void TORCH_MOUNT;
     const img = ctx.add(
-      scene.add
-        .image(spot.x - TORCH_MOUNT.cx, spot.y - TORCH_MOUNT.flameY, NT_LIGHTS_KEY, frameOf(0))
+      (wall
+        ? scene.add.image(spot.x - WALL_TORCH.cx, spot.y - WALL_TORCH.flameY, frameOf(0))
+        : scene.add.image(spot.x - BRAZIER.cx, spot.y - BRAZIER.flameY, frameOf(0))
+      )
         .setOrigin(0)
         .setDepth(spot.depth),
     );
-    return { img, glow, period: spot.period, phase: spot.phase, lastFrame: 0, frameOf };
+    return { img, glow, period: spot.period, phase: spot.phase, lastFrame: 0, frameOf, wall };
   });
 
   let lights = true;
@@ -195,12 +253,13 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
         }
         if (lights) {
           for (const tr of torches) {
-            const step = Math.floor((t + tr.phase) / (tr.period / 3)) % 3;
+            const n = tr.wall ? 3 : BRAZIER.frames;
+            const step = Math.floor((t + tr.phase) / (tr.period / n)) % n;
             if (step !== tr.lastFrame) {
               tr.lastFrame = step;
-              tr.img.setFrame(tr.frameOf(step));
+              tr.img.setTexture(tr.frameOf(step));
               // the glow flickers by swapping its dither level (no alpha: palette-crisp)
-              tr.glow.setFrame(torchFrame.glow(step));
+              tr.glow.setFrame(torchFrame.glow(step % 3));
             }
           }
         }

@@ -3,6 +3,7 @@
 // and red (P2) tile borders with much less outer glow. Pure PixelCanvas code (no Phaser).
 
 import { buildCalmArt } from '../../view/board-calm/art';
+import { PAL } from '../palette';
 import { type Color, PixelCanvas } from '../pixel';
 import { NT_PAL } from './palette';
 import { buildPlatformArt, emblemCanvas } from './platform';
@@ -39,7 +40,10 @@ function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): 
   const ramp = player === 0 ? NT_PAL.blue : NT_PAL.red;
   const empty = state === SLOT_EMPTY;
   // hedef-gorunum-3: a clear 1-px border (cyan2 / crim2, one up when occupied or on the side to move)
-  const line: Color = ramp[Math.min(4, (empty ? 2 : 3) + (empty ? boost : 0))];
+  // board-top pass (2026-11-05): the target's borders are bright on BOTH sides — the 1-px line is always ramp[3]; the side
+  // to move / an occupied tile shows as a lit inner wall (ramp[1] on the far wall's top pixel row) instead of a brighter line
+  const line: Color = ramp[3];
+  const glow = boost === 1 || !empty;
   const stud: Color = NT_PAL.metal[3];
   const isLine = (i: number, j: number): boolean => i >= 0 && j >= 0 && i < 64 && j < 32 && m.line.get(i, j) !== null;
   const isFill = (i: number, j: number): boolean => i >= 0 && j >= 0 && i < 64 && j < 32 && m.fill.get(i, j) !== null;
@@ -62,6 +66,18 @@ function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): 
   const hh = (ly1 - ly0 + 1) / 2;
   const insetDepth = (i: number, j: number): number => (1 - (Math.abs(i + 0.5 - scx) / hw + Math.abs(j + 0.5 - scy) / hh)) * hh;
   const G = NT_PAL.graphite;
+  // arena pass "board top" (2026-11-05, hedef-gorunum-3): a shallow inset tile, pixel-crisp, NO dither. The 1-px player
+  // line is the rim; inside it the far edges show the tile's dark inner wall (2 px, the face turned toward the camera),
+  // the near edges a 1-px lit lip, and the tile floor is ONE flat tone stage stone's base tone (the stage around it carries the key-light wash, the tile does not: one step darker) (occupied: the
+  // player's darkest ramp tone, flat).
+  // board-top critique round 2 (2026-11-05): the tile floor one stone step up (stone2) — the recess reads by its dark far
+  // wall and lit lip, and the tile is a touch lighter than the darker (unlit) slab, as in the target.
+  // final arena pass (verifier #2): the tile floor one stone step DARKER than the stage top (stone1 vs the stage's lit stone2), as
+  // in the target, so a tile reads as a darker recess, not only by its thin border.
+  const floor: Color = empty ? G[1] : ramp[0];
+  // critique round 2 #4: crim3 is darker than cyan3 (luma ≈ 132 vs 177), so the red tiles' inner glow row sits one ramp
+  // step higher than the cyan one — equal visual weight of the two sides' borders.
+  const redLift = player === 1 ? 1 : 0;
   for (let j = 0; j < 32; j++) {
     for (let i = 0; i < 64; i++) {
       if (m.tile.get(i, j) === null) continue;
@@ -69,10 +85,13 @@ function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): 
       if (c === null && isFill(i, j)) {
         const d = insetDepth(i, j);
         const far = j + 0.5 < scy;
-        // far edges: the slot's dark inner wall (2 px); near edges: a 1-px lit lip; the floor of the slot one tone down
-        if (far) c = d < 1.6 ? NT_PAL.ink : d < 2.6 ? NT_PAL.metal[0] : (i + j) % 2 === 0 ? G[0] : null;
-        else c = d < 1.1 ? NT_PAL.metal[2] : (i + j) % 2 === 0 ? G[0] : null;
-        if (!empty && c === null) c = (i + j) % 2 === 0 ? ramp[0] : null;
+        // board-top critique 1 (2026-11-05): a deeper recess — a 3-px far wall (ramp[1] glow row, ink, stone0; the glow row on
+        // BOTH sides always (critique 2: equal red / cyan weight), one step up (ramp[2]) on the side to move / an
+        // occupied tile) and a near lip one step brighter (stone3), so a tile reads as a pit
+        // critique round 3 #1: the far wall's inner row one stone step darker (stone0 -> ink) and the near lip one step
+        // brighter (stone3 -> stone4), both still 1 px, so the recess reads at 1x
+        if (far) c = d < 1.6 ? ramp[(glow ? 2 : 1) + redLift] : d < 3.6 ? NT_PAL.ink : floor;
+        else c = d < 1.1 ? PAL.stone4 : floor;
       }
       if (state === SLOT_DOWN && !isFill(i, j)) {
         const dx = Math.abs(i + 0.5 - 32);
@@ -83,7 +102,6 @@ function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): 
     }
   }
   void pile;
-  void boost;
   return p;
 }
 

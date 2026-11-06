@@ -140,3 +140,7 @@ D/E/F'ye "devam" mesajı gönderilecek. A/B/C: önce kartları tamamen bitir (ka
   yenilendi; shot.mjs artık chrome-linux64'ü de buluyor). Test sürümü 16 YENİ adreste: https://claude.ai/artifact/1FtHvKhUno83ZUCg8ASrmc (eski sayfa dosya sınırına dayandı).
 - 2026-11-06: hollow_ogre (şerit B, dac99ea) ana dala alındı. Kapılar: typecheck temiz; vitest bilinen 7; v1 17/17 +
   a6v1 26/26 IDENTICAL. Test sürümü 17.
+- 2026-11-06: ŞERİT C BİTTİ (crag_axeman + steppe_spiralhorn, dc25277). ARENA GEÇİŞİ (şerit A, 0913520) ana dala alındı:
+  hedef-gorunum-3'e göre kalın sahne, gömük karolar (boş yuva yok), kürsüler, tuğla duvar/sancak/meşale, mangallar,
+  katmanlı sis; eski 3 arena testi yeni şekle göre yazıldı. Bilinen test hataları artık 4 (G1, dusk_ashen, hourglass_imp,
+  shield_titan). Açık: P2 kürsüsü küçük/sönük, saha üstü hedeften soğuk, öndeki sis HUD altında. Test sürümü 18.

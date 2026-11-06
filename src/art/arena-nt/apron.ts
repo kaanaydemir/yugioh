@@ -3,8 +3,15 @@
 
 import { FACE_H, NT_OX, NT_OY, PLATE_C0, PLATE_C1, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1 } from '../../view/board-nt/layout-nt';
 import { type Color, PixelCanvas } from '../pixel';
+import { PAL } from '../palette';
 import { NT_PAL } from './palette';
 import { type Atlas, Surface, packAtlas } from './platform-pack';
+import { hallFloorPixel, warmPixel } from './hallfloor';
+
+// arena v3 pass "floor and braziers" (2026-11-06): the hall floor pattern (flags, plates, grates, pipes, brazier pools)
+// comes from ./hallfloor.ts in final colours; the old rails / blocks / bollards are no longer painted into the floor
+// (their strip + lamp descriptors are still built for the floor layer, which keeps them hidden).
+const V3_HALL_FLOOR = true;
 
 export const NT_APRON_KEY = 'nt:apron';
 export const NT_APRON_FX_KEY = 'nt:apron:fx';
@@ -79,6 +86,8 @@ export function buildApronArt(): ApronArt {
   const lamps: ApronLamp[] = [];
   paintRails(S, strips, masks, lamps);
   paintProps(S, lamps);
+  // the brazier pools also light the stage's cast shadow (painted after the floor)
+  if (V3_HALL_FLOOR) S.canvas.map((c, x, y) => warmPixel(c, x + APRON_BOX.x, y + APRON_BOX.y));
   const fx = packAtlas(masks, 256);
   cached = { canvas: S.canvas, fx, strips, lamps, ms: Math.round((performance.now() - t0) * 10) / 10 };
   return cached;
@@ -92,17 +101,27 @@ const FOOT = 10;
 const FOOT_FACE = 4;
 // hedef-gorunum-3: a wider, darker cast shadow of the raised stage on the hall floor
 const SHADOW = 30;
+const SHADE: Color = PAL.stone0;
+const SHADOW_DX = 8;
+const SHADOW_DY = 4;
+const STAGE_FOOT_SHADOW = true;
 
 function floorPixel(x: number, y: number): Color {
   const e = outsideOf(x + 0.5, y + 0.5);
   if (e <= 0) return INK;
-  if (e <= FOOT) return footingTop(e);
-  for (let d = 1; d <= FOOT_FACE && e <= FOOT + FOOT_FACE; d++) {
-    if (outsideOf(x + 0.5, y + 0.5 - d) <= FOOT) {
-      return [N1, N0, INK, INK][d - 1];
+  // hedef-gorunum-3: the dark cast shadow starts right at the wall's base (no lit footing ring between them)
+  if (STAGE_FOOT_SHADOW && e <= FOOT + FOOT_FACE) return SHADE;
+  if (!STAGE_FOOT_SHADOW) {
+    if (e <= FOOT) return footingTop(e);
+    for (let d = 1; d <= FOOT_FACE && e <= FOOT + FOOT_FACE; d++) {
+      if (outsideOf(x + 0.5, y + 0.5 - d) <= FOOT) {
+        return [N1, N0, INK, INK][d - 1];
+      }
     }
   }
-  const q = outsideOf(x + 0.5, y + 0.5 - FOOT_FACE) - FOOT;
+  // round 2: the cast shadow is offset toward the lower right (away from the top-left key light): measured from the slab's
+  // base shifted by (SHADOW_DX, SHADOW_DY), so it is widest right of the right wall / below the near corner
+  const q = outsideOf(x + 0.5 - SHADOW_DX, y + 0.5 - FOOT_FACE - SHADOW_DY) - FOOT;
   return panel(x, y, q);
 }
 
@@ -132,11 +151,19 @@ function panel(x: number, y: number, q: number): Color {
   } else if (dv < 2 && plateEdge && py < 0) {
     c = N1;
   }
+  if (V3_HALL_FLOOR) c = hallFloorPixel(x, y);
   if (q <= SHADOW) {
-    // stepped falloff (no blur): ink near the stage, then one tone down, then a 2×2 dither of the two
-    if (q <= 10) return INK;
-    if (q <= 20) return shift(c, -2);
-    return (x + y) % 2 === 0 ? shift(c, -1) : c;
+    // stepped falloff (no blur): solid shade near the stage, then a checker, then a sparse 1-in-4 dither. The shade is
+    // stone0 — off the night ladder, so the apron's lift remap (view/board-nt/calm-remap.ts) keeps it dark (ink / night
+    // tones would be lifted three steps and the shadow vanished).
+    // round 2: a wide SOLID band (12 px past the footing), then only a 2-step fringe (checker 2 px, sparse 2 px) — no wide
+    // screen-door band next to the stage
+    if (q <= 12) return SHADE;
+    if (q <= 14) return (x + y) % 2 === 0 ? SHADE : c;
+    if (q <= 16) return x % 2 === 0 && y % 2 === 0 ? SHADE : c;
+    // round 4: the round-3 1-px lighter floor rim outside the fringe was removed (invisible under the light layer; a
+    // pointless pixel row — critique 3/3 #6)
+    return c;
   }
   return c;
 }
@@ -176,7 +203,7 @@ function paintRails(S: Surface, strips: ApronStrip[], masks: [string, PixelCanva
         const y = yc + dy;
         if (y < APRON_BOX.y || y >= APRON_BOX.y + APRON_BOX.h || !clearOfSlab(x, y)) continue;
         const c: Color = clamp ? N0 : dy === 0 ? N1 : INK;
-        S.put(x, y, c);
+        if (!V3_HALL_FLOOR) S.put(x, y, c);
         if (inPiece && dy === 0) {
           const arr = piece.get(n) ?? [];
           arr.push({ x, y });
@@ -228,6 +255,12 @@ function bollard(S: Surface, x: number, y: number, side: 0 | 1, lamps: ApronLamp
 }
 
 function paintProps(S: Surface, lamps: ApronLamp[]): void {
+  if (V3_HALL_FLOOR) {
+    // the floor's own props live in ./hallfloor.ts; the bollard lamp descriptors stay (hidden by the floor layer)
+    const none = new Surface(0, 0, 1, 1);
+    for (const [x, y, k] of [[125, 268, 0], [181, 296, 1], [442, 304, 2], [506, 271, 3]] as const) bollard(none, x, y, k < 2 ? 0 : 1, lamps, k);
+    return;
+  }
   block(S, 66, 304, 22, 11, 18);
   block(S, 604, 292, 22, 11, 18);
   block(S, 100, 346, 14, 7, 10);
