@@ -30,6 +30,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
 | winnow_sieve (Harman Eleği) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı, 15 ton | tamam: üç kart çekme, iki atma seçimi, saman süpürülür; eSieve 3,37 + 2,22 = 5,59 sn (sınır 5,3, süre sınırı yok kararıyla kabul); CPU senaryosu eSieveCpu | tamam: 18 e_sieve tarifi, her vuruşta ses; e_sieveStraw Saman Korkuluklar'dan ayrışıyor | 5,5 / 6 / 6,5 | shots/e/winnow_sieve/dod/ |
 | sweeping_gale (Süpürge Rüzgarı) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı, dama sınırın çok altında; büyük doluluk 0,82 (rüzgâr yayı kasıtlı taşıyor) | tamam: tüm rakip büyü/tuzakları süpürür; eGale 4,60 sn, eGaleP2 4,75 sn (≤5,03); söndürmedeki ekran karartması palcheck'i bozuyordu, lightDimFor ile değiştirildi; CPU senaryosu eGaleCpu | tamam: 16 e_gale tarifi, hepsi sahnede çalıyor | 6 / 6,5 / 7,2 | shots/e/sweeping_gale/dod/ |
 | soul_leash (Ruh Tasması) | büyük 88×68 + elle 44×34 küçük; §10 dama sınırı içinde (gece zemini dikişleri 3 px, büyük/küçük 1 yama), dama ve tek piksel sınırları testte | tamam: tasma, bağ, kontrol devri; P1/P2, elden ve set kartından, Draw Phase nabzı, kopunca dönüş, yer yok, savaşta ölüm; alma 5,2 sn (≤5,3); CPU senaryosu eLeashCpu (&mode=vsBot) | tamam: 16 e_leash tarifi, hepsi vuruşunda çalıyor; puppet_string karşılıklarından ≥10 dB ayrışıyor | 6 / 6,5 / 6 | shots/e/soul_leash/ |
+| spite_axe (Hınç Baltası) | büyük 88×68 + elle 44×34 küçük, ikisi de %100 palette, resim aracı bayraksız | tamam: kuşanma +800, dönüşte sahibinin destesine gider, sahibine −500 kırbaç ve −800 ATK (P1/P2); elden 5,35 sn (pay 5,03, süre sınırı yok kararıyla kabul); CPU senaryosu eAxeCpu (&mode=vsBot) | tamam: 14 e_axe tarifi, her biri vuruşunda çalıyor | 5 / 6,5 / 6,5 | shots/e/spite_axe/ |
 | (doldurulacak) | | | | | |
 
 ### S3 Boşluk Gözü (`void_eye`)
@@ -269,3 +270,9 @@ kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe aç�
 - Tasma kopunca harcanan mızrak kartı mezarlığa giderken dönüş sahnesinden önce ~0,7 sn sessiz boşluk var; genel motor/UI akışı.
 - Resim aracı parlak ağırlık merkezini odaktan 18,5 px uzakta buluyor (~15 üstü bakılmalı); uzun bağ çizgisi sol alta çekiyor. Gözle toka açıkça odak, olduğu gibi bırakıldı.
 - Her çalıştırmada Canvas2D getImageData willReadFrequently uyarısı; ortak çizimden geliyor.
+
+### spite_axe
+- Süre: elden kuşanma eylemden girdiye 5,35 sn (pay (0,7 + 2,8) × 1,35 + 0,3 = 5,03 sn; set kartından 5,23 sn). Süre sınırı yok kararıyla işaretlendi, kesilmedi; film sürüklenmiyor.
+- palcheck: eAxeBorrowEquip'te tek karede (t≈9,2 sn, ısırma/kaldırma ışık çakması) +1,02 puan palet dışı, sınırın 0,02 üstü. Renkler ışık katmanıyla boyanmış arena/büyücü morları ve sisleri; kartın kendi sprite pikselleri değil.
+- eAxeBorrowEquip 8 adet Canvas2D 'willReadFrequently' performans uyarısı basıyor; yalnız Kukla İpi senaryolarında çıkıyor (eAxeSetP2 aynı Uçurum Büyücüsü ile temiz). Uyarı, hata değil.
+- Kapı 6 yalnız genel v1 film setiyle çalıştı (17 film IDENTICAL); dawn_swords ayrıca karşılaştırılmadı. spite_axe yollarının hepsi ?look=v3 olmadan kapalı.
