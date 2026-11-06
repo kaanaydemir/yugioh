@@ -92,7 +92,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
   üstünde çizilir (FX_TOP). SFX: `src/audio/v3/e/winnow_sieve.ts` (15 tarif, `e_sieve*`; savurma artık dar, yüksek,
   ≤0,35 sn'lik bir harman yelpazesi nefesi + saman tıkırtıları, mezarlığa doğru panlanır: `e_sieveGustR/L`).
 - Senaryolar: `src/duel/scenarios/e_winnow_sieve.ts` (eSieve, eSieveP2, eSieveSet, eSieveSetP2, eSieveBare,
-  eSieveSeal, eSieveSealP2, eSieveUi, eSievePlay); test `tests/e/winnow_sieve.test.ts`.
+  eSieveSeal, eSieveSealP2, eSieveUi, eSievePlay, eSieveCpu); test `tests/e/winnow_sieve.test.ts`.
 - Kanıt: `shots/e/winnow_sieve/r2/` (shake.png, toss3.png, toss3b.png, disc.png, straw.png, gust.png, p2.png,
   p2disc.png, set.png, art/, measure.json), ses: `shots/e/winnow_sieve/r2sfx/`.
 - Ölçüm (oyun ms): eSieve etkinleştirme 3,92 sn + atma 1,77 sn; kamera 0. eSieveSeal'in 1f/38px kamerası ortak
@@ -112,6 +112,17 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
   Ölçüm: eSieve bitiş 6050 ms (900 ms senaryo beklemesi dahil; önce 6600), seçim istemi ~3,2 sn'de (önce 3,96).
   Kanıt: `shots/e/winnow_sieve/r3/` (p1.png, p1toss.png, toss1c.png, p2.png, p2z.png, p2disc.png, pool.png,
   disc.png, unravel2.png, set.png, sealp2.png, art/, measure.json), ses `shots/e/winnow_sieve/r3sfx/`.
+- Bitti-tanımı doğrulaması (2026-11-06): typecheck temiz; `tests/e/winnow_sieve.test.ts` 4/4 (yeni: bot eleği açar,
+  iki kartı kendisi atar, turu biter); tests/art'taki hatalar yalnız bilinen taban + yük kaynaklı zaman aşımları
+  (cloud_hatchling / mudgrasp_spirit tek başına geçer). measure (look v3, 8 senaryo): zoom 1, closeUp 0, hata 0;
+  eSieve etkinleştirme 3,37 sn + atma 2,22 sn (oyun ms; §7 3,0 sn + seçim → izin (0,7+3,0)×1,35+0,3 = 5,3 sn, toplam
+  5,59 sn: ~0,3 sn fazla, sahibin "süre sınırı yok" kararıyla kabul). eSieveSeal/P2'deki 1f/38px kamera ortak kazanma
+  sahnesi (focus 4400 ms'de, gameOver içinde). palcheck: kartın pikselleri palet içinde; Δoff +1,03 (600 ms) ortak
+  büyü açılışı, beyaz %1,4 seçim istemi yazısı (taban gürültüsü). v1 filmdiff: 17/17 IDENTICAL. Yeni senaryo
+  `eSieveCpu` (&mode=vsBot, --fresh olmadan): bilgisayar P2 eleği açar, kartlar onun eline uçar, seçimi kendisi
+  yapar, saman mezarlığa savrulur, sonra Yıldırım Hükmü ile oynamaya devam eder — takılma yok. Bitişten 2 sn sonra
+  sahnede artık nesne yok, girdi geri döner (P1, P2, kapalı P2, Ui, mühür). Ses: `e_sieveStraw` 0,20 sn, %82 tiz;
+  ↔ e_strawWrap LSD 22,8 dB, ↔ e_strawGust 38,9; `e_sieveGust` ↔ e_strawGust 33,5. Kanıt: `shots/e/winnow_sieve/dod/`.
 
 ### S9 Saman Korkuluklar (`straw_decoys`)
 - Resim: `src/art/cardart-v3/straw_decoys.ts` (88×68 + elle çizilmiş 44×34, 4 kare yaşayan resim: alacakaranlık

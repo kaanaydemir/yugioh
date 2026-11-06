@@ -88,6 +88,20 @@ const PACK: Record<string, Scenario> = {
     steps: [sieve(0), pause(500), { ui: 'move', at: { hand: 1 }, ms: 260 }, { ui: 'click', at: { hand: 1 }, ms: 300 }, { ui: 'move', at: { hand: 3 }, ms: 260 }, { ui: 'click', at: { hand: 3 }, ms: 500 }, { ui: 'key', key: 'Enter', ms: 100 }],
   },
   eSievePlay: { desc: 'Harman Eleği (P1): elle oyna', stage: hand(0), steps: [] },
+  // ---- the CPU casts it: open with &mode=vsBot (the bot plays player 2) and WITHOUT --fresh (a fresh restart is
+  //      always hot-seat). No steps: the bot digs on its own (engine/bot.ts tryWinnow: a deep deck and a weak card in
+  //      hand), picks its own two discards (the sieve waits on the bot's think), then goes on with its turn.
+  //      node tools/shot.mjs "?dev=duel&s=eSieveCpu&look=v3&mode=vsBot" --film 30 --every 200 --cols 6 --out ...
+  eSieveCpu: {
+    desc: 'Harman Eleği (CPU, &mode=vsBot ile): bilgisayar P2 eleği kendisi açar, iki kartı kendisi atar, düello sürer',
+    stage: {
+      zones: 5,
+      active: 1,
+      p1: { hand: ['winnow_sieve', 'lumen_sprite', 'tide_golem'], deck: [...DECK, 'ember_wolf', 'storm_hawk'], monsters: [null, 'crag_axeman'] },
+      p0: { monsters: [null, null, 'magma_titan'], deck: ['reed_heron', 'kite_fencer', 'stone_sentinel'] },
+    },
+    steps: [],
+  },
 };
 
 export default PACK;

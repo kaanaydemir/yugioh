@@ -102,6 +102,14 @@ const PACK: Record<string, Scenario> = {
     stage: board(0, { hand: ['sweeping_gale'], monsters: myMonsters }, { monsters: theirMonsters, spellTraps: [null, { id: 'spell_seal', faceUp: false }, { id: 'mirror_barrier', faceUp: false }] }),
     steps: [gale(0), (D) => ({ type: 'respond', player: 1, uid: D.uid('spell_seal', 1) }) as Action],
   },
+  // ---- the CPU casts it on its own (engine/bot.ts: the opponent has ≥ 2 spell / traps or a field spell), then plays
+  //      on and ends its turn. Film WITHOUT --fresh (a fresh restart is always hot-seat):
+  //      node tools/shot.mjs "?dev=duel&s=eGaleCpu&look=v3&mode=vsBot" --film 30 --every 400 --cols 6 --out ...
+  eGaleCpu: {
+    desc: 'Süpürge Rüzgarı (P2 = bilgisayar; --fresh olmadan &mode=vsBot ile): bot kartı kendisi oynar, tur sürer',
+    stage: board(1, { hand: ['sweeping_gale', 'ember_wolf'], monsters: [null, 'crag_axeman'] }, { monsters: [null, null, 'stone_sentinel'], spellTraps: [{ id: 'mirror_barrier', faceUp: false }, 'dawn_swords', { id: 'chasm_trap', faceUp: false }], field: 'tidal_bay' }),
+    steps: [],
+  },
 };
 
 export default PACK;

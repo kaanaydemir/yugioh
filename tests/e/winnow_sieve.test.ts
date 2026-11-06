@@ -3,7 +3,7 @@
 // spell's own trip to the graveyard and the discard decision (the sieve waits on it); then the two discards — or, when
 // the first draw completes the seals, one draw and the game over (no decision, the sieve unravels at once).
 import { describe, expect, it } from 'vitest';
-import { apply, type Action, type GameEvent, type GameState } from '../../src/engine';
+import { apply, chooseAction, type Action, type GameEvent, type GameState } from '../../src/engine';
 import { buildStage, uidOf } from '../../src/duel/scenario';
 import PACK from '../../src/duel/scenarios/e_winnow_sieve';
 import { isUiStep } from '../../src/duel/scenarios';
@@ -47,6 +47,21 @@ describe('e_winnow_sieve stages', () => {
       expect(ev.some((e) => e.type === 'decision'), key).toBe(false);
       expect(state.winner, key).toBe(PACK[key].stage.active ?? 0);
     }
+  });
+});
+
+describe('eSieveCpu: the bot casts the sieve and plays on', () => {
+  it('opens with the sieve, discards two by itself, then ends its turn (no stall)', () => {
+    let s = buildStage(PACK.eSieveCpu.stage);
+    const acts: Action[] = [];
+    for (let i = 0; i < 20 && s.activePlayer === 1 && s.winner === null; i++) {
+      const a = chooseAction(s, i);
+      acts.push(a);
+      s = apply(s, a).state;
+    }
+    expect(acts[0].type).toBe('activateSpell');
+    expect(acts[1].type === 'discard' && acts[1].player === 1 && acts[1].uids.length === 2).toBe(true);
+    expect(s.activePlayer).toBe(0);
   });
 });
 

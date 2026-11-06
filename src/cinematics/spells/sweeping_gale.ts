@@ -39,8 +39,8 @@
 //          the bristles pass, then gutters in three steps (150 ms) while the light over the half dims in three
 //          steps (one re-flare) — a real volcano arena's LAVA gutters with it in its own overlay (the board's crack
 //          pixels: fire3 → crim1, a re-flare, patches going out) — and is SNUFFED like a candle: the light is CUT,
-//          a night veil drops over the room for a breath (the theme changes under it, then it lifts in three
-//          steps), a puff, a wick ember, a smoke thread —
+//          the room's light layer drops for a breath (the theme changes inside it, then it comes back), a puff,
+//          a wick ember, a smoke thread —
 //          e_galeSnuff ("vump"). 100 ms later the LAST GUST (three bristle curls with leaves racing through the
 //          field zone) tears the field card off and blows it over the rim
 //   +~760  the stroke leaves over the far rim, its bristles thin out. THE TAIL (e_galeTail) answers the LAST falling
@@ -1428,9 +1428,11 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
         // (the field theme changes under that dark, then the room comes back)
         (envPool as LightHandle | null)?.setIntensity(0, 20);
         (envSpill as LightHandle | null)?.setIntensity(0, 20);
-        bg(lightDimFor(sc, 0.55, 170, 20, 380));
-        // the breath of darkness over the whole room (a night veil): the theme changes under it, then it lifts in steps
-        dark = sc.add.rectangle(0, 0, 640, 360, PAL.night0, DARK.alpha(volcano)).setOrigin(0, 0).setDepth(DEPTH.FX + 5);
+        bg(lightDimFor(sc, volcano ? 1 : 0.85, 170, 20, 380));
+        // the breath of darkness over the whole room: carried by the light layer's dim alone (a translucent
+        // full-screen veil would blend every pixel off the palette — palcheck G4). The rectangle stays as the
+        // invisible clock of that breath (the theme changes inside it, the lava overlay is cut by it)
+        dark = sc.add.rectangle(0, 0, 640, 360, PAL.night0, 1).setOrigin(0, 0).setDepth(DEPTH.FX + 5).setVisible(false);
         darkT0 = el;
         bg(wait(sc, 100).then(() => {
           (envPool as LightHandle | null)?.destroy();
@@ -1537,7 +1539,7 @@ async function galeWipe(ctx: MassCtx): Promise<void> {
       if (k >= 3) {
         dark.destroy();
         dark = null;
-      } else dark.setAlpha(DARK.alpha(volcano) * (1 - k / 3));
+      }
     }
 
     // ================================ the cards
@@ -1825,9 +1827,8 @@ function drawLastGust(r: Raster, at: XY, dir: XY, k: number, el: number): void {
   }
 }
 
-/** The breath of darkness after the snuff: its veil (night0), held, then lifted in three steps. */
+/** The breath of darkness after the snuff (its clock; the light layer's dim draws it), held, then three steps. */
 const DARK = {
-  alpha: (volcano: boolean) => (volcano ? 0.45 : 0.3),
   hold: (volcano: boolean) => (volcano ? 70 : 50),
   step: 40,
 } as const;
