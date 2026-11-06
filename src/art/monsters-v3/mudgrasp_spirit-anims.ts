@@ -174,10 +174,11 @@ const ATTACK_KEYS: Partial<Pose>[] = [
   { nBack: 1, nx: -6, ny: -46, nc: 0.6, ball: 3, lean: -5, hump: 2, bx: -1, hy: -1, hx: -1, eye: 2, mouth: 1, aa: -122, ab: -18, fx: 27, fy: -8 },
   // swing: overhead, the body pitching forward
   { nBack: 1, nx: 16, ny: -52, nc: 0.5, ball: 3, lean: 1, hump: 2, hy: -1, eye: 2, mouth: 1, aa: -110, ab: -12, fx: 28, fy: -7 },
-  // release: arm thrown forward, the palm open — the ball leaves here
-  { nx: 38, ny: -27, nc: 0, ball: 0, lean: 5, hump: 0, hx: 2, hy: 0, eye: 2, mouth: 2, aa: -96, ab: -6, fx: 29, fy: -6 },
-  // contact: follow-through, the hand dropping
-  { nx: 37, ny: -15, nc: 0.2, lean: 5, hx: 2, eye: 2, mouth: 1, aa: -94, ab: -6, fx: 29, fy: -6 },
+  // release: an OVERHAND lob — the arm comes over the hood high and up-forward, the palm opens above the mask
+  // (the ball leaves here, high: a toss, never a straight punch at the target)
+  { nBack: 1, nx: 27, ny: -47, nc: 0, ball: 0, lean: 4, hump: 1, hx: 2, hy: -1, eye: 2, mouth: 2, aa: -98, ab: -8, fx: 29, fy: -6 },
+  // contact: follow-through, the open hand falling forward over the mask
+  { nx: 35, ny: -13, nc: 0.45, lean: 5, hx: 2, eye: 2, mouth: 1, aa: -94, ab: -6, fx: 29, fy: -6 },
   // the hand slaps down into the ground and SINKS (eller yere gömülür)
   { nx: 34, ny: 3, nc: 0.4, lean: 3, hx: 1, eye: 1.6, aa: -96, ab: -8, splash: 0.25, sx: 34, sy: -1, ripple: 0.2 },
   { nx: 32, ny: 5, nc: 0.4, lean: 2, hx: 1, eye: 1.4, aa: -98, ab: -9, splash: 0.6, sx: 34, sy: -1, ripple: 0.5 },
@@ -214,9 +215,9 @@ const HIT_KEYS: Partial<Pose>[] = [
   // contact (kept close to idle f0, HA-21): the mask jolts back, the first spray leaves the struck side
   { hx: -2, hy: -1, lid: 2, eye: 0.6, spray: 0.15, swell: 0, aa: -100 },
   // the blow SQUASHES the mound (it bulges sideways), the mask is knocked back 3 px, mud clods fly
-  { sink: 3, swell: 2, hump: -2, lean: -3, hx: -3, hy: 2, lid: 2, eye: 0.7, spray: 0.5, aa: -94, ab: -2 },
+  { sink: 5, swell: 3, hump: -3, lean: -4, hx: -3, hy: 4, lid: 2, eye: 0.7, spray: 0.5, aa: -90, ab: 2, nc: 0.8, fc: 0.8 },
   // ...and it rebounds like jelly: stretched up, then a smaller squash, then it settles
-  { sink: -1, swell: -1, hump: 2, lean: -1, hx: -2, hy: -1, lid: 1, eye: 0.9, spray: 0.85, aa: -106, ab: -12 },
+  { sink: -2, swell: -1, hump: 3, lean: -1, hx: -2, hy: -2, lid: 1, eye: 0.9, spray: 0.85, aa: -108, ab: -14 },
   { sink: 1, swell: 1, hump: 0, lean: 1, hx: -1, hy: 1, lid: 0, eye: 1, spray: 1, aa: -100, ab: -9 },
 ];
 export function hitPose(f: number): Pose {
@@ -257,12 +258,12 @@ const SU_N = 13;
 const SUNK: Partial<Pose> = { sink: 46, mound: 0, eye: 0, mask: 1, bubK: 0, drip: -1, aa: -92, ab: -2, al: 0, climb: 1, nx: 26, ny: 14, fx: 30, fy: 14, rx: -24, ry: 14 };
 const SUMMON_KEYS: Partial<Pose>[] = [
   // the tile softens into a vortex
-  { ...SUNK, puddle: 0.55, swirl: 0.15, swirlDir: 1 },
-  { ...SUNK, puddle: 0.8, swirl: 0.4, swirlDir: 1 },
+  { ...SUNK, puddle: 0.3, swirl: 0.15, swirlDir: 1 },
+  { ...SUNK, puddle: 0.35, swirl: 0.4, swirlDir: 1 },
   // two hands burst up out of the mud (wrists high, fingers splayed)
-  { ...SUNK, sink: 40, puddle: 0.95, swirl: 0.6, swirlDir: 1, nx: 27, ny: -18, nc: 0, fx: 31, fy: -21, fc: 0, rx: -25, ry: -13, rc: 0, splash: 0.2, sx: 4, sy: -1 },
+  { ...SUNK, sink: 40, puddle: 0.4, swirl: 0.6, swirlDir: 1, nx: 27, ny: -18, nc: 0, fx: 31, fy: -21, fc: 0, rx: -25, ry: -13, rc: 0, splash: 0.2, sx: 4, sy: -1 },
   // ...and slap down, gripping the puddle's edges (el şaplağı)
-  { ...SUNK, sink: 36, puddle: 1, swirl: 0.75, swirlDir: 1, nx: 33, ny: -1, nc: 0.9, fx: 34, fy: -4, fc: 1, rx: -29, ry: -1, rc: 1, splash: 0.5, sx: 30, sy: -2, ripple: 0.15 },
+  { ...SUNK, sink: 36, puddle: 0.7, swirl: 0.75, swirlDir: 1, nx: 33, ny: -1, nc: 0.9, fx: 34, fy: -4, fc: 1, rx: -29, ry: -1, rc: 1, splash: 0.5, sx: 30, sy: -2, ripple: 0.15 },
   // the haul: the mask surfaces, the body is dragged up between the gripping hands
   { ...SUNK, climb: 0.75, al: 0.4, sink: 25, mound: 0.3, swirl: 0.85, swirlDir: 1, nx: 33, ny: -1, nc: 1, fx: 34, fy: -4, fc: 1, rx: -29, ry: -1, rc: 1, lean: 3, hy: 2, ripple: 0.35, eye: 0.5, lid: 2 },
   { ...SUNK, climb: 0.45, al: 0.8, sink: 14, mound: 0.6, swirl: 0.95, swirlDir: 1, nx: 32, ny: -1, nc: 1, fx: 34, fy: -4, fc: 1, rx: -29, ry: -1, rc: 1, lean: 4, hy: 2, ripple: 0.55, eye: 0.6, lid: 2, aa: -96, ab: -4 },
@@ -278,7 +279,7 @@ const SUMMON_KEYS: Partial<Pose>[] = [
 export function summonPose(f: number): Pose {
   return table(SUMMON_KEYS, f, SU_N);
 }
-const SU_HOLDS = [110, 100, 170, 90, 100, 100, 100, 110, 120, 110, 120, 130, 140];
+const SU_HOLDS = [110, 170, 170, 90, 100, 100, 100, 110, 120, 110, 120, 130, 140];
 
 // ------------------------------------------------------------------ death (10): it liquefies into the puddle, the mask sinks last
 
@@ -308,7 +309,7 @@ export function deathPose(f: number): Pose {
   const n = Math.min(f, D_N - 1);
   return key({ drip: -1, ...DEATH_KEYS[n] }, n, D_N);
 }
-const D_HOLDS = [50, 60, 70, 80, 80, 90, 110, 120, 120, 100];
+const D_HOLDS = [50, 130, 140, 110, 80, 90, 110, 120, 120, 100];
 
 // ------------------------------------------------------------------ revive (10): the mud gathers back, the mask surfaces first
 

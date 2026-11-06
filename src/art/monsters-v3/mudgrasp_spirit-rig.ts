@@ -428,6 +428,27 @@ function elbowLump(q: PixelCanvas, el: Pt, r: number, c: number, drip: number): 
 }
 
 /** finger lifts of a drumming hand */
+/**
+ * Wet gloss on a banded mud limb (FIX r2, "matte dry sticks"): a dashed streak INSET one px inside the lit band
+ * (on the mid tone right under / beside a lit pixel) in the next-lighter tone, plus a hot catch every few px —
+ * the arm reads as a glossy wet tube at 1×, not a matte stick.
+ */
+function wetGloss(q: PixelCanvas, t: Tones, hot: number, seed: number): void {
+  const pts: Pt[] = [];
+  for (let y = 1; y < H - 1; y++)
+    for (let x = 1; x < W - 1; x++) {
+      if (q.get(x, y) !== t.M) continue;
+      const litAbove = q.get(x, y - 1) === t.L || q.get(x - 1, y) === t.L;
+      if (!litAbove) continue;
+      if (!q.isOpaque(x + 1, y) || !q.isOpaque(x, y + 1)) continue;
+      pts.push([x, y]);
+    }
+  for (const [x, y] of pts) {
+    const h = (x * 7 + y * 3 + seed) % 6;
+    if (h < 2) q.set(x, y, hot);
+  }
+}
+
 function drum(o: Pose, shift = 0): number[] {
   return [0, 1, 2, 3].map((i) => (o.nd < 0 ? 0 : rnd(o.ndh * Math.max(0, 1 - Math.abs(((o.nd + shift) % 4) - i)))));
 }
@@ -489,12 +510,42 @@ function drawPuddle(f: Frame): PixelCanvas {
       }
     q.ellipse(cx, cy, 4, 1, PAL.void0);
   }
+  // melting (death): the body has run down into the pool as round, glossy, SAGGING lobes that spread outward over
+  // the frames (wet slumps — never sticks); each lobe a dark wet belly, a lit crest and one hot catch
+  if (o.melt > 0.45 && o.sink > 10) {
+    const k = clamp((o.melt - 0.45) / 0.55, 0, 1);
+    const lobes: [number, number, number][] = [[-20, 5, 4], [-5, 7, 6], [10, 6, 5], [22, 4, 3]];
+    lobes.forEach(([dx, lrx, lry], i) => {
+      const x = cx + rnd(dx * (0.8 + 0.35 * k)); // silhouette identical for P1 / P2 (only the shading is relit)
+      const fade = o.mask > 0 ? 1 : 0.45; // the last frame: the lobes have drained flat (only the pool is left)
+      const rr = Math.max(2, rnd(lrx * fade * (1 - 0.25 * k * (i === 1 ? 0.3 : 1))));
+      const ry = Math.max(1, rnd(lry * fade * (1 - 0.3 * k)));
+      const y = cy - ry + 2;
+      // a dark wet crease where the lobe sits on the pool (separates the slumps from each other and the pool)
+      for (let yy = y - ry - 1; yy <= y + ry + 1; yy++)
+        for (let xx = x - rr - 1; xx <= x + rr + 1; xx++) {
+          const e = ((xx - x) / (rr + 1)) ** 2 + ((yy - y) / (ry + 1)) ** 2;
+          if (e <= 1 && yy <= GY && yy >= y - 1 && q.isOpaque(xx, yy)) q.set(xx, yy, PAL.ink);
+        }
+      for (let yy = y - ry; yy <= y + ry; yy++)
+        for (let xx = x - rr; xx <= x + rr; xx++) {
+          const ex = (xx - x) / rr;
+          const ey = (yy - y) / Math.max(1, ry);
+          if (ex * ex + ey * ey > 1 || yy > GY) continue;
+          const top = ey < -0.35;
+          q.set(xx, yy, top ? (ex * -light.side > 0.1 ? PAL.earth3 : PAL.earth2) : ey > 0.4 ? PAL.earth0 : PAL.earth1);
+        }
+      const hx = x + light.lx(-rnd(rr * 0.4));
+      if (q.isOpaque(hx, y - ry + 1)) q.set(hx, y - ry + 1, PAL.earth4);
+    });
+  }
   f.comp.add(q, Part.puddle, {});
   return q;
 }
 
 function drawRearArms(f: Frame): void {
   const { sk, o, light } = f;
+  if (o.melt > 0.55) return; // melted into the pool's lobes (no stick-arms lying on the floor)
   const k = 1 - 0.35 * o.melt;
   // the far rear arm first (a value darker), then the near rear arm over it
   const q2 = layer();
@@ -503,6 +554,7 @@ function drawRearArms(f: Frame): void {
   if (sk.wR2[1] > GY - 9) plantedHand(q2, sk.wR2, -1, Math.min(1, o.rc + 0.2), FAR.M, undefined, 0.7);
   else hand(q2, sk.wR2, 180 + 30, Math.min(1, o.rc + 0.2), FAR.M, undefined, 0.8, 2);
   bands(q2, FAR, light, 1, 2);
+  wetGloss(q2, FAR, PAL.earth3, 1);
   f.comp.add(q2, Part.rear, { out: CREASE });
   const q = layer();
   limb(q, [sk.rearRoot, sk.elR, sk.wR], 5.5 * k, 3.6 * k, ARM.M);
@@ -510,6 +562,7 @@ function drawRearArms(f: Frame): void {
   if (sk.wR[1] > GY - 9) plantedHand(q, sk.wR, -1, o.rc, ARM.M, undefined, 0.85);
   else hand(q, sk.wR, 180 + 12, o.rc, ARM.M, undefined, 0.9);
   bands(q, ARM, light, 2, 2);
+  wetGloss(q, ARM, PAL.earth4, 2);
   f.comp.add(q, Part.rear, { out: CREASE });
 }
 
@@ -522,11 +575,13 @@ function drawCrown(f: Frame, pts: Pt[], curl: number, part: Part, t: Tones, hand
   const dir = handDir ?? Math.atan2(tip[1] - prev[1], tip[0] - prev[0]) / DEG;
   hand(q, tip, dir, curl, t.M, undefined, 1.05, 3, 30 - 18 * curl);
   bands(q, t, f.light, 2, 2);
+  wetGloss(q, t, t === ARM ? PAL.earth4 : PAL.earth3, 3);
   f.comp.add(q, part, { out: CREASE });
 }
 
 function drawFarArm(f: Frame): void {
   const { sk, o, light } = f;
+  if (o.melt > 0.55) return;
   const q = layer();
   limb(q, [sk.shF, sk.elF, sk.wF], 5.5 * (1 - 0.35 * o.melt), 3.6 * (1 - 0.3 * o.melt), FAR.M);
   elbowLump(q, sk.elF, 2, FAR.M, 2);
@@ -534,11 +589,14 @@ function drawFarArm(f: Frame): void {
   if (flat) plantedHand(q, sk.wF, 1, o.fc, FAR.M, drum(o, 2).map((v, i) => (i === 3 ? 0 : v)), 0.9);
   else hand(q, sk.wF, Math.atan2(sk.wF[1] - sk.elF[1], sk.wF[0] - sk.elF[0]) / DEG, o.fc, FAR.M);
   bands(q, FAR, light, 2, 2);
+  wetGloss(q, FAR, PAL.earth3, 4);
   f.comp.add(q, Part.farArm, { out: CREASE });
 }
 
 function drawTorso(f: Frame): void {
   const { sk, o, light } = f;
+  // fully melted: the body IS the pool's sagging lobes now (drawn by drawPuddle) — no flat sunk torso slab
+  if (o.melt > 0.85) return;
   const q = layer();
   const m = clamp(o.melt, 0, 1);
   const blobs: Blob[] = [];
@@ -594,6 +652,26 @@ function drawTorso(f: Frame): void {
     const y0 = rnd(s0[1]);
     for (let k = 0; k < n * (1 + m); k++) if (q.get(x, y0 + k) === MUD.M || q.get(x, y0 + k) === MUD.S) q.set(x, y0 + k, CREASE);
   }
+  // sagging FOLDS across the chest (FIX r2: the lit front plane read as a flat box at 1×): two curved creases
+  // where the wet mud slumps over itself, each with a wet highlight band riding its upper lip (the roll's crest)
+  if (m < 0.7 && o.sink < 20) {
+    for (const [t, sag, wk] of [[0.42, 1.5, 0.8], [0.18, 1.9, 0.95]] as const) {
+      const c = sk.sp(t);
+      const r = sk.rad(t) * wk;
+      const cy = rnd(c[1]) + 2 + rnd(o.swell);
+      for (let dx = -Math.floor(r); dx <= Math.floor(r * 0.8); dx++) {
+        const x = rnd(c[0]) + dx * -light.side;
+        const y = cy - rnd((dx * dx) / (r * sag * 2.2));
+        const v = q.get(x, y);
+        if (v === null || !q.isOpaque(x, y - 1) || !q.isOpaque(x, y + 1)) continue;
+        q.set(x, y, CREASE);
+        const up = q.get(x, y - 1);
+        if (up === MUD.L || up === MUD.M) q.set(x, y - 1, (dx & 3) === 1 ? PAL.earth4 : up === MUD.L ? GLOSS : MUD.L);
+        const dn = q.get(x, y + 1);
+        if (dn === MUD.L) q.set(x, y + 1, MUD.M);
+      }
+    }
+  }
   f.comp.add(q, Part.torso, { out: CREASE });
   (f as Frame & { pops?: Pt[] }).pops = pops;
 }
@@ -640,6 +718,7 @@ function drawMask(f: Frame): void {
 
 function drawNearArm(f: Frame): void {
   const { sk, o, light } = f;
+  if (o.melt > 0.55) return;
   const q = layer();
   limb(q, [sk.shN, sk.elN, sk.wN], 6 * (1 - 0.35 * o.melt), 3.8 * (1 - 0.3 * o.melt), ARM.M);
   elbowLump(q, sk.elN, 2, ARM.M, 1 + ((rnd(o.t * 8) >> 1) & 1));
@@ -648,6 +727,7 @@ function drawNearArm(f: Frame): void {
   if (flat) plantedHand(q, sk.wN, 1, o.nc, ARM.M, drum(o));
   else hand(q, sk.wN, dir, o.nc, ARM.M, drum(o));
   bands(q, ARM, light, 2, 2);
+  wetGloss(q, ARM, PAL.earth4, 5);
   // a gloss run on the forearm's lit top
   const mid: Pt = [(sk.elN[0] + sk.wN[0]) / 2, (sk.elN[1] + sk.wN[1]) / 2];
   for (let i = 0; i < 2; i++) {
@@ -810,14 +890,16 @@ function crackLight(f: Frame): void {
     // [dx, dy, hot?] relative to a spine sample: a zig-zag with a fork
     [[0, 0, 0], [1, 1, 0], [1, 2, 1], [2, 3, 0], [2, 4, 0], [1, 5, 0], [3, 4, 0], [4, 5, 0]],
     [[0, 0, 0], [0, 1, 1], [1, 2, 0], [1, 3, 0], [0, 4, 0]],
+    [[0, 0, 0], [-1, 1, 0], [-1, 2, 1], [-2, 3, 0], [-2, 4, 0]],
   ];
-  const roots: Pt[] = [[c1[0] + s * (r1 * 0.35), c1[1] - 2], [c2[0] - s * 3, c2[1] + 3]];
+  const c3 = sk.sp(0.45);
+  const roots: Pt[] = [[c1[0] + s * (r1 * 0.35), c1[1] - 2], [c2[0] - s * 3, c2[1] + 3], [c3[0] - s * (sk.rad(0.45) * 0.55), c3[1] - 3]];
   cracks.forEach((cr, i) => {
     const [rx, ry] = roots[i];
     for (const [dx, dy, h] of cr) {
       const x = rnd(rx) + dx * s;
       const y = rnd(ry) + dy;
-      if (body(x, y)) p.set(x, y, h ? hot : PAL.void1);
+      if (body(x, y)) p.set(x, y, h ? PAL.void3 : hot === PAL.void3 ? PAL.void3 : PAL.void2);
     }
   });
 }

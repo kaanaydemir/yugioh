@@ -11,12 +11,99 @@ the 600 Hz suction "şlop", §5.2 ending "sıvı olup karoya geri akar"). Handbo
 ## Status by stage
 | Stage | State | Notes |
 |---|---|---|
-| Sprite rig (`src/art/monsters-v3/mudgrasp_spirit*.ts`) | **round 3 done** (planted claw hands, dark wet pool; gates 21 ok / 0 FAIL, tests 16/16) — round 2 done (readability redesign for the owner blocker; all 13 anims re-checked, gates 21 ok / 0 FAIL, test 11/11) | registered in v3 (file `mudgrasp_spirit.ts`); frame now 92×78, anchor (40, 71) |
+| Sprite rig (`src/art/monsters-v3/mudgrasp_spirit*.ts`) | **FIX r2 done** (gloss, chest folds, melt lobes, overhand release, hit squash; gates 21 ok) — **round 3 done** (planted claw hands, dark wet pool; gates 21 ok / 0 FAIL, tests 16/16) — round 2 done (readability redesign for the owner blocker; all 13 anims re-checked, gates 21 ok / 0 FAIL, test 11/11) | registered in v3 (file `mudgrasp_spirit.ts`); frame now 92×78, anchor (40, 71) |
 | Card art (`src/art/cardart-v3/mudgrasp_spirit.ts`) + `portrait()` | **done, round 2** (value pass for the owner's "brown mass" note) | `portrait()` wired in `monsters-v3/mudgrasp_spirit.ts` (unchanged); see *Card art* below |
 | `DEATH_PRESETS` | **done**: `material: 'water', accent: 'shadow'` (stone/ash endings are reserved) | `src/cinematics/_v3/presets.ts` own line |
 | `MONSTER_GLOW` | **done**: `void4 / void3 / white` emissive, `near void2`, `spill void3` (no body tone) | `src/view/light/profiles.ts` own line |
 | Scenarios (`src/duel/scenarios/mudgrasp_spirit.ts`) | **done** (21 keys, P1 + P2) | see *Cinematics stage* below |
 | Cinematics / SFX | **FIX r1 done** (wet-mud FX rework, see FIX round 1) — **round 1 done** (summon, strike, death, pin effect + persistent aura; sound set wired, mgGrab reworked) | `src/cinematics/kart-b/mudgrasp_spirit.ts` (+ `-fx.ts`), `src/audio/v3/mudgrasp_spirit.ts` |
+
+## FIX round 2 (critic r2 → fixes), 2026-11-06
+
+Critic report: `shots/v3/kart-b/mudgrasp_spirit/critic-r2/` (1 blocker, 7 majors, 3 minors). Evidence of this round:
+`shots/v3/kart-b/mudgrasp_spirit/fix-r2/`. Owner decision 2026-11-05: no fixed time budgets any more (durations by feel).
+
+**SFX timing (blocker + majors)**
+- **mgMaskSlip never played (blocker)** → it now fires on the death's ENTRY beat (right after the death anim starts,
+  whatever frame the battle/guard-break entered on); the f1 clods hook is `late: true`. Death f1–f3 holds 60/70/80 →
+  **130/140/110** so the mask visibly slips before the slump. Measured: mgKill 1217 mgMaskSlip → 1583 mgDrain → 2133
+  mgGlk → 2433 mgSeal; mgKillP2 1233/1600/2150/2450; mgPinKill 1300 mgMaskSlip.
+- **mgSink on the same frame as mgImpact** → the strike waits 70 ms after the swing resolves before attack CON+1:
+  measured mgAttack 1533 mgImpact → 1733 mgSink (+200 ms), mgBlocked +167 ms. "throw, ŞLAP, pause, hands sink".
+- **Moan buried under the clamp** → mgRoar starts as the spirit REARS (special f2, `late: true`) at volume 1.0 (was
+  0.6 at f6): mgPin 1767 mgRoar … 2150 mgSink … 2317 mgBurst … 2533 mgGrab … 2817 mgClamp (clamp lowered 0.95 → 0.8).
+  Its crest (~400 ms in) now lands before the burst. Pin-kill branch: a lower, quieter mgRoar (pitch 0.82, vol 0.55)
+  from the dead spirit's old tile while its mud crawls.
+- **Cause → effect**: the mud's own mgSink (plunge) now leads the attacker-side mgBurst by ≈170 ms (a 120-ms beat added
+  after the plunge).
+- **New recipes**: `mgLob` (a wet lumpy whoosh under the lump's whole flight — no silent 130 ms), `mgSeal` (soft deep
+  glubs as the seams close over the drained pool, before the card is born).
+
+**SFX loudness** (offline stats, chain; script `scratchpad/mudgrasp_spirit/fix2/stats.sh`):
+| sound | before (loud / rms dB) | after | ref |
+|---|---|---|---|
+| mgImpact | −9.1 / −21.4 | **−6.9 / −17.6** (two-layer smack, bigger body, a 600-Hz şlop tail in the clear at +150 ms) | wyrmBreathImpact −7.7 / −17.6, magusOrbBurst −7.0 / −17.0 |
+| mgRoar | −10.9 / −15.2 | **−8.2 / −12.6** (voice 0.3 → 0.72, a breathier doubled voice, bigger body) | wyrmRoar −7.4 / −12.2 |
+| mgSlap | −17.2 / −25.5 | **−11.2 / −21.5** (two palms 110 ms apart, each with its own knock; squelch bed lowered) | |
+| mgRelease | −16.5 / −26.7 | −12.2 / −22.1 (+ a short heave grunt) | |
+| mgBurst | −14.5 / −23.9 | −11.9 / −20.9 (+ a low heave) | |
+| mgMaskSlip | −18.1 / −25.0 | −14.3 / −21.9 (two ceramic ticks) | |
+- mgDrain: gulp spacing randomized ±30 % with ~25 % double-gulps (no metronome). Spectrograms: `fix-r2/sfx-mgImpact.png`,
+  `fix-r2/sfx-mgSlap.png`.
+
+**Picture**
+- **Summon vortex** (`mudVortex`): the inner rings are gone; three THICK curved arms (ink trough, earth2 body, earth3/4
+  lit crest, violet into the pit) with 3.1 rad of sweep, turning 3→9 rad/s (≥ 2 px / frame at the rim). It is fully open
+  half-way through f0–f1 and HELD open (f1 hold 100 → 170 ms) after the teal placement diamond has faded, before the
+  hands burst. The sprite's own puddle is small during f0–f3 (0.3 / 0.35 / 0.4 / 0.7) so its flat bar no longer lies
+  over the vortex. Burst hands: open 0.88–1, w 2.8, a thick wet wrist collar (1.5). Evidence `fix-r2/mgSummon-z3.png`
+  (t 670–790: the spiral visibly rotates; t 850: splayed hands).
+- **Death**: the "horizontal logs" were the sunk torso slab + mound and the arms clipped at the ground line. Now: from
+  melt > 0.55 the arms are not drawn, from melt > 0.85 the torso is not drawn; the sprite's pool instead carries four
+  ROUND glossy sagging lobes (ink crease where each sits on the pool, lit crest, hot catch; silhouette identical P1/P2),
+  shrinking on the last frame. FX (`cracks`): rod tongues replaced by fat round lobes with a neck back to the pool that
+  spread out along the seams and then WHIRL inward (angle turns as distance shrinks) into the eye; the puddle + its
+  reversed spiral (3 thick 2-row arms, earth4 heads, violet into an ink eye) is centred under the MASK (`cr.pc`), so the
+  mask sinks into the whirl's eye. The seams' rasters are destroyed and one frame passes BEFORE burst()/cardLeaves.
+  Evidence `fix-r2/mgKill-z3.png`, `fix-r2/mgKill-end-z3.png` (t 2450–2550: the reversed whirl drains; the card leaves
+  at ≈2650 on a clean tile), `fix-r2/sheet-p1/mudgrasp_spirit-v3-death.png`.
+- **Strike geometry**: the release pose is now an OVERHAND toss — the arm comes over the hood (`nBack`) with the palm
+  open above the mask (nx 27, ny −47); the contact/follow-through hand falls forward-down (ny −13) instead of a
+  horizontal reach (no punch read). The arc scales with the horizontal distance (`arc = clamp(hdx·0.26 + 6, 14, 40)`,
+  apex over the chord midpoint) → adjacent tiles get a flat forward lob. Lump 9 → ~10–11 px with a lit earth4/earth3
+  crest. The splat draws its flattened wet pancake + violet ember ON the contact frame, at DEPTH.FX + 4.6 (over the shared
+  contact flash). Evidence `fix-r2/mgAttack-lob-z2.png` (t 1200–1440), `fix-r2/mgAttack-z2.png`.
+- **Sprite readability**: `wetGloss` — a dashed gloss streak inset one px inside the lit band of every arm (earth4 on
+  the near arms, earth3 on far ones); two smile-shaped sagging FOLDS across the chest, each with a wet highlight band
+  on its crest (breaks the flat "crate" plane); a third violet crack, the cracks' hot points always void3 (idle has
+  visible violet now). Hit f1 pushed (sink 5, swell 3, mask drop hy 4, arms splay) and a bigger rebound on f2.
+  Evidence `fix-r2/sheet-p1/` + `sheet-p2/` (all 13 anims), before/after `scratchpad/.../fix2/idle-ba.png`.
+- **Aura hands** (minor): staggered heights (9 / 6 / 7 px), each leaning its own way (±3 px) with a bent wrist, the
+  palm cupped (open 0.15–0.5) with the fingers curled toward the ring — no row of stakes. `fix-r2/mgPinLock-aura-z3.png`.
+- **Crawl** (minor): stream 7–9 px with a lit crest; the trail is beaded (gaps) and dries back in 300 ms (was 520)
+  into separate wet spots, never a lingering stick. `fix-r2/mgPinKill-crawl-z2.png`, `fix-r2/mgPinKill-z2.png`.
+- **Grip marks** (minor): the tile-lip x is clamped to hw − 7 so the P2 grip never reaches the neighbouring tile.
+
+**Gates / tests**: monster-gates `--class medium --ref none` → **21 ok, 0 FAIL** (`fix-r2/gates.txt`; IŞ-10 effect
+summon f3 13.3 %; a first try with a 0.12 puddle on summon f0 failed IŞ-10 at 28.6 % → puddle 0.3). `tests/art/mudgrasp_spirit*`
+16/16. tsc: no mudgrasp errors. measure (`fix-r2/measure.json`, `measure2.json`): errors 0 in every mg scenario.
+v1: every change is in v3-only art (monsters-v3), LOOK_V3-gated registrations or v3 recipes → filmdiff not re-run.
+
+**Open after FIX r2**
+- `sourceOwnsDeath` (a killer card with its own `destroys` hook, e.g. chasm_trap / judgment_bolt) still defers to that
+  source's signature kill; the shared fallback material stays `water` (accent `shadow`). A mud-specific shared ending
+  needs a new ShatterMaterial (shared file) — orchestrator decision.
+- `plateLockOf` still peeks at StatBadge's private `lock`; a public additive `badge.isLocked()` is requested from the
+  owner of `src/ui` (not my file).
+- Shared `cardSlide` still fires with mgClamp in `forceGuard` (kept quiet, 0.45); the mud's own guard / hit reactions use
+  the shared shieldBlock / impactLight (decision 4: no struck-body mud material) — open.
+- The teal placement diamond is the shared summon kit's; the vortex now waits for it to fade instead of replacing it.
+- The dark blue blob above the dying body (mgKill t≈1450–1700, `fix-r2/mgKill-z3.png`) is still there; none of our
+  rasters draw at that height (all floor-level or on the sprite), most likely ember_wolf's fire-hit smoke — NOT yet
+  verified with a non-fire killer film.
+- The crawl's stream body on a long diagonal still reads a little rod-like mid-crawl (it is a moving stream with a
+  pulling head; the trail now beads).
+- Aura hands are smaller than the pin's hands at 1× (they are a resting status, sized under the badge).
 
 ## FIX round 1 (critic r1 → fixes), 2026-11-06
 

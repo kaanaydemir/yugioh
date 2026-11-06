@@ -347,32 +347,32 @@ export function mudVortex(sc: Phaser.Scene, at: XY, rx: number, depth: number, s
       mk.clear();
       mk.ell(at.x, at.y, rr, ry);
       mk.wet(g, { tones: [PAL.earth0, PAL.earth0, PAL.earth1, PAL.earth2, PAL.earth3], gloss: false });
-      if (rr > 5) {
-        g.ring(at.x, at.y, rr - 1, ry - 1, PAL.earth2, 1, Math.PI * 0.12, Math.PI * 0.88);
-        g.ring(at.x, at.y, rr - 2, Math.max(1, ry - 2), PAL.earth1, 1, Math.PI * 0.2, Math.PI * 0.8);
-      }
-      // four glossy spiral arms turning inward: continuous 2-px ribbons, a lit crest on top, a hot head at the rim,
-      // violet where they slide into the pit
+      // three THICK curved mud arms winding inward (FIX r2: thin ribbons + inner rings read as flat bars): each a
+      // raised wet roll — lit crest (earth3, earth4 head at the rim), earth2 body, an ink trough under it — that
+      // tapers into the pit; they turn ≥ 2 px per frame at the rim, so the spiral visibly ROTATES
       const dir = Math.sign(V.speed || 1);
-      for (let arm = 0; arm < 4; arm++) {
-        const a0 = ang + (arm * TAU) / 4;
-        const N = 48;
+      for (let arm = 0; arm < 3; arm++) {
+        const a0 = ang + (arm * TAU) / 3;
+        const N = 60;
         let px0 = NaN;
         let py0 = NaN;
         for (let s = 0; s <= N; s++) {
           const k = s / N;
-          const rad = rr * (0.95 - 0.8 * k);
-          const a = a0 + dir * k * 2.4;
+          const rad = rr * (0.97 - 0.82 * k);
+          const a = a0 + dir * k * 3.1;
           const x = Math.round(at.x + Math.cos(a) * rad);
           const y = Math.round(at.y + Math.sin(a) * rad * 0.5);
           if (x === px0 && y === py0) continue;
           px0 = x;
           py0 = y;
           if (!mk.f(x, y) || !mk.f(x, y + 1)) continue;
-          const nearPit = k > 0.74;
-          g.px(x, y, nearPit ? PAL.void2 : k < 0.12 ? PAL.earth3 : PAL.earth2);
-          g.px(x, y + 1, nearPit ? PAL.void1 : PAL.earth1);
-          if (s <= 2 && rr > 9) g.px(x, y - 1, PAL.earth4);
+          const nearPit = k > 0.72;
+          const thick = k < 0.45 && rr > 12;
+          g.px(x, y + 1, nearPit ? PAL.void1 : PAL.ink);
+          g.px(x, y, nearPit ? PAL.void2 : PAL.earth2);
+          if (thick && mk.f(x, y - 1)) g.px(x, y - 1, s <= 4 ? PAL.earth4 : PAL.earth3);
+          else if (!nearPit) g.px(x, y, k < 0.2 ? PAL.earth4 : PAL.earth3);
+          if (thick && mk.f(x + 1, y)) g.px(x + 1, y, PAL.earth2);
         }
       }
       // bubbles: a glossy dome that swells and pops (a violet ring for a frame, two droplets)
@@ -506,6 +506,8 @@ export interface Cracks {
   puddle: number;
   /** Spin of the puddle's spiral (rad / s, negative = the summon's vortex reversed). */
   spin: number;
+  /** Centre of the puddle / whirl (default: the seams' centre) — the mask sinks into its eye. */
+  pc: XY | null;
   destroy(): void;
 }
 
@@ -541,6 +543,7 @@ export function cracks(sc: Phaser.Scene, at: XY, rx: number, depth: number, seed
     close: 0,
     puddle: 0,
     spin: -6,
+    pc: null,
     destroy() {
       if (!alive) return;
       alive = false;
@@ -584,39 +587,57 @@ export function cracks(sc: Phaser.Scene, at: XY, rx: number, depth: number, seed
           });
       }
     });
+    const pc = C.pc ? { x: Math.round(C.pc.x), y: Math.round(C.pc.y) } : at;
     r.draw((g) => {
-      // 2. the tongues + the puddle: one glossy mud mask
+      // 2. the slumps + the puddle: one glossy mud mask
       mk.clear();
-      if (C.puddle >= 1) mk.ell(at.x, at.y, Math.round(C.puddle), Math.max(1, Math.round(C.puddle / 3)));
+      if (C.puddle >= 1) mk.ell(pc.x, pc.y, Math.round(C.puddle), Math.max(1, Math.round(C.puddle / 2.4)));
       if (C.flow > 0 && C.close < 1) {
-        const head = Math.min(C.grow, C.flow) * (1 - C.drain);
-        // fat glossy tongues (5 px, a 6-px head) that thin as they are sucked back in
-        const thick = C.drain < 0.34 ? 2 : C.drain < 0.67 ? 1.5 : 1;
-        for (const pts of lines) {
-          along(pts, 0, head, (p, k) => {
-            const near = head - k < 0.08;
-            mk.disc(p.x, p.y, near ? thick + 0.8 : thick * (1 - k * 0.25));
-          });
-        }
+        // round, glossy, SAGGING lobes that spread outward along the seams (never rods): each one a fat drop at
+        // its seam's head with a short neck back to the pool; on the drain they WHIRL inward (the reversed vortex:
+        // their angle turns while their distance shrinks) and shrink into the eye
+        const reach = Math.min(C.grow, C.flow);
+        const d = C.drain;
+        const turn = -d * d * 2.2;
+        lines.forEach((pts, i) => {
+          const end = pts[Math.min(pts.length - 1, Math.max(1, Math.round(reach * 0.8 * (pts.length - 1))))];
+          const dx0 = end.x - pc.x;
+          const dy0 = (end.y - pc.y) * 2;
+          const rr = Math.hypot(dx0, dy0) * (1 - d);
+          const a = Math.atan2(dy0, dx0) + turn;
+          const lx = pc.x + Math.cos(a) * rr;
+          const ly = pc.y + (Math.sin(a) * rr) / 2;
+          const big = (i % 2 === 0 ? 4.2 : 3.4) * (1 - 0.55 * d);
+          if (big < 1) return;
+          // the neck back toward the pool (a fat wet run, thinner than the lobe)
+          const nx = pc.x + Math.cos(a - turn * 0.35) * rr * 0.45;
+          const ny = pc.y + (Math.sin(a - turn * 0.35) * rr * 0.45) / 2;
+          mk.capsule(nx, ny, lx, ly, Math.max(1, big * 0.5));
+          mk.ell(lx, ly + 0.5, big + 0.8, big * 0.62);
+        });
       }
       mk.wet(g, { tones: [PAL.earth0, PAL.earth1, PAL.earth2, PAL.earth3, PAL.earth4], phase: Math.floor(el / 90) });
-      // 3. the counter-turning spiral in the puddle (the summon's vortex reversed) + its violet eye
-      if (C.puddle >= 6) {
+      // 3. the counter-turning spiral in the puddle (the summon's vortex reversed: thick 2-row arms with a lit
+      // crest that step round visibly) + its violet eye
+      if (C.puddle >= 5) {
         const pr = Math.round(C.puddle);
         for (let arm = 0; arm < 3; arm++) {
           const a0 = ang + (arm * TAU) / 3;
-          for (let s = 0; s <= 10; s++) {
-            const k = s / 10;
-            const rad = pr * (0.85 - 0.7 * k);
-            const a = a0 - k * 3;
-            const x = Math.round(at.x + Math.cos(a) * rad);
-            const y = Math.round(at.y + Math.sin(a) * rad / 3);
-            if (mk.f(x, y) && mk.f(x, y - 1)) g.px(x, y, k > 0.6 ? PAL.void2 : s < 2 ? PAL.earth3 : PAL.earth2);
+          for (let s = 0; s <= 16; s++) {
+            const k = s / 16;
+            const rad = pr * (0.9 - 0.75 * k);
+            const a = a0 - k * 3.2;
+            const x = Math.round(pc.x + Math.cos(a) * rad);
+            const y = Math.round(pc.y + (Math.sin(a) * rad) / 2.4);
+            if (!mk.f(x, y) || !mk.f(x, y + 1)) continue;
+            g.px(x, y, k > 0.62 ? PAL.void2 : s < 3 ? PAL.earth4 : PAL.earth3);
+            g.px(x, y + 1, k > 0.62 ? PAL.void1 : PAL.ink);
           }
         }
-        g.px(at.x, at.y, PAL.void3);
-        g.px(at.x + 1, at.y, PAL.void2);
-        g.px(at.x - 1, at.y, PAL.void2);
+        g.ell(pc.x, pc.y, 2, 1, PAL.ink);
+        g.px(pc.x, pc.y, PAL.void3);
+        g.px(pc.x + 1, pc.y, PAL.void2);
+        g.px(pc.x - 1, pc.y, PAL.void2);
       }
     });
     return true;
@@ -636,12 +657,12 @@ export function drawBall(g: Raster, mk: MudMask, p: XY, sq: number, vx: number, 
   const st = sp > 150 ? 1 : sp > 60 ? 0.5 : 0;
   const wob = sq % 4;
   const horiz = Math.abs(vx) >= Math.abs(vy);
-  let rx = 4 + (horiz ? st : -st * 0.5);
-  let ry = 4 + (horiz ? -st * 0.5 : st);
+  let rx = 4.6 + (horiz ? st : -st * 0.5);
+  let ry = 4.4 + (horiz ? -st * 0.5 : st);
   if (wob === 1) rx += 0.6;
   else if (wob === 3) ry += 0.6;
-  rx = Math.max(3, rx);
-  ry = Math.max(3, ry);
+  rx = Math.max(3.6, rx);
+  ry = Math.max(3.6, ry);
   mk.ell(p.x, p.y, rx, ry);
   // the tail: two lumps behind, against the motion, sagging under gravity
   const L = sp || 1;
@@ -652,6 +673,13 @@ export function drawBall(g: Raster, mk: MudMask, p: XY, sq: number, vx: number, 
   // a drip hanging under the belly
   mk.capsule(p.x - 1, p.y + ry, p.x - 1, p.y + ry + 1 + (wob & 1), 0.5);
   mk.wet(g, { phase: wob });
+  // the lit crest: a bright wet highlight on its top-left (reads at 1× as a glossy lump, not a speck)
+  const cx = Math.round(p.x - rx * 0.45);
+  const cy = Math.round(p.y - ry * 0.55);
+  g.px(cx, cy, PAL.earth4);
+  g.px(cx + 1, cy, PAL.earth4);
+  g.px(cx, cy + 1, PAL.earth3);
+  g.px(cx + 2, cy - 1 + (mk.f(cx + 2, cy - 1) ? 0 : 1), PAL.earth3);
   // the ember (the spirit's violet, never outlined)
   g.px(p.x, p.y, PAL.void3);
   g.px(p.x + 1, p.y, wob & 1 ? PAL.void4 : PAL.void3);
@@ -682,14 +710,18 @@ export function mudSplat(sc: Phaser.Scene, at: XY, floorY: number, depth: number
       el += dt;
       const step = Math.min(5, Math.floor(el / 48));
       r.draw((g) => {
+        mk.clear();
         if (step === 0) {
-          // the contact frame: the ember bursts — a violet pop, no white star
-          g.disc(at.x, at.y, small ? 4 : 5, PAL.void2);
-          g.disc(at.x, at.y, small ? 3 : 4, PAL.void3);
-          g.disc(at.x, at.y, small ? 1 : 2, PAL.void4);
+          // the contact frame itself: the lump FLATTENS on the body — a fat wet pancake with stubby petals, the
+          // ember bursting violet in its middle (no white star of ours)
+          mk.ell(at.x, at.y, small ? 6 : 8, small ? 4 : 5);
+          for (const lb of lobes) mk.capsule(at.x, at.y, at.x + Math.cos(lb.a) * lb.len * 0.35, at.y + Math.sin(lb.a) * lb.len * 0.25, lb.fat);
+          mk.wet(g, { phase: 0 });
+          g.disc(at.x, at.y, small ? 2 : 3, PAL.void3);
+          g.px(at.x, at.y, PAL.void4);
+          g.px(at.x + 1, at.y, PAL.void4);
           return;
         }
-        mk.clear();
         const k = [0, 0.6, 0.9, 1, 1, 1][step];
         const shrink = step >= 4 ? 0.7 : 1;
         // a fat splash: a big wet core, short petals, fat drops flung past their tips (no thin legs)
@@ -1169,7 +1201,7 @@ export function mudPinAura(sc: Phaser.Scene, u: MonsterUnit, seed: number): { de
     { a: Math.PI * 0.1, off: 0 },
     { a: Math.PI * 0.86, off: 0.36 },
     { a: Math.PI * 0.28, off: 0.68 },
-  ].map((h) => ({ ...h, ph: R() }));
+  ].map((h, i) => ({ ...h, ph: R(), tall: [9, 6, 7][i], lean: [3, -3, 1][i] }));
   const CYCLE = 2.6;
   let light: LightHandle | null = lightPool(sc, u.home.x, u.home.y, { color: PAL.void3, spill: PAL.void2, radius: rx + 6, floorY: u.home.y, intensity: 0, anim: 'breathe', fadeIn: 0 });
   light.setIntensity(0.8, 260);
@@ -1244,13 +1276,16 @@ export function mudPinAura(sc: Phaser.Scene, u: MonsterUnit, seed: number): { de
           const base = { x: Math.round(at.x + Math.cos(h.a) * (orx - 3)), y: Math.round(at.y + Math.sin(h.a) * (ory - 1)) };
           let nf = feet[0];
           for (const f of feet) if (Math.abs(f.x - base.x) < Math.abs(nf.x - base.x)) nf = f;
-          const height = Math.round(8 * up);
+          // staggered heights, each hand LEANING at its own angle (never a row of upright stakes), the palm CUPPED
+          // with the fingers curled over toward the ring (a hand gripping the rim / pawing), a bent wrist
+          const height = Math.round(h.tall * up);
           if (height < 2) continue;
           const paw = ph < 0.12 ? 0 : 0.35 + 0.35 * Math.sin((ph - 0.12) * 26 + h.ph * 3);
-          const rest = { x: base.x + Math.round(Math.sin(t * 2 + h.ph * 5)), y: base.y - height };
-          const ank = { x: nf.x + Math.sign(base.x - nf.x || 1) * (nf.hw + 1), y: at.y - 5 };
+          const side = Math.sign(base.x - nf.x || 1);
+          const rest = { x: base.x + h.lean * side + Math.round(Math.sin(t * 2 + h.ph * 5)), y: base.y - height };
+          const ank = { x: nf.x + side * (nf.hw + 1), y: at.y - 5 };
           const tip = rint({ x: lerp(rest.x, ank.x, paw), y: lerp(rest.y, ank.y, paw * 0.6) });
-          wetHand(mkF, base, tip, { open: 1 - paw, w: 2.1, cup: Math.sign(base.x - nf.x || 1), collar: up, drip: (t * 1.5 + h.ph) % 1 });
+          wetHand(mkF, base, tip, { open: 0.15 + 0.35 * (1 - paw), w: 2.2, cup: -side, bend: side * 1.8, collar: up * 1.2, drip: (t * 1.5 + h.ph) % 1 });
         }
       }
       mkF.wet(front, { tones: WET, seepY: at.y + 3, phase: Math.floor(t * 6) });
@@ -1288,21 +1323,23 @@ export function mudCrawl(sc: Phaser.Scene, from: XY, to: XY, ms: number, depth: 
       el += dt;
       const k = Math.min(1, el / ms);
       const tail = clamp01((el - ms * 0.45) / (ms * 0.7));
-      const dry = clamp01((el - ms) / 520);
+      const dry = clamp01((el - ms) / 300);
       const head = at(k);
       glow.setPosition(Math.round(head.x), Math.round(head.y), Math.round(head.y));
       r.draw((g) => {
         // the wet trail it leaves (dark, flat; dries back in three steps)
         tr.clear();
-        const tw = dry < 0.34 ? 1.6 : dry < 0.67 ? 1 : 0.5;
+        const tw = dry < 0.34 ? 2.4 : dry < 0.67 ? 1.5 : 0.8;
         if (dry < 1)
           for (let i = 0; i <= 30; i++) {
             const q = i / 30;
             if (q > Math.min(k, tail + 0.02) || q > 1 - dry) continue;
+            // as it dries it beads up into separate wet spots (never a lingering stick)
+            if (i % 5 >= (dry === 0 ? 4 : dry < 0.5 ? 3 : 2)) continue;
             const p = at(q);
             tr.ell(p.x, p.y + 1, tw + 1.6, Math.max(0.8, tw * 0.8));
           }
-        tr.wet(g, { tones: [PAL.earth0, PAL.earth0, PAL.earth1, PAL.earth1, PAL.earth2], outline: null, gloss: false });
+        tr.wet(g, { tones: [PAL.earth0, PAL.earth0, PAL.earth1, PAL.earth2, PAL.earth3], outline: dry < 0.5 ? PAL.ink : null, gloss: dry < 0.34 });
         // the stream: 5 px wide, thickening into the head
         mk.clear();
         if (tail < 1) {
@@ -1311,7 +1348,7 @@ export function mudCrawl(sc: Phaser.Scene, from: XY, to: XY, ms: number, depth: 
             if (q > k || q < tail) continue;
             const p = at(q);
             const nearHead = k - q < 0.12;
-            mk.ell(p.x, p.y, nearHead ? 4 : 3.2, nearHead ? 3 : 2.2);
+            mk.ell(p.x, p.y, nearHead ? 4.6 : 3.8, nearHead ? 3.2 : 2.6);
           }
           if (k > 0.05 && tail < 0.95) {
             // the head's two little hands, reaching forward and pulling (alternating)
