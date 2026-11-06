@@ -37,8 +37,8 @@ const IDLE_N = 14;
 const I = {
   ny: [-38, -39, -40, -38, -36, -37, -38, -38, -38, -39, -38, -38, -39, -38],
   nx: [12, 12, 11, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12],
-  fy: [-39, -39, -40, -39, -39, -40, -39, -40, -41, -39, -37, -38, -38, -40],
-  fx: [-8, -8, -8, -8, -8, -8, -8, -8, -9, -8, -8, -8, -8, -8],
+  fy: [-39, -39, -40, -39, -39, -40, -39, -39, -39, -42, -37, -38, -38, -40],
+  fx: [-8, -8, -8, -8, -8, -8, -8, -8, -8, -10, -8, -8, -8, -8],
   py: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   flashN: [0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   flashF: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5, 0, 0, 0],
@@ -46,12 +46,28 @@ const I = {
   pole: [2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 3, 2, 2, 2],
   lid: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 2, 0],
 };
+// Two taps with a rest beat between them: the near maul taps on f1–f5, the body rests f6–f8 (the smith's
+// pause), the far maul flicks up and taps on f9–f12. The light loops (field ring `rot`, iron dust `dust`, face
+// sparks `t`) run in step with the two halves: each half advances them by exactly one of their repeats — the
+// ring by a full turn (period 1), the dust motes and the spark dashes by a third (6 motes in two alternating
+// colours and 3 dashes repeat every 1/3). So the rest beat's f7 shows idle f0's light exactly, and on f8 only the
+// ring and the face sparks move on (the dust motes, which set the sprite's outer extent, hold one beat). A blow
+// that lands in the middle of the loop — on a resting body nothing steered (an attacker without a 'contact'
+// mark) — then meets a pose its struck f0 continues: REHBER HA-21 / KK-4 on screen (contact-probe), and the
+// pre-contact settle (posematch) has targets at both ends of the loop instead of idle f0 alone.
+const LOOP_HALF = IDLE_N / 2;
+const REST = LOOP_HALF + 1; // f8: the rest beat's last frame
+function idleDust(k: number): number {
+  if (k <= LOOP_HALF) return k / LOOP_HALF / 3;
+  if (k <= REST) return 1 / 3;
+  return 1 / 3 + ((k - REST) / (IDLE_N - REST)) / 3;
+}
 export function idlePose(f: number): Pose {
   const k = ((f % IDLE_N) + IDLE_N) % IDLE_N;
-  const ph = k / IDLE_N;
+  const h = k / LOOP_HALF;
   return pose({
     nx: I.nx[k], ny: I.ny[k], fx: I.fx[k], fy: I.fy[k], py: I.py[k], flashN: I.flashN[k], flashF: I.flashF[k],
-    face: I.face[k], pole: I.pole[k], lid: I.lid[k], rot: ph * 2, dust: ph, t: ph,
+    face: I.face[k], pole: I.pole[k], lid: I.lid[k], rot: h, dust: idleDust(k), t: h / 3,
   });
 }
 const IDLE0 = idlePose(0);

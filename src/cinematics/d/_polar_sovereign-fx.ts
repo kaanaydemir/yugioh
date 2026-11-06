@@ -9,6 +9,8 @@
 //   targetRose    "Pusula Fırtınası": two-colour field lines closing round the target as a compass rose
 //   poleBlast     the contact: a pole blast at the rose's heart and the iron rain falling out of it
 //   splitStreaks  the split: three two-colour streaks flung from the body toward the three landing zones
+//   flingPieces   the split: the three PIECES themselves (their folded frames) flung apart on two-colour trails,
+//                 caught by the field over their landing zones and hanging there, bobbing, until each drops
 //   landPuff      a piece lands in its zone: a small iron-dust ring and two pole sparks
 
 import Phaser from 'phaser';
@@ -16,6 +18,10 @@ import { PAL } from '../../art/palette';
 import { PixelCanvas } from '../../art/pixel';
 import { lightOf } from '../../art/rigkit';
 import { needle } from '../../art/monsters-v3/polar_needle-kit';
+import { monsterArt } from '../../art/monsters';
+import { monsterFrame } from '../../art/textures';
+import type { AnyMonsterAnim } from '../../art/types';
+import type { MonsterId } from '../../data/cards';
 import { DEPTH, type XY } from '../../view/layout';
 import { Raster, run } from '../../vfx/setpieces';
 
@@ -352,6 +358,111 @@ export function hoverSparks(scene: Phaser.Scene, at: readonly XY[]): { release(i
     },
     destroy() {
       alive = false;
+      r.destroy();
+    },
+  };
+}
+
+// ================================================================ the split: the pieces flung apart
+
+export interface FlungPiece {
+  id: MonsterId;
+  /** the piece's anchor (floor point) where it sits in the sovereign's body */
+  from: XY;
+  /** the anchor's hang point over its landing zone */
+  to: XY;
+  /** the frame it flies in (the folded shape it has inside the sovereign) */
+  anim: AnyMonsterAnim;
+  frame: number;
+  flip: boolean;
+  /** its pole colour (the trail's hot core) */
+  pole: number;
+}
+
+/** The split's fling: each piece's own sprite frame flies from its seat in the body to the sky of its zone on an
+ *  easing-out arc (flung hard, braked by the field), trailing a fire / water streak; then it hangs there, bobbing
+ *  1 px inside a flickering field loop, until release(i) (its real unit takes over) or destroy(). */
+export function flingPieces(scene: Phaser.Scene, ps: readonly FlungPiece[], ms: number): { done: Promise<void>; release(i: number): void; destroy(): void } {
+  const imgs = ps.map((p) => {
+    const art = monsterArt(p.id);
+    const key = `ps:fling:${p.id}:${p.anim}:${p.frame}`;
+    if (!scene.textures.exists(key)) scene.textures.addCanvas(key, monsterFrame(p.id, p.anim, p.frame).toCanvas());
+    return scene.add
+      .image(rnd(p.from.x), rnd(p.from.y), key)
+      .setOrigin((p.flip ? art.w - art.anchorX : art.anchorX) / art.w, art.anchorY / art.h)
+      .setFlipX(p.flip)
+      .setDepth(DEPTH.FX + 1);
+  });
+  const xs = ps.flatMap((p) => [p.from.x, p.to.x]);
+  const ys = ps.flatMap((p) => [p.from.y, p.to.y]);
+  const x0 = Math.min(...xs) - 30;
+  const y0 = Math.max(0, Math.min(...ys) - 110);
+  const r = new Raster(scene, x0, y0, Math.max(...xs) + 30 - x0, Math.max(...ys) + 16 - y0, DEPTH.FX);
+  const live = ps.map(() => true);
+  let alive = true;
+  const peak = (i: number) => 26 + i * 8;
+  const at = (p: FlungPiece, i: number, e: number): XY => ({
+    x: p.from.x + (p.to.x - p.from.x) * e,
+    y: p.from.y + (p.to.y - p.from.y) * e - Math.sin(Math.PI * e) * peak(i),
+  });
+  // the trail runs through the piece's middle, not its feet
+  const mid = (i: number) => rnd(-(imgs[i].height * 0.4));
+  const done = run(scene, ms, (t) => {
+    if (!alive) return;
+    const u = Math.min(1, t);
+    const e = 1 - (1 - u) * (1 - u) * (1 - u);
+    r.draw((rr) => {
+      ps.forEach((p, i) => {
+        if (!live[i]) return;
+        for (let k = 1; k <= 14; k++) {
+          const ek = e - k * 0.028;
+          if (ek <= 0) break;
+          const q = at(p, i, ek);
+          const y = q.y + mid(i);
+          const hot = k <= 3;
+          rr.rect(q.x - 1, y - 1, 2, 2, hot ? PAL.white : k <= 7 ? p.pole : PAL.fire3);
+          if (k <= 10) rr.rect(q.x - 1, y + 1, 2, 1, hot ? PAL.mist : PAL.water3);
+        }
+      });
+    });
+    ps.forEach((p, i) => {
+      const q = at(p, i, e);
+      imgs[i].setPosition(rnd(q.x), rnd(q.y));
+    });
+  }).then(() => {
+    if (!alive) return;
+    // the hang: the field holds each piece over its zone (1-px bob, a two-colour loop under it)
+    void run(scene, 6000, (_t, el) => {
+      if (!alive) return;
+      const ph = Math.floor(el / 90);
+      r.draw((rr) => {
+        ps.forEach((p, i) => {
+          if (!live[i]) return;
+          const cy = rnd(p.to.y + 3);
+          for (let k = 0; k < 14; k++) {
+            if ((k + ph) % 4 === 0) continue;
+            const a = (k / 14) * TAU + ph * 0.35 + i;
+            rr.px(rnd(p.to.x + Math.cos(a) * 10), rnd(cy + Math.sin(a) * 4), Math.cos(a) < 0 ? PAL.fire3 : PAL.water3);
+          }
+        });
+      });
+      ps.forEach((p, i) => {
+        if (live[i]) imgs[i].setPosition(rnd(p.to.x), rnd(p.to.y) + ((ph + i) % 4 < 2 ? 0 : -1));
+      });
+    });
+  });
+  return {
+    done,
+    release(i) {
+      if (!live[i]) return;
+      live[i] = false;
+      imgs[i].destroy();
+      if (live.every((v) => !v)) this.destroy();
+    },
+    destroy() {
+      if (!alive) return;
+      alive = false;
+      imgs.forEach((m) => m.active && m.destroy());
       r.destroy();
     },
   };

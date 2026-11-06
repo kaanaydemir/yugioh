@@ -44,7 +44,7 @@ import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { bg, run, runSummon, type Stage } from '../summon-a/_kit';
 import { COIL_EXPLODED, NEEDLE_EXPLODED, RX as SRX } from '../../art/monsters-v3/polar_sovereign-rig';
 import { ATTACK_CATCH, ATTACK_LOCK, ATTACK_THROW, DEATH_SPLIT, SUMMON_HOLD, SUMMON_KLAK, SUMMON_LAND, SUMMON_LIFT } from '../../art/monsters-v3/polar_sovereign-anims';
-import { dustRose, dustShock, hoverSparks, landPuff, poleBlast, seedFx, spearShot, splitStreaks, targetRose, type DustRose } from './_polar_sovereign-fx';
+import { dustRose, dustShock, flingPieces, landPuff, poleBlast, seedFx, spearShot, targetRose, type DustRose } from './_polar_sovereign-fx';
 
 const ID = 'polar_sovereign';
 const PIECES: readonly CardId[] = ['polar_needle', 'polar_anvil', 'polar_coil'];
@@ -62,15 +62,23 @@ const EXPLODED: Readonly<Record<string, XY>> = {
   polar_needle: { x: NEEDLE_EXPLODED[0] - 6, y: -SUMMON_LIFT + NEEDLE_EXPLODED[1] },
 };
 const POLE_COLOR: Readonly<Record<string, number>> = { polar_needle: PAL.fire4, polar_anvil: PAL.water4, polar_coil: PAL.gold4 };
+/** the frame each piece holds its polar charge (`special`) at while the rose is drawn */
+const SPECIAL_PEAK: Readonly<Record<string, number>> = { polar_needle: 5, polar_anvil: 4, polar_coil: 4 };
+/** the fold in flight: each piece's own summon frames played backwards [from, to] — the anvil's arms tuck in (f10 →
+ *  f7, arms 1 → 0), the coil's legs + whips wind back into the wire (f9 → f6), the needle closes (f16 → f12, LOCK) */
+const FOLD: Readonly<Record<string, readonly [number, number]>> = { polar_anvil: [10, 7], polar_coil: [9, 6], polar_needle: [16, 12] };
 /** the pieces' own pitches for their landing (needle A3 high, coil D3, anvil E2 low) */
 const PIECE_PITCH: Readonly<Record<string, number>> = { polar_needle: 1.5, polar_coil: 1.12, polar_anvil: 0.8 };
 
 /** Handed from the tribute pre-show to the summon entrance (same event batch, played in order). */
 let pending: { rose: DustRose | null; pools: LightHandle[]; dimmed: boolean } | null = null;
 /** The split's piece-sparks hanging over the landing zones, keyed by the sovereign's uid (destroyed → effect hook). */
-const sparks = new Map<number, { zones: number[]; h: ReturnType<typeof hoverSparks> }>();
-/** where a piece hangs before it drops (the streak's end): DROP px over its tile */
-const DROP = 80;
+const sparks = new Map<number, { zones: number[]; h: ReturnType<typeof flingPieces> }>();
+/** where a flung piece hangs before it drops: HANG px over its tile */
+const HANG = 26;
+let lastSeam = -1;
+/** each piece's anchor where it sits in the ASSEMBLED body (the exploded view brought down by SUMMON_LIFT) */
+const SEAT: Readonly<Record<string, XY>> = Object.fromEntries(Object.entries(EXPLODED).map(([k, v]) => [k, { x: v.x, y: v.y + SUMMON_LIFT }]));
 
 const ease = (t: number) => t * t * (3 - 2 * t);
 
@@ -128,7 +136,21 @@ registerCardHook(
     play('sovereignDust', { volume: 0.9, pan: panAt(dest.x) });
     const centre = lightPool(sc, dest.x, dest.y, { color: PAL.gold3, radius: 40, floorY: dest.y, intensity: 0.5, anim: 'breathe', fadeIn: 400 });
     pools.push(centre);
+    // each piece answers the call with its own polar charge (its `special`), held at the blaze until it rises
+    rel.forEach(({ g, unit }, i) => {
+      if (!unit || !unit.sprite.active || !unit.has('special')) return;
+      bg(wait(sc, 60 + i * 110).then(() => (unit.sprite.active ? unit.playRange('special', 0, SPECIAL_PEAK[g.cardId] ?? 4) : undefined)));
+    });
     await rose.draw(760);
+    // the card sinks into the middle tile: the ace's seat is marked before the pieces come to it
+    if (card.active) {
+      const c0 = { x: card.x, y: card.y };
+      await run(sc, 150, (t) => card.active && card.setPosition(Math.round(c0.x + (dest.x - c0.x) * t * t), Math.round(c0.y + (dest.y - 6 - c0.y) * t * t)));
+      ctx.sfx('cardSlam', { volume: 0.8 });
+      void lightFlash(sc, dest.x, dest.y - 4, PAL.gold4, 30, 220, { floorY: dest.y, intensity: 0.9 });
+      centre.setIntensity(0.85, 80);
+      bg(run(sc, 160, (t) => card.active && card.setAlpha(1 - t)).then(() => card.active && card.destroy()));
+    }
 
     // ---- 0.8 the pieces rise humming, their tiles burn, their cards go; the rose's dust is pulled in
     const rise = start('sovereignRise', { volume: 0.9, pan: panAt(dest.x) });
@@ -157,11 +179,24 @@ registerCardHook(
     });
     const mids = sprites.map((u, i) => ({ x: u ? u.sprite.x : homes[i].x, y: u ? u.sprite.y : homes[i].y }));
     sprites.forEach((u) => u?.sprite.setDepth(unitDepth(dest.y) + 1));
+    // in flight each piece FOLDS into the shape it takes in the sovereign (its own entrance played backwards):
+    // the anvil tucks its maul arms into the block, the coil draws its legs and whips into the wire, the needle
+    // closes into the compass-card lozenge — so the swap meets the exploded view pose for pose
+    const shown = sprites.map(() => -1);
     await run(sc, 560, (t) => {
       rose.pull(0.4 + t * 0.6);
       const e = ease(t);
       sprites.forEach((u, i) => {
         if (!u) return;
+        const fold = FOLD[rel[i].g.cardId];
+        if (fold && u.has('summon')) {
+          const k = Math.max(0, Math.min(1, (t - 0.08) / 0.7));
+          const f = Math.round(fold[0] + (fold[1] - fold[0]) * k);
+          if (f !== shown[i]) {
+            shown[i] = f;
+            u.pose('summon', f);
+          }
+        }
         const a = mids[i];
         const b = targets[i];
         u.sprite.setPosition(Math.round(a.x + (b.x - a.x) * e), Math.round(a.y + (b.y - a.y) * e - Math.sin(Math.PI * e) * 10));
@@ -171,12 +206,6 @@ registerCardHook(
       });
     });
     rise.stop(60);
-    // the card dives into the middle tile (the swap's flash covers its landing)
-    if (card.active) {
-      const c0 = { x: card.x, y: card.y };
-      await run(sc, 140, (t) => card.active && card.setPosition(Math.round(c0.x + (dest.x - c0.x) * t * t), Math.round(c0.y + (dest.y - 6 - c0.y) * t * t)));
-      ctx.sfx('cardSlam', { volume: 0.8 });
-    }
 
     // ---- 1.9 swap: the magnetic flash; the card is spent, the pieces' units go, the sovereign's frames take over
     void lightFlash(sc, dest.x, dest.y - 30, PAL.white, 60, 260, { floorY: dest.y, intensity: 1 });
@@ -372,6 +401,19 @@ registerCardHook(
     u.badge.setVisible(false);
     play('sovereignCrack', { volume: 0.9, pan });
     await u.playRange('death', 0, DEATH_SPLIT);
+    // the cracks hold: the body trembles on its joints (1 px, ever faster) while the seams flicker in the pole colours
+    const r0 = { x: u.sprite.x, y: u.sprite.y };
+    const seams = [PAL.fire4, PAL.water4, PAL.gold4];
+    await run(sc, 320, (t, el) => {
+      const step = Math.floor(el / (t < 0.5 ? 50 : 30));
+      u.sprite.setPosition(Math.round(r0.x + (step % 2 ? 1 : -1) * (t > 0.2 ? 1 : 0)), Math.round(r0.y));
+      if (step % 3 === 0 && step !== lastSeam) {
+        lastSeam = step;
+        const k = step % 3 === 0 ? (step / 3) % 3 : 0;
+        void lightFlash(sc, home.x, home.y - (k === 0 ? 14 : k === 1 ? 34 : 54), seams[k], 14, 90, { floorY: home.y, intensity: 0.7 });
+      }
+    });
+    u.sprite.setPosition(Math.round(r0.x), Math.round(r0.y));
     play('sovereignRepel', { volume: 1, pan });
     void lightFlash(sc, home.x, home.y - 40, PAL.white, 64, 260, { floorY: home.y, intensity: 1, ring: true });
     bg(shake(sc, 160, 4));
@@ -382,15 +424,25 @@ registerCardHook(
     if (tile) bg(tile.dissolve(360).then(() => tile.destroy()));
     bg(fx.cardToGraveyard(ctx, { owner, cardId: ID as MonsterId, from: { x: home.x, y: home.y - 4 }, delay: 80 }));
     bg(dustShock(sc, home, 60, 480));
-    await splitStreaks(sc, { x: home.x, y: home.y - 40 }, to.map((p) => ({ x: p.x, y: p.y - DROP - 24 + 60 })), 420);
-    // the pieces hang in the sky over their zones until the graveyard activation drops them (a spell may resolve between)
-    const h = hoverSparks(sc, to.map((p) => ({ x: p.x, y: p.y - DROP - 24 })));
+    // the pieces themselves are flung apart from their seats in the body (folded, as they sit in it) to hang over
+    // their zones until the graveyard activation drops them (a spell may resolve between)
+    const dir = owner === 0 ? 1 : -1;
+    const h = flingPieces(
+      sc,
+      split.zones.map((z, i) => {
+        const o = SEAT[z.cardId] ?? { x: 0, y: -20 };
+        const f = FOLD[z.cardId];
+        return { id: z.cardId as MonsterId, from: { x: home.x + o.x * dir, y: home.y + o.y }, to: { x: to[i].x, y: to[i].y - HANG }, anim: 'summon', frame: f ? f[1] : 0, flip: z.player === 1, pole: POLE_COLOR[z.cardId] ?? PAL.gold4 };
+      }),
+      460,
+    );
     sparks.get(ev.uid)?.h.destroy();
     sparks.set(ev.uid, { zones: split.zones.map((z) => z.player * 10 + z.zone), h });
     bg(wait(sc, 6000).then(() => {
       sparks.get(ev.uid)?.h.destroy();
       sparks.delete(ev.uid);
     }));
+    await h.done;
   },
   { priority: 20, name: 'd:polar_sovereign:death' },
 );
@@ -439,10 +491,22 @@ async function dropIn(u: MonsterUnit, home: XY, cardId: CardId): Promise<void> {
   const r = u.rest0;
   const pan = panAt(home.x);
   u.badge.setVisible(false);
-  u.pose(u.has('toGuard') ? 'toGuard' : 'guard', 0);
-  u.sprite.setPosition(Math.round(r.x), Math.round(r.y - DROP));
+  // it falls out of its hang still folded and unfolds on the way down (its own entrance's last frames)
+  const fold = u.has('summon') ? FOLD[cardId] : undefined;
+  u.pose(fold ? 'summon' : u.has('toGuard') ? 'toGuard' : 'guard', fold ? fold[1] : 0);
+  u.sprite.setPosition(Math.round(r.x), Math.round(r.y - HANG));
   u.showSprite();
-  await run(sc, 260, (t) => u.sprite.setPosition(Math.round(r.x), Math.round(r.y - DROP * (1 - t * t))));
+  let shown = -1;
+  await run(sc, 220, (t) => {
+    u.sprite.setPosition(Math.round(r.x), Math.round(r.y - HANG * (1 - t * t)));
+    if (fold) {
+      const f = Math.round(fold[1] + (fold[0] - fold[1]) * t);
+      if (f !== shown) {
+        shown = f;
+        u.pose('summon', f);
+      }
+    }
+  });
   u.sprite.setPosition(Math.round(r.x), Math.round(r.y));
   play('sovereignPieceLand', { volume: 0.85, pan, pitch: PIECE_PITCH[cardId] ?? 1 });
   void lightFlash(sc, home.x, home.y - 10, POLE_COLOR[cardId] ?? PAL.gold4, 28, 240, { floorY: home.y, intensity: 0.9 });
