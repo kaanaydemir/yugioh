@@ -9,7 +9,7 @@ Per-card design + critique log: docs/v3/oturum-f/<id>.md.
 |---|---|---|---|---|---|---|
 | windmane_knight | — | — | — | 0/3 | — | — |
 | shield_titan | — | — | — | 0/3 | — | — |
-| hourglass_imp | — | — | — | 0/3 | — | — |
+| hourglass_imp | ✓ | ✓ | ✓ | 3/3 | ✓ | ✓ |
 | wing_lady | — | — | — | 0/3 | — | — |
 
 ## Log
@@ -24,6 +24,14 @@ Per-card design + critique log: docs/v3/oturum-f/<id>.md.
 
 - 2026-11-01 ~05:45 UTC: **PAUSED (owner decision via orchestrator: weekly usage nearly exhausted).** Workflow
   run stopped, auto-checkpoint loop stopped, all work pushed as WIP.
+
+- 2026-11-06: **hourglass_imp (Kum Saati Cücesi) shipped.** Fix rounds 1–3 (craft / unique / integration) done,
+  log in docs/v3/oturum-f/hourglass_imp.md. Gates at ship: `npm run typecheck` clean; vitest 1476 pass / 8 fail
+  (none ours: arena-nt-platform ×2, board-nt-layout, cardface-v3 G1, cloud_hatchling, dusk_ashen, hollow_ogre,
+  crag_axeman); `tests/art/hourglass_imp.test.ts` pass; monster-gates `--class small --ref none` 21 ok / 0 FAIL;
+  filmdiff v1 17/17 + a6v1 26/26 IDENTICAL; camera gate (verify1 vs r3-integration base) 20 ok + 3 NOBASE, 0 FAIL.
+  Evidence: shots/v3/kart-f/hourglass_imp/{final,fix1,fix2,fix3,r3-integration,verify1}/ (verify1/filmdiff-a6v1.txt,
+  verify1/measure.json, verify1/sheet/, verify1/same/sameness.txt).
 
 ## Resume instructions (lane F is PAUSED — resume only when the orchestrator says so)
 
@@ -61,3 +69,9 @@ to re-exclude them.
    once its verify passes; then write the final summary here.
 
 ## Open issues
+- hourglass_imp: shared edits for orchestrator review — `src/cinematics/v3small/turn.ts` (no ready ring on a
+  sealed unit), `src/duel/HumanInput.ts` (seal refusal hint), `src/duel/StatBadge.ts` (sand freeze icon); the v1
+  ready ring and a full legal-attackers query are orchestrator calls. ksBoard5: the sealed back-row emblem overlaps
+  the Işık Perisi behind it (gold on gold). The summon's cyan card-slam flash is the shared `runSummon` kit.
+- Camera gate against the lane base `shots/v3/kart-f/camera-base.json`: `m1Imp` (wisp_imp, not lane F) FAILs
+  maxScroll 15 → 18 (lean #0 (0,-13) → (0,-16)); not caused by hourglass_imp — needs a rebase by its owner lane.
