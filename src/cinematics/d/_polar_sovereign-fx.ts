@@ -394,87 +394,146 @@ export function hoverSparks(scene: Phaser.Scene, at: readonly XY[]): { release(i
 
 export interface FlungPiece {
   id: MonsterId;
-  /** the piece's anchor (floor point) where it sits in the sovereign's body */
+  /** the piece's anchor (floor point) where its part sits in the sovereign's body on the repel frame */
   from: XY;
   /** the anchor's hang point over its landing zone */
   to: XY;
-  /** the frame it flies in (the folded shape it has inside the sovereign) */
+  /** the repel's kick: the Bezier control point's offset from `from` (each piece its own radial direction) */
+  launch: XY;
+  /** the frames it tumbles through in flight (its folded shape and its neighbours), the last one held in the hang */
   anim: AnyMonsterAnim;
-  frame: number;
+  frames: readonly number[];
   flip: boolean;
   /** its pole colour (the trail's hot core) */
   pole: number;
 }
 
-/** The split's fling: each piece's own sprite frame flies from its seat in the body to the sky of its zone on an
- *  easing-out arc (flung hard, braked by the field), trailing a fire / water streak; then it hangs there, bobbing
- *  1 px inside a flickering field loop, until release(i) (its real unit takes over) or destroy(). */
+/** A texture of one piece frame (P1 art; flipped by the image). */
+function pieceKey(scene: Phaser.Scene, id: MonsterId, anim: AnyMonsterAnim, frame: number, p2: boolean): string {
+  // a player-2 piece is relit (light from the right) like its unit's P2 sheet, then flipped by the image
+  const relit = p2 && monsterArt(id).p2 === 'relight';
+  const key = `ps:fling:${id}:${anim}:${frame}${relit ? ':p2' : ''}`;
+  if (!scene.textures.exists(key)) scene.textures.addCanvas(key, monsterFrame(id, anim, frame, relit ? { lightFrom: 'right' } : undefined).toCanvas());
+  return key;
+}
+
+/** The split's fling: each piece's own sprite frame is born WHITE where its part was drawn in the body (the repel
+ *  flash frame hides the change of shape), then kicked out along its own radial Bezier (up and away from the
+ *  others: the field repels them apart), tumbling through its frames, trailing a two-colour streak (its pole over
+ *  water) that sheds iron dust; braked by the field it swings in over its landing zone and hangs there — wobbling
+ *  1 px on the field's beat, sparking, a two-colour loop under it and a flickering field line to its neighbour —
+ *  until release(i) (its real unit takes over) or destroy(). */
 export function flingPieces(scene: Phaser.Scene, ps: readonly FlungPiece[], ms: number): { done: Promise<void>; release(i: number): void; destroy(): void } {
-  const imgs = ps.map((p) => {
+  const keys = ps.map((p) => p.frames.map((f) => pieceKey(scene, p.id, p.anim, f, p.flip)));
+  const imgs = ps.map((p, i) => {
     const art = monsterArt(p.id);
-    const key = `ps:fling:${p.id}:${p.anim}:${p.frame}`;
-    if (!scene.textures.exists(key)) scene.textures.addCanvas(key, monsterFrame(p.id, p.anim, p.frame).toCanvas());
     return scene.add
-      .image(rnd(p.from.x), rnd(p.from.y), key)
+      .image(rnd(p.from.x), rnd(p.from.y), keys[i][0])
       .setOrigin((p.flip ? art.w - art.anchorX : art.anchorX) / art.w, art.anchorY / art.h)
       .setFlipX(p.flip)
-      .setDepth(DEPTH.FX + 1);
+      .setDepth(DEPTH.FX + 1)
+      .setTintFill(PAL.white);
   });
-  const xs = ps.flatMap((p) => [p.from.x, p.to.x]);
-  const ys = ps.flatMap((p) => [p.from.y, p.to.y]);
-  const x0 = Math.min(...xs) - 30;
-  const y0 = Math.max(0, Math.min(...ys) - 110);
-  const r = new Raster(scene, x0, y0, Math.max(...xs) + 30 - x0, Math.max(...ys) + 16 - y0, DEPTH.FX);
+  const xs = ps.flatMap((p) => [p.from.x, p.to.x, p.from.x + p.launch.x]);
+  const ys = ps.flatMap((p) => [p.from.y, p.to.y, p.from.y + p.launch.y]);
+  const x0 = Math.min(...xs) - 40;
+  const y0 = Math.max(0, Math.min(...ys) - 70);
+  const r = new Raster(scene, x0, y0, Math.max(...xs) + 40 - x0, Math.max(...ys) + 20 - y0, DEPTH.FX);
   const live = ps.map(() => true);
   let alive = true;
-  const peak = (i: number) => 26 + i * 8;
-  const at = (p: FlungPiece, i: number, e: number): XY => ({
-    x: p.from.x + (p.to.x - p.from.x) * e,
-    y: p.from.y + (p.to.y - p.from.y) * e - Math.sin(Math.PI * e) * peak(i),
-  });
+  const at = (p: FlungPiece, e: number): XY => {
+    const c = { x: p.from.x + p.launch.x, y: p.from.y + p.launch.y };
+    const a = (1 - e) * (1 - e);
+    const b = 2 * (1 - e) * e;
+    const d = e * e;
+    return { x: a * p.from.x + b * c.x + d * p.to.x, y: a * p.from.y + b * c.y + d * p.to.y };
+  };
   // the trail runs through the piece's middle, not its feet
-  const mid = (i: number) => rnd(-(imgs[i].height * 0.4));
-  const done = run(scene, ms, (t) => {
+  const mid = (i: number) => rnd(-(imgs[i].height * 0.42));
+  const dust = ps.map(() => [] as { x: number; y: number; vy: number; t0: number; c: number }[]);
+  let whiteUntil = 34;
+  const done = run(scene, ms, (t, el) => {
     if (!alive) return;
-    const u = Math.min(1, t);
-    const e = 1 - (1 - u) * (1 - u) * (1 - u);
+    if (whiteUntil > 0 && el >= whiteUntil) {
+      whiteUntil = 0;
+      imgs.forEach((m) => m.active && m.clearTint());
+    }
+    // a hard kick then the field's brake: fast out of the body, slowing into the hang
+    const e = 1 - Math.pow(1 - Math.min(1, t), 2.4);
     r.draw((rr) => {
       ps.forEach((p, i) => {
         if (!live[i]) return;
-        for (let k = 1; k <= 14; k++) {
-          const ek = e - k * 0.028;
+        for (let k = 1; k <= 18; k++) {
+          const ek = e - k * 0.022;
           if (ek <= 0) break;
-          const q = at(p, i, ek);
+          const q = at(p, ek);
           const y = q.y + mid(i);
           const hot = k <= 3;
-          rr.rect(q.x - 1, y - 1, 2, 2, hot ? PAL.white : k <= 7 ? p.pole : PAL.fire3);
-          if (k <= 10) rr.rect(q.x - 1, y + 1, 2, 1, hot ? PAL.mist : PAL.water3);
+          // the piece's pole on top, water under it: a two-colour ribbon thinning out behind
+          rr.rect(q.x - 1, y - 1, k <= 10 ? 2 : 1, 2, hot ? PAL.white : k <= 8 ? p.pole : PAL.fire2);
+          if (k <= 12) rr.rect(q.x - 1, y + 1, k <= 8 ? 2 : 1, 1, hot ? PAL.mist : k <= 6 ? PAL.water4 : PAL.water2);
+          // iron dust shed from the ribbon (falls on its own)
+          if (k === 6 && hash(i * 31 + Math.floor(el / 40), 7) < 0.6) dust[i].push({ x: rnd(q.x + (hash(el, i) - 0.5) * 6), y: rnd(y + 2), vy: 0, t0: el, c: hash(i, el) < 0.5 ? PAL.steel : PAL.mist });
+        }
+        for (const g of dust[i]) {
+          const dt = (el - g.t0) / 1000;
+          if (dt > 0.45) continue;
+          rr.px(g.x, g.y + rnd(dt * dt * 220), dt > 0.3 ? PAL.stone3 : g.c);
         }
       });
     });
     ps.forEach((p, i) => {
-      const q = at(p, i, e);
+      if (!live[i] || !imgs[i].active) return;
+      const q = at(p, e);
       imgs[i].setPosition(rnd(q.x), rnd(q.y));
+      // it tumbles through its frames while the kick lasts, settles on the last one as the field brakes it
+      const fi = t < 0.75 ? Math.floor(el / 60 + i) % keys[i].length : keys[i].length - 1;
+      imgs[i].setTexture(keys[i][fi]);
     });
   }).then(() => {
     if (!alive) return;
-    // the hang: the field holds each piece over its zone (1-px bob, a two-colour loop under it)
+    // the hang: the field holds each piece over its zone — a 1-px wobble on its beat, sparks, a two-colour loop
+    // under it, a flickering field line to the next piece (they still pull on each other)
     void run(scene, 6000, (_t, el) => {
       if (!alive) return;
-      const ph = Math.floor(el / 90);
+      const ph = Math.floor(el / 80);
       r.draw((rr) => {
         ps.forEach((p, i) => {
           if (!live[i]) return;
           const cy = rnd(p.to.y + 3);
-          for (let k = 0; k < 14; k++) {
+          for (let k = 0; k < 16; k++) {
             if ((k + ph) % 4 === 0) continue;
-            const a = (k / 14) * TAU + ph * 0.35 + i;
-            rr.px(rnd(p.to.x + Math.cos(a) * 10), rnd(cy + Math.sin(a) * 4), Math.cos(a) < 0 ? PAL.fire3 : PAL.water3);
+            const a = (k / 16) * TAU + ph * 0.35 + i;
+            rr.px(rnd(p.to.x + Math.cos(a) * 11), rnd(cy + Math.sin(a) * 4), Math.cos(a) < 0 ? PAL.fire3 : PAL.water3);
+          }
+          // sparks crackling off the piece's middle
+          for (let k = 0; k < 3; k++) {
+            if (hash(ph * 3 + k, i) > 0.55) continue;
+            const a = hash(ph, i * 5 + k) * TAU;
+            const d = 6 + hash(k, ph + i) * 10;
+            rr.px(rnd(p.to.x + Math.cos(a) * d), rnd(p.to.y + mid(i) + Math.sin(a) * d * 0.8), k % 2 ? p.pole : PAL.white);
+          }
+          // the field line to its neighbour (dashed, crawling, fire half / water half)
+          const nb = ps[i + 1];
+          if (nb && live[i + 1]) {
+            const a = { x: p.to.x, y: p.to.y + mid(i) };
+            const b = { x: nb.to.x, y: nb.to.y + mid(i + 1) };
+            const n = Math.max(4, rnd(Math.hypot(b.x - a.x, b.y - a.y) / 2));
+            for (let s = 4; s < n - 4; s++) {
+              if ((s + ph) % 3 === 0) continue;
+              const u = s / n;
+              const sag = Math.sin(Math.PI * u) * (6 + (ph % 2));
+              rr.px(rnd(a.x + (b.x - a.x) * u), rnd(a.y + (b.y - a.y) * u + sag), u < 0.5 ? PAL.fire2 : PAL.water2);
+            }
           }
         });
       });
       ps.forEach((p, i) => {
-        if (live[i]) imgs[i].setPosition(rnd(p.to.x), rnd(p.to.y) + ((ph + i) % 4 < 2 ? 0 : -1));
+        if (!live[i] || !imgs[i].active) return;
+        const beat = (ph + i * 2) % 6;
+        const wx = beat === 1 ? 1 : beat === 4 ? -1 : 0;
+        const wy = beat < 3 ? 0 : -1;
+        imgs[i].setPosition(rnd(p.to.x) + wx, rnd(p.to.y) + wy);
       });
     });
   });

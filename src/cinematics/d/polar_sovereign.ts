@@ -38,12 +38,12 @@ import { hitStop, shake, wait } from '../../vfx/core';
 import { fx, registerCardHook, registerStrike } from '../api';
 import type { StrikeArgs } from '../_core/types';
 import { strikeStartFrame } from '../_v3/clash';
-import { deathV3 } from '../_v3/death';
 import { atFrame, panAt, play, start, takeCharge } from '../_v3/sound';
 import { sourceOwnsDeath } from '../strikes-b/_kit';
 import { bg, run, runSummon, type Stage } from '../summon-a/_kit';
 import { COIL_EXPLODED, NEEDLE_EXPLODED, RX as SRX } from '../../art/monsters-v3/polar_sovereign-rig';
 import { ATTACK_CATCH, ATTACK_LOCK, ATTACK_THROW, DEATH_SPLIT, SUMMON_HOLD, SUMMON_KLAK, SUMMON_LAND, SUMMON_LIFT } from '../../art/monsters-v3/polar_sovereign-anims';
+import { piecesFall, type FallingPiece } from './_polar_sovereign-finals';
 import { dustRose, dustShock, flingPieces, landPuff, poleBlast, seedFx, spearShot, spearStuck, targetRose, type DustRose } from './_polar_sovereign-fx';
 
 const ID = 'polar_sovereign';
@@ -75,11 +75,9 @@ let pending: { rose: DustRose | null; pools: LightHandle[]; dimmed: boolean } | 
 /** The split's piece-sparks hanging over the landing zones, keyed by the sovereign's uid (destroyed → effect hook). */
 const sparks = new Map<number, { zones: number[]; h: ReturnType<typeof flingPieces>; hum: { stop(ms?: number): void } }>();
 /** where a flung piece hangs before it drops: HANG px over its tile */
-const HANG = 26;
+const HANG = 30;
 let lastSeam = -1;
 const NO_HUM: { stop(ms?: number): void } = { stop: () => undefined };
-/** each piece's anchor where it sits in the ASSEMBLED body (the exploded view brought down by SUMMON_LIFT) */
-const SEAT: Readonly<Record<string, XY>> = Object.fromEntries(Object.entries(EXPLODED).map(([k, v]) => [k, { x: v.x, y: v.y + SUMMON_LIFT }]));
 
 const ease = (t: number) => t * t * (3 - 2 * t);
 
@@ -372,6 +370,17 @@ function splitInfo(ctx: { events: readonly GameEvent[]; index: number }, uid: Ui
   return zones.length === 3 ? { zones } : null;
 }
 
+/** Where each piece's part is drawn in the body on the repel frame (death DEATH_SPLIT), as the piece's anchor offset
+ *  from the sovereign's anchor (P1 px): the anvil = the plinth, the coil = the raised chest, the needle = the arms
+ *  and the spear (checked by compositing the frames: the pieces are born there on the white flash frame). */
+const REPEL_AT: Readonly<Record<string, XY>> = { polar_anvil: { x: -9, y: 0 }, polar_coil: { x: -1, y: -32 }, polar_needle: { x: -28, y: -38 } };
+/** The no-split heap: where each piece falls on the sovereign's own tile (P1 px from its anchor), its arc and its turn. */
+const FALL: Readonly<Record<string, { x: number; y: number; arc: number; delay: number }>> = {
+  polar_needle: { x: -20, y: -5, arc: 18, delay: 0 },
+  polar_anvil: { x: -5, y: 1, arc: 6, delay: 170 },
+  polar_coil: { x: 17, y: 5, arc: 14, delay: 340 },
+};
+
 registerCardHook(
   ID,
   'destroyed',
@@ -385,27 +394,17 @@ registerCardHook(
     const home = { ...u.home };
     const pan = panAt(home.x);
     const split = splitInfo(ctx, ctx.ev.uid);
-    if (!split) {
-      // the split fails: the art's own death (the pieces fall into their own finals), iron dust at the burst
-      atFrame(u, 'death', 1, () => play('sovereignCrack', { volume: 0.9, pan }), { maxMs: 3000 });
-      atFrame(u, 'death', DEATH_SPLIT, () => {
-        play('sovereignRepel', { volume: 0.9, pan });
-        void lightFlash(sc, home.x, home.y - 40, PAL.white, 50, 220, { floorY: home.y, intensity: 1 });
-        bg(shake(sc, 140, 3));
-      }, { maxMs: 3000 });
-      atFrame(u, 'death', DEATH_SPLIT + 1, () => {
-        play('sovereignFall', { volume: 0.9, pan });
-        bg(dustShock(sc, home, 50, 420));
-      }, { maxMs: 3000 });
-      return deathV3(ctx, { fallback: () => ctx.base() });
-    }
-    // ---- the split: cracks, the repel, the body flung apart toward the three zones
+    // ---- the sovereign owns its whole death (split or not): no generic material break
     const ev = ctx.ev;
     const gi = ctx.findType('toGraveyard', (e) => e.uid === ev.uid, { until: (e) => e.type !== 'toGraveyard' && e.type !== 'destroy' });
+    const hasCard = gi >= 0;
     if (gi >= 0) ctx.consumeAt(gi);
     const owner = ctx.owner(ev.uid);
     const { tile } = ctx.views.field.release(ev.uid);
     u.badge.setVisible(false);
+    u.posed = true;
+    const dir: 1 | -1 = u.flipX ? -1 : 1;
+    // cracks run along the joints (death f0…f3)
     play('sovereignCrack', { volume: 0.9, pan });
     await u.playRange('death', 0, DEATH_SPLIT);
     // the cracks hold: the body trembles on its joints (1 px, ever faster) while the seams flicker in the pole colours
@@ -416,33 +415,70 @@ registerCardHook(
       u.sprite.setPosition(Math.round(r0.x + (step % 2 ? 1 : -1) * (t > 0.2 ? 1 : 0)), Math.round(r0.y));
       if (step % 3 === 0 && step !== lastSeam) {
         lastSeam = step;
-        const k = step % 3 === 0 ? (step / 3) % 3 : 0;
+        const k = (step / 3) % 3;
         void lightFlash(sc, home.x, home.y - (k === 0 ? 14 : k === 1 ? 34 : 54), seams[k], 14, 90, { floorY: home.y, intensity: 0.7 });
       }
     });
     u.sprite.setPosition(Math.round(r0.x), Math.round(r0.y));
+    // ---- the repel: the field throws the pieces apart. The body's last frame flashes WHITE, and the pieces are born
+    // white where their parts were drawn (the flash frame carries the change of shape), then fly
     play('sovereignRepel', { volume: 1, pan });
     void lightFlash(sc, home.x, home.y - 40, PAL.white, 64, 260, { floorY: home.y, intensity: 1, ring: true });
     bg(shake(sc, 160, 4));
     await hitStop(sc, 80);
-    const to = split.zones.map((z) => zoneXY(z.player, 'monster', z.zone));
-    u.retire();
-    ctx.views.field.forget(ev.uid);
-    if (tile) bg(tile.dissolve(360).then(() => tile.destroy()));
-    bg(fx.cardToGraveyard(ctx, { owner, cardId: ID as MonsterId, from: { x: home.x, y: home.y - 4 }, delay: 80 }));
+    u.sprite.setTintFill(PAL.white);
+    const seat = (id: string): XY => {
+      const o = REPEL_AT[id] ?? { x: 0, y: -20 };
+      return { x: home.x + o.x * dir, y: home.y + o.y };
+    };
+    const cardOut = (): void => {
+      if (tile) bg(tile.dissolve(360).then(() => tile.destroy()));
+      if (hasCard) bg(fx.cardToGraveyard(ctx, { owner, cardId: ID as MonsterId, from: { x: home.x, y: home.y - 4 }, delay: 80 }));
+    };
+    const bodyGone = (): void => {
+      // the white flash frame shows two frames, then only the pieces are left
+      bg(wait(sc, 34).then(() => u.sprite.active && u.sprite.setVisible(false)));
+      u.retire();
+      ctx.views.field.forget(ev.uid);
+    };
     bg(dustShock(sc, home, 60, 480));
-    // the pieces themselves are flung apart from their seats in the body (folded, as they sit in it) to hang over
-    // their zones until the graveyard activation drops them (a spell may resolve between)
-    const dir = owner === 0 ? 1 : -1;
+    if (!split) {
+      // ---- the split fails: the three fall onto the tile and die their own deaths (_polar_sovereign-finals)
+      const pieces: FallingPiece[] = PIECES.map((id) => {
+        const f = FALL[id];
+        return { id: id as MonsterId, from: seat(id), to: { x: home.x + f.x * dir, y: home.y + f.y }, arc: f.arc, delay: f.delay };
+      });
+      const fall = piecesFall(sc, { uidBase: 800000 + u.uid * 4, player: owner, zone: ev.zone, dir, pieces, onSettled: cardOut });
+      bodyGone();
+      await fall;
+      return;
+    }
+    // ---- the split: each piece is kicked out along its own radial arc (left / up / right by where it is headed),
+    // then braked by the field over its landing zone, hanging there until the graveyard activation drops it
+    const to = split.zones.map((z) => zoneXY(z.player, 'monster', z.zone));
+    cardOut();
+    const order = split.zones.map((_, i) => i).sort((a, b) => to[a].x - to[b].x || a - b);
+    const LAUNCH: XY[] = [{ x: -54, y: -58 }, { x: 0, y: -96 }, { x: 54, y: -58 }];
+    const launchOf = (i: number): XY => LAUNCH[order.indexOf(i)] ?? { x: 0, y: -80 };
     const h = flingPieces(
       sc,
       split.zones.map((z, i) => {
-        const o = SEAT[z.cardId] ?? { x: 0, y: -20 };
         const f = FOLD[z.cardId];
-        return { id: z.cardId as MonsterId, from: { x: home.x + o.x * dir, y: home.y + o.y }, to: { x: to[i].x, y: to[i].y - HANG }, anim: 'summon', frame: f ? f[1] : 0, flip: z.player === 1, pole: POLE_COLOR[z.cardId] ?? PAL.gold4 };
+        const f1 = f ? f[1] : 0;
+        return {
+          id: z.cardId as MonsterId,
+          from: seat(z.cardId),
+          to: { x: to[i].x, y: to[i].y - HANG },
+          launch: launchOf(i),
+          anim: 'summon',
+          frames: f ? [f1, f1 + 1, f1 + 2, f1 + 1, f1] : [0],
+          flip: z.player === 1,
+          pole: POLE_COLOR[z.cardId] ?? PAL.gold4,
+        };
       }),
-      460,
+      640,
     );
+    bodyGone();
     const prev = sparks.get(ev.uid);
     prev?.h.destroy();
     prev?.hum.stop(80);
