@@ -85,7 +85,7 @@ const AXE: [number, number, number, number][] = [
   [13, -33, -144, 0],
   [13, -33, -166, -0.5],
   [12, -32, 162, -0.5],
-  [12, -31, 126, -0.5],
+  [12, -31, 112, -0.5],
   [12, -31, 95, 1],
   [12, -32, 96, 1],
   [13, -32, 118, -0.5],
@@ -235,25 +235,34 @@ export const WALK_POSES: Pose[] = [
 // ------------------------------------------------------------------ roar (10 frames): the NARA
 
 const R_N = 10;
-const RAISED: Partial<Pose> = { hl: 23, hd: 1, nx: 17, ny: -63, ba: -168, elx: 1, ely: 0, az: 0, mouth: 1, eye: 2, hy: -1, hx: 1, chy: -1, shr: -2, mant: -1, lean: -1, fx: -15, fy: -36 };
+/**
+ * The shout: the head THROWN BACK (mouth 2: the face turned up 14°, the jaw dropped, a wide-open mouth framed in skin),
+ * the chest pushed out, and the axe THRUST UP one-handed overhead — the arm out to the side clear of the face, the haft
+ * at ~70° and the crescent high above and IN FRONT of the skull (never resting on it), its edge to the sky.
+ */
+const RAISED: Partial<Pose> = { hl: 18, hd: 1, nx: 24, ny: -58, ba: -70, elx: 1, ely: 0, az: 0, mouth: 2, eye: 2, hy: -2, hx: -1, chy: -1, shr: -2, mant: -1, lean: 0, fx: -15, fy: -36 };
 export function roarPose(f: number): Pose {
   const n = R_N;
   if (f >= n - 1) return home();
   switch (f) {
     case 0: return key({ nx: 13, ny: -34, ba: -122, chy: 1, hy: 1, bead: 1 }, f, n);
     case 1: return key({ nx: 13, ny: -34, ba: -125, sink: 2, chy: 1, hy: 2, hx: -1, eye: 0, bead: 2, tilt: -1, fx: -11, fy: -27 }, f, n);
-    case 2: return key({ nx: 13, ny: -33, ba: -128, sink: 3, chy: 2, hy: 3, hx: -1, eye: 0, bead: 2, tilt: -1, cape: 1, fx: -10, fy: -26 }, f, n);
-    case 3: return key({ ...RAISED, sink: 1, bead: -2, cape: -2, glint: 1 }, f, n);
-    // the held shout is a LIVING two-frame loop (the summon cycles 4 ↔ 5 at ~80 ms): the chest heaves a px, the head
-    // pushes forward and back, the raised axe shakes a px, the beads tremble, the floor seam breathes with the voice
-    case 4: return key({ ...RAISED, chy: -1, hx: 1, bead: -1, cape: -3, glint: 1, fseam: 16, fseamK: 1 }, f, n);
-    case 5: return key({ ...RAISED, chy: 0, shr: -1, hx: 2, hy: 0, nx: 18, ny: -62, bead: 1, cape: -2, fseam: 16, fseamK: 0.75 }, f, n);
-    case 6: return key({ ...RAISED, bead: 2, cape: -1, mouth: 0, fseam: 14, fseamK: 0.5 }, f, n);
-    case 7: return key({ nx: 16, ny: -46, ba: -132, hl: 25, az: 0, eye: 1, bead: 1, cape: 0, hy: -1, fseam: 10, fseamK: 0 }, f, n);
+    // the breath: sunk, the chest filled, the axe dipped off the shoulder behind him (the wind-up of the thrust)
+    case 2: return key({ nx: 15, ny: -36, ba: -150, sink: 3, chy: 2, hy: 3, hx: -1, eye: 0, bead: 2, tilt: -1, cape: 1, fx: -10, fy: -26 }, f, n);
+    // the BURST: up on the voice, the axe thrust overhead (the one glint at its apex)
+    case 3: return key({ ...RAISED, ny: -59, sink: 1, bead: -2, cape: -2, glint: 1 }, f, n);
+    // the held shout is a LIVING three-frame cycle on the voice's beats (the summon runs 4 → 5 → 6 → 4 → 5 at ~70 ms):
+    // the jaw works (wide / half / wide), the raised axe trembles a px up and forward, the chest heaves, the beads and
+    // the cloak hem shake, the floor seam breathes with the voice
+    case 4: return key({ ...RAISED, bead: -1, cape: -3, glint: 1, fseam: 16, fseamK: 1 }, f, n);
+    case 5: return key({ ...RAISED, mouth: 1, chy: 0, ny: -59, nx: 25, hy: -1, bead: 1, cape: -2, mant: 0, fseam: 16, fseamK: 0.75 }, f, n);
+    case 6: return key({ ...RAISED, ny: -58, nx: 24, ba: -72, bead: 2, cape: -1, chy: -2, fseam: 15, fseamK: 1 }, f, n);
+    // the voice spent: the mouth shuts, the axe comes down over the shoulder
+    case 7: return key({ nx: 21, ny: -50, ba: -98, hl: 20, hd: 1, elx: 1, ely: 0.4, az: 0, eye: 1, bead: 1, cape: 0, hy: -1, fseam: 10, fseamK: 0.5 }, f, n);
     default: return snap(key({ ...mix(key({ nx: 15, ny: -40, ba: -124, hl: 26, az: 0 }, f, n), IDLE0, 0.5) }, f, n));
   }
 }
-const ROAR_HOLDS = [80, 110, 170, 90, 120, 110, 110, 110, 120, 130];
+const ROAR_HOLDS = [80, 110, 150, 90, 80, 70, 80, 110, 110, 120];
 
 // ------------------------------------------------------------------ hit / hitHeavy / hitMagic
 
@@ -341,8 +350,9 @@ export function summonPose(f: number): Pose {
   if (f === 4) return key({ hide: true, bould: 2, roll: 0, rock: 0, chips: 0.3 }, f, n);
   if (f === 5) return key({ hide: true, bould: 3, roll: 0, bk: 0.5, chips: 0.6 }, f, n);
   if (f === 6) return key({ hide: true, bould: 3, roll: 0, bk: 1, chips: 0.9 }, f, n);
-  if (f === 7) return key({ ...CROUCH, bould: 4, bk: 30, fseam: 4, fseamK: 1 }, f, n);
-  if (f === 8) return key({ ...CROUCH, sink: 3, bould: 4, bk: 52, fseam: 6, fseamK: 1, bead: 1 }, f, n);
+  // f7–8: he RISES from a deep crouch behind the falling halves (their bases still hide his legs): head low, then up
+  if (f === 7) return key({ ...CROUCH, sink: 9, lean: 4, hy: 3, bould: 4, bk: 26, fseam: 4, fseamK: 1 }, f, n);
+  if (f === 8) return key({ ...CROUCH, sink: 6, lean: 3, bould: 4, bk: 50, fseam: 6, fseamK: 1, bead: 1 }, f, n);
   if (f === 9) return key({ ...CROUCH, sink: 3, lean: 1, bould: 5, bk: 0, fseam: 8, fseamK: 1, nx: 15, ny: -34, ba: -42, bead: 1 }, f, n);
   return key({ ...CROUCH, sink: 2, lean: 1, f1x: 3, dust: 0.4, fseam: 8, fseamK: 1, nx: 17, ny: -37, ba: -60, hl: 25, bead: -1, cape: -1 }, f, n);
 }
@@ -434,7 +444,7 @@ export function framePose(anim: AnyMonsterAnim, f: number): Pose {
 }
 
 /** The card picture's pose: the nara at the top of the swing, the crescent held up like a rising sun. */
-export const CARD_POSE: Pose = pose({ ...RAISED, ny: -59, ba: -172, hy: 0, cape: -2, bead: -1, t: 0.3, hem: 0.3 });
+export const CARD_POSE: Pose = pose({ ...RAISED, ny: -59, cape: -2, bead: -1, t: 0.3, hem: 0.3 });
 
 export const MUZZLE = { x: AX + 18, y: GY - 58 };
 

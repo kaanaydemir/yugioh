@@ -119,12 +119,13 @@ function floorFront(t: MonsterUnit | null, aim: XY, sgn: number): number {
   }
 }
 
-/** How far he backs off during the spin (px along the attack axis: the run-up starts behind home). */
-export const SPIN_BACK = 21;
+/** How far the spin's centrifugal pull drifts him back (px along the attack axis): the turn is IN PLACE (r3), only the
+ * weight swinging round sways him a few px off his mark, so the three steps then carry him forward past home. */
+export const SPIN_BACK = 5;
 /** The three steps' share of the run-up (long, then shorter and quicker: 9 / 7 / 6). */
 export const STEP_SPLIT = [0, 9 / 22, 16 / 22, 1] as const;
 /** How far in front of the target's footprint the blade's front horn bites (px along the attack axis): the seam's visible floor run. */
-export const BITE_GAP = 12;
+export const BITE_GAP = 8;
 /** The buried crescent's front horn lies this far ahead of its edge point (the muzzle): the seam is hidden under it. */
 export const BLADE_FRONT = 6;
 
@@ -132,7 +133,7 @@ export const BLADE_FRONT = 6;
  * The strike's floor plan (pure; tested): where the axe bites (`BITE_GAP` px in front of the target's footprint), where
  * he plants for it (the bite less the contact frame's reach), the spin's back-step point, and the four step points.
  */
-export function cutPlan(home: XY, aim: XY, front: number, sgn: number, reachX: number, o: { blocked?: boolean } = {}): { bite: XY; land: XY; start: XY; steps: XY[]; dir: XY } {
+export function cutPlan(home: XY, aim: XY, front: number, sgn: number, reachX: number, o: { blocked?: boolean; reachY?: number } = {}): { bite: XY; land: XY; start: XY; steps: XY[]; dir: XY } {
   const dir = norm(sub(aim, home));
   const along = (x: number): XY => {
     const t = Math.abs(dir.x) > 0.05 ? (x - home.x) / dir.x : 0;
@@ -141,21 +142,49 @@ export function cutPlan(home: XY, aim: XY, front: number, sgn: number, reachX: n
   // the head bites a clear stride of floor short of the footprint, so the seam is SEEN running on the floor before it
   // reaches the toes (the r2 critic: a 3-px run reads as nothing); blocked, a longer stride short (the seam then runs on
   // to the guard's front edge and dies there in its "Y")
-  const gap = o.blocked ? 20 : BITE_GAP + BLADE_FRONT;
+  const gap = o.blocked ? 18 : BITE_GAP + BLADE_FRONT;
   const b = along(front - sgn * gap);
   const bite = { x: Math.round(b.x), y: Math.round(b.y) };
-  const land = along(bite.x - reachX);
+  // he plants where the contact frame's buried edge lands EXACTLY on the bite (r3 blocker: planting him on the line put
+  // the blade ~7 px off it — for P2 the seam then started on bare floor below the blade): the feet are the bite less
+  // the frame's own edge offset, both axes
+  const land = { x: bite.x - reachX, y: bite.y - (o.reachY ?? 0) };
   const start = { x: home.x - dir.x * SPIN_BACK, y: home.y - dir.y * SPIN_BACK };
   const steps = STEP_SPLIT.map((k) => ({ x: lerp(start.x, land.x, k), y: lerp(start.y, land.y, k) }));
   return { bite, land, start, steps, dir };
 }
 
-/** The bite's floor point at the contact frame relative to the feet (art px → world, flip aware). */
+/** The buried edge's point at the contact frame relative to the feet (art px → world, flip aware; both axes). */
 function biteOffset(u: MonsterUnit, conF: number): XY {
   const pts = u.art.points?.('attack', conF);
   const m = pts?.muzzle ?? u.art.muzzle;
   const sgn = u.flipX ? -1 : 1;
-  return { x: sgn * (m.x - u.art.anchorX), y: 0 };
+  return { x: sgn * (m.x - u.art.anchorX), y: m.y - u.art.anchorY };
+}
+
+/**
+ * How many points of a floor line from the bite lie under the attacker's own drawn blade (the frame it shows now): the
+ * seam is open there already, hidden under the buried head, and its first VISIBLE pixel touches the blade's edge.
+ */
+function bladeCover(u: MonsterUnit, a: XY, b: XY): number {
+  try {
+    const fi = u.frameInfo();
+    const pc = monsterFrame(u.cardId, fi.anim ?? 'idle', fi.frame);
+    const w0 = u.framePoint(0, 0);
+    const w1 = u.framePoint(1, 1);
+    const sx = w1.x - w0.x || 1;
+    const pts = linePts(a, b);
+    let n = 0;
+    for (const p of pts) {
+      const fx = Math.floor((p.x + 0.5 - w0.x) / sx);
+      const fy = Math.floor(p.y + 0.5 - w0.y);
+      if (!pc.isOpaque(fx, fy)) break;
+      n++;
+    }
+    return n;
+  } catch {
+    return 0;
+  }
 }
 
 /** The point of a line a → b closest to its x = `x` (the screen column of the target's toes). */
@@ -279,7 +308,7 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
   let SP: XY[];
   if (s.direct) {
     land = { ...homeFeet };
-    bite = { x: Math.round(land.x + bo.x), y: Math.round(land.y) };
+    bite = { x: Math.round(land.x + bo.x), y: Math.round(land.y + bo.y) };
     seamTo = { x: s.toGround.x, y: s.toGround.y };
     SP = [land, land, land, land];
   } else {
@@ -287,7 +316,7 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     // the bite lands a stride in front of the target's FOOTPRINT (blocked: further short of the guard, so the seam
     // has room to run up to its front edge and die there)
     const front = floorFront(s.target, aim, sgn);
-    const plan = cutPlan(homeFeet, aim, front, sgn, bo.x, { blocked: s.blocked });
+    const plan = cutPlan(homeFeet, aim, front, sgn, bo.x, { blocked: s.blocked, reachY: bo.y });
     bite = plan.bite;
     land = plan.land;
     SP = plan.steps;
@@ -413,7 +442,9 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     // the run: a gold4 head flaring white on the floor, three visible steps from the bite to the toes (~75 ms), then on
     // under the body; blocked, the same three steps up to the guard's front edge
     const runMs = s.direct ? 150 : 75;
-    const seam = new Seam(sc, { from: bite, to: seamTo, feet, runMs, tailMs: 50, chunks: s.direct ? 6 : 3, lead: BLADE_FRONT, persistMs: s.blocked ? 760 : 1500, fork: s.blocked, spark: !s.blocked });
+    // (the points under the buried blade are open already: the first visible chunk starts AT the blade's edge, P1 and P2)
+    const lead = Math.min(BLADE_FRONT + 4, bladeCover(u, bite, seamTo));
+    const seam = new Seam(sc, { from: bite, to: seamTo, feet, runMs, tailMs: 50, chunks: s.direct ? 6 : 3, lead, persistMs: s.blocked ? 760 : 1500, fork: s.blocked, spark: !s.blocked, forkHoldMs: 80 });
     const screenR = seamTo.x >= bite.x;
     play(screenR ? 'caxRunR' : 'caxRunL', { volume: s.blocked ? 0.75 : 1 });
     await seam.reached;
@@ -421,7 +452,7 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
     let hitAt: XY = s.to;
     if (target && target.sprite.active && target.sprite.visible) {
       play('caxClimb', { volume: 0.9, pan: panAt(target.home.x) });
-      const c = climbBody(sc, target, { stepMs: 20, holdMs: 70 });
+      const c = climbBody(sc, target, { stepMs: 20, holdMs: 200, bloom: true });
       await c.top;
       // the blow lands ON the climb column (the kit's contact flash centres on it: an upright oval on the seam, not a
       // blob on the body's front edge)
@@ -438,7 +469,11 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
       play('caxRing', { volume: 0.9, pan: panAt(bite.x) });
       hitAt = { x: Math.round(seamTo.x), y: Math.round(s.to.y) };
     }
+    // the kit's contact flash (a white banded oval beside the line) and its shared burst are hidden: the contact IS the
+    // seam's own bloom on the climb column (climbBody: white → earth4 in palette steps, symmetric, on the body only)
+    const before = sc.children.list.length;
     s.impact(hitAt);
+    if (!s.blocked) hideKitContact(sc, before, target && target.sprite.active ? target.sprite.depth : null);
     // the seam ARRIVES: a dry stone "tak" with a low thump under it (the number and the flash land on it)
     if (!s.blocked) play('caxArrive', { volume: 1, pan: panAt(hitAt.x) });
     void sleep(sc, 300).then(() => plates.back?.((x) => !((x === s.target && targetDies) || (x === u && loses))));
@@ -513,6 +548,20 @@ async function dagYaran(s: StrikeArgs): Promise<void> {
       if (u.frameInfo().anim === 'attack' && u.sprite.anims.isPlaying) void sleep(sc, 160).then(settle);
       else settle();
     }
+  }
+}
+
+/**
+ * Hide the shared contact flash the contact call put on the struck body (`fx:cflash:*` images, cropped to nothing: the
+ * flash re-applies its visibility every frame) and the shared impact burst just behind the body (_v3/react.ts: the star,
+ * the air rings, the grit at the body's depth − 0.45 … − 0.05). Called right after s.impact(), which makes them.
+ */
+function hideKitContact(sc: Phaser.Scene, before: number, bodyDepth: number | null): void {
+  const list = sc.children.list;
+  for (let i = before; i < list.length; i++) {
+    const o = list[i] as Phaser.GameObjects.GameObject & { texture?: { key: string }; depth?: number; setCrop?: (x: number, y: number, w: number, h: number) => unknown; setVisible?: (v: boolean) => unknown };
+    if (o.type === 'Image' && o.texture?.key.startsWith('fx:cflash:') && o.setCrop) o.setCrop(0, 0, 0, 0);
+    if (bodyDepth !== null && o.type === 'Graphics' && typeof o.depth === 'number' && o.depth >= bodyDepth - 0.45 && o.depth < bodyDepth - 0.05 && o.setVisible) o.setVisible(false);
   }
 }
 

@@ -14,9 +14,10 @@ const layer = () => kitLayer(W, H);
 
 // ---------------------------------------------------------------- the boulder (summon)
 
-const BR = 16;
+/** The boulder is big enough to have HELD him (≈ 46 × 43 px: his crouch fits in it; r3 critic: a 28-px rock popping into a 66-px man read as a scale pop). */
+const BR = 23;
 const BCX = AX + 1;
-const BCY = GY - 16;
+const BCY = GY - 21;
 /**
  * A MOUNTAIN boulder outline (never a disc): a 16-gon with uneven radii, three flat spots (faces broken off the rock)
  * and two chip notches; the whole shape turns a quarter per roll frame, so its bumps visibly go round in the 4-frame
@@ -137,7 +138,7 @@ function halvesFalling(f: Frame, deg: number, roll: number): void {
     const inv = (x: number, y: number): Pt => [px + (x - px) * c + (y - py) * sn - out, py - (x - px) * sn + (y - py) * c];
     const shown = halfPts(s, roll).map(rot);
     h.poly(shown, PAL.stone2);
-    stoneFacets(h, f, BCX + s * 8 + out, GY - 8, roll, 0);
+    stoneFacets(h, f, BCX + s * rnd(BR / 2) + out, GY - rnd(BR / 2), roll, 0);
     cutFaceLight(h, inv, s, deg > 40 ? 1 : 0, deg);
     f.comp.add(h, 14, { out: PAL.stone0 });
   }
@@ -148,10 +149,10 @@ function halvesLying(f: Frame, sink: number, roll: number): void {
     const h = layer();
     // staggered on the floor (the left half fell back-left, the right half front-right): two separate slabs clear of
     // his boots, never one bar through them
-    const cx = BCX + s * (s < 0 ? 25 : 26);
-    const hh = Math.max(3, 9 - sink * 2);
+    const cx = BCX + s * (s < 0 ? 27 : 28);
+    const hh = Math.max(3, 12 - sink * 2);
     const cy = s < 0 ? GY - 5 : GY - 1;
-    const w = 7;
+    const w = 10;
     // a low dome on its round back, the cut face up (its top 2 rows: stone, a stone4 rim, grain pits)
     h.poly([[cx - w, cy - hh], [cx + w - 1, cy - hh], [cx + w + 1, cy - hh + 3], [cx + w - 3, cy], [cx - w + 2, cy], [cx - w - 1, cy - hh + 2]], PAL.stone2);
     stoneFacets(h, f, cx, GY - 4, roll + (s > 0 ? 1 : 2), Math.min(2, sink));
@@ -177,7 +178,7 @@ export function boulderFx(f: Frame, matter: boolean): void {
       if (st >= 2) {
         // the blade punched out through the front face (the axe head pokes out, chips fly — chipFx)
         const a = layer();
-        const ox = cx + BR - 7 + (st === 3 ? 1 : 0);
+        const ox = cx + BR - 8 + (st === 3 ? 1 : 0);
         const oy = cy - 2;
         // the crescent edge out of the boulder's right face (it punched through from inside)
         const pts: Pt[] = [];
