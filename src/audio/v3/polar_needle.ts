@@ -69,6 +69,20 @@ function pierceRing(v: Voice, t: number, g: number, dec: number, to?: AudioNode)
   v.tone('sine', A6 * 3.1, { t, g: perc(g * 0.12, dec * 0.25, 0.0006), to });
 }
 
+/** One shell plate landing: an FM clank at `f`, a body thump, a little floor dust and an optional bounce ping. */
+function plateDrop(
+  v: Voice,
+  f: number,
+  g: number,
+  dec: number,
+  o: { ratio: number; thump: readonly [number, number, number, number]; puff: number; bounce?: readonly [number, number, number] },
+): void {
+  clank(v, f, 0, g, dec, { ratio: o.ratio, index: 1.6, click: 1.3 });
+  thump(v, 0, o.thump[0], o.thump[1], o.thump[2], o.thump[3]);
+  puff(v, 0, o.puff, 0.09, 1500);
+  if (o.bounce) link(v, o.bounce[1], o.bounce[0], o.bounce[2], 0.05);
+}
+
 export const V3_POLAR_NEEDLE_RECIPES = {
   /** Summon: the needle falls point-first out of the sky — a falling steel whistle with the air it cuts. */
   polarNeedleDrop: {
@@ -101,7 +115,7 @@ export const V3_POLAR_NEEDLE_RECIPES = {
     },
   },
   /**
-   * Summon: two compass turns on the tip — the pivot ratchet slows down (28 → 6 clicks / s) while the needle's
+   * Summon: two compass turns on the tip — the pivot ratchet slows down (a ritardando, gaps 45 → 180 ms) while the needle's
    * tone pulses with each half turn and sweeps the stereo field (stopped on the lock).
    */
   polarNeedleSpin: {
@@ -111,15 +125,19 @@ export const V3_POLAR_NEEDLE_RECIPES = {
     duck: 0.25,
     play(v) {
       const D = 1.15;
-      // the ratchet: click times from a decelerating rate (r(t) = 28 → 6 / s)
+      // the ratchet on a ritardando: 8 clicks whose gaps grow geometrically (≈ 40 → 155 ms), fitted to the art's
+      // land → lock span (≈ 0.78 s at summon frame 12) so the lock "TIK" falls one (≈ 180 ms) gap after the last
+      // click; each click a touch lower and heavier as the pivot runs down (one late spare in case the lock lags)
+      const N = 8;
+      const gaps = Array.from({ length: N - 1 }, (_, j) => 0.045 * Math.pow(4, j / (N - 2)));
+      const fit = 0.6 / gaps.reduce((a, b) => a + b, 0);
       let t = 0;
-      let i = 0;
-      while (t < D) {
-        const k = t / D;
-        const rate = 28 - 22 * Math.pow(k, 0.7);
-        pivotClick(v, t, 0.12 * (0.75 + 0.25 * (1 - k)), i % 2 ? 4600 : 3900);
-        t += 1 / rate;
-        i++;
+      for (let i = 0; i <= N; i++) {
+        const k = Math.min(1, i / (N - 1));
+        const drop = 1 - 0.16 * k;
+        pivotClick(v, t, (i === N ? 0.08 : 0.1 + 0.05 * k), (i % 2 ? 4600 : 3900) * drop);
+        if (k > 0.6) v.tone('sine', A3 * 4 * drop, { t, g: perc(0.012 * k, 0.05, 0.0005) });
+        t += i < N - 1 ? gaps[i] * fit : 0.26;
       }
       // the turning needle: its tone pulses at the half-turn rate and pans round with it
       const pan = v.panner([[0, -0.5], [0.2, 0.5], [0.42, -0.45], [0.66, 0.4], [0.9, -0.2], [D, 0.1]]);
@@ -404,6 +422,55 @@ export const V3_POLAR_NEEDLE_RECIPES = {
       thump(v, 0, 190, 90, 0.2, 0.06);
       puff(v, 0, 0.08, 0.1, 1400);
       link(v, 2200, 0.05, 0.02, 0.05);
+    },
+  },
+  /**
+   * Death, the shell's plates one by one (each its own pitch and weight, A-major like the needle): the HELM —
+   * high and short (C#6 clank, a tiny bounce ping).
+   */
+  polarNeedlePlateHelm: {
+    cap: 2,
+    gap: 0.03,
+    verb: 0.3,
+    play(v) {
+      plateDrop(v, midiHz(85), 0.2, 0.07, { ratio: 1.19, thump: [260, 130, 0.22, 0.04], puff: 0.08, bounce: [0.045, 3300, 0.06] });
+    },
+  },
+  /** Death: the NEAR pauldron — mid (A5), a fuller clack with one bounce. */
+  polarNeedlePlatePauldron: {
+    cap: 2,
+    gap: 0.03,
+    verb: 0.32,
+    play(v) {
+      plateDrop(v, midiHz(81), 0.22, 0.14, { ratio: 1.17, thump: [200, 95, 0.28, 0.06], puff: 0.11, bounce: [0.07, 2600, 0.07] });
+    },
+  },
+  /** Death: the FAR pauldron — a step lower (E5) and a little duller, so the two shoulders never sound twinned. */
+  polarNeedlePlatePauldronFar: {
+    cap: 2,
+    gap: 0.03,
+    verb: 0.32,
+    play(v) {
+      plateDrop(v, midiHz(76), 0.21, 0.16, { ratio: 1.23, thump: [180, 85, 0.28, 0.07], puff: 0.12, bounce: [0.085, 2200, 0.06] });
+    },
+  },
+  /**
+   * Death: the LEGS fold — low (A4) and heavy, two pieces (knee then greave), and a long steel ring tail on
+   * A5 / A5 + 5 Hz that beats as it dies (≈ 300 ms) — the last word of the needle's body.
+   */
+  polarNeedlePlateLegs: {
+    cap: 1,
+    gap: 0.05,
+    verb: 0.4,
+    duck: 0.3,
+    play(v) {
+      plateDrop(v, midiHz(69), 0.24, 0.22, { ratio: 1.41, thump: [150, 62, 0.36, 0.1], puff: 0.15 });
+      clank(v, midiHz(64), 0.06, 0.16, 0.18, { ratio: 1.17, index: 1.4, click: 1.1 });
+      thump(v, 0.06, 130, 60, 0.24, 0.08);
+      v.tone('sine', midiHz(81), { t: 0.01, g: perc(0.07, 0.32, 0.002) });
+      v.tone('sine', midiHz(81) + 5, { t: 0.01, g: perc(0.055, 0.3, 0.002) });
+      v.tone('sine', midiHz(81) * 2.76, { t: 0.01, g: perc(0.018, 0.12, 0.002) });
+      poleHum(v, 0, perc(0.05, 0.3, 0.003));
     },
   },
   /** Death burst: the shell settles — plates clatter, the spear rings flat twice, the hum dies, dust falls. */

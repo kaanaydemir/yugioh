@@ -211,8 +211,8 @@ registerStrike(
     const tip = tipNow();
     const hitAt: XY = s.blocked ? tip : s.direct ? { x: Math.round(s.to.x), y: Math.round(s.to.y) } : at;
     if (repelled) {
-      // the battle's own clang on this frame stays silent (its sound is the shield's); the repel scores it
-      hush(['shieldBlock'], () => quietCombat(() => s.impact(hitAt)));
+      // no guard hex / guard pose on a foe that is not guarding (clang: false); the repel scores it
+      hush(['shieldBlock'], () => quietCombat(() => s.impact(hitAt, { clang: false })));
       play('polarNeedleRepel', { volume: 0.95, pan: panAt(tip.x) });
       clampB.bounce();
       repelFlash(sc, { x: Math.round((tip.x + at.x) / 2), y: tip.y }, { x: sgn, y: 0 }, DEPTH.FX + 1, s.toGround.y);
