@@ -159,6 +159,13 @@ export interface StrikeArgs {
    * chain (registry strikeFor with a fallback); absent on arguments built by hand (previews, tests).
    */
   base?(): Promise<void>;
+  /**
+   * v3 (optional; absent in v1 and on arguments built by hand): the strike reports how many ms from NOW its blow lands,
+   * as soon as it knows (call again to refine, e.g. when a projectile actually launches). The battle handler steers a
+   * resting target's idle loop so the frame on screen before contact is one its struck pose continues
+   * (_v3/posematch.ts settleBefore). Strikes whose attack has a 'contact' mark need not call it.
+   */
+  contactIn?(ms: number): void;
 }
 
 /** Optional knobs for StrikeArgs.impact (additive). `clang: false` skips the blocked-guard hex + guard pose

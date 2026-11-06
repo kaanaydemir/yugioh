@@ -225,6 +225,8 @@ const hawkStrike: StrikeFn = async (s) => {
 export const genericStrike: StrikeFn = async (s) => {
   const u = s.attacker;
   const R = RAMPS.gold;
+  // v3: the lunge lands after its anticipation (180) and dash (120) (StrikeArgs.contactIn; absent in v1)
+  if (!s.direct) s.contactIn?.(180 + 120);
   void u.play('attack');
   await lunge(s.scene, u.sprite, s.toGround, {
     distance: s.direct ? 26 : 16,

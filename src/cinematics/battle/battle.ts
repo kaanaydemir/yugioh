@@ -52,7 +52,7 @@ import { blowKindOf, contactPoint, hitAnimFor, reassertReaction } from '../_v3/r
 import type { AnyMonsterAnim } from '../../art/types';
 import { backlash, blowFrom, canHandOver, isMelee } from '../_v3/clash';
 import { DEATH_AFTER_CONTACT_MS } from '../_v3/budget';
-import { settleBefore, strikeContactIn } from '../_v3/posematch';
+import { settleBefore, settleGoal, strikeContactIn, struckPosesFor } from '../_v3/posematch';
 import { onFrame } from '../../vfx/setpieces';
 import { weightOf } from '../../duel/motion';
 import { strikeLight as strikeLightOf, type Ctx, type EvOf, all, arenaDim, duelist, guardReact, impactLight, lerpXY, live, norm, other, sub, takeAttack } from './_kit';
@@ -570,13 +570,25 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
     }
     const strike = strikeFor(au.cardId, genericStrike);
     const args: StrikeArgs = { ctx, scene: sc, attacker: au, target: live(target), to, toGround, direct, blocked, power, impact: onImpact, impacted: impactedP };
+    // a strike without a 'contact' mark reports when its blow lands (thrown / fired / dashing strikes know their own
+    // flight): the resting target's idle is steered onto a frame the struck pose continues (gentle, ±35 % pace)
+    if (!direct && typeof au.spec('attack')?.marks?.contact !== 'number') {
+      args.contactIn = (ms: number) => {
+        const tu = live(target);
+        if (tu && Number.isFinite(ms) && ms > 0) settleBefore(tu, ms, settleGoal(tu, struckPosesFor(tDestroy >= 0)));
+      };
+    }
     try {
       const run = strike(args);
       // A3 Y1b: the strike's first frame is on — its 'contact' mark says when the blow lands; a
       // resting target's idle arrives there on a frame its struck pose continues (_v3/posematch.ts)
       if (!direct) {
         const ms = strikeContactIn(au);
-        if (ms !== null) settleBefore(live(target), ms);
+        if (ms !== null) {
+          // the goal: the frames the pose this blow plays continues (death on a kill, else the recoils)
+          const tu = live(target);
+          settleBefore(tu, ms, tu && LOOK_V3 ? settleGoal(tu, struckPosesFor(tDestroy >= 0)) : null);
+        }
       }
       await Promise.race([run, wait(sc, 6000)]);
     } catch (e) {

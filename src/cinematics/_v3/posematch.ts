@@ -486,7 +486,7 @@ export function struckGoal(idle: readonly Uint8ClampedArray[], struck: readonly 
 }
 
 /** The settle's goal for `u`'s idle loop measured on sheet `key` (null: nothing localised / painted). */
-function measureGoal(u: MonsterUnit, key: string): StruckGoal | null {
+function measureGoal(u: MonsterUnit, key: string, only?: readonly AnyMonsterAnim[]): StruckGoal | null {
   const n = u.frameCount('idle');
   if (n < 2) return null;
   const idle: Uint8ClampedArray[] = [];
@@ -495,7 +495,7 @@ function measureGoal(u: MonsterUnit, key: string): StruckGoal | null {
     if (!px) return null;
     idle.push(px);
   }
-  const has = STRUCK.filter((a) => u.has(a));
+  const has = STRUCK.filter((a) => u.has(a) && (!only || only.includes(a)));
   const painted: Uint8ClampedArray[] = [];
   for (const a of has) {
     const px = framePixels(u.scene, key, `${a}:0`);
@@ -509,16 +509,18 @@ function measureGoal(u: MonsterUnit, key: string): StruckGoal | null {
  * Which idle frames a blow on `u` may land on and what each costs (see the section header), from
  * the unit's own sheet, else from its other light side's sheet (the P1 / P2 sheets differ only in
  * light: the same frames qualify); cached once every struck f0 was painted. null: the art's struck
- * poses are not drawn from idle f0, or not painted yet.
+ * poses are not drawn from idle f0, or not painted yet. `only`: measure against these struck poses alone (the pose
+ * the blow will play, struckPosesFor) — a goal for every struck pose at once often leaves only idle f0.
  */
-export function settleGoal(u: MonsterUnit): SettleGoal | null {
+export function settleGoal(u: MonsterUnit, only?: readonly AnyMonsterAnim[]): SettleGoal | null {
+  const tag = only && only.length ? `|${only.join(',')}` : '';
   const keys = [u.sheetKey, u.sheetKey === u.p1Key ? u.p2Key : u.p1Key].filter((k, i, a) => !!k && a.indexOf(k) === i);
   for (const key of keys) {
-    const hit = goals.get(key);
+    const hit = goals.get(key + tag);
     if (hit) return hit;
-    const g = measureGoal(u, key);
+    const g = measureGoal(u, key, only);
     if (!g) continue;
-    if (g.complete) goals.set(key, g);
+    if (g.complete) goals.set(key + tag, g);
     return g;
   }
   return null;
@@ -638,4 +640,12 @@ export function strikeContactIn(attacker: MonsterUnit | null, from?: number): nu
   }
   if (c <= f) return null;
   return Math.max(0, attacker.rangeMs('attack', f, c) - into) / speed;
+}
+
+/**
+ * The struck poses a battle's blow will play on its target (read ahead in the batch): 'death' when the battle destroys
+ * it (a lethal blow plays death f0), else the recoils. Narrows the settle goal to the frames that pose continues.
+ */
+export function struckPosesFor(lethal: boolean): readonly AnyMonsterAnim[] {
+  return lethal ? ['death'] : ['hit', 'hitHeavy', 'hitMagic'];
 }

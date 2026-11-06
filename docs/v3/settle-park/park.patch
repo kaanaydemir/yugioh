@@ -1,0 +1,328 @@
+diff --git a/src/cinematics/_v3/posematch.ts b/src/cinematics/_v3/posematch.ts
+index 006d6dd..cd5b40c 100644
+--- a/src/cinematics/_v3/posematch.ts
++++ b/src/cinematics/_v3/posematch.ts
+@@ -486,7 +486,7 @@ export function struckGoal(idle: readonly Uint8ClampedArray[], struck: readonly
+ }
+ 
+ /** The settle's goal for `u`'s idle loop measured on sheet `key` (null: nothing localised / painted). */
+-function measureGoal(u: MonsterUnit, key: string): StruckGoal | null {
++function measureGoal(u: MonsterUnit, key: string, only?: readonly AnyMonsterAnim[]): StruckGoal | null {
+   const n = u.frameCount('idle');
+   if (n < 2) return null;
+   const idle: Uint8ClampedArray[] = [];
+@@ -495,7 +495,7 @@ function measureGoal(u: MonsterUnit, key: string): StruckGoal | null {
+     if (!px) return null;
+     idle.push(px);
+   }
+-  const has = STRUCK.filter((a) => u.has(a));
++  const has = STRUCK.filter((a) => u.has(a) && (!only || only.includes(a)));
+   const painted: Uint8ClampedArray[] = [];
+   for (const a of has) {
+     const px = framePixels(u.scene, key, `${a}:0`);
+@@ -511,14 +511,15 @@ function measureGoal(u: MonsterUnit, key: string): StruckGoal | null {
+  * light: the same frames qualify); cached once every struck f0 was painted. null: the art's struck
+  * poses are not drawn from idle f0, or not painted yet.
+  */
+-export function settleGoal(u: MonsterUnit): SettleGoal | null {
++export function settleGoal(u: MonsterUnit, only?: readonly AnyMonsterAnim[]): SettleGoal | null {
++  const tag = only && only.length ? `|${only.join(',')}` : '';
+   const keys = [u.sheetKey, u.sheetKey === u.p1Key ? u.p2Key : u.p1Key].filter((k, i, a) => !!k && a.indexOf(k) === i);
+   for (const key of keys) {
+-    const hit = goals.get(key);
++    const hit = goals.get(key + tag);
+     if (hit) return hit;
+-    const g = measureGoal(u, key);
++    const g = measureGoal(u, key, only);
+     if (!g) continue;
+-    if (g.complete) goals.set(key, g);
++    if (g.complete) goals.set(key + tag, g);
+     return g;
+   }
+   return null;
+@@ -542,6 +543,13 @@ interface AnimState {
+ }
+ 
+ const steering = new WeakMap<MonsterUnit, () => void>();
++/** Units whose loop a park steers or holds right now (parkBefore). */
++const parking = new WeakSet<MonsterUnit>();
++
++/** True while a park steers `u` onto its target frame or holds it there (a later estimate keeps it). */
++export function isParked(u: MonsterUnit | null): boolean {
++  return !!u && parking.has(u);
++}
+ 
+ /** The idle loop of a resting attack-position unit as it plays now (null: not resting / not idling). */
+ function restLoop(u: MonsterUnit): SettleLoop | null {
+@@ -576,7 +584,8 @@ export function settleBefore(u: MonsterUnit | null, contactIn: number, goalOf: S
+   const goal = goalOf ?? settleGoal(u);
+   if (!goal) return null;
+   const plan = planSettle(loop, contactIn, goal);
+-  if (!plan) return null;
++  // no target frame in reach of the gentle stretch: arrive on one early and hold it until the blow (parkBefore)
++  if (!plan || !plan.target) return parkBefore(u, contactIn, { goal, loop, exact: true }) ?? plan;
+   const sc = u.scene;
+   sc.events.emit('v3:settle', u.uid, plan);
+   if (plan.speed === 1) return plan;
+@@ -639,3 +648,192 @@ export function strikeContactIn(attacker: MonsterUnit | null, from?: number): nu
+   if (c <= f) return null;
+   return Math.max(0, attacker.rangeMs('attack', f, c) - into) / speed;
+ }
++
++// ---------------------------------------------------------------- the park (no reachable target / no contact mark)
++//
++// The gentle settle needs the blow's time AND a target frame within ±35 % of the loop's own pace. Two cases fall
++// outside it (contact-probe, lane D 2026-11-06: kill contacts of most cards struck mid-idle):
++//   - the attacker's attack has no 'contact' mark (a thrown / fired / dashing strike: its flight is its own), so
++//     only an estimate is known — the attack's 'impact' / 'release' mark (the blow leaves), strikeLeadIn;
++//   - a contact time is known but no target frame is in reach of the stretch.
++// Then the loop is steered onto the nearest target frame it can reach by the lead (holds × PARK_FAST … × 1), and
++// PARKED there: the body holds that frame — a held breath before the blow — until the struck pose starts (the
++// settle's usual ends), at most PARK_MAX_MS past the lead (then the loop simply plays on). A target frame reached
++// as late as possible keeps the hold short; the frame is one the struck poses continue (KK-4), so the contact
++// reads local instead of snapping from mid-idle.
++
++/** Holds may shrink to this share while the loop hurries onto a target frame before a blow (park): ≥ 40 ms per
++ * frame for the usual 100–130 ms idle holds (HA-2), every frame still shown in order. */
++export const PARK_FAST = 0.4;
++/** Longest show time (ms) a parked body waits past the lead for the blow before its loop plays on. */
++export const PARK_MAX_MS = 1000;
++/** An estimated lead (the blow leaves; its flight unknown) is also tried this much later when out of reach. */
++export const PARK_LEAD_STRETCH: readonly number[] = [1.5, 2];
++
++export interface ParkPlan {
++  /** The target frame the loop parks on. */
++  frame: number;
++  /** sprite.anims.timeScale on the way (1: untouched). */
++  speed: number;
++  /** ms (at speed) until the frame is reached. */
++  arriveIn: number;
++  /** ms the frame is expected to be held before the lead runs out. */
++  holdFor: number;
++  leadIn: number;
++}
++
++/**
++ * Which target frame `loop` can reach by `leadIn` ms, and how fast: the latest-reached target the loop meets at its
++ * own pace before the lead (shortest hold), else the one needing the least hurry (holds × ≥ PARK_FAST). Pure.
++ * null: no target at all, a one-frame loop, or none reachable even at PARK_FAST.
++ */
++export function planPark(loop: SettleLoop, leadIn: number, goal: SettleGoal, o: { fast?: number } = {}): ParkPlan | null {
++  const n = loop.holds.length;
++  if (n < 2 || loop.frame < 0 || loop.frame >= n) return null;
++  const fast = o.fast ?? PARK_FAST;
++  const holds = loop.holds.map((h) => Math.max(1, h));
++  const starts: number[] = [];
++  let L = 0;
++  for (const h of holds) {
++    starts.push(L);
++    L += h;
++  }
++  const p0 = starts[loop.frame] + Math.max(0, Math.min(holds[loop.frame], loop.into));
++  const lead = Math.max(0, leadIn);
++  let best: { f: number; D: number } | null = null; // reached at own pace by the lead: largest D
++  let hurry: { f: number; D: number } | null = null; // needs a faster loop: smallest D
++  for (let f = 0; f < n; f++) {
++    if (!goal.isTarget(f)) continue;
++    // already on it: D = 0; else the time to its first pixel ahead
++    const inIt = f === loop.frame;
++    const D = inIt ? 0 : (((starts[f] - p0) % L) + L) % L;
++    if (D <= lead) {
++      if (!best || D > best.D) best = { f, D };
++    } else if (!hurry || D < hurry.D) hurry = { f, D };
++  }
++  if (best) return { frame: best.f, speed: 1, arriveIn: best.D, holdFor: lead - best.D, leadIn: lead };
++  if (hurry && lead > 0) {
++    const speed = hurry.D / lead;
++    if (speed <= 1 / fast + 1e-9) return { frame: hurry.f, speed, arriveIn: lead, holdFor: 0, leadIn: lead };
++  }
++  return null;
++}
++
++/**
++ * A blow will land on `u` in about `leadIn` ms: steer its idle loop onto a target frame it can reach (planPark) and
++ * hold it there until the struck pose starts, at most PARK_MAX_MS past the lead. `exact`: the lead is the contact
++ * itself (else an estimate). Returns a SettlePlan-shaped record (emitted as 'v3:settle' for contact-probe) or null.
++ */
++export function parkBefore(
++  u: MonsterUnit | null,
++  leadIn: number,
++  o: { goal?: SettleGoal | null; loop?: SettleLoop | null; exact?: boolean; maxMs?: number } = {},
++): SettlePlan | null {
++  if (!u) return null;
++  if (!o.loop) endSettle(u);
++  const loop = o.loop ?? restLoop(u);
++  if (!loop) return null;
++  const goal = o.goal ?? settleGoal(u);
++  if (!goal) return null;
++  // already on a target frame that lasts past the lead: nothing to do
++  // an estimate (no 'contact' mark) knows when the blow LEAVES, not its flight: when the estimate is out of reach, aim
++  // later — the park holds its frame until the blow lands anyway (≤ PARK_MAX_MS), so a late aim only risks a miss
++  let planned = planPark(loop, leadIn, goal);
++  if (!o.exact) for (const k of PARK_LEAD_STRETCH) if (!planned) planned = planPark(loop, leadIn * k, goal);
++  if (!planned) return null;
++  const park: ParkPlan = planned;
++  const sc = u.scene;
++  const plan: SettlePlan = {
++    frame: park.frame,
++    loops: 0,
++    speed: park.speed,
++    hold: 1 / park.speed,
++    target: true,
++    cost: goal.cost ? goal.cost(park.frame) : null,
++    base: loop.frame,
++    baseCost: goal.cost ? goal.cost(loop.frame) : null,
++    contactIn: leadIn,
++  };
++  sc.events.emit('v3:settle', u.uid, plan);
++  const s = u.sprite;
++  const a = s.anims as unknown as AnimState;
++  const key = a.currentAnim!.key;
++  let set = park.speed; // the time scale this park last set (restored to 1 at the end)
++  a.timeScale = set;
++  const maxMs = o.maxMs ?? PARK_MAX_MS;
++  let el = 0;
++  let parked = false;
++  let parkedAt = 0;
++  let done = false;
++  const end = () => {
++    if (done) return;
++    done = true;
++    s.off(ANIM_START, end);
++    s.off(ANIM_STOP, end);
++    sc.events.off(SCENE_UPDATE, tick);
++    sc.events.off(SCENE_SHUTDOWN, end);
++    if (steering.get(u) === end) steering.delete(u);
++    parking.delete(u);
++    if (s.active && a.timeScale === set) a.timeScale = 1;
++  };
++  function tick(_t: number, delta: number): void {
++    el += Math.min(50, delta) * ((sc as unknown as { tweens?: { timeScale?: number } }).tweens?.timeScale ?? 1);
++    if (!s.active || u!.retired || a.currentAnim?.key !== key || !a.isPlaying) return end();
++    if (!parked) {
++      const fi = u!.frameInfo();
++      if (fi.anim === 'idle' && fi.frame === park.frame && (el >= park.arriveIn - SETTLE_TICK || park.arriveIn === 0)) {
++        parked = true;
++        parkedAt = el;
++        set = 0;
++        a.timeScale = 0;
++      } else if (el > park.leadIn + maxMs) return end();
++      return;
++    }
++    // parked: the blow normally ends this through the struck pose's animationstart
++    if (el >= Math.max(park.leadIn, parkedAt) + maxMs) end();
++  }
++  s.on(ANIM_START, end);
++  s.on(ANIM_STOP, end);
++  sc.events.on(SCENE_UPDATE, tick);
++  sc.events.once(SCENE_SHUTDOWN, end);
++  steering.set(u, end);
++  parking.add(u);
++  return plan;
++}
++
++/**
++ * ms from now until a strike WITHOUT a 'contact' mark lets its blow go: the attack's 'impact' mark (else 'release',
++ * else the art's attackImpactFrame) — the estimate parkBefore holds the victim for. null when the attacker is not on
++ * its attack (and no `from`) or is past that frame.
++ */
++export function strikeLeadIn(attacker: MonsterUnit | null, from?: number): number | null {
++  if (!attacker || !attacker.sprite.active) return null;
++  const m = attacker.spec('attack')?.marks;
++  const c = typeof m?.impact === 'number' ? m.impact : typeof m?.release === 'number' ? m.release : attacker.impactFrame;
++  if (typeof c !== 'number' || !Number.isFinite(c)) return null;
++  let f: number;
++  let into = 0;
++  let speed = 1;
++  if (from !== undefined) f = from;
++  else {
++    const fi = attacker.frameInfo();
++    if (fi.anim !== 'attack') return null;
++    f = fi.frame;
++    const a = attacker.sprite.anims as unknown as AnimState;
++    if (a.isPlaying) {
++      into = Math.max(0, a.accumulator || 0);
++      speed = a.timeScale > 0 ? a.timeScale : 1;
++    }
++  }
++  if (c <= f) return null;
++  return Math.max(0, attacker.rangeMs('attack', f, c) - into) / speed;
++}
++
++/**
++ * The struck poses a battle's blow will play on its target, read ahead in the batch: 'death' when the battle destroys
++ * it (a lethal blow plays death f0), else the recoils. Narrows the settle / park goal to the frames that pose
++ * actually continues (a goal for every struck pose at once often leaves only idle f0).
++ */
++export function struckPosesFor(lethal: boolean): readonly AnyMonsterAnim[] {
++  return lethal ? ['death'] : ['hit', 'hitHeavy', 'hitMagic'];
++}
+diff --git a/src/cinematics/battle/battle.ts b/src/cinematics/battle/battle.ts
+index cd79755..adc445c 100644
+--- a/src/cinematics/battle/battle.ts
++++ b/src/cinematics/battle/battle.ts
+@@ -52,7 +52,7 @@ import { blowKindOf, contactPoint, hitAnimFor, reassertReaction } from '../_v3/r
+ import type { AnyMonsterAnim } from '../../art/types';
+ import { backlash, blowFrom, canHandOver, isMelee } from '../_v3/clash';
+ import { DEATH_AFTER_CONTACT_MS } from '../_v3/budget';
+-import { settleBefore, strikeContactIn } from '../_v3/posematch';
++import { isParked, parkBefore, settleBefore, settleGoal, strikeContactIn, strikeLeadIn, struckPosesFor } from '../_v3/posematch';
+ import { onFrame } from '../../vfx/setpieces';
+ import { weightOf } from '../../duel/motion';
+ import { strikeLight as strikeLightOf, type Ctx, type EvOf, all, arenaDim, duelist, guardReact, impactLight, lerpXY, live, norm, other, sub, takeAttack } from './_kit';
+@@ -576,7 +576,17 @@ async function battleV3(ctx: Ctx<'battle'>): Promise<void> {
+       // resting target's idle arrives there on a frame its struck pose continues (_v3/posematch.ts)
+       if (!direct) {
+         const ms = strikeContactIn(au);
+-        if (ms !== null) settleBefore(live(target), ms);
++        const tu = live(target);
++        const goal = tu && LOOK_V3 ? settleGoal(tu, struckPosesFor(tDestroy >= 0)) : null;
++        if (ms !== null) {
++          if (!isParked(tu)) settleBefore(tu, ms, goal);
++        } else if (LOOK_V3) {
++          // no 'contact' mark (a thrown / fired / dashing strike): hold the victim on a frame its struck pose
++          // continues from the moment the blow leaves until it lands (posematch.ts parkBefore)
++          // (a park the declaration started is already holding / heading for its frame: keep it)
++          const lead = strikeLeadIn(au);
++          if (lead !== null && !isParked(tu)) parkBefore(tu, lead, { goal });
++        }
+       }
+       await Promise.race([run, wait(sc, 6000)]);
+     } catch (e) {
+diff --git a/src/cinematics/battle/declare.ts b/src/cinematics/battle/declare.ts
+index 5c38a8a..5d97f3b 100644
+--- a/src/cinematics/battle/declare.ts
++++ b/src/cinematics/battle/declare.ts
+@@ -33,7 +33,7 @@ import { banner, type BannerOpts } from '../../vfx/banners';
+ import { lightBeam, lightFlash } from '../../view/light';
+ import { fx, registerEvent, registerObserver } from '../api';
+ import { REACTION_POSES, warmUnitPoses } from '../_v3/warm';
+-import { alignStart, frameDelta, idleDelta, settleBefore, strikeContactIn } from '../_v3/posematch';
++import { alignStart, frameDelta, idleDelta, parkBefore, settleBefore, settleGoal, strikeContactIn, strikeLeadIn, struckPosesFor } from '../_v3/posematch';
+ import { V3HOOKS } from '../v3small/_hooks';
+ import {
+   ADD,
+@@ -380,8 +380,22 @@ async function attackDeclareV3(ctx: Ctx<'attackDeclare'>): Promise<void> {
+   // declaration + the strike from the frame after the charge pose to the attack's 'contact' mark
+   // (the battle re-plans on the strike's own first frame, _v3/posematch.ts)
+   if (attacker && target) {
++    // the blow's struck pose, read ahead in the batch: a 'destroy' of the target (before the next declaration) → death
++    let lethal = false;
++    for (let i = ctx.index + 1; i < ctx.events.length; i++) {
++      const e = ctx.events[i];
++      if (e.type === 'attackDeclare') break;
++      if (e.type === 'destroy' && e.uid === ev.targetUid) lethal = true;
++    }
++    const goal = settleGoal(target, struckPosesFor(lethal));
+     const lead = strikeContactIn(attacker, declarePoseFrame(attacker) + 1);
+-    if (lead !== null) settleBefore(target, DECLARE_SETTLE_MS + lead);
++    if (lead !== null) settleBefore(target, DECLARE_SETTLE_MS + lead, goal);
++    else {
++      // no 'contact' mark (a thrown / fired / dashing strike): park the target on a frame its struck pose continues
++      // from now until the blow (posematch.ts parkBefore; the battle keeps this park)
++      const est = strikeLeadIn(attacker, declarePoseFrame(attacker) + 1);
++      if (est !== null) parkBefore(target, DECLARE_SETTLE_MS + est, { goal });
++    }
+   }
+   const tTile = ev.targetUid !== null ? ctx.tile(ev.targetUid) : null;
+   const defender = other(ev.player);
