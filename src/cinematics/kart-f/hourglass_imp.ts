@@ -943,7 +943,7 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
     await until(sc, () => !u.sprite.active || (inDeath() && u.frameInfo().frame >= n - 1), u.rangeMs('death', 0, n) + 300);
     drainH.h?.stop(40);
     if (!u.sprite.active) return;
-    await sleep(sc, Math.min(30, u.frameMs('death', n - 1)));
+    await sleep(sc, Math.min(20, u.frameMs('death', n - 1)));
     // ---- the bleed: the lying, cracked glass empties out of its crack in 4 steps, a gold rivulet ≤ 8 px
     layer = new ImpLayer(sc, u, 0, u.sprite.depth + 0.05);
     const L = layer;
@@ -995,7 +995,7 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
     for (let st = 1; st <= 5; st++) {
       frame(st / 5, false);
       drawRiv(st * 4, false, 0);
-      await sleep(sc, 42);
+      await sleep(sc, 36);
     }
     bleed.stop(40);
     // ---- the clock stops: the glass goes dark; the last grain falls from the crack
@@ -1003,7 +1003,7 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
     frame(1, true);
     for (let gy = 1; gy <= 6; gy++) {
       drawRiv(RIV, true, gy);
-      await sleep(sc, gy <= 3 ? 28 : 22);
+      await sleep(sc, gy <= 3 ? 22 : 18);
     }
     born();
     // ---- the generic pixel dissolve of the empty glass, the hat and the rivulet (150 ms, 3 steps)
@@ -1025,7 +1025,7 @@ async function deathOwn(ctx: Ctx<'destroy'>): Promise<void> {
         for (let i = 0; i < RIV; i++) if (hash(i + ev.uid, ki) >= k) r.px(rivAt(i).x, rivAt(i).y, ki === 0 ? PAL.earth3 : PAL.earth2);
       });
       ki++;
-      await sleep(sc, 50);
+      await sleep(sc, 40);
     }
     L.hide();
   } catch (e) {

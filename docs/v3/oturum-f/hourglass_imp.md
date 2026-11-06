@@ -848,3 +848,60 @@ To fit the new death frames in the budget, I made the death holds tighter and cu
 **Still open:**
 - The −1600 number of the blocked attack covers the imp during the catch. That is generic number placement, not ours.
 - The card art's face could take one more value pass: a warmer glass-side light, and the posts show only beside the bulb.
+
+---
+
+## Round 2 (Fix round 2/3, lens unique)
+
+The critic's verdict was needs-work: 3 high, 4 medium and 4 low findings. I fixed all three highs. #2 is fixed except for one shared-engine limit (see below). I fixed the mediums. Of the lows I fixed #9 and #11, partly fixed #8, and handed #10 to the orchestrator.
+
+- **Evidence:** `shots/v3/kart-f/hourglass_imp/fix2/` (gitignored).
+  - `s1/` and `s2/`: the special iterations.
+  - `p1/` and `p2/`: every anim strip.
+  - `film/`: the in-game films.
+  - `audio/`: the per-recipe pages and `contact.png`.
+  - `clips/`: `ksSummon`, `ksSummon-music`, `ksKill` and `ksFreezeTurn`, each as `.mp4`, `.wav` and `.json`.
+  - Gate output: `gates.txt`, `measure.txt` / `measure.json`, `measure-death.json`, `same/sameness.txt`.
+- I looked at every PNG.
+
+| # | sev | finding | what I did | evidence |
+|---|---|---|---|---|
+| 1 | high | The effect's flip copied the attack's cannon pose and its charge sound | I re-authored special f2–f8, still 14 frames and 140 in total. From the eye-level aim (f1), the glass goes UP and BACK over his far shoulder (−25°), behind his head (−135°), and is held INVERTED OVERHEAD behind the hat (−180°). It never passes the attack's 45° or 90° chest frames, and its neck never points at the target. A new rig field `gBack` draws the glass behind him, with its light clipped to the visible glass. A new glass field `glowUp` makes the now-upper bulb's sand glow (a gold4 surface over gold3) on the release, so the frame cannot be read as idle. The way back reverses the arc (−120° → −30°), then thunk and dust. Marks: charge 1, release 5, contact 6, recover 9; `SPECIAL_THUNK` 11; new `SPECIAL_DRAIN = [6, 7, 8]`. Sound: the effect now opens with its own recipe, **`hgiInvert`**: a brown-noise wooden "turn" with no tinks, a sand slosh whose band falls and then rises (bulb to bulb), and a low B♭3 swell. `hgiFlip` is now the attack's alone. | `fix2/s2/hourglass_imp-v3-special.png`, `fix2/p2/hourglass_imp-v3-p2-special.png` (P2), `fix2/film/ksSummon-effect.png` #14–#29, `fix2/audio/hgiInvert.png` |
+| 2 | high | The seal's silence could not be heard, and its tone was a sine beep | (a) `hgiFill` is now a sustained `start()` at its peak rate, and `hgiThread` (now a whistle) stays loud. Both are cut with `stop(0)` in the same frame as `hgiSeal`. `hgiThread`, `hgiCage`, `hgiFill` and `hgiSeal` are now dry (verb 0), so no tail fills the gap. The gap is now 80 ms. **Music off:** about −20 dB right up to 3840 ms, then −61 dB from 3860 to 3920 ms. That is a dead cut and about 40 dB down. (b) A silent recipe, `hgiHush` (duck 1), fires at `hgiFill`, about 220 ms before the cut. **Music on:** the gap now reads −26 dB against −20 dB. **Not reached:** the 30 dB target with music on. The shared `applyDuck` (`src/audio/engine.ts`) floors every duck at 0.5 gain, which is −6 dB at most, and no API in our files can go deeper. **Orchestrator ask:** a deeper "hold" duck (for example `music.hold(depthDb, ms)` or a recipe `duckDepth`), on the order of −24 dB for about 150 ms. (c) The held tone is now FROZEN GLASS: the trickle as a static noise band through the same bulb resonances (1.4 and 2.8 kHz, q 12, no modulation), a quieter B♭4 sine and a faint 3rd partial. The F5 sine and the octave sine are gone. The tone sits about 5 dB lower than before (−21 dB RMS in the clip, was −16 dB), and the 2 ms hard cut is kept. | `fix2/clips/ksSummon.wav` and `ksSummon-music.wav` (10 ms RMS 3740–4000), `fix2/audio/hgiSeal.png` |
+| 3 | high | The emblem was unreadable and sat under the wall brazier | New `headOf(u)`: the unit's `head` point. For a v1 art on a long body, it takes the column just behind the muzzle (not the back flames). The emblem sits on the silhouette top of that column, plus 3 px. For ember_wolf the emblem now floats over the head, clear of the brazier. The condense step now flies to that spot. The emblem has a 1-px gold halo outside its ink (gold3 on the lit side, gold2 on the other), a gold4 frozen dash, and a brighter light pool (0.7). **Bite:** a two-beat gold4 flash on the emblem and the floor ring, and the ring steps in 2 px. **Strain:** sand grains climb 3 px up the legs at 7 columns, hold, and slide back, with a gold4 flash. I re-filmed at `--every 60`. | `fix2/film/ksSummon-emblem.png`, `ksFreezeTurn-bite.png` (#3–#5 flash), `ksFreezeTurn-strain.png` (#3–#5), `ksFreezeTurn-strain2.png` (#1–#5 the grain climb, #9–#11 the thaw) |
+| 4 | med | Pour, thread, drain and revive sounded the same | The grains stay as the shared material, and each moment gets its own layer. **Pour:** a hollow falling-column "thrum" (pink noise, band 500 → 900 Hz rising, 7 Hz wobble) plus a low aperiodic patter of landing knocks. **Thread:** no flowing grains. A bowed-glass whistle (a narrow band at F5, q 30, slow swell) plus one `hgiLitTick` (5.2 kHz) per two lit grains. **Drain:** a sucking inward crackle through a closing band (3.2 → 0.9 kHz, a reversed swell that cuts) plus the imp's descending "eep". **Revive:** the suck reversed (an opening band) plus three giggle blips rising. | `fix2/audio/contact.png` (Pour, Thread, Drain, ReviveGather, Fill, Invert: now visibly different) |
+| 5 | med | The death sound was thin and the imp had no voice | New **`hgiEep`** at death f2 (the clutch). New **`hgiCreak`** at the rocking full glass (f8). **`hgiTopple`** now plays on the landing frame (n−2) instead of the tip start: the thud, the crack, a 150 ms ring on harmonic partials only (B♭5 ×1/2/3), and a slosh (a grain burst with a falling rate and band). New **`hgiBounce`** on the bounce frame (n−1), 66 ms later and about 7 dB under the topple. `hgiLastGrain` is louder (−17 dB loud, was −23.8 dB) and its ping now decays over 120 ms. | `fix2/clips/ksKill.json` (Eep 1233, Drain 1417, Creak 1733, Topple 2017, Bounce 2083, Bleed 2133, LastGrain 2467), `fix2/audio/hgiTopple.png` |
+| 6 | med | Several beats were close to inaudible | **hgiCondense:** −30.2 → −20.5 dB (a stronger sweep, the hum glide, grains, and a brass double clink when the emblem snaps shut). **hgiEmblemDrop:** −31.6 → −23.5 dB. **hgiDune:** −29.1 → −22.9 dB (+6; raw peak 1.04 at the limit, so I stopped there). **hgiBite:** −24.7 → −19.6 dB, with a 3 kHz identity click and a brass tick. It now plays 300 ms after `turnStart`, after the turn's card slide: in the clip the slide is at 4967 ms and the bite at 5100 ms, about −17 dB over the slide's tail. | the `fix2/audio/*.png` stats, `fix2/clips/ksFreezeTurn.wav` |
+| 7 | med | The paired-hourglass link did not read | The imp is held on his drain frames: release f5 during the line and cap, f6 when the cage walls step out, then f6 → f7 → f8 with each of the cage's three fill steps. His upper bulb empties a step as the target's lower bulb fills a step. The time line is now STRAIGHT (`timeLine(…, 0)`), from his glowing upper bulb to the cap, so it cannot read as a projectile or as the jet's parabola. | `fix2/film/ksSummon-effect2.png` #4–#14 |
+| 8 | low | The summon opened with the shared cyan tile flash | **Partly.** The cyan comes from the shared card slam (`fx.slamToZone` → `TileCard.slamIn`): it is P1's player colour, used by every v3 card's summon (crystal_wyrm's too), not this monster's body. Removing it means changing the shared `runSummon`, which is an orchestrator ask. Over it I added our own landing mark, `dustRing`: a 2:1 earth3/earth4 ring with a gold3 rim that steps out 7 → 16 px in 5 × 50 ms and settles to earth1. The attack's `impactHeavy` is the kit's quietened body blow (volume 0.3 in `_v3/react.ts`), about 10 dB under `hgiScour` at volume 1. I accepted it as the critic allowed. | `fix2/film/ksSummon.png` |
+| 9 | low | `hgiRight` played across the turn boundary | A module `phaseSeq` is bumped on every `phaseChange` / `turnStart` in our observer. The background thunk plays only if no phase change has happened since the seal, and its `maxMs` is now 1500. ksSummon: `hgiRight` 4717 ms (same turn). ksFreezeTurn: dropped. | `fix2/clips/ksSummon.json`, `fix2/clips/ksFreezeTurn.json` |
+| 10 | low | The §5.1 and §5.2 rows were missing from YENI_KARTLAR | **Orchestrator ask** (shared doc, not ours). **§5.1 row:** "Kum Saati Cücesi \| sand INSIDE glass: aperiodic grains through 1.4 / 2.8 kHz bulb resonances, a B♭4 bulb hum, the time-seal stop (dead cut, silence, 4 kHz tık, frozen-glass band) \| no periodic tick-tock, no bar-mode bells, no glassReverse, no broadband hiss". **§5.2 row:** "Kum Saati Cücesi \| kendi kum saatine akar; saat yan yatar, çatlar, kum karodan dışarı akar, son tane düşer, saat söner". **Sand ownership note:** v1 `sandstorm` (`src/data/cards.ts`, `src/art/cardart/sandstorm.ts`) must use wind or dust without the glass resonance or gold grains when it gets a v3 presentation. | — |
+| 11 | low | The death's bleed and ending were weak | The rivulet is 20 grains over about 29 px on the 2:1 diagonal. It runs OFF the card's front corner onto the bare tile, down-screen on both sides: on P2, up-screen it would be hidden behind the lying glass, which I tried and filmed. It has an earth2 bank row and a gold3/gold4 head, and grows in 5 steps. The last grain is a gold4 pixel at the rivulet's head: it falls 3 px, then blinks twice. Our own dissolve of the empty glass now steps ink → gold3, then earth3, then earth2. The white outline at the break is the shared `cardLeaves` card birth, not ours. | `fix2/film/ksKill-bleed.png`, `ksKill-bleed2.png`, `ksKill.png` |
+
+**Gates:**
+- `npx tsc --noEmit`: 0 errors.
+- `npx vitest run tests/art/hourglass_imp.test.ts`: 12/12. One HA-3 recovery-hold fix was needed along the way.
+- `monster-gates --class small --ref none`: 21 ok, 0 FAIL (`fix2/gates.txt`). 140 frames, 2.15 MB.
+- Sameness: 0 KALIR and 2 UYARI, the same two placeholder proxies as before: lumen_sprite (MOTsig 0.554) and shade_assassin (MOTloop 0.685).
+- Camera gate (`measure --camera-gate camera-base.json`, 8 `ks*` keys): 8 ok, 0 FAIL.
+- Clips: peak −1.9 to −2.1 dBFS, 0 clipped samples (ksSummon, ksSummon-music, ksKill, ksFreezeTurn).
+
+**Budgets** (game ms, `fix2/measure.json`, `measure-death.json`):
+
+| moment | now | budget |
+|---|---|---|
+| summon | 2083 | — |
+| effect | 1833 | ≤ 2320 |
+| revive effect | 2150 | ≤ 2320 |
+| attack battle | 2134 | ≤ 3190 |
+| direct | 2150 | ≤ 2320 |
+| death | 1850 | ≤ 2030 |
+| backlash death | 1966 | ≤ 2030 |
+
+To keep the death inside its budget with the longer rivulet and the grain blink, I tightened the bleed steps to 36 ms, the grain steps to 22/18 ms, the dissolve steps to 40 ms and the pre-bleed wait to 20 ms.
+
+**Still open:**
+- **Music-on silence depth:** blocked by the shared duck floor (#2b, orchestrator ask).
+- **The cyan card-slam flash:** a shared-kit change (#8).
+- **The YENI_KARTLAR rows:** #10.
+- **The overhead special:** the hat partly covers the glass's lower bulb, by design: the glass is behind him. His hands reach only to the glass's lower posts, because the arms are stubby, so the hold reads as "held up behind his head" rather than at full arm's length.
