@@ -1,7 +1,9 @@
-// KART GALERİSİ — all 20 cards. Thumbnails on the left, the selected card's face at 2× in the
-// middle, and a hologram stage on the right: monsters materialize at 2× and cycle through every
-// animation (idle, roar, attack, hit, guard — or pick one with the chips); spells and traps float
-// over a rune circle with their element effects. Card text below the grid.
+// CARD GALLERY — every collectible card. A paged 5×4 thumbnail grid on the left (pager row with
+// arrows, page pips and a count under it; ←→ walk across page edges, PgUp/PgDn or Q/E flip a page,
+// the mouse wheel flips pages), the selected card's face at 2× in the middle, and a hologram stage on
+// the right: monsters materialize at 2× and cycle through every animation (idle, roar, attack, hit,
+// guard — or pick one with the chips); spells and traps float over a rune circle with their element
+// effects. Card text below the pager, always clear of the grid.
 
 import Phaser from 'phaser';
 import { COLLECTIBLE_CARD_IDS, ATTRIBUTE_NAMES, CARDS, isMonster, tributesFor, type Attribute, type CardDef, type CardId, type MonsterId } from '../../data/cards';
@@ -30,6 +32,16 @@ const CELL_H = 36;
 const GRID_X = 12;
 const GRID_Y = HEADER_H + 9;
 const GAP = 3;
+const ROWS = 4;
+const PER_PAGE = COLS * ROWS;
+const GRID_W = COLS * (CELL_W + GAP) - GAP;
+const GRID_H = ROWS * (CELL_H + GAP) - GAP;
+/** Pager row (panel-local): arrow chips at both ends, page pips in the middle. */
+const PAGER_Y = GRID_Y + GRID_H + 5;
+const PAGER_H = 13;
+const ARROW_W = 20;
+const PIP_W = 12;
+const PIP_GAP = 3;
 /** Stage centre (panel-local). */
 const STAGE_X = 498;
 const STAGE_Y = 262;
@@ -87,6 +99,24 @@ function thumbFrame(scene: Phaser.Scene, kind: CardDef['kind'], sel: boolean): s
   return key;
 }
 
+/** 5×7 pager chevron (dir 1 = right), ink outline baked in so it reads on the chip. */
+function chevronTex(scene: Phaser.Scene, dir: 1 | -1, lit: boolean): string {
+  const key = `title:chev:${dir}:${lit ? 1 : 0}`;
+  if (scene.textures.exists(key)) return key;
+  const rows = ['#....', '##...', '###..', '####.', '###..', '##...', '#....'];
+  const p = new PixelCanvas(7, 9);
+  const R = KIND_RAMP.trap;
+  const at = (x: number) => (dir === 1 ? x : 4 - x);
+  rows.forEach((r, y) => {
+    for (let x = 0; x < 5; x++) if (r[x] === '#') for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) p.set(1 + at(x) + dx, 1 + y + dy, PAL.ink);
+  });
+  rows.forEach((r, y) => {
+    for (let x = 0; x < 5; x++) if (r[x] === '#') p.set(1 + at(x), 1 + y, y <= 2 ? (lit ? PAL.white : R[4]) : lit ? R[4] : R[3]);
+  });
+  scene.textures.addCanvas(key, p.toCanvas());
+  return key;
+}
+
 /** Iso pedestal for the stage (drawn 1×, shown 2×). */
 function pedestalTex(scene: Phaser.Scene, R: Ramp): string {
   const key = `title:pedestal:${R[3].toString(16)}`;
@@ -128,11 +158,21 @@ function pedestalTex(scene: Phaser.Scene, R: Ramp): string {
 
 interface Thumb {
   id: CardId;
+  /** Centred on the cell so a page flip can fold it on its vertical axis. */
+  box: Phaser.GameObjects.Container;
   frame: Phaser.GameObjects.Image;
   art: Phaser.GameObjects.Image;
   star: Phaser.GameObjects.BitmapText | null;
+  /** Cell top-left (panel-local). */
   x: number;
   y: number;
+}
+
+interface PagerArrow {
+  dir: 1 | -1;
+  bg: Phaser.GameObjects.Image;
+  icon: Phaser.GameObjects.Image;
+  zone: Phaser.GameObjects.Zone;
 }
 
 interface AnimChip {
@@ -146,6 +186,19 @@ export class GalleryOverlay extends Overlay {
   private sel = 0;
   private readonly ids: CardId[] = [...COLLECTIBLE_CARD_IDS];
   private readonly thumbs: Thumb[] = [];
+  /** Page whose thumbnails are on screen (or flipping in). */
+  private page = 0;
+  private readonly pages: number;
+  private pageGen = 0;
+  private wheelAt = 0;
+  private pagerArrows: PagerArrow[] = [];
+  private pips: Phaser.GameObjects.Rectangle[] = [];
+  private pipCursor!: Phaser.GameObjects.Rectangle;
+  private pipCursorHi!: Phaser.GameObjects.Rectangle;
+  private pageT!: Phaser.GameObjects.BitmapText;
+  private rangeT!: Phaser.GameObjects.BitmapText;
+  private sweep!: Phaser.GameObjects.Rectangle;
+  private onWheel: ((p: Phaser.Input.Pointer, o: unknown, dx: number, dy: number) => void) | null = null;
   private selGlow!: Phaser.GameObjects.Image;
   private big!: Phaser.GameObjects.Image;
   private bigGlow!: Phaser.GameObjects.Image;
@@ -176,6 +229,7 @@ export class GalleryOverlay extends Overlay {
   constructor(scene: Phaser.Scene, initial?: string) {
     super(scene, W, H, 'Card Gallery', 'trap');
     this.initial = initial && (COLLECTIBLE_CARD_IDS as string[]).includes(initial) ? (initial as CardId) : null;
+    this.pages = Math.max(1, Math.ceil(this.ids.length / PER_PAGE));
   }
 
   private get sx(): number {
@@ -199,28 +253,45 @@ export class GalleryOverlay extends Overlay {
     this.root.add(this.selGlow);
     this.ids.forEach((id, i) => {
       const def = CARDS[id];
-      const x = GRID_X + (i % COLS) * (CELL_W + GAP);
-      const y = GRID_Y + Math.floor(i / COLS) * (CELL_H + GAP);
-      const frame = s.add.image(x - 1, y - 1, thumbFrame(s, def.kind, false)).setOrigin(0);
-      const art = s.add.image(x + 1, y + 1, cardArtKey(id)).setOrigin(0);
-      const star = isMonster(def) && def.ace ? pixelText(s, x + CELL_W - 3, y + 3, '★', { size: 'sm', originX: 1, color: PAL.gold3 }) : null;
-      this.root.add([frame, art]);
-      if (star) this.root.add(star);
+      const slot = i % PER_PAGE;
+      const x = GRID_X + (slot % COLS) * (CELL_W + GAP);
+      const y = GRID_Y + Math.floor(slot / COLS) * (CELL_H + GAP);
+      const box = s.add.container(x + CELL_W / 2, y + CELL_H / 2).setVisible(false);
+      const frame = s.add.image(-CELL_W / 2 - 1, -CELL_H / 2 - 1, thumbFrame(s, def.kind, false)).setOrigin(0);
+      const art = s.add.image(-CELL_W / 2 + 1, -CELL_H / 2 + 1, cardArtKey(id)).setOrigin(0);
+      const star = isMonster(def) && def.ace ? pixelText(s, CELL_W / 2 - 3, -CELL_H / 2 + 3, '★', { size: 'sm', originX: 1, color: PAL.gold3 }) : null;
+      box.add([frame, art]);
+      if (star) box.add(star);
+      this.root.add(box);
+      this.thumbs.push({ id, box, frame, art, star, x, y });
+    });
+    // one hit zone per grid slot; it maps to whichever card the current page puts there
+    for (let slot = 0; slot < PER_PAGE; slot++) {
+      const x = GRID_X + (slot % COLS) * (CELL_W + GAP);
+      const y = GRID_Y + Math.floor(slot / COLS) * (CELL_H + GAP);
       const zone = this.own(hitZone(s, this.px + x - 1, this.py + y - 1, CELL_W + 2, CELL_H + 2));
+      const at = () => this.thumbs[this.page * PER_PAGE + slot] as Thumb | undefined;
       zone.on(Phaser.Input.Events.POINTER_OVER, () => {
-        if (i !== this.sel) art.setTint(mix(PAL.white, PAL.gold4, 0.3));
+        const t = at();
+        if (!t) return;
+        if (this.page * PER_PAGE + slot !== this.sel) t.art.setTint(mix(PAL.white, PAL.gold4, 0.3));
         sfx.play('uiHover', { volume: 0.35 });
       });
-      zone.on(Phaser.Input.Events.POINTER_OUT, () => art.clearTint());
-      zone.on(Phaser.Input.Events.POINTER_DOWN, () => this.select(i));
-      this.thumbs.push({ id, frame, art, star, x, y });
-    });
-    const gridBottom = GRID_Y + 4 * (CELL_H + GAP) - GAP;
+      zone.on(Phaser.Input.Events.POINTER_OUT, () => at()?.art.clearTint());
+      zone.on(Phaser.Input.Events.POINTER_DOWN, () => {
+        if (at()) this.select(this.page * PER_PAGE + slot);
+      });
+    }
+    // the bright line a page flip sweeps across the grid
+    this.sweep = s.add.rectangle(0, GRID_Y - 2, 2, GRID_H + 4, KIND_RAMP.trap[4]).setOrigin(0).setBlendMode(Phaser.BlendModes.ADD).setVisible(false);
+    this.root.add(this.sweep);
+    this.buildPager();
+    const gridBottom = PAGER_Y + PAGER_H;
 
     // ---- info box
     const ix = GRID_X;
     const iy = gridBottom + 8;
-    this.root.add(s.add.rectangle(ix, iy - 3, COLS * (CELL_W + GAP) - GAP, 1, PAL.night3).setOrigin(0));
+    this.root.add(s.add.rectangle(ix, iy - 3, GRID_W, 1, PAL.night3).setOrigin(0));
     this.nameT = pixelText(s, ix, iy, '', { size: 'md', color: PAL.white });
     this.tagT = pixelText(s, ix + 242, iy, '', { size: 'sm', originX: 1, color: PAL.gold3 });
     this.typeT = pixelText(s, ix, iy + 15, '', { size: 'sm', color: PAL.mist });
@@ -244,6 +315,17 @@ export class GalleryOverlay extends Overlay {
     // ---- keyboard hints under the big card
     this.root.add(keyHint(s, 0, 0, '←↑↓→', 'Card').setPosition(268, by + 82));
     this.root.add(keyHint(s, 0, 0, 'SPACE', 'Animation').setPosition(268, by + 98));
+    this.root.add(keyHint(s, 0, 0, 'PGUP PGDN', 'Page').setPosition(268, by + 114));
+
+    // ---- mouse wheel flips pages (one page per notch, gated while a flip is running)
+    this.onWheel = (_p, _o, _dx, dy) => {
+      if (!this.open_ || dy === 0) return;
+      const now = this.scene.time.now;
+      if (now - this.wheelAt < 220) return;
+      this.wheelAt = now;
+      this.flipPage(dy > 0 ? 1 : -1);
+    };
+    s.input.on(Phaser.Input.Events.POINTER_WHEEL, this.onWheel);
 
     // ---- stage (world space; the title camera rests at scroll 0,0 while overlays are open)
     this.halo = this.own(
@@ -279,9 +361,187 @@ export class GalleryOverlay extends Overlay {
     this.animLabel = pixelText(s, STAGE_X - 22, cy - 9, '', { size: 'sm', originX: 0.5, originY: 0.5, color: PAL.steel });
     this.root.add(this.animLabel);
 
-    const start = this.initial ? this.ids.indexOf(this.initial) : 0;
+    const start = Math.max(0, this.initial ? this.ids.indexOf(this.initial) : 0);
     this.sel = -1;
-    this.select(Math.max(0, start), true);
+    this.showPage(Math.floor(start / PER_PAGE), 0, true);
+    this.select(start, true);
+  }
+
+  // ------------------------------------------------------------ pages
+
+  private buildPager(): void {
+    const s = this.scene;
+    const y = PAGER_Y;
+    for (const dir of [-1, 1] as const) {
+      const x = dir < 0 ? GRID_X : GRID_X + GRID_W - ARROW_W;
+      const bg = s.add.image(x, y, panelTex(s, 'neutral', ARROW_W, PAGER_H, { chamfer: 2 })).setOrigin(0);
+      const icon = s.add.image(x + ARROW_W / 2 - 3 + (dir < 0 ? -1 : 0), y + 2, chevronTex(s, dir, false)).setOrigin(0);
+      this.root.add([bg, icon]);
+      const zone = this.own(hitZone(s, this.px + x, this.py + y, ARROW_W, PAGER_H));
+      zone.on(Phaser.Input.Events.POINTER_OVER, () => {
+        if (!this.canFlip(dir)) return;
+        bg.setTexture(panelTex(s, 'trap', ARROW_W, PAGER_H, { chamfer: 2 }));
+        icon.setTexture(chevronTex(s, dir, true));
+        sfx.play('uiHover', { volume: 0.35 });
+      });
+      zone.on(Phaser.Input.Events.POINTER_OUT, () => this.paintPager());
+      zone.on(Phaser.Input.Events.POINTER_DOWN, () => {
+        if (!this.canFlip(dir)) return;
+        // the chip presses in by a pixel
+        icon.y = y + 3;
+        void wait(s, 90).then(() => (icon.y = y + 2));
+        this.flipPage(dir);
+      });
+      this.pagerArrows.push({ dir, bg, icon, zone });
+    }
+    const mid = GRID_X + GRID_W / 2;
+    const cy = y + Math.round(PAGER_H / 2);
+    this.pageT = pixelText(s, GRID_X + ARROW_W + 5, cy, '', { size: 'sm', originY: 0.5, color: PAL.mist });
+    this.rangeT = pixelText(s, GRID_X + GRID_W - ARROW_W - 5, cy, '', { size: 'sm', originX: 1, originY: 0.5, color: PAL.steel });
+    this.root.add([this.pageT, this.rangeT]);
+    // page pips: a dim track per page plus a bright cursor that slides to the current one
+    const pipsW = this.pages * (PIP_W + PIP_GAP) - PIP_GAP;
+    const px0 = Math.round(mid - pipsW / 2);
+    for (let k = 0; k < this.pages; k++) {
+      const x = px0 + k * (PIP_W + PIP_GAP);
+      const pip = s.add.rectangle(x, cy - 1, PIP_W, 3, PAL.night3).setOrigin(0);
+      this.root.add(pip);
+      this.pips.push(pip);
+      const zone = this.own(hitZone(s, this.px + x - 1, this.py + y, PIP_W + 2, PAGER_H));
+      zone.on(Phaser.Input.Events.POINTER_OVER, () => {
+        if (k !== this.page) pip.setFillStyle(PAL.steel);
+        sfx.play('uiHover', { volume: 0.35 });
+      });
+      zone.on(Phaser.Input.Events.POINTER_OUT, () => this.paintPager());
+      zone.on(Phaser.Input.Events.POINTER_DOWN, () => this.gotoPage(k));
+    }
+    const R = KIND_RAMP.trap;
+    this.pipCursor = s.add.rectangle(px0, cy - 2, PIP_W, 5, R[3]).setOrigin(0);
+    this.pipCursorHi = s.add.rectangle(px0 + 1, cy - 2, PIP_W - 2, 1, PAL.white).setOrigin(0);
+    this.root.add([this.pipCursor, this.pipCursorHi]);
+  }
+
+  private canFlip(dir: 1 | -1): boolean {
+    const p = this.page + dir;
+    return p >= 0 && p < this.pages;
+  }
+
+  /** Arrow chips dim at the ends, page text and range follow the current page. */
+  private paintPager(): void {
+    const s = this.scene;
+    for (const a of this.pagerArrows) {
+      const ok = this.canFlip(a.dir);
+      a.bg.setTexture(panelTex(s, 'neutral', ARROW_W, PAGER_H, { chamfer: 2, dim: !ok }));
+      a.icon.setTexture(chevronTex(s, a.dir, false)).setAlpha(ok ? 1 : 0.3);
+      if (a.zone.input) a.zone.input.cursor = ok ? 'pointer' : 'default';
+    }
+    this.pips.forEach((p, k) => p.setFillStyle(k === this.page ? PAL.night4 : PAL.night3));
+    this.pageT.setText(`PAGE ${this.page + 1}/${this.pages}`);
+    const a = this.page * PER_PAGE + 1;
+    const b = Math.min(this.ids.length, (this.page + 1) * PER_PAGE);
+    this.rangeT.setText(`${a}-${b} OF ${this.ids.length}`);
+  }
+
+  /** Flip one page (keeps the selected slot, clamped to the last card). */
+  private flipPage(dir: 1 | -1): void {
+    if (!this.canFlip(dir)) {
+      sfx.play('uiError', { volume: 0.3 });
+      return;
+    }
+    this.gotoPage(this.page + dir);
+  }
+
+  private gotoPage(p: number): void {
+    if (p === this.page || p < 0 || p >= this.pages) return;
+    const slot = this.sel % PER_PAGE;
+    this.select(Math.min(this.ids.length - 1, p * PER_PAGE + slot));
+  }
+
+  /**
+   * Bring page `p` on screen. A flip folds the old page's cells shut column by column (in the
+   * direction of travel), sweeps a bright line across the grid and unfolds the new page behind it.
+   */
+  private showPage(p: number, dir: number, instant = false): void {
+    const s = this.scene;
+    const old = this.page;
+    this.page = p;
+    const gen = ++this.pageGen;
+    const onPage = (k: number) => Math.floor(k / PER_PAGE) === p;
+    const wasOn = (k: number) => Math.floor(k / PER_PAGE) === old;
+    this.paintPager();
+    // the pip cursor slides to its pip
+    const pipX = this.pips[p].x;
+    s.tweens.killTweensOf([this.pipCursor, this.pipCursorHi]);
+    if (instant) {
+      this.pipCursor.x = pipX;
+      this.pipCursorHi.x = pipX + 1;
+    } else {
+      const from = this.pipCursor.x;
+      const pos = { t: 0 };
+      s.tweens.add({
+        targets: pos,
+        t: 1,
+        duration: 220,
+        ease: 'Cubic.Out',
+        onUpdate: () => {
+          const x = Math.round(from + (pipX - from) * pos.t);
+          this.pipCursor.x = x;
+          this.pipCursorHi.x = x + 1;
+        },
+      });
+    }
+    for (const t of this.thumbs) s.tweens.killTweensOf(t.box);
+    if (instant) {
+      this.thumbs.forEach((t, k) => t.box.setVisible(onPage(k)).setScale(1));
+      return;
+    }
+    sfx.play('cardSlide', { volume: 0.4, pitch: dir > 0 ? 1.2 : 1.05 });
+    this.selGlow.setVisible(false);
+    // column order in the direction of travel
+    const order = (k: number) => {
+      const c = (k % PER_PAGE) % COLS;
+      const r = Math.floor((k % PER_PAGE) / COLS);
+      return (dir > 0 ? c : COLS - 1 - c) + r * 0.5;
+    };
+    const STEP = 22;
+    this.thumbs.forEach((t, k) => {
+      if (wasOn(k) && t.box.visible) {
+        s.tweens.add({ targets: t.box, scaleX: 0, duration: 70, delay: order(k) * STEP, ease: 'Quad.In', onComplete: () => t.box.setVisible(false).setScale(1) });
+      } else if (onPage(k)) {
+        t.box.setVisible(true).setScale(0, 1);
+        s.tweens.add({
+          targets: t.box,
+          scaleX: 1,
+          duration: 130,
+          delay: 90 + order(k) * STEP,
+          ease: 'Back.Out',
+          onComplete: () => t.box.setScale(1),
+        });
+      } else t.box.setVisible(false).setScale(1);
+    });
+    // sweep line
+    const x0 = dir > 0 ? GRID_X - 4 : GRID_X + GRID_W + 2;
+    const x1 = dir > 0 ? GRID_X + GRID_W + 2 : GRID_X - 4;
+    s.tweens.killTweensOf(this.sweep);
+    this.sweep.setVisible(true).setAlpha(0.9);
+    this.sweep.x = x0;
+    const sw = { t: 0 };
+    s.tweens.add({
+      targets: sw,
+      t: 1,
+      duration: 90 + (COLS + 1) * STEP + 60,
+      ease: 'Sine.InOut',
+      onUpdate: () => {
+        this.sweep.x = Math.round(x0 + (x1 - x0) * sw.t);
+        this.sweep.setAlpha(0.9 * Math.sin(Math.PI * sw.t) + 0.1);
+      },
+      onComplete: () => this.sweep.setVisible(false),
+    });
+    void wait(s, 90 + (COLS + 1.5) * STEP + 130).then(() => {
+      if (gen !== this.pageGen || !this.open_) return;
+      this.selGlow.setVisible(true).setAlpha(0);
+      void tween(s, { targets: this.selGlow, alpha: 0.8, duration: 140 });
+    });
   }
 
   // ------------------------------------------------------------ selection
@@ -294,18 +554,20 @@ export class GalleryOverlay extends Overlay {
     const def = CARDS[id];
     const R = kindRampOf(def);
     if (!first) sfx.play('cardFlip', { volume: 0.55 });
-    // thumbs
+    const page = Math.floor(i / PER_PAGE);
+    if (!first && page !== this.page) this.showPage(page, prev < 0 ? 1 : Math.sign(i - prev) || 1);
+    // thumbs (the selected one lifts by two pixels)
     this.thumbs.forEach((t, k) => {
       const on = k === i;
+      const lift = on ? 2 : 0;
       t.frame.setTexture(thumbFrame(this.scene, CARDS[t.id].kind, on));
-      t.frame.y = t.y - 1 - (on ? 2 : 0);
-      t.art.y = t.y + 1 - (on ? 2 : 0);
-      if (t.star) t.star.y = t.y + 3 - (on ? 2 : 0);
+      t.frame.y = -CELL_H / 2 - 1 - lift;
+      t.art.y = -CELL_H / 2 + 1 - lift;
+      if (t.star) t.star.y = -CELL_H / 2 + 3 - lift;
       t.art.clearTint();
     });
     const t = this.thumbs[i];
     this.selGlow.setPosition(t.x + CELL_W / 2, t.y + CELL_H / 2 - 2).setTint(R[3]);
-    void prev;
 
     // big card: flip to the new face
     this.scene.tweens.killTweensOf(this.big);
@@ -573,25 +835,42 @@ export class GalleryOverlay extends Overlay {
 
   onKey(e: KeyboardEvent): boolean {
     const n = this.ids.length;
-    const rows = Math.ceil(n / COLS);
-    const col = this.sel % COLS;
-    const row = Math.floor(this.sel / COLS);
+    const last = n - 1;
     switch (e.code) {
       case 'ArrowLeft':
       case 'KeyA':
-        this.select((this.sel + n - 1) % n);
+        // walks across page edges; wraps from the first card to the last
+        this.select(this.sel === 0 ? last : this.sel - 1);
         return true;
       case 'ArrowRight':
       case 'KeyD':
-        this.select((this.sel + 1) % n);
+        this.select(this.sel === last ? 0 : this.sel + 1);
         return true;
       case 'ArrowUp':
       case 'KeyW':
-        this.select(((row + rows - 1) % rows) * COLS + col);
+        // a row up; off the top row it continues on the previous page's bottom row
+        if (this.sel - COLS >= 0) this.select(this.sel - COLS);
+        else this.select(Math.min(last, (Math.ceil(n / COLS) - 1) * COLS + (this.sel % COLS)));
         return true;
       case 'ArrowDown':
       case 'KeyS':
-        this.select(((row + 1) % rows) * COLS + col);
+        if (this.sel + COLS <= last) this.select(this.sel + COLS);
+        else if (Math.floor(this.sel / COLS) < Math.floor(last / COLS)) this.select(last);
+        else this.select(this.sel % COLS);
+        return true;
+      case 'PageUp':
+      case 'KeyQ':
+        this.flipPage(-1);
+        return true;
+      case 'PageDown':
+      case 'KeyE':
+        this.flipPage(1);
+        return true;
+      case 'Home':
+        this.select(0);
+        return true;
+      case 'End':
+        this.select(last);
         return true;
       case 'Space':
       case 'Enter':
@@ -616,6 +895,9 @@ export class GalleryOverlay extends Overlay {
 
   protected teardown(): void {
     this.clearStage();
+    this.pageGen++;
+    if (this.onWheel) this.scene.input.off(Phaser.Input.Events.POINTER_WHEEL, this.onWheel);
+    this.onWheel = null;
     void OV_UI;
   }
 }

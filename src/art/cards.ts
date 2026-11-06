@@ -792,7 +792,25 @@ function hexPoints(cx: number, cy: number, r: number, sy = 1): [number, number][
   return pts;
 }
 
-const N_SIGIL = ['##...##', '###..##', '###..##', '####.##', '##.####', '##..###', '##..###', '##...##', '##...##'];
+/**
+ * The Prism Duel mark, v1 size: an upright hexagonal crystal prism (pointed caps, three faces), 8×12.
+ * The same idea as the v3 back's MARK8 (src/view/v3/cardBack.ts), stretched to fill the magenta core
+ * hex. It is the same shape turned 180° (P2's cards lie rotated on the board), so no letter.
+ */
+const PRISM_MARK = [
+  '...##...',
+  '..####..',
+  '.######.',
+  '########',
+  '########',
+  '########',
+  '########',
+  '########',
+  '########',
+  '.######.',
+  '..####..',
+  '...##...',
+];
 
 function drawBack(): PixelCanvas {
   const W = FACE_W;
@@ -888,12 +906,23 @@ function drawBack(): PixelCanvas {
     p.rect(ix - 1, iy - 1, 3, 3, PAL.ink);
     p.set(ix, iy, PAL.gold4);
   }
-  // N sigil: ink drop shadow, white→cyan two-tone, glint
-  p.stamp(N_SIGIL, { '#': PAL.ink }, cx - 3, cy - 3);
-  p.stamp(N_SIGIL, { '#': PAL.ink }, cx - 4, cy - 5);
-  p.stamp(N_SIGIL.slice(0, 4), { '#': PAL.white }, cx - 4, cy - 4);
-  p.stamp(N_SIGIL.slice(4), { '#': PAL.cyan4 }, cx - 4, cy);
-  p.stamp(['', '', '', '', '', '', '', '##...##', '##...##'], { '#': PAL.cyan3 }, cx - 4, cy - 4);
+  // prism mark: ink drop shadow + outline, then a cyan crystal shaded face by face (lit left face,
+  // mid front ridge, shaded right face; the pointed caps a step lighter on top, darker below)
+  const mx = cx - 4;
+  const my = cy - 6;
+  p.stamp(PRISM_MARK, { '#': PAL.ink }, mx + 1, my + 1);
+  for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) p.stamp(PRISM_MARK, { '#': PAL.ink }, mx + dx, my + dy);
+  const tones = [PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4, PAL.white];
+  for (let y = 0; y < PRISM_MARK.length; y++)
+    for (let x = 0; x < 8; x++) {
+      if (PRISM_MARK[y][x] !== '#') continue;
+      const face = x <= 2 ? 2 : x <= 4 ? 1 : 0;
+      const cap = y <= 2 ? 1 : y >= 9 ? -1 : 0;
+      p.set(mx + x, my + y, tones[Math.max(0, Math.min(3, 1 + face + cap))]);
+    }
+  // glints on the lit tip and the lit face
+  p.set(mx + 3, my, PAL.white);
+  p.set(mx + 1, my + 3, PAL.white).set(mx + 1, my + 4, PAL.white);
   // top/bottom ornaments
   for (const oy of [9, H - 10]) {
     p.hline(14, 33, oy, PAL.night4);
