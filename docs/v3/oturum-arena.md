@@ -669,3 +669,23 @@ Son: `shots/arena/pixr2-6.png`, `pixr2-6-sbs.png`, film `pixr2-6-film.png` (8 ×
 typecheck temiz, vitest tests/view 20/20 (tüm takımdaki 5 hata kart/canavar dosyalarında, bizim değil). v1: yalnız arena-nt / board-nt
 (LOOK_V3 yolu).
 Kalan farklar: sahne L çentiği ve pahlar (sahne maddesi); tahta hedeften serin (sıcak gri yok); ön etek sisinin çoğu HUD altında.
+
+#### Piksel uyumu + cila — eleştiri turu 3/3 (2026-11-06)
+Önce: `shots/arena/pixr3-0.png` (+ `pixr3-0-sbs.png`, sol-alt yakın `pixr3-0-zl.png`).
+1. **#1 L çentiği** (geçerli, yapıldı — iki turdur devredilmişti, sahne maddesi kapandığı için burada çözüldü): `src/view/board-nt/layout-nt.ts`
+   `PLATE_R1` 5.0625 → 6.0 (yakın-sol kenar 30 px dışarı), anahat köşeleri `ntGrid(118, 187)` ve yakın düz kenar 268..364; `PLATE_CORNERS`
+   güncel. P1 kürsüsü artık sahnenin ÜSTÜNDE: `src/art/arena-nt/pads.ts` `paintBase` taban tamamen sahne içindeyse çıkıntı bloğu çizmez
+   (yalnız kürsü + ışık havuzu). Sahne tek dışbükey sekizgen, sol kapak 137..187. Tam simetrik büyütme (uzak-sağ kenar da) REDDEDİLDİ:
+   uzak uç y≈35'e çıkıp portre ekranlarının, sol/sağ uçlar hologram kaidelerinin üstüne biniyordu (kamera/karolar sabit); P2 çıkıntısı
+   uzak kenarın arkasında kaldığı için çentik okunmuyor. Testler yeni geometriye: `tests/view/board-nt-layout.test.ts` (P1 kürsüsünün 4
+   ucu sahnede, P2 ön ucu kenarda), `tests/art/arena-nt-platform.test.ts` (sol duvar y = 187 + (x − 118)/2). (`pixr3-1.png`, `pixr3-1-zl.png`)
+2. **#2 tahta sıcak gri** — değişiklik yok: palette sıcak gri yok (stone2 en yakın; önceki turlarda ölçüldü).
+3. **#4 sütun kabartması** (geçerli, yapıldı): `src/art/arena-nt/brickwall.ts` `paintPillarAt` — ışıksız sütun gövdesi stone1 → stone2,
+   gölge stone0 → stone1, sol ışıklı kenar stone2 → stone3 ve 1 px kesintisiz (sıra derzleri artık kesmiyor), gövdedeki derzler ink yerine
+   gölge tonu. Sütunlar hedefteki gibi tuğladan açık gri kütle (`pixr3-2-wall.png`, `pixr3-3.png`, `pixr3-3-sbs.png`).
+4. **#3 alt kenar sisi** (geçerli, yapıldı): `src/view/board-nt/lights.ts` `BANKS` — sol-alt (46, 236) ve sağ-alt (470, 262) birer ön
+   bank daha (yavaş, 20–22 s), sahne derinliğinin altında (`pixr3-4.png`).
+5. **#5** bilgi, değişiklik yok.
+Son: `shots/arena/pixr3-4.png`. palcheck PASS, typecheck temiz, arena testleri 34/34. v1: değişiklikler yalnız board-nt / arena-nt (v3).
+Kalan farklar: tahta hedeften serin; sol kapak uzun (30 px'lik çıkıntıyı yutmak için); kamera sabit olduğundan hedefteki geniş sahne
+payları yalnız P1 tarafında; P2 kürsüsü hâlâ uzak kenarın arkasında (hedefte sahnenin üstünde).

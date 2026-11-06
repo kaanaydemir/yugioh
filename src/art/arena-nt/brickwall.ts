@@ -301,9 +301,11 @@ function paintPillarAt(s: (x: number, y: number, c: number) => void, x0: number,
       const lit = lightAt(x, y, bay(x, y));
       // dressed stone, a step LIGHTER than the dark brick so the column reads as a solid mass: lit left edge, flat
       // face, shaded right third, ink block joints; the capital / base carry a bright lip
-      const hi = lit >= 3 ? PAL.skin2 : lit >= 1 ? PAL.skin1 : PAL.stone2;
-      const face = lit >= 3 ? PAL.skin1 : lit >= 1 ? PAL.skin0 : PAL.stone1;
-      const shade = lit >= 3 ? PAL.skin0 : PAL.stone0;
+      // pixel/polish round 3 (#4): more relief — the cool lit edge a step up (stone3), a continuous 1-px lit edge that the
+      // course seams no longer cut, and soft (shade, not ink) course seams on the face
+      const hi = lit >= 3 ? PAL.skin2 : lit >= 1 ? PAL.skin1 : PAL.stone3;
+      const face = lit >= 3 ? PAL.skin1 : lit >= 1 ? PAL.skin0 : PAL.stone2;
+      const shade = lit >= 3 ? PAL.skin0 : lit >= 1 ? PAL.stone0 : PAL.stone1;
       const i = x - xa;
       const n = xb - xa;
       let c: number;
@@ -311,7 +313,8 @@ function paintPillarAt(s: (x: number, y: number, c: number) => void, x0: number,
       else if ((cap && y === top + capH - 1) || (base && y === baseY)) c = PAL.ink;
       else if ((cap && y <= top + 2) || (base && y === baseY + 1)) c = i < n * 0.7 ? hi : face;
       else if (cap && y === top + capH - 2) c = shade;
-      else if (!cap && !base && (y - top) % 10 === 0) c = PAL.ink; // course seam
+      else if (!cap && !base && i === 1) c = hi; // continuous lit edge
+      else if (!cap && !base && (y - top) % 10 === 0) c = i < n * 0.7 ? shade : PAL.ink; // course seam
       else c = i === 1 ? hi : i < n * 0.7 ? face : shade;
       s(x, y, c);
     }

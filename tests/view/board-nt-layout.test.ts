@@ -73,21 +73,16 @@ describe('neon tower layout map', () => {
     expect(len(4)).toBeGreaterThanOrEqual(16);
     expect(pts[2].y).toBe(pts[3].y);
     expect(len(2)).toBeGreaterThanOrEqual(48);
-    expect([Math.round(pts[7].x), Math.round(pts[6].x)]).toEqual([328, 364]);
-    for (const p of [0, 1] as const) {
-      const d = duelistXY(p);
-      // the 40×20 pad diamond around the feet: its back edge (P1: top → right tip; P2: left → bottom tip, parallel to the stage
-      // edge) is on the plate, 2 px further in (towards the pad centre) is already off it — flush, neither floating off the
-      // edge nor standing on the stage top
-      const back = p === 0 ? { x: d.x, y: d.y - 10 } : { x: d.x, y: d.y + 10 };
-      const inward = p === 0 ? 2 : -2;
-      expect(inside(back.x, back.y), `dais ${p} back tip on the plate`).toBe(true);
-      expect(inside(back.x, back.y + inward), `dais ${p} flush`).toBe(false);
-      expect(inside(d.x, d.y), `dais ${p} centre off the plate`).toBe(false);
-      expect(inside(d.x + (p === 0 ? 20 : -20), d.y), `dais ${p} back edge's other end`).toBe(true);
-      const others = (p === 0 ? [[-20, 0], [0, 10]] : [[20, 0], [0, -10]]).map(([dx, dy]) => inside(d.x + dx, d.y + dy));
-      expect(others.some(Boolean), `dais ${p} rest off the plate`).toBe(false);
-    }
+    // arena pixel/polish round 3: the near flat edge is 268..364 (the near-left edge moved out so the P1 dais stands ON the stage)
+    expect([Math.round(pts[7].x), Math.round(pts[6].x)]).toEqual([268, 364]);
+    // P1: the whole dais (40×20 pad + its 2 steps, ±24×12 round the feet) lies on the stage top — one convex block, no bump;
+    // P2: the dais still stands behind the far-right edge, its front tip flush on it
+    const d0 = duelistXY(0);
+    for (const [dx, dy] of [[-24, 0], [24, 0], [0, -12], [0, 12]]) expect(inside(d0.x + dx, d0.y + dy), `P1 dais ${dx},${dy} on the plate`).toBe(true);
+    const d1 = duelistXY(1);
+    expect(inside(d1.x, d1.y + 10), 'P2 dais front tip on the plate').toBe(true);
+    expect(inside(d1.x, d1.y + 8), 'P2 flush').toBe(false);
+    expect(inside(d1.x, d1.y), 'P2 dais centre off the plate').toBe(false);
   });
 
   it('keeps the platform inside the left panel edge, the HUD hint plate and the frame', () => {
