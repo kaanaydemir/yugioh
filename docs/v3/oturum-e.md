@@ -23,6 +23,7 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
 ## Kart durumu
 | Kart | Resim | Sinematik | SFX | Eleştiri turları | Kanıt |
 |---|---|---|---|---|---|
+| puppet_string (Kukla İpi) | büyük 88×68 + elle 44×34 küçük, 0 palet dışı piksel, 4 kare | tamam: haç, 5 ip, 3 sarsak sıçrama, End Phase'de ipler kopar ve dönüş; alma 5,22 sn (≤5,3), dönüş ~2,0 sn (≤2,19); CPU senaryosu ePuppetBot | tamam: 14 e_puppet tarifi, her vuruşun sesi var | 5,5 / 6,5 / 7 | shots/e/puppet_string/ |
 | (doldurulacak) | | | | | |
 
 ### S3 Boşluk Gözü (`void_eye`)
@@ -175,6 +176,17 @@ Uçurum Büyücüsü için yalnız KART resmi. Brif: `docs/v3/PARALEL_OTURUMLAR.
   attack_perch.png, ownP2.png, paint/crow.png, paint/decoy.png, art/, sfx/, measure.json).
 - Açık: jeton sprite'ı D lane'inin; yer tutucuda ceket/şapka/çuval yok — D jetona aynı ceket + çuval kafa +
   şapkayı giydirirse dönüşüm otomatik olarak yalnız farklı pikselleri değiştirir (jeton pikselleri sanattan okunur).
+- Bitti-tanımı doğrulaması (2026-11-06): typecheck temiz; `tests/e/straw_decoys.test.ts` 16/16 (yeni: `eStrawCpu`
+  — bot P2 kapalı kartla büyük doğrudan saldırıyı yanıtlar, saldıran bot korkuluk seçer, tur biter); tests/art +
+  kartın engine/ai/deck testlerinde yalnız bilinen taban hataları + yük kaynaklı zaman aşımları (cloud_hatchling /
+  hollow_ogre tek başına geçer). measure (look v3, 10 senaryo): zoom 1, closeUp 0, hata 0; eStrawAttack/Wait'teki
+  1–2f/24px kamera ortak saldırı ilanı/savaş odağıdır (t=17 ve savaş), kartınki değil. Etkinleştirme (oyun ms):
+  kendi tur 4,85 sn (eStrawOwn; izin (0,7+2,6)×1,35+0,3 = 4,76 sn: ~0,1 sn fazla), hızlı yanıt 5,27 sn (yanıt
+  açılışı dahil) — sahibin "süre sınırı yok" kararıyla kabul. palcheck: Δoff +1,04 (800 ms) ortak büyü açılışı,
+  imza boyunca off düşer; beyaz ≤ %0,62. v1 filmdiff: 17/17 IDENTICAL. Bitişten 2 sn sonra sahnede artık nesne yok,
+  girdi geri döner (P1, P2, Own/Set P2, Summon, One). Yeni senaryo `eStrawCpu` (`&mode=demo`, --fresh OLMADAN):
+  iki bot; P1 Magma Titanı doğrudan saldırır, P2 botu korkulukları diker, saldırı bir korkuluğa döner, düello tur 5'e
+  sürer. Resim: 19 ton, offPal 0, el yapımı küçük (smallVsBig 0,77). Kanıt: `shots/e/straw_decoys/dod/`.
 
 ## Kontrol noktası (WIP, 2026-10-31 ~20:00 UTC)
 Orkestratörün isteğiyle ara kayıt (kullanım sınırı yaklaşıyor). İş akışı (`lane-e-cards`, kart başına
@@ -204,3 +216,10 @@ yeni konteynerde 684e290'dan yeniden yazılmalı), tam `npm test`, son özet.
 
 **Zamanlama kararı (orkestratör):** §7 storyboard süresi REHBER §5 2,9 sn sınırına üstün gelir:
 kabul = (açılış ≤ 0,7 sn + §7 imza süresi) × 1,35 + 0,3 sn. Sahibe açık soru olarak kalır.
+
+### puppet_string
+- v1 kart yüzü hâlâ yer tutucu: isteğe bağlı `src/art/cardart/puppet_string.ts` yok.
+- `ePuppetBot` `--fresh` ile çekilemez (qa.scenario yeniden başlatması hep hot-seat); `--fresh` olmadan çek.
+- `palcheck` tüm kare/tahta kırpımlarında FAIL (Δoff ~4–5): arena arka planı ve ışık katmanı gürültüsü, kartın kendi renkleri değil.
+- `tests/art/cloud_hatchling.test.ts` başarısız: A kulvarının süren işi, bu kartla ilgisiz.
+- Cila: yüzü kapalı dönüşte iniş adımı `e_puppetHook` sesini kullanıyor, yüzü açık dönüş `e_puppetStep` kullanıyor.
