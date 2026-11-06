@@ -62,6 +62,11 @@ const scenarios: Record<string, Scenario> = {
     stage: { zones: 5, phase: 'battle', active: 1, p0: { monsters: five(N, N, { id: 'polar_anvil', position: 'attack' }) }, p1: { monsters: five(N, N, 'ember_wolf') } },
     steps: [attack(2, 2, 1)],
   },
+  paKillWyrm: {
+    desc: 'Kutup Örsü savaşta yok edilir (Kristal Ejder saldırır: temas işaretli vuruş, hedefin bekleme döngüsü yerleşir)',
+    stage: { zones: 5, phase: 'battle', p0: { monsters: five(N, N, 'crystal_wyrm') }, p1: { monsters: five(N, N, { id: 'polar_anvil', position: 'attack' }) } },
+    steps: [attack(2, 2)],
+  },
   paGuard: {
     desc: 'Kutup Örsü savunmada (DEF 1700) Volt Kertenkelesi’ni karşılar',
     stage: { zones: 5, phase: 'battle', p0: { monsters: five(N, N, 'volt_lizard') }, p1: { monsters: five(N, N, { id: 'polar_anvil', position: 'defense' }) } },

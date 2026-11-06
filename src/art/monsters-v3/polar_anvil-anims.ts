@@ -206,7 +206,8 @@ export function toGuardPose(f: number): Pose {
   if (f >= TG_K.length - 1) return { ...GUARD0 };
   const k = TG_K[f];
   // the mauls swing up over the face before they plant (an arc, not a slide)
-  const lift = Math.sin(k * Math.PI) * 6;
+  // (the brace frame n-2, k 0.93, already has the mauls planted: the guard brace lands on it from a guard frame — no 1-px pop)
+  const lift = k >= 0.9 ? 0 : Math.sin(k * Math.PI) * 6;
   const m = blend(IDLE0, GUARD0, k);
   return { ...m, ny: rnd(m.ny - lift), fy: rnd(m.fy - lift * 0.8), ring2: k > 0.6 ? 1 : 0, ring: k > 0.5 ? 2 : 1, ward: k > 0.75 ? 1 : 0, rot: k * 0.5, t: k * 0.5, dust: k * 0.5 };
 }
