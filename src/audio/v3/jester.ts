@@ -67,7 +67,7 @@ function revTick(v: Voice, t: number, g: number, f = TICK, len = 0.03): void {
 function coin(v: Voice, t: number, f: number, g: number, dec: number, o: { click?: number } = {}): void {
   v.bell(f, { t, g, dec, ratio: 1.505, index: 1.1, idxDec: 0.04 });
   v.tone('sine', f * 2.32, { t, g: perc(g * 0.45, dec * 0.55, 0.0005) });
-  v.tone('sine', f * 3.83, { t, g: perc(g * 0.18, dec * 0.3, 0.0005) });
+  if (f * 3.83 < 18000) v.tone('sine', f * 3.83, { t, g: perc(g * 0.18, dec * 0.3, 0.0005) });
   v.tone('sine', f * 0.5, { t, g: perc(g * 0.22, dec * 0.4, 0.001) });
   v.noise('white', { t, g: perc(g * (o.click ?? 1.2), 0.004, 0.0002), to: v.filt('bandpass', Math.min(9000, f * 2), 1.5) });
 }

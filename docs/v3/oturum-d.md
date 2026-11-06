@@ -55,23 +55,28 @@ Kanıtlar: `shots/v3/d/<kart>/`.
   realWidth − frame.x − cutWidth) yok sayıyor — kırpma kutusu kareden kareye değişen kartlarda sahte yüksek değer verir
   (paKillP2 100.8 yerine gerçekte ~15). Paylaşılan kapı olduğu için düzenlenmedi; orkestratöre bildirildi.
 
-## DURAKLATILDI (2026-11-01 06:10 UTC — sahip kararı: haftalık kullanım limiti)
-Workflow ve otomatik kontrol noktası döngüsü durduruldu. Son WIP commit bu dosyayı içerir; çalışma ağacı temiz.
 
-### Nerede kaldık (workflow `wf_ec97f149-c20` journal'ına göre)
-- Bitti: el kitabı; 7 kartın art'ı (dial_jester, reflection_archer, scrap_raiders, straw_decoy_token, polar_needle/anvil/coil);
-  7 kartın sinematik + SFX yapımı; 7 kartın 1. eleştirisi (crit1); polar_needle/anvil/coil için 1. düzeltme (fix1).
-- Yarıda/başlamadı: fix1 (dial_jester, reflection_archer, scrap_raiders, straw_decoy_token); crit2/fix2, crit3/fix3,
-  verify ve kart başı commit (tüm kartlar); polar_sovereign'in tamamı (art, sinematik, birleşme + ayrılma).
-- Kapılar (npm test, filmdiff v1/a6v1, camera-gate, palcheck) henüz hiçbir kart için koşulmadı. scrap_raiders cardface G1
-  düzeltmesi doğrulanmadı.
+## SON ÖZET (2026-11-06, HEAD = bu commit; main 9eaae1f birleşik)
+Sekiz kartın hepsi yapıldı, her biri 3 eleştiri/düzeltme turundan ve adversarial kapı doğrulamasından geçti; son
+eleştiri kararı yedi kartta "ship", reflection_archer'da r3 büyük bulgusu (ikiz figür okunmuyordu) fix3'te düzeltildi.
+Kart başı commit'ler: polar_needle 016bfeb, polar_anvil 5baf66f (+ temas düzeltmesi e5c9fbb), polar_coil 5bdb9b9,
+dial_jester 66c8f63, scrap_raiders 083af65, straw_decoy_token 7b38cbc, reflection_archer c95b608 (+ IŞ-1 düzeltmesi
+c6ded29), polar_sovereign 5e69508.
 
-### Sürdürme (haftalık sıfırlamadan sonra, orkestratör onayıyla)
-1. Ortam: `npm ci` (node_modules yoksa) ve Chromium symlink (yukarıdaki Ortam notu).
-2. Aynı oturumdaysa workflow'u önbellekten sürdür:
-   `Workflow({scriptPath: "/root/.claude/projects/-home-user-yugioh/075f4e29-85e5-5b7b-8195-968ba2bdb54b/workflows/scripts/lane-d-cards-wf_ec97f149-c20.js", resumeFromRunId: "wf_ec97f149-c20"})`
-   (bitmiş 30 ajan önbellekten döner; kalanlar canlı koşar.) Script ve journal konteynere özel: yeni konteynerde yoksa,
-   bu bölümdeki "Yarıda/başlamadı" listesinden aynı akışla (fix1 → crit2/fix2 → crit3/fix3 → verify → commit; sonra
-   sovereign) yeni bir workflow kur; el kitabı `docs/v3/oturum-d-rehber.md`.
-3. Her ~30 dakikada WIP commit + push (typecheck temizse).
-4. Tüm kartlar kapılardan geçince bu dosyaya son özeti yaz ve push et.
+Son kapı turu (1e0f8b1 üzerinde; kanıt shots/v3/d/_final/, git dışı):
+- typecheck temiz; vitest 1530 geçti / 4 hata = izinli dört (cardface-v3 G1, dusk_ashen, hourglass_imp, shield_titan).
+- filmdiff v1 17/17 ve a6v1 26/26 AYNI.
+- measure --camera-gate: 0 FAIL (10 tabanlı b2 anahtarı tabanla aynı; 125 şerit-D anahtarında zoom 1, yakın çekim 0).
+- palcheck a6: 24 film --vs atkTargetDestroyed kontrolüne karşı 24/24 GEÇTİ (beyaz en çok 1.21 %); --vs olmadan
+  "yeni bant satırı" uyarısı ortak HUD bandından (satır 22 #0b0d1f), kontrol filmi de aynı.
+- monster-gates (P1+P2) sekiz kartta 0 FAIL. İnce paylar: dial_jester KK-13 140/140; IŞ-1 scrap_raiders +2.5,
+  reflection_archer +3.9.
+- contact-probe (trim düzeltmeli araç): polar_anvil 4/4 geçti; 11 şerit-D ölüm teması BAŞARISIZ (pnKill/P2, pcKill/P2,
+  psKill, djKill/P2, raKill/P2, srKill/P2): kurban idle ortasında (f7–13) vuruluyor, temas işareti olmayan saldırgan
+  (ember_wolf, storm_hawk) idle'ı yönlendirmiyor. Aynı sınıf diğer şeritlerin bitmiş kartlarında da var (caxKill,
+  kfnKill, adKill). Karar orkestratörde: kart başı idle yeniden tasarımı (anvil kalıbı) mı, temas işareti olmayan
+  saldırganlar için kit düzeyi settle mi.
+
+Açık konular: yukarıdaki contact-probe kararı; cardface-v3 G1 scrap_raiders'ta 0.692 < 0.7 — test sanat penceresini
+atlıyor, düzeltme ortak frame.ts'de (A5-B) ya da eşikte, kart sanatıyla çözülemez; straw_decoy_token'ın ölçülebilir
+teması yok (araç "no contact found"); dial_jester jesterBurst Nyquist üstü kısmi bu commit'te düzeltildi.
