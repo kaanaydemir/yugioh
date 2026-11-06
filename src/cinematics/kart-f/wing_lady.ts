@@ -428,8 +428,9 @@ async function unblessBeat(ctx: AnyCtx, origin: XY | null, allies: Ally[], o: { 
       if (a.ev && (u.shownStats.atk !== a.ev.atk || u.shownStats.def !== a.ev.def)) await u.setStats(a.ev.atk, a.ev.def, true);
     });
     await Promise.all(jobs);
-    await sleep(sc, 120 + n * 130);
-    sing?.stop(260);
+    // the voices keep falling after the beat lets go (the fade carries the last drop and the root)
+    await sleep(sc, 40 + n * 60);
+    sing?.stop(120 + n * 130);
   } finally {
     for (const a of allies) BUSY.delete(a.uid);
   }
@@ -1193,7 +1194,11 @@ if (LOOK_V3)
             // air rings and the cyan (water-ramp) sparks at depth − 0.4 … − 0.1): hidden — her gold spark is the read
             const od = (o as unknown as { depth?: number }).depth;
             if (typeof od === 'number' && od >= bodyD - 0.45 && od < bodyD - 0.05 && 'setVisible' in o) (o as unknown as { setVisible(v: boolean): void }).setVisible(false);
-            if (o.type === 'Image') {
+            if (o.type === 'Image' && (o as Phaser.GameObjects.Image).texture.key.startsWith('fx:cflash:')) {
+              // the shared white contact disc on her body (_v3/flash.ts; it re-applies its visibility each frame, so
+              // it is cropped to nothing — the reed_heron precedent): the gold buckler spark is the contact read
+              (o as Phaser.GameObjects.Image).setCrop(0, 0, 0, 0);
+            } else if (o.type === 'Image') {
               // the hex-shield glint (MonsterUnit guardGlint: an ADD raster at the body's depth + 0.5)
               const im = o as Phaser.GameObjects.Image;
               if (im.blendMode === 1 && Math.abs(im.depth - want) < 0.01 && im.texture.key.startsWith('fx:set:')) im.setVisible(false);
@@ -1325,18 +1330,6 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
     else leave = Promise.resolve();
   };
   ctx.scene.events.emit('v3:dying', u);
-  // round 2 #11: her drop shadow is pinned under the body on the floor for the whole death (the knock-back's lift
-  // left it floating above the tile, detached), and it goes with the body when the bird lifts off
-  const pinHold = () => {
-    const sh = u.shadow;
-    if (!sh.active) return;
-    if (u.sprite.active && u.sprite.visible) {
-      const x = Math.round(u.sprite.x);
-      sh.setPosition(x, Math.abs(x - home.x) < 24 ? Math.round(home.y) : feetOf(u).y);
-    } else sh.setVisible(false);
-  };
-  sc.events.on('postupdate', pinHold);
-  const pinShadow = () => sc.events.off('postupdate', pinHold);
   let unbless: Promise<void> = Promise.resolve();
   try {
     const n = u.frameCount('death');
@@ -1438,12 +1431,12 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
     }
     const from = { x: body.x, y: body.y - 13 };
     const ctl = { x: (from.x + pile.x) / 2, y: Math.min(from.y, pile.y) - 34 };
-    // the bird LEADS (round 2 #7): her card is born only once the bird is well on its way (170 ms into the flight)
-    // and follows it — the bird dives into the pile, the card lands after it
+    // the bird LEADS (round 2 #7): her card is born only once the bird is on its way (110 ms into the flight) and
+    // follows it — the bird dives into the pile, the card lands after it (death ≤ 2.03 s game: flight 400 → 360 ms)
     let lastFlap = 0;
-    await animate(sc, 400, (t, el) => {
+    await animate(sc, 360, (t, el) => {
       px.clear();
-      if (el >= 170) born();
+      if (el >= 110) born();
       if (t >= 1) return;
       const p = rint(quad(from, ctl, { x: pile.x, y: pile.y - 4 }, E.inOutQ(t)));
       const span = Math.max(8, Math.round(17 - Math.max(0, t - 0.4) * 16));
@@ -1459,8 +1452,6 @@ async function fallingCape(ctx: Ctx<'destroy'>): Promise<void> {
   } catch (e) {
     console.error('[wing_lady] death failed', e);
   } finally {
-    pinShadow();
-    if (u.shadow.active) u.shadow.setVisible(false);
     born();
     u.posed = false;
     if (!u.retired) u.retire(0);

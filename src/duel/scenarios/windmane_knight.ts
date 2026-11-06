@@ -23,6 +23,24 @@ const recall = (p: PlayerId, id: CardId, owner: PlayerId, toZone: number): Step 
   target: { kind: 'graveyard', uid: D.uid(id, owner), toZone },
 });
 
+const respond = (id: CardId, p: PlayerId): Step => (D) => ({ type: 'respond', player: p, uid: D.uid(id, p) });
+const mon = (player: PlayerId, index: number) => ({ kind: 'monster' as const, ref: { player, zone: 'monster' as const, index } });
+const spellOn = (p: PlayerId, id: CardId, target?: ReturnType<typeof mon>): Step => (D) => ({ type: 'activateSpell', player: p, uid: D.uid(id, p), ...(target ? { target } : {}) }) as Action;
+/** A full 5-lane board (round 3 #5): the knight is tribute-summoned into `zone` between living neighbours. */
+const board5 = (p: PlayerId, zone: 0 | 4): Scenario => {
+  // tributes sit in the knight's zone and two lanes over; the lane next to him keeps its neighbour
+  const mine: CardId[] = zone === 0 ? ['stone_sentinel', 'abyss_magus', 'ember_wolf', 'wing_lady', 'shield_titan'] : ['shield_titan', 'wing_lady', 'ember_wolf', 'abyss_magus', 'stone_sentinel'];
+  const foe = ['crystal_wyrm', 'steel_silencer', 'grim_warden', 'hourglass_imp', 'lumen_sprite'] as CardId[];
+  foe[zone] = 'shade_assassin';
+  const side = { hand: ['windmane_knight' as CardId], monsters: mine };
+  const other = { monsters: foe.map((id, i) => (i === zone ? { id, position: 'attack' as const } : id)) };
+  return {
+    desc: `Fırtına Şövalyesi on a full 5+5 board, ${p === 0 ? 'player 1' : 'player 2'}, zone ${zone}: summon, storm, storm strike`,
+    stage: { zones: 5, active: p, p0: p === 0 ? side : other, p1: p === 0 ? other : side },
+    steps: [summon('windmane_knight', zone, ['stone_sentinel', 'ember_wolf'], p), battle(p), attack(zone, zone, p)],
+  };
+};
+
 const TRIB: CardId[] = ['stone_sentinel', 'ember_wolf'];
 /** The knight's side for a tribute summon (hand + two tributes); `p` the summoning player. */
 const summoner = { hand: ['windmane_knight' as CardId], monsters: TRIB };
@@ -181,6 +199,64 @@ const scenarios: Record<string, Scenario> = {
     desc: 'Ruh Çağrısı by player 2',
     stage: { active: 1, p0: { monsters: [null, 'ember_wolf'] }, p1: { hand: ['soul_recall'], graveyard: ['windmane_knight'] } },
     steps: [recall(1, 'windmane_knight', 1, 1), battle(1)],
+  },
+  // ---- round 3 (integration): the paths §0.1 / §8 promised
+  fsStormDiesP2: {
+    desc: 'the storm knight (2800, player 2) attacks crystal_wyrm (2800): both destroyed — he dies where the blow met him',
+    stage: { active: 1, p0: { monsters: [null, { id: 'crystal_wyrm', position: 'attack' }] }, p1: summoner },
+    steps: [sumP2, battle(1), attack(1, 1, 1)],
+  },
+  fsAttackLoses: {
+    desc: 'Kargı Hamlesi lost: the knight (2300, a later turn) attacks crystal_wyrm (2800) and is destroyed at the contact point',
+    stage: { phase: 'battle', p0: { monsters: [null, 'windmane_knight'] }, p1: { monsters: [null, { id: 'crystal_wyrm', position: 'attack' }] } },
+    steps: [attack(1, 1)],
+  },
+  fsAttackLosesP2: {
+    desc: 'Kargı Hamlesi lost, player 2',
+    stage: { phase: 'battle', active: 1, p0: { monsters: [null, { id: 'crystal_wyrm', position: 'attack' }] }, p1: { monsters: [null, 'windmane_knight'] } },
+    steps: [attack(1, 1, 1)],
+  },
+  fsStormNegated: {
+    desc: 'the storm attack is negated by Işık Zincirleri: the storm voice fades with the declaration, the dust devil falls back',
+    stage: { p0: summoner, p1: { monsters: [null, 'shade_assassin'], spellTraps: [null, 'chains_of_light'] } },
+    steps: [sumP1, battle(0), attack(1, 1), respond('chains_of_light', 1)],
+  },
+  fsStormNegatedP2: {
+    desc: 'storm attack negated, player 2',
+    stage: { active: 1, p0: { monsters: [null, 'shade_assassin'], spellTraps: [null, 'chains_of_light'] }, p1: summoner },
+    steps: [sumP2, battle(1), attack(1, 1, 1), respond('chains_of_light', 0)],
+  },
+  fsCalmBattleCry: {
+    desc: 'Savaş Narası (+1000) on the summoned knight, battle, end: the calm still reads inside the grouped −1500',
+    stage: { p0: { ...summoner, hand: ['windmane_knight', 'battle_cry'] }, p1: { monsters: [null, 'shade_assassin'] } },
+    steps: [sumP1, spellOn(0, 'battle_cry', mon(0, 1)), battle(0), endTurn(0)],
+  },
+  fsCalmBattleCryP2: {
+    desc: 'Savaş Narası + the calm, player 2',
+    stage: { active: 1, p0: { monsters: [null, 'shade_assassin'] }, p1: { ...summoner, hand: ['windmane_knight', 'battle_cry'] } },
+    steps: [sumP2, spellOn(1, 'battle_cry', mon(1, 1)), battle(1), endTurn(1)],
+  },
+  fsBoard5: board5(0, 0),
+  fsBoard5P2: board5(1, 4),
+  fsStolen: {
+    desc: 'Kukla İpi: player 1 takes the (player 2) knight — not summoned this turn: no storm, no aura; then the battle phase',
+    stage: { p0: { hand: ['puppet_string'] }, p1: { monsters: [null, 'windmane_knight'] } },
+    steps: [spellOn(0, 'puppet_string', mon(1, 1)), battle(0)],
+  },
+  fsOneTribute: {
+    desc: 'Çifte Kurban: the knight is summoned with ONE tribute (still a tribute summon: the storm comes)',
+    stage: { p0: { hand: ['double_offering', 'windmane_knight'], monsters: [null, 'ember_wolf'] }, p1: { monsters: [null, 'shade_assassin'] } },
+    steps: [spellOn(0, 'double_offering'), summon('windmane_knight', 1, ['ember_wolf'], 0), battle(0)],
+  },
+  fsFlip: {
+    desc: 'the knight was Set last turn and is flip-summoned now: no storm (not Normal summoned)',
+    stage: { p0: { monsters: [null, { id: 'windmane_knight', position: 'defense', faceUp: false, enteredTurn: 2 }] }, p1: { monsters: [null, 'shade_assassin'] } },
+    steps: [{ type: 'flipSummon', player: 0, zone: 1 }, battle(0)],
+  },
+  fsMagic: {
+    desc: 'Hüküm Şimşeği destroys the knight: hitMagic, then the judgment_bolt-owned death (expected)',
+    stage: { active: 1, p0: { monsters: [null, 'windmane_knight'] }, p1: { hand: ['judgment_bolt'] } },
+    steps: [spellOn(1, 'judgment_bolt', mon(0, 1))],
   },
 };
 

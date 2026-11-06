@@ -388,6 +388,25 @@ interface Storm {
   destroy(): void;
 }
 
+/**
+ * Round 3 #8: knights with a neighbour in the lane behind them (downwind, within a tile column): their storm tail
+ * and wind streaks are clipped so the stream never crosses the neighbour's body (updated by the aura observer).
+ */
+const CROWDED = new Set<Uid>();
+
+/** Is a monster standing in the lane right behind (downwind of) the knight at `p`/`zone` in `s`? */
+function crowdedIn(s: GameState, p: PlayerId, zone: number): boolean {
+  const me = zoneXY(p, 'monster', zone);
+  const dw = p === 0 ? -1 : 1;
+  for (const z of [zone - 1, zone + 1]) {
+    if (z < 0 || z >= s.players[p].monsters.length || !s.players[p].monsters[z]) continue;
+    const o = zoneXY(p, 'monster', z);
+    const dx = (o.x - me.x) * dw;
+    if (dx > 0 && dx < 80) return true;
+  }
+  return false;
+}
+
 function stormAura(sc: Phaser.Scene, u: MonsterUnit, level: 1 | 2 | 3): Storm {
   const s = u.sprite;
   const back = layer(sc, s.depth - 0.5);
@@ -475,14 +494,19 @@ function stormAura(sc: Phaser.Scene, u: MonsterUnit, level: 1 | 2 | 3): Storm {
       }
     }
     // ---- the storm tail: strands extending the mane tip downwind (storm only), rippling
-    if (lvl >= 2 && (calmAt < 0 || el - calmAt < 300)) {
+    // round 3 #3: the calm RETRACTS it in three stepped lengths (≈ 120 ms each) while the taut strands droop
+    // round 3 #8: a neighbour in the lane behind him clips the tail to his own tile column
+    if (lvl >= 2 && (calmAt < 0 || el - calmAt < 360)) {
       const tip = pointNow(u, 'staff', { x: feet.x + dw * 28, y: feet.y - 70 });
-      const drift = calmAt >= 0 ? Math.floor((el - calmAt) / 60) * 3 : 0;
+      const step = calmAt >= 0 ? Math.min(2, Math.floor((el - calmAt) / 120)) + 1 : 0; // 0 taut, 1–3 retracting
+      const keep = step === 0 ? 1 : step === 1 ? 0.7 : step === 2 ? 0.45 : 0.22;
+      const clip = CROWDED.has(u.uid) ? 0.55 : 1;
       // round 2 #4: a long, taut stepped tail — the +500 is readable at 1× (four 2-px strands, 22 → 13 px)
       for (let k = 0; k < 4; k++) {
-        if (calmAt >= 0 && (k + Math.floor((el - calmAt) / 50)) % 3 === 0) continue;
-        const len = (lvl >= 3 ? 26 : 22) - k * 3;
-        ribbon(back, { x: tip.x + dw * (1 + drift + (k % 2)), y: tip.y - 2 + k * 2 }, { x: dw, y: 0 }, len, el * 0.03 + k * 1.7, 0.8, 3 - (k % 3));
+        if (step >= 2 && k === 3) continue;
+        const len = Math.max(3, Math.round(((lvl >= 3 ? 26 : 22) - k * 3) * keep * clip));
+        const droop = step * 0.22;
+        ribbon(back, { x: tip.x + dw * (1 + (k % 2)), y: tip.y - 2 + k * 2 + step }, norm({ x: dw, y: droop }), len, el * (step ? 0.012 : 0.03) + k * 1.7, step ? 0.4 : 0.8, Math.max(0, 3 - (k % 3) - (step >= 2 ? 1 : 0)));
       }
     }
     // ---- wind streaks behind him (storm only)
@@ -490,13 +514,14 @@ function stormAura(sc: Phaser.Scene, u: MonsterUnit, level: 1 | 2 | 3): Storm {
       if (el >= nextStreak) {
         // round 2 #4: ≈ 3.5 wind streaks a second blow THROUGH his tile, front to back
         nextStreak = el + 280;
-        streaks.push({ y: feet.y - 6 - Math.floor(rnd() * 56), x: feet.x - dw * 26, len: 10 + Math.floor(rnd() * 7), born: el });
+        const cl = CROWDED.has(u.uid);
+        streaks.push({ y: feet.y - 6 - Math.floor(rnd() * 56), x: feet.x - dw * 26, len: (cl ? 6 : 10) + Math.floor(rnd() * (cl ? 4 : 7)), born: el });
       }
     }
     for (let i = streaks.length - 1; i >= 0; i--) {
       const k = streaks[i];
       const age = el - k.born;
-      if (age > 460 || calmAt >= 0) {
+      if (age > (CROWDED.has(u.uid) ? 300 : 460) || calmAt >= 0) {
         streaks.splice(i, 1);
         continue;
       }
@@ -754,7 +779,43 @@ async function galeEntrance(S: Stage): Promise<void> {
   // the brew starts (summon turn, a battle still to come): six grains of grey dust circling his tile
   const lvl = levelIn(S.ctx.stateNext, u.uid);
   if (lvl > 0) setStorm(sc, u, lvl);
+  // round 3 #7: no battle this turn (turn 1) or his attack is locked — the wind dies before it rises: once the
+  // unfurl has cracked, one soft gust, then the stream SAGS (three stepped droops) and a little dust drops off it
+  const sn = S.ctx.stateNext;
+  const at = slotOf(sn, u.uid);
+  const never = !!at && at.slot.normalSummoned && at.slot.position === 'attack' && (sn.turn <= 1 || at.slot.noAttackTurn === sn.turn);
+  if (never) {
+    await capped(sc, unfurl, 420);
+    await windDies(sc, u, rnd);
+    return;
+  }
   await capped(sc, unfurl, 420);
+}
+
+/** Round 3 #7: the gust that never becomes a storm — a soft breath, the stream droops to calm, dust falls. */
+async function windDies(sc: Phaser.Scene, u: MonsterUnit, rnd: () => number): Promise<void> {
+  if (!u.sprite.active) return;
+  const pan = panAt(u.home.x);
+  const dw = u.flipX ? 1 : -1;
+  play('wmkCutGust', { volume: 0.32, pan, pitch: 0.8 });
+  const px = layer(sc, u.sprite.depth - 0.5);
+  let dust = false;
+  await animate(sc, 420, (t) => {
+    px.clear();
+    if (t >= 1 || !u.sprite.active) return;
+    const tip = pointNow(u, 'staff', { x: u.home.x + dw * 28, y: u.home.y - 70 });
+    // 0–120 the soft gust lifts three strands off the tip; then three stepped droops, shorter each step
+    const step = t < 0.28 ? 0 : t < 0.52 ? 1 : t < 0.76 ? 2 : 3;
+    const len = [12, 9, 6, 3][step];
+    for (let k = 0; k < 3; k++) ribbon(px, { x: tip.x + dw * (1 + (k % 2)), y: tip.y - 1 + k * 2 + step }, norm({ x: dw, y: -0.1 + step * 0.35 }), len - k, t * 4 + k * 1.3, step ? 0.3 : 0.7, Math.max(0, 2 - step + (k === 0 ? 1 : 0) - 1));
+    if (step >= 1 && !dust) {
+      dust = true;
+      const sp = new Sparks(sc, u.sprite.depth + 0.4);
+      for (let i = 0; i < 6; i++) sp.add({ x: tip.x + dw * Math.round(rnd() * 8), y: tip.y + Math.round(rnd() * 3), vx: (rnd() - 0.5) * 5, vy: 6 + rnd() * 8, ay: 200, life: 280 + rnd() * 140, colors: [PAL.stone3, PAL.stone2], shape: 'sq', size: 1, floor: u.home.y - 1, bounce: 0, fadeAt: 1 });
+      sp.release();
+    }
+  });
+  px.g.destroy();
 }
 
 if (LOOK_V3)
@@ -803,10 +864,12 @@ async function stormCharge(ctx: Ctx<'statChange'>, u: MonsterUnit): Promise<void
   const hum = start('wmkStormCharge', { volume: 0.95, pan });
   // 0–160: the brew's ring contracts to his feet (stepped, grey)
   void dustRing(sc, home, { r0: 26, r1: 8, ms: 200, tones: [PAL.stone2, PAL.stone3, PAL.stone3, PAL.mist] });
-  await sleep(sc, 120);
+  // round 3 #6: the gathering is trimmed (≈ 190 ms): a shorter breath before the roar, the spiral up to the
+  // release played 1.2× — the release frame itself (the snap) keeps its own beat
+  await sleep(sc, 60);
   u.posed = true;
-  const roar = u.playRange('roar', 0);
   const relF = u.markFrame('roar', 'release', 4);
+  const spiral = u.playRange('roar', 0, relF - 1, { timeScale: 1.2 });
   let rolled = false;
   const roll = () => {
     if (rolled) return;
@@ -816,7 +879,8 @@ async function stormCharge(ctx: Ctx<'statChange'>, u: MonsterUnit): Promise<void
     void chip(sc, badgePoint(u), '+500 FIRTINA', PAL.gold4, { rise: 4, ms: 640 });
     play('wmkStormTick', { volume: 0.8, pan });
   };
-  await untilShown(u, 'roar', relF, 1400);
+  await capped(sc, spiral, 1400);
+  const roar = u.playRange('roar', relF);
   // release: the mane SNAPS into a taut blade — a gust bursts downwind off it, the gold pool on his tile only
   play('wmkBladeTaut', { volume: 1, pan });
   setStorm(sc, u, 2);
@@ -843,15 +907,44 @@ async function stormCharge(ctx: Ctx<'statChange'>, u: MonsterUnit): Promise<void
   u.posed = false;
 }
 
+/**
+ * "Fırtına diner" (round 3 #3: the mirror of the charge). The plate is HELD on the storm number (the end phase's sync
+ * may already have snapped it), the storm tail retracts in three stepped lengths and droops (the aura's calm), a short
+ * fall of grey dust drops off the mane — only then the badge ROLLS down on the beat with
+ * a readable "-500 DİNDİ" chip (mist on ink, a calm, not a loss).
+ */
 async function stormSettle(ctx: Ctx<'statChange'>, u: MonsterUnit): Promise<void> {
   const sc = ctx.scene;
   const ev = ctx.ev;
-  play('wmkStormSettle', { volume: 0.85, pan: panAt(u.home.x) });
+  const pan = panAt(u.home.x);
+  const rnd = mulberry32(u.uid * 19 + ctx.state.turn);
+  let holding = true;
+  const hold = () => {
+    if (holding && u.sprite.active && u.shownStats.atk !== ev.prevAtk) void u.setStats(ev.prevAtk, ev.prevDef, false);
+  };
+  hold();
+  onFrame(sc, () => {
+    if (!holding) return false;
+    hold();
+    return true;
+  });
+  play('wmkStormSettle', { volume: 0.85, pan });
   setStorm(sc, u, 0);
-  await sleep(sc, 160);
+  // the dust that rode the gale falls off the mane: grey specks dropping straight down (no wind left)
+  const mane = pointNow(u, 'staff', { x: u.home.x + (u.flipX ? 30 : -30), y: u.home.y - 66 });
+  const head = pointNow(u, 'head', u.worldPoint('top'));
+  const sp = new Sparks(sc, u.sprite.depth + 0.4);
+  for (let i = 0; i < 9; i++) {
+    const x = Math.round(mane.x + (head.x - mane.x) * (i / 9) + (rnd() - 0.5) * 4);
+    sp.add({ x, y: mane.y + Math.round(rnd() * 4), vx: (rnd() - 0.5) * 6, vy: 4 + rnd() * 10, ay: 220, life: 300 + rnd() * 160, colors: [PAL.mist, PAL.stone3, PAL.stone2], shape: 'sq', size: 1, floor: u.home.y - 1, bounce: 0, fadeAt: 1 });
+  }
+  sp.release();
+  // the beat: the tail has visibly retracted, now the plate rolls down
+  await sleep(sc, 240);
+  holding = false;
   void u.setStats(ev.atk, ev.def, true);
-  const delta = Math.abs(ev.prevAtk - ev.atk);
-  await chip(sc, badgePoint(u), `-${delta}`, PAL.stone4, { rise: -3, ms: 520 });
+  play('wmkStormTick', { volume: 0.4, pan, pitch: 0.8 });
+  await chip(sc, badgePoint(u), '-500 DİNDİ', PAL.mist, { rise: -3, ms: 600 });
 }
 
 if (LOOK_V3)
@@ -881,6 +974,39 @@ if (LOOK_V3)
 /** The storm strike's held charge (started at the declaration; the strike takes it). */
 const STORM_CHARGE = new Map<Uid, { stop(ms?: number): void }>();
 
+/** Knights whose storm declaration is pending (declared, the strike has not taken the charge yet). */
+const STORM_DECL = new Set<Uid>();
+
+/**
+ * Round 3 #2: the declaration let go without the storm strike (a trap negated / bounced / destroyed him, the phase
+ * ended, the scene shut down): the storm voice fades like the shared held charge does (declare.ts dropCharge), and
+ * the dust devil (aura level 3) falls back to the storm (or whatever the state now asks for).
+ */
+function cutStormCharge(ctx: AnyCtx | null, ms = 140): void {
+  for (const uid of [...STORM_DECL, ...STORM_CHARGE.keys()]) {
+    STORM_CHARGE.get(uid)?.stop(ms);
+    STORM_CHARGE.delete(uid);
+    STORM_DECL.delete(uid);
+    const u = ctx?.unit(uid);
+    const st = stormOf(u);
+    if (ctx && u && st && !st.calming && st.level >= 3) {
+      const want = levelIn(ctx.stateNext, uid);
+      if (want === 1 || want === 2) st.setLevel(want);
+      else setStorm(ctx.scene, u, 0);
+    }
+  }
+}
+
+if (LOOK_V3)
+  registerObserver((ev, ctx) => {
+    if (!STORM_DECL.size && !STORM_CHARGE.size) return;
+    const t = ev.type;
+    const uid = (ev as { uid?: Uid }).uid;
+    const mine = uid !== undefined && (STORM_DECL.has(uid) || STORM_CHARGE.has(uid));
+    if (t === 'activate' || t === 'attackNegated' || t === 'phaseChange' || t === 'turnStart' || t === 'gameOver' || (mine && (t === 'destroy' || t === 'toHand' || t === 'controlChange' || t === 'positionChange' || t === 'flip')))
+      cutStormCharge(ctx);
+  });
+
 if (LOOK_V3)
   registerCardHook(
     ID,
@@ -892,12 +1018,16 @@ if (LOOK_V3)
       const p = ctx.base();
       if (storm && u) {
         setStorm(ctx.scene, u, 3);
+        STORM_DECL.add(u.uid);
+        ctx.scene.events.once('shutdown', () => cutStormCharge(null, 0));
         // the charge pose is on screen: the storm charge takes the normal one over
         atFrame(
           u,
           'attack',
           u.markFrame('attack', 'charge', 1),
           () => {
+            // (a trap already sprang on the declaration: the storm voice never starts)
+            if (!STORM_DECL.has(u.uid)) return;
             dropCharge(u, 60);
             STORM_CHARGE.get(u.uid)?.stop(60);
             STORM_CHARGE.set(u.uid, start('wmkChargeStorm', { volume: 0.9, pan: panAt(u.home.x) }));
@@ -998,6 +1128,22 @@ function capReach(home: XY, goal: XY, max: number): XY {
   return rint({ x: home.x + (dx / L) * max, y: home.y + (dy / L) * max });
 }
 
+/**
+ * Round 3 #1: the clash point the battle handler gets when the knight LOSES. The handler treats an attacker within
+ * 44 px of the clash as melee (_v3/clash isMelee): it then claims him where he stands and plays the counter + the
+ * death from the contact pose. The lance tip reaches ≈ 49 px from his core, so the handler took him for a ranged
+ * attacker (a jagged backlash line, no claim — the strike then walked him home). The point slides back along the
+ * shaft to 42 px: still inside the target (the tip is set 3 px into its core), now a melee clash.
+ */
+function meleeClash(u: MonsterUnit, tip: XY): XY {
+  const c = u.core();
+  const dx = tip.x - c.x;
+  const dy = tip.y - c.y;
+  const L = Math.hypot(dx, dy);
+  if (L <= 42) return tip;
+  return rint({ x: c.x + (dx / L) * 42, y: c.y + (dy / L) * 42 });
+}
+
 /** The point the lance meets: the target's core, else (direct) the floor point in front of the duelist. */
 function aimOf(s: StrikeArgs): XY {
   if (s.direct || !s.target || !s.target.sprite.active) return { x: s.to.x, y: s.to.y };
@@ -1021,19 +1167,39 @@ async function lanceStrike(s: StrikeArgs): Promise<void> {
   const aim = aimOf(s);
   const goal0 = lungeFeet(u, 'attack', conF, aim, s.direct ? 10 : s.blocked ? 7 : 3);
   const goal = s.direct ? capReach(home, goal0, 48) : goal0;
+  // round 3 #4: a close target (the next tile in the lane) would already have the couched tip on its face before
+  // the lunge — he takes a weight-back step during the couch instead, so a clear gap shows and the lunge closes it
+  // on the contact frame
+  const fwd = fwdOfUnit(u);
+  const tipCouch = artPoint(u, 'attack', relF, 'muzzle');
+  const tipW = tipCouch ? u.framePoint(tipCouch.x, tipCouch.y) : null;
+  const gap = tipW && !s.direct ? (aim.x - tipW.x) * dir : 99;
+  const backPx = gap < 20 ? Math.min(12, Math.ceil((20 - gap) / Math.max(0.5, Math.abs(fwd.x)))) : 0;
+  const couchAt = rint({ x: home.x - fwd.x * backPx, y: home.y - fwd.y * backPx });
+  let lost = false;
   u.posed = true;
   try {
     // ---- the couch (the frames after the declaration's charge pose), the weight shifts forward
-    await u.playRange('attack', f0, relF, { timeScale: 1.6 });
+    const couch = u.playRange('attack', f0, relF, { timeScale: 1.6 });
+    if (backPx > 0) {
+      // two stepped shifts back (whole pixels), a scuff of dust under the planted foot
+      const cms = Math.max(120, u.rangeMs('attack', f0, relF) / 1.6);
+      await animate(sc, cms * 0.6, (t) => {
+        const k = t < 0.5 ? 0.5 : 1;
+        setFeet(u, { x: home.x + (couchAt.x - home.x) * k, y: home.y + (couchAt.y - home.y) * k });
+      });
+      dustPuffs(sc, couchAt, 2, { spread: 3, push: { x: -fwd.x * 10, y: -fwd.y * 4 }, rnd });
+    }
+    await couch;
     if (!u.sprite.active) return;
     // ---- release: the lunge — two heavy steps, a short mane smear behind
     charge.stop(60);
     play('wmkLunge', { volume: 0.9, pan });
-    await stride(u, home, goal, 220, rnd, { steps: 2 });
+    await stride(u, couchAt, goal, backPx > 0 ? 240 : 220, rnd, { steps: 2 });
     // ---- contact: the thrust
     u.pose('attack', conF);
     const tipNow = pointNow(u, 'muzzle', aim);
-    s.impact(tipNow);
+    s.impact(loses ? meleeClash(u, tipNow) : tipNow);
     play(s.blocked ? 'wmkBlocked' : 'wmkThrust', { volume: 1, pan: panAt(tipNow.x) });
     const floor = s.direct ? s.toGround : s.target ? s.target.home : s.toGround;
     if (s.blocked) {
@@ -1041,6 +1207,8 @@ async function lanceStrike(s: StrikeArgs): Promise<void> {
       skidSparks(sc, tipNow, back, 7, rnd);
     } else dustPuffs(sc, { x: tipNow.x, y: floor.y }, 4, { spread: 6, rnd });
     if (loses) {
+      // round 3 #1: he stays where the blow met him — the handler claims him there and the death follows its counter
+      lost = true;
       await sleep(sc, 34);
       return;
     }
@@ -1062,7 +1230,7 @@ async function lanceStrike(s: StrikeArgs): Promise<void> {
   } finally {
     charge.stop(80);
     u.posed = false;
-    if (u.sprite.active && !u.retired && u.frameInfo().anim !== 'death') {
+    if (!lost && u.sprite.active && !u.retired && u.frameInfo().anim !== 'death') {
       setFeet(u, home);
       if (u.frameInfo().anim === 'attack') u.rest();
     }
@@ -1078,6 +1246,7 @@ async function stormStrike(s: StrikeArgs): Promise<void> {
   dropCharge(u, 60);
   const charge = STORM_CHARGE.get(u.uid) ?? start('wmkChargeStorm', { volume: 0.9, pan });
   STORM_CHARGE.delete(u.uid);
+  STORM_DECL.delete(u.uid);
   const home = { ...u.home };
   const dir = u.flipX ? -1 : 1;
   const fwd = fwdOfUnit(u);
@@ -1093,6 +1262,7 @@ async function stormStrike(s: StrikeArgs): Promise<void> {
   const storm = stormOf(u);
   storm?.setLevel(3);
   u.posed = true;
+  let lost = false;
   let wall: Gale | null = null;
   try {
     // ---- f1–f5: the rigid lance spins about the grip (4 angles + the smear arc), the mane spirals up, the dust devil whirls
@@ -1135,7 +1305,7 @@ async function stormStrike(s: StrikeArgs): Promise<void> {
     const tipNow = pointNow(u, 'muzzle', aim);
     // round 2 #3: the gale boom IS the contact — the generic body blow is never stacked under it (a struck body with
     // its own material still sounds)
-    hush(['impactHeavy', 'impactLight'], () => s.impact(tipNow));
+    hush(['impactHeavy', 'impactLight'], () => s.impact(loses ? meleeClash(u, tipNow) : tipNow));
     play(s.blocked ? 'wmkStormSplit' : 'wmkGaleBoom', { volume: 1, pan: panAt(tipNow.x) });
     void stopTime(sc, 30);
     void shake(sc, 180, s.blocked ? 2 : 4);
@@ -1166,6 +1336,8 @@ async function stormStrike(s: StrikeArgs): Promise<void> {
     if (s.blocked) skidSparks(sc, tipNow, { x: -dir, y: 0.3 * dir }, 8, rnd);
     storm?.setLevel(2);
     if (loses) {
+      // round 3 #1: no trip home — the handler claims him at the contact point (counter, then the hollow armour)
+      lost = true;
       await sleep(sc, 34);
       return;
     }
@@ -1183,7 +1355,7 @@ async function stormStrike(s: StrikeArgs): Promise<void> {
     charge.stop(80);
     u.posed = false;
     if (stormOf(u) && !stormOf(u)!.calming && stormOn(s.ctx.stateNext, u.uid)) stormOf(u)!.setLevel(2);
-    if (u.sprite.active && !u.retired && u.frameInfo().anim !== 'death') {
+    if (!lost && u.sprite.active && !u.retired && u.frameInfo().anim !== 'death') {
       setFeet(u, home);
       if (u.frameInfo().anim === 'special') u.rest();
     }
@@ -1216,7 +1388,11 @@ async function hollowArmour(ctx: Ctx<'destroy'>): Promise<void> {
   if (gi >= 0) ctx.consumeAt(gi);
   const owner = gEv ? gEv.owner : ctx.owner(ev.uid);
   const { tile } = field.release(ev.uid);
-  const home = tile ? { x: tile.home.x, y: tile.home.y } : zoneXY(ev.player, 'monster', ev.zone);
+  const tileHome = tile ? { x: tile.home.x, y: tile.home.y } : zoneXY(ev.player, 'monster', ev.zone);
+  // round 3 #1: a knight that lost his strike dies where the blow met him (the handler holds him there): the pile,
+  // its dust and the card are born at his feet, not on the tile he left
+  const at0 = feetOf(unit);
+  const home = Math.hypot(at0.x - tileHome.x, at0.y - tileHome.y) > 2 ? at0 : tileHome;
   unit.badge.setVisible(false);
   unit.posed = true;
   const u = unit;
@@ -1249,7 +1425,10 @@ async function hollowArmour(ctx: Ctx<'destroy'>): Promise<void> {
         planned = takePlannedEntry(u);
       }
     }
-    if (planned && !inDeath()) await capped(sc, untilShown(u, 'death', 0, 700), Math.min(700, (planned.leadMs ?? u.rangeMs(planned.anim, 0, planned.hold)) + 40));
+    // round 3 #1: a knight killed at his own contact point shows a short recoil only (≤ 120 ms after the handler hands
+    // him over) — the calm must follow the blow, not stand beside it
+    const struckAway = home !== tileHome;
+    if (planned && !inDeath()) await capped(sc, untilShown(u, 'death', 0, 700), Math.min(struckAway ? 120 : 700, (planned.leadMs ?? u.rangeMs(planned.anim, 0, planned.hold)) + 40));
     if (!inDeath() && u.sprite.active) {
       const st = Math.max(0, Math.min(n - 2, planned ? planned.start : deathStartFrom(u)));
       u.asClaimant(() => void u.playRange('death', st, undefined, { hold: true }));
@@ -1344,9 +1523,14 @@ if (LOOK_V3)
     for (const p of [0, 1] as PlayerId[]) for (const m of s.players[p].monsters) if (m && s.cards[m.uid]?.cardId === ID) KNIGHTS.add(m.uid);
     for (const uid of [...KNIGHTS]) {
       // the hooks drive their own beats (the summon's brew, the charge / the calm, the death's freeze)
+      // round 3 #8: a neighbour behind him clips the storm tail
+      const at = slotOf(s, uid);
+      const zi = at ? s.players[at.p].monsters.findIndex((m) => m?.uid === uid) : -1;
+      if (at && zi >= 0 && crowdedIn(s, at.p, zi)) CROWDED.add(uid);
+      else CROWDED.delete(uid);
       if ((t === 'summon' || t === 'statChange' || t === 'destroy') && (ev as { uid?: Uid }).uid === uid) continue;
       const u = ctx.unit(uid);
-      if (!slotOf(s, uid)) KNIGHTS.delete(uid);
+      if (!at) KNIGHTS.delete(uid);
       if (!u || u.retired) continue;
       const want = levelIn(s, uid);
       // entering the battle phase: the +500 already counts in the projected state; the plate keeps the old

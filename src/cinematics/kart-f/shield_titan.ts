@@ -46,6 +46,7 @@ import { shake } from '../../vfx/core';
 import { pixelText } from '../../ui/text';
 import { onDuelStart } from '../../duel/seeds';
 import { SAP_PITCH } from '../../audio/v3/shield_titan';
+import { sfx, type SfxName } from '../../audio/sfx';
 import { registerCardHook, registerEvent, registerObserver, registerStrike, type CinematicContext, type StrikeArgs } from '../api';
 import { atFrame, dropCharge, fade, hush, panAt, play, start, takeCharge } from '../_v3/sound';
 import { runSummon, type Stage } from '../summon-a/_kit';
@@ -418,9 +419,9 @@ async function wardV3(ctx: Ctx<'activate'>): Promise<void> {
   wallLook = { h: WALL_H, top: WARD.lit, mortar: WARD.lit, joint: WARD.dim, fill: BRICK };
   drawWall();
   // ---- f5–f9: one crenellation pulse per shove
-  const fx = new Raster(sc, 0, 0, 640, 360, DEPTH.FX + 1);
   const live0 = { x: a.sprite.x, y: a.sprite.y };
   const tx0 = Math.round(u.sprite.x);
+  const plateY0 = a.badge.image && a.badge.image.active ? Math.round(a.badge.image.y) : 0;
   let shoved = 0;
   const flights: Promise<void>[] = [];
   const front = (): XY => {
@@ -442,20 +443,28 @@ async function wardV3(ctx: Ctx<'activate'>): Promise<void> {
         });
       }
       flights.push(
-        pulseFlight(sc, fx, line, lane, front, i).then(() => {
+        pulseFlight(sc, line, front, i).then(() => {
           // arrival: the gong step, the shove, the peel, the plate's −100
           // the steps GROW toward the last one (round 2 #1): the −500 lands on the loudest gong
           play('kdSapStep', { volume: 0.74 + i * 0.06, pan: panA, pitch: SAP_PITCH[Math.min(SAP_PITCH.length - 1, i + (5 - pulses))] });
+          const last = i === pulses - 1;
           if (live(a)) {
-            struckFlash(sc, a);
+            // round 3 #1: only the struck FRONT lights (the part of the body facing the rampart), one short gold
+            // frame pair — never the whole silhouette; the last pulse alone gets a white core (one accent, not a strobe)
+            struckFlash(sc, a, lane, last);
             shoved = Math.min(3, shoved + 1);
-            a.sprite.setPosition(Math.round(live0.x + lane.x * shoved * 1.4), Math.round(live0.y + lane.y * shoved));
+            const sx = Math.round(live0.x + lane.x * shoved * 1.4);
+            const sy = Math.round(live0.y + lane.y * shoved);
+            // the jolt: 2 px further for one beat, then it settles at its cumulative shove (the push is SEEN per pulse)
+            a.sprite.setPosition(Math.round(sx + lane.x * 2), Math.round(sy + lane.y));
+            void sleep(sc, 40).then(() => {
+              if (live(a) && !wallGone) a.sprite.setPosition(sx, sy);
+            });
             peel(sc, a, lane, i);
-            // the plate STEPS −100 on the gong (no roll): five equal blows you can count
-            void a.setStats(values[i], def, false);
-            void a.badge.pop();
+            // the plate STEPS −100 on the gong (no roll, no scale pop: round 3 #2): five equal blows you can count
+            plateStep(sc, a, values[i], def, plateY0);
           }
-          if (i === pulses - 1) play('kdSapDrain', { volume: 0.8, pan: panA });
+          if (last) play('kdSapDrain', { volume: 0.8, pan: panA });
           done();
         }),
       );
@@ -480,7 +489,6 @@ async function wardV3(ctx: Ctx<'activate'>): Promise<void> {
   }
   wallGone = true;
   wall.destroy();
-  fx.destroy();
   const rest = new Raster(sc, 0, 0, 640, 360, DEPTH.SHADOW + 0.5);
   rest.draw((g) => paintWall(g, line, { h: 0, top: WARD.lit, mortar: WARD.dim, joint: WARD.dim }));
   pool.setIntensity(0.45, 160);
@@ -507,11 +515,14 @@ function heelDust(sc: Phaser.Scene, u: MonsterUnit): void {
 }
 
 /** One crenellation pulse from the wall down the lane into the attacker's front (≈1.3 px/ms, ≤ 8 px a frame). */
-async function pulseFlight(sc: Phaser.Scene, fx: Raster, w: WallLine, lane: XY, front: () => XY, i: number): Promise<void> {
+async function pulseFlight(sc: Phaser.Scene, w: WallLine, front: () => XY, i: number): Promise<void> {
+  // round 3 #3: each flight owns its raster (the launches are ~95 ms apart, so two can overlap) and travels in
+  // ≈ 80–120 ms; the 3-step trail carries the long lanes
+  const fx = new Raster(sc, 0, 0, 640, 360, DEPTH.FX + 1);
   const from = { x: w.mid.x, y: w.mid.y };
   const to0 = front();
   const dist = Math.hypot(to0.x - from.x, to0.y - from.y);
-  const ms = clamp(Math.round(dist / 1.3), 90, 200);
+  const ms = clamp(Math.round(dist / 1.6), 80, 120);
   const z0 = 18;
   const trail: { at: XY; z: number }[] = [];
   await animate(sc, ms, (k) => {
@@ -527,19 +538,44 @@ async function pulseFlight(sc: Phaser.Scene, fx: Raster, w: WallLine, lane: XY, 
       }
     });
   });
-  fx.draw(() => undefined);
-  void lane;
+  fx.destroy();
 }
 
-/** The block hits: the attacker's silhouette flashes white, then gold, one frame each (round 2 #7). */
-function struckFlash(sc: Phaser.Scene, a: MonsterUnit): void {
-  const s = a.sprite;
-  s.setTintFill(PAL.white);
+/**
+ * The pulse hits (round 3 #1): only the struck FRONT of the attacker lights — the shared band flash (_v3/flash
+ * contactFlash: an overlay over ≤ 30 % of the silhouette nearest the rampart, the sprite's own tint untouched), gold
+ * core + dim band for 2 real frames (≈ 33 ms). The last pulse is the one accent: a white core, 3 frames, 45 %.
+ */
+function struckFlash(sc: Phaser.Scene, a: MonsterUnit, lane: XY, last: boolean): void {
+  contactFlash(sc, a.sprite, lane, last ? { frames: 3, coverage: 0.45, color: PAL.white, tint: WARD.lit } : { frames: 2, coverage: 0.3, color: WARD.lit, tint: WARD.dim });
+}
+
+/**
+ * The ATK plate steps to `atk` (round 3 #2): at scale 1 (any running pop / roll punch is killed), the digits one frame
+ * white (the badge's own flash state), then their battle crimson; the plate bounces 2 → 1 → 0 px up in whole pixels.
+ */
+function plateStep(sc: Phaser.Scene, a: MonsterUnit, atk: number, def: number, y0: number): void {
+  void a.setStats(atk, def, false);
+  const img = a.badge.image;
+  if (!img || !img.active) return;
+  sc.tweens.killTweensOf(img);
+  img.setScale(1);
+  // StatBadge keeps its flash state private; it is the same white-digits frame its own pop() shows
+  const b = a.badge as unknown as { flashT?: number; render?: () => void };
+  const flash = (on: boolean) => {
+    if (typeof b.render !== 'function' || typeof b.flashT !== 'number') return;
+    b.flashT = on ? 1 : 0;
+    b.render.call(a.badge);
+  };
+  flash(true);
+  img.setY(y0 - 2);
   void sleep(sc, 34).then(() => {
-    if (s.active) s.setTintFill(WARD.lit);
+    if (!img.active) return;
+    flash(false);
+    img.setY(y0 - 1);
     return sleep(sc, 34);
   }).then(() => {
-    if (s.active) s.clearTint();
+    if (img.active) img.setY(y0);
   });
 }
 
@@ -549,8 +585,9 @@ function peel(sc: Phaser.Scene, a: MonsterUnit, lane: XY, i: number): void {
   const c = a.core();
   const sp = new Sparks(sc, a.sprite.depth + 0.3);
   const n = 4 + (i % 3);
+  // round 3 #1: 3-px clumps (the last pulse 4), flying 6–8 px back off the struck face, two tone steps down
   for (let k = 0; k < n; k++)
-    sp.add({ x: Math.round(c.x - lane.x * RR(4, 10)), y: Math.round(c.y + RR(-10, 8)), vx: lane.x * RR(40, 80), vy: lane.y * RR(20, 50) + RR(-30, -8), drag: 3, life: RR(220, 320), colors: [ramp[3], ramp[2], ramp[1]], shape: 'sq', size: 2, fadeAt: 1 });
+    sp.add({ x: Math.round(c.x - lane.x * RR(4, 10)), y: Math.round(c.y + RR(-10, 8)), vx: lane.x * RR(36, 48), vy: lane.y * RR(14, 24) + RR(-22, -8), drag: 3, life: RR(280, 360), colors: [ramp[3], ramp[2], ramp[1]], shape: 'sq', size: i >= 4 ? 4 : 3, fadeAt: 1 });
   sp.release();
   void lightFlash(sc, c.x - lane.x * 6, c.y, WARD.lit, 14, 140, { floorY: a.home.y, air: 0.5, intensity: 0.5 });
 }
@@ -600,10 +637,16 @@ async function defendV3(ctx: Ctx<'battle'>): Promise<void> {
         // anything already ringing fades; the hex glint and the water-blue clang graphics are hidden — the masonry
         // rampart is the only shield on screen (precedents: kite_fencer, steppe_spiralhorn, wing_lady, reed_heron)
         setCombatSfx(false);
+        // round 3 #5: the reaction kit's own generic blow (_v3/react guardReact / hitReact → sfx.play impactLight,
+        // and any shieldBlock) is not gated by setCombatSfx: skip those names for the rest of this synchronous
+        // contact call, so kdRepel is the only transient of ours on the frame (the attacker's own sound stays)
+        const unhush = skipSfx(GENERIC_CONTACT);
         queueMicrotask(() => {
           setCombatSfx(true);
-          fade(['shieldBlock', 'impactLight', 'impactHeavy'], 12);
+          unhush();
+          fade(GENERIC_CONTACT, 12);
         });
+        recoilWall.set(ev.attackerUid, { titan: u, line: w.line });
         hideGenericGuard(sc, u);
         repel(sc, w, live(ctx.unit(ev.attackerUid)), blocked || tie);
       } else play('kdPlateHit', { volume: 0.6, pan: panAt(u.home.x) });
@@ -616,8 +659,68 @@ async function defendV3(ctx: Ctx<'battle'>): Promise<void> {
     await ctx.base();
   } finally {
     sc.events.off('v3:contact', onContact);
+    recoilWall.delete(ev.attackerUid);
     if (w) endWard(w);
   }
+}
+
+const GENERIC_CONTACT: readonly SfxName[] = ['shieldBlock', 'impactLight', 'impactHeavy'];
+
+/**
+ * Skip these sound names in sfx.play until the returned undo runs (a microtask later: the rest of one synchronous
+ * contact call). sfx.hush scopes a function; the battle's contact runs on after our 'v3:contact' listener returns,
+ * so the scope here is opened in the listener and closed in a microtask. The undo restores only our own wrapper.
+ */
+function skipSfx(names: readonly SfxName[]): () => void {
+  const skip = new Set<SfxName>(names);
+  const prev = sfx.play;
+  const mine: typeof sfx.play = function (this: unknown, name, opts) {
+    if (skip.has(name)) return;
+    return prev.call(this, name, opts);
+  };
+  sfx.play = mine;
+  return () => {
+    if (sfx.play === mine) sfx.play = prev;
+    else skip.clear();
+  };
+}
+
+/**
+ * The blocked recoil's number vs the rampart (round 3 #4). battleV3 pops it over the attacker's head on the contact
+ * frame — for a melee attacker standing at the titan that is ON the 42-px flash-up wall and its ring. A `damage`
+ * layer moves it (same frame, no delay) clear of the wall: to the attacker's far side, past the wall's end, and
+ * never below the crest; that is also the side of the player who pays.
+ */
+const recoilWall = new Map<number, { titan: MonsterUnit; line: WallLine }>();
+
+function recoilNumberLayer(ctx: Ctx<'damage'>): Promise<void> {
+  const ev = ctx.ev;
+  if (ev.source !== 'battle' || !recoilWall.size) return ctx.base();
+  let bi = -1;
+  for (let i = ctx.index - 1; i >= 0; i--) if (ctx.events[i].type === 'battle') { bi = i; break; }
+  const b = bi >= 0 ? (ctx.events[bi] as Ev<'battle'>) : null;
+  const rw = b ? recoilWall.get(b.attackerUid) : undefined;
+  if (!b || !rw) return ctx.base();
+  recoilWall.delete(b.attackerUid);
+  const at = ctx.hints.at as XY | undefined;
+  if (!at || ev.player !== b.player) return ctx.base();
+  const { titan, line } = rw;
+  const x0 = Math.min(line.a.x, line.b.x) - 4;
+  const x1 = Math.max(line.a.x, line.b.x) + 4;
+  const top = Math.min(line.a.y, line.b.y) - WALL_H - 6;
+  const tx0 = titan.home.x - TILE_W / 2;
+  const tx1 = titan.home.x + TILE_W / 2;
+  const L = Math.min(x0, tx0);
+  const R = Math.max(x1, tx1);
+  if (at.x < L - 22 || at.x > R + 22) return ctx.base();
+  const a = live(ctx.unit(b.attackerUid));
+  const ax = a ? a.worldPoint('feet').x : at.x;
+  const side = ax >= titan.home.x ? 1 : -1;
+  const x = side > 0 ? Math.max(at.x, R + 22) : Math.min(at.x, L - 22);
+  const nx = Math.round(clamp(x, 34, 606));
+  const ny = Math.round(Math.min(at.y, top));
+  (ctx.hints as Record<string, unknown>).at = { x: nx, y: ny };
+  return ctx.base();
 }
 
 /** Hide the generic guard presentation made after this tick (≤ 420 ms): the hex glint (MonsterUnit guardGlint, an ADD
@@ -661,9 +764,11 @@ function repel(sc: Phaser.Scene, w: Ward, a: MonsterUnit | null, holds: boolean)
       const step = Math.floor(el / 35);
       r.draw((g) => {
         // 2 frames full wall (white top edge, gold bricks), then the spall frames
-        if (step < 2) paintWall(g, line, { h: WALL_H, top: PAL.white, mortar: WARD.lit, joint: WARD.dim, fill: [PAL.gold2, PAL.gold1] });
+        // drawn OVER him (an attacker at his back): courses and merlons only, an empty face, so the giant stays
+        // readable through his repel (round 3 #8, EF-2); under him (the shield side) the face is solid
+        if (step < 2) paintWall(g, line, { h: WALL_H, top: PAL.white, mortar: WARD.lit, joint: WARD.dim, ...(behind ? {} : { fill: [PAL.gold2, PAL.gold1] as const }) });
         // one stepped 1-px ring shock out of the boss (EF-7: one ring)
-        if (step < 4) g.ring(boss.x, boss.y, 6 + step * 5, Math.round((6 + step * 5) * 0.55), step < 2 ? WARD.hot : WARD.lit);
+        if (step < 4) g.ring(boss.x, boss.y, 8 + step * 5, Math.round((8 + step * 5) * 0.55), step < 2 ? WARD.hot : WARD.lit);
         // the last crenellation slams the attacker
         if (a && step >= 1 && step < 4) {
           const at = rint({ x: line.mid.x + lane.x * (10 + step * 12), y: line.mid.y + lane.y * (10 + step * 12) });
@@ -1472,6 +1577,7 @@ if (LOOK_V3) {
     { priority: 20, name: N('summon') },
   );
   registerEvent('attackDeclare', declareLayer, { priority: 20, name: N('declare') });
+  registerEvent('damage', recoilNumberLayer, { priority: 20, name: N('recoilNumber') });
   registerCardHook(ID, 'effect', (ctx) => wardV3(ctx), { priority: 20, name: N('effect') });
   registerCardHook(ID, 'defend', (ctx) => defendV3(ctx), { priority: 20, name: N('defend') });
   registerStrike(ID, (s) => gateFallV3(s), { priority: 20, name: N('strike') });

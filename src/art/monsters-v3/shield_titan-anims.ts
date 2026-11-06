@@ -256,7 +256,8 @@ const SP: Partial<Pose>[] = [
   { ...G }, // = guard f0 (the hook rests here)
 ];
 const specialPose = (f: number): Pose => (f >= SP.length ? IDLE0 : key(SP[f]));
-const SP_HOLDS = [80, 110, 170, 60, 70, 140, 140, 140, 140, 140, 140, 150];
+// round 3 #3 (tempo): the wake is ≈ 190 ms (was 360), the five shoves ≈ 95 ms apart (was 140) — the ward ≈ 1.25 s game
+const SP_HOLDS = [45, 55, 90, 50, 60, 95, 95, 95, 95, 95, 110, 150];
 
 // ------------------------------------------------------------------ specs
 

@@ -1,5 +1,14 @@
 // Kanat Hanımı v3 — animations of the kestrel-winged swordswoman: pose tables, holds, marks, points.
 // (Design: docs/v3/oturum-f/wing_lady.md §1–§4 with the critique fold-in §11.)
+//
+// Sameness (tools/sameness.ts --against all, round 2: 11 / 42 out-of-plan pairs UYARI, no KALIR) — what sets her apart:
+//   steel_silencer   MOTsig 0.65 (both thrust forward) — hers is a hover → flat stoop → wing CLAP, his a lunge; guard
+//                    0.74 (was 0.84): her parry blade is held LEVEL on the fencer's line, the buckler flutters f2 / f4
+//   windmane_knight  guard 0.91 (out of plan) — his tower of plate vs her wing buckler + far wing mantled back
+//   shade_assassin   guard 0.87 (proxy) — his crouched blade guard vs her feathered buckler; silhouettes differ (KEY 0.31)
+//   hollow_ogre      MOTsig 0.73 · mudgrasp_spirit 0.70 (MOTavg 0.46) · dusk_sorcerer 0.68 · tide_harpooner 0.67 ·
+//   abyss_magus 0.62 · straw_decoy 0.61 · steppe_spiralhorn 0.59 · venom_drake 0.59 — the shared "reach forward" stick
+//                    path of any forward strike; none of them hovers, stoops from the air or claps two wings round a target
 
 import type { AnimSpec, AnyMonsterAnim, MonsterAnim, MonsterAnimExtra, MonsterPoints } from '../types';
 import { BRAID0, GY, NEUTRAL, SASH0, WING_FAR0, WING_NEAR0, jewelOf, skeleton, type Pose, type Ribbon, type Wing } from './wing_lady-rig';
