@@ -10,26 +10,31 @@
 //   1. the WHITE head in profile (the sprite's and the cut-in's value: white crown, brow and snout top plane,
 //      mist side planes, steel only on the lip's underside, the cheek wedge and the eye mask), snout raised
 //      a few degrees, the JAW HANGING ~20° OPEN in a roar: a dark mouth (night1, the throat night0) holding
-//      THE BREATH ORB — a stepped cyan sphere (cyan2 rim, cyan3, cyan4 core, 7 px big / a hand-placed 2×2 core
-//      small) with one white glint, the picture's brightest point and its beat (the cut-in's glowing core);
-//      white fangs hang in front of it. The eye — a faceted cyan gem in a night socket on the steel mask
-//      under ONE night3 brow ridge — is the focus; the orb is the second light, a step down the snout;
+//      THE BREATH ORB — a stepped cyan sphere (cyan2 rim, cyan3, cyan4 core, 5 px big / a hand-placed 2×2 core
+//      small) with NO white: the picture's beat (the cut-in's glowing core), the second light a step down the
+//      snout; white fangs hang in front of it. The eye — a faceted cyan gem in a night socket on the steel mask
+//      under ONE night3 brow ridge, its glint the only white sparkle — is the focus and the brightest point (§3);
 //   2. the GOLD horns — a long crown horn sweeping up and back across the DARK sky (the far one one value
 //      darker behind it; the hand picture leaves it out), a short cheek horn under the eye — gold4 top
 //      edge, gold3 body, gold2 underside, gold1 root: the lightest gold on the card;
 //   3. the raised CYAN GLASS WING behind the neck (the sprite's signature shape: up and back, bleeding off the
-//      left edge; its wrist claw bleeds decisively off the top): a white / mist forearm and wrist knuckle,
+//      left edge; its thick two-facet wrist claw bleeds decisively off the top): a white / mist forearm and wrist knuckle,
 //      finger bones fanning to a scalloped trailing edge, the cells cut into two-value facets (lit cyan3 |
 //      shade cyan2), ONE cyan4 glass rim on the leading edge — faceted glass, never a gradient;
 //   4. the neck: a broad white nape / front | mist | steel throat in clean bands along its turn, crossed by
 //      cyan crystal seams (one seam tone per plane), the jaw's cast shadow, and two large two-value crest
 //      prisms (lit cyan3 | shade cyan1) standing in front of the nape over the wing's dark inner panel;
-//   5. the card light's gold2 rim on the shadow side of head and neck (IŞ-7; the glass keeps its own rims).
+//   5. the card light's gold2 rim on the shadow side of head and neck (IŞ-7; the glass keeps its own rims);
+//      the hand picture keeps it on the neck only, unbroken (at 1× a rim under the jaw read as a gold lip).
 // The subject bleeds off the left (wing) and bottom (neck) edges on purpose (fill ≈ 0.85–0.9, as ashen_drake):
 // the ace fills its window; the snout keeps its lead (big 9 px, small ≥ 5 px).
 // Backdrop: the LIGHT recipe's sky / floor / horizon and this card's own halo (see `backdrop`): a broad gold2
-// disc in a narrow gold1 ring behind the head, and in big a sunburst of straight 2-px light bars on clean slopes
-// wherever the sky is free; the hand picture keeps the clean disc alone.
+// disc in a narrow gold1 ring behind the head, and in big a burst of equal, hand-placed 2-px light bars on the
+// sky arc over the snout; the hand picture keeps the clean disc alone, set 3 px right / 2 px down so the crown
+// horn crosses the dark sky.
+// Deviation (recorded for KART_RESIMLERI §5 / A5_PLAN §3.7.2, which name a 1:1 crop of src/still/wyrm.ts): the
+// ace is a hand painting built on the v3 cut-in's head (A5_PLAN allows hand-painting the ace) — the card, the
+// summon cut-in and the board sprite read as one character.
 // Living art (A5_PLAN §3.7.6): 6 frames × 140 ms, palette swaps on the light layer only (see `living`).
 
 import { PAL } from '../palette';
@@ -119,7 +124,7 @@ const W_ROOT: V = [31, 52];
 const W_ELBOW: V = [25, 28];
 const W_WRIST: V = [12, 6];
 /** (the claw bleeds decisively off the window's top — a cut knob on the bezel read as a stray blob) */
-const W_SPIKE: V = [6, -9];
+const W_SPIKE: V = [8, -8];
 const W_TIPS: readonly V[] = [
   [-4, 15],
   [-3, 33],
@@ -309,11 +314,18 @@ function paintWing(z: Z): PixelCanvas {
   // the elbow and the wrist knuckles, and the claw spike rising over the wrist (white / mist, gold-free)
   p.disc(E[0], E[1], 2.0 * z.k + 0.4, PAL.mist);
   // (the hand picture: a stub of a claw — the full one would touch the window's top edge at 1×)
-  const S = z.small ? lerp(W, M(z, W_SPIKE), 0.18) : M(z, W_SPIKE);
-  const nf = z.small ? 0.1 : 0.2;
-  const n: V = [(S[1] - W[1]) * nf, -(S[0] - W[0]) * nf];
-  p.poly([[W[0] - n[0] - 1, W[1] - n[1]], S, [W[0] + n[0] + 1, W[1] + n[1]]], PAL.mist);
-  p.poly([[W[0] + n[0] + 1, W[1] + n[1]], S, W], PAL.white); // the lit (left, toward the key light) facet
+  if (z.small) {
+    const S = lerp(W, M(z, [6, -9]), 0.18);
+    const n: V = [(S[1] - W[1]) * 0.1, -(S[0] - W[0]) * 0.1];
+    p.poly([[W[0] - n[0] - 1, W[1] - n[1]], S, [W[0] + n[0] + 1, W[1] + n[1]]], PAL.mist);
+    p.poly([[W[0] + n[0] + 1, W[1] + n[1]], S, W], PAL.white);
+  } else {
+    // big: a thick claw (≈ 4 px at its root on the knuckle, still ≥ 3 px where it leaves the window's top),
+    // curving up and a little back, split into two flat facets along its length: white toward the key light,
+    // mist on the shade side — a claw, not an antenna
+    const claw = bez(W, [W[0] - 1, W[1] - 5], [W[0] - 2, W[1] - 9], W_SPIKE, 10);
+    bandTube(p, claw, 2.6, 1.2, (s) => (s > -0.1 ? PAL.white : PAL.mist));
+  }
   p.disc(W[0], W[1], 2.1 * z.k + 0.4, PAL.mist);
   p.set(Math.floor(W[0]) - 1, Math.floor(W[1]) - 1, PAL.white);
   if (!z.small) p.set(Math.floor(W[0]), Math.floor(W[1]) - 1, PAL.white);
@@ -502,23 +514,24 @@ function paintHead(z: Z): PixelCanvas {
     fangs([14.6], 0.25, PAL.mist, true);
   }
   // THE BEAT: the breath orb gathering in the open mouth (the cut-in's glowing core, the sprite's beam source)
-  // — a stepped cyan sphere (cyan2 rim, cyan3, cyan4 core) with ONE white glint, the picture's single
-  // brightest point; clipped to the mouth so the teeth stand in front of it
+  // — a stepped cyan sphere (cyan2 rim, cyan3, cyan4 core) with NO white: the eye's glint is the picture's
+  // single brightest point (§3), the orb the second light a step down the snout; clipped to the mouth so the
+  // teeth stand in front of it
   const mouthMask = new PixelCanvas(W, H).poly(Ps(MOUTH), PAL.ink);
   const [ox, oy] = fl(P(CORE_H[0], CORE_H[1]));
   const inMouth = (x: number, y: number) => mouthMask.isOpaque(x, y) && (out.get(x, y) === PAL.night1 || out.get(x, y) === PAL.night0);
   if (z.small) {
-    // hand-placed: a 2×2 core (white glint + cyan4) in a cyan2 ring
+    // hand-placed: a 2×2 core (one cyan4, three cyan3) in a cyan2 ring
     for (const [dx, dy] of [[-1, -2], [0, -2], [-2, -1], [1, -1], [-2, 0], [1, 0], [-1, 1], [0, 1]] as const) if (inMouth(ox + dx, oy + dy)) out.set(ox + dx, oy + dy, PAL.cyan2);
-    for (const [dx, dy] of [[-1, -1], [0, -1], [-1, 0], [0, 0]] as const) out.set(ox + dx, oy + dy, dx === -1 && dy === -1 ? PAL.white : PAL.cyan4);
+    for (const [dx, dy] of [[-1, -1], [0, -1], [-1, 0], [0, 0]] as const) out.set(ox + dx, oy + dy, dx === -1 && dy === -1 ? PAL.cyan4 : PAL.cyan3);
   } else {
-    for (let dy = -4; dy <= 4; dy++)
-      for (let dx = -4; dx <= 4; dx++) {
+    // 5 px across: a cyan4 plus-shaped core, a cyan3 body, the cyan2 rim on the round's corners
+    for (let dy = -3; dy <= 3; dy++)
+      for (let dx = -3; dx <= 3; dx++) {
         const d = Math.hypot(dx, dy);
-        if (d > 3.2 || !inMouth(ox + dx, oy + dy)) continue;
-        out.set(ox + dx, oy + dy, d <= 1.5 ? PAL.cyan4 : d <= 2.3 ? PAL.cyan3 : PAL.cyan2);
+        if (d > 2.3 || !inMouth(ox + dx, oy + dy)) continue;
+        out.set(ox + dx, oy + dy, d <= 1.0 ? PAL.cyan4 : d <= 1.5 ? PAL.cyan3 : PAL.cyan2);
       }
-    out.set(ox - 1, oy - 1, PAL.white);
   }
   // the eye: a night2 socket under a night1 lid, the iris (cyan4 over cyan3); the glint lives on the light layer
   const [ex, ey] = eyeAt(z);
@@ -571,11 +584,26 @@ function paintSubject(z: Z): PixelCanvas {
   over(s, head, true);
   // the card light's gold2 rim on the shadow side of the head and neck (the glass and the horns keep theirs)
   const open = (x: number, y: number) => x >= 0 && y >= 0 && x < s.w && y < s.h && !s.isOpaque(x, y);
-  const front = (x: number, y: number) => head.isOpaque(x, y) || neck.isOpaque(x, y);
+  // (the hand picture: the neck only — at 1× a rim under the jaw read as a gold lip — and no lone rim pixel:
+  // the rim runs unbroken or is absent)
+  const front = (x: number, y: number) => (z.small ? neck.isOpaque(x, y) && !head.isOpaque(x, y) : head.isOpaque(x, y) || neck.isOpaque(x, y));
+  const before = z.small ? new PixelCanvas(s.w, s.h).blit(s, 0, 0) : null;
   rim(s, PAL.gold2, {
     skip: [...GLASS, ...GOLD, PAL.night1, PAL.night2],
     only: (x, y) => front(x, y) && (open(x + 1, y) || open(x, y + 1) || open(x + 1, y + 1)),
   });
+  if (before) {
+    const isRim = (x: number, y: number) => s.get(x, y) === PAL.gold2 && before.get(x, y) !== PAL.gold2;
+    const lone: V[] = [];
+    for (let y = 0; y < s.h; y++)
+      for (let x = 0; x < s.w; x++) {
+        if (!isRim(x, y)) continue;
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && isRim(x + dx, y + dy)) n++;
+        if (n === 0) lone.push([x, y]);
+      }
+    for (const [x, y] of lone) s.set(x, y, before.get(x, y)!);
+  }
   // the wing glass's own rim: cyan4 on its lit (top / left) free edges, the leading edge
   const lit: number[] = [];
   for (let y = 0; y < s.h; y++)
@@ -601,17 +629,18 @@ const HORIZON = 56;
 /**
  * The LIGHT recipe's sky / floor / horizon (the kit), and this card's own halo: a BROAD gold2 disc in a narrow
  * gold1 outer ring (the inner step is the bright one, still a value under the white head), centred on whole
- * pixels so its edge steps are symmetric, clipped above the horizon. Big: 8 straight light bars (2 px, on the
- * 8 clean directions) on the sky only — a bar starts at the ring and stops ≥ 3 px short of the subject and
- * the window's edge; one that would be shorter than 4 px is left out (a stub reads as a thorn). Small: no
- * bars (at 1× they fragmented into a ragged mane), the disc alone with regular 2-px steps.
+ * pixels so its edge steps are symmetric, clipped above the horizon. Big: equal short light bars on the free
+ * sky arc (see below). Small: no bars (at 1× they fragmented into a ragged mane), the disc alone with regular
+ * 2-px steps.
  * (The kit halves BIG coordinates on the small canvas: hand it the small transform's point in big units.)
  */
 function backdrop(l: ArtLayers, z: Z): void {
   const s = z.small ? 2 : 1;
   const horizon = Math.round(HORIZON * z.k + z.oy);
   paintBackdrop(l.backdrop, 'LIGHT', { horizon: horizon * s, shape: false });
-  const [hx, hy] = fl(M(z, HALO));
+  // (the hand picture's disc sits 3 px right / 2 px down: the crown horn's sweep crosses the dark sky, not the
+  // disc — at 1× gold on gold merged into one mass)
+  const [hx, hy] = fl(M(z, z.small ? [HALO[0] + 6, HALO[1] + 4] : HALO));
   const r = z.small ? 12 : 24;
   const ring = z.small ? 2 : 3;
   const p = l.backdrop;
@@ -623,65 +652,57 @@ function backdrop(l: ArtLayers, z: Z): void {
       else if (d <= r - 0.4) p.set(x, y, PAL.gold1);
     }
   if (z.small) return;
+  // big: a deliberate burst of EQUAL short bars on the visible sky arc over the snout (the subject and the window
+  // hide the rest of the ring): 2 × RAY_BAR px bars on the clean slopes 1:1 and 2:1 (1:2 is tried too),
+  // each starting RAY_GAP px past the ring. A bar that would touch the subject (2-px air) or leave the window is
+  // left out whole — never a clipped stub.
   const subj = subject(z);
-  const blocked = (x: number, y: number) => {
-    // (a bar may bleed off the window's top — decisively, it runs on — but stops 3 px short of the other edges)
-    if (x < 3 || x > z.w - 4 || y > horizon - 3) return true;
-    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (subj.isOpaque(x + dx, y + dy)) return true;
+  const near = (x: number, y: number) => {
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (subj.isOpaque(x + dx, y + dy)) return true;
     return false;
   };
-  // 16 bars on clean pixel slopes (0°, 2:1, 45°, 1:2 …): the axis / diagonal ones long, the 2:1 ones short —
-  // a sunburst, not a ring of thorns; the subject and the window's edges mask most of them out — the open sky
-  // over the snout keeps three (1:2, 45°, 2:1), fanning up and right from the ring
   for (const [a, b] of RAY_DIRS) {
-    // (only the upper half: under the jaw the sky is a thin gap where a masked bar hangs like a stray stick)
-    if (b > 0) continue;
-    const major = Math.max(Math.abs(a), Math.abs(b));
     const xMajor = Math.abs(a) >= Math.abs(b);
-    const sx = Math.sign(a);
-    const sy = Math.sign(b);
-    const len = major === Math.min(Math.abs(a), Math.abs(b)) || a === 0 || b === 0 ? RAY_BAR : RAY_BAR - 4;
-    // the bar's second pixel: under an x-major bar, beside a y-major one
+    const major = Math.max(Math.abs(a), Math.abs(b));
+    const minorStep = Math.min(Math.abs(a), Math.abs(b));
     const across: V = xMajor ? [0, 1] : [1, 0];
     const pts: V[] = [];
-    let started = false;
-    for (let i = 0; i < r + RAY_BAR + 4 && pts.length < 2 * len; i++) {
-      const minor = Math.floor((i * Math.min(Math.abs(a), Math.abs(b))) / major);
-      const q: V = xMajor ? [hx + sx * i, hy + sy * minor] : [hx + sx * minor, hy + sy * i];
-      const pair: V[] = [q, [q[0] + across[0], q[1] + across[1]]];
-      // start one px past the ring (both pixels on the sky)
-      if (!started) {
-        if (pair.some(([x, y]) => Math.hypot(x - hx, y - hy) <= r + 0.6)) continue;
-        started = true;
-      }
-      if (pair.some(([x, y]) => blocked(x, y))) break;
-      if (pair.every(([, y]) => y < 0)) break;
-      pts.push(...pair);
+    let i = 0;
+    for (; i < 60; i++) {
+      const m = Math.floor((i * minorStep) / major);
+      const q: V = xMajor ? [hx + Math.sign(a) * i, hy + Math.sign(b) * m] : [hx + Math.sign(a) * m, hy + Math.sign(b) * i];
+      if (Math.hypot(q[0] - hx, q[1] - hy) > r + RAY_GAP) break;
     }
-    if (pts.filter(([, y]) => y >= 2).length >= 8) for (const [x, y] of pts) if (p.get(x, y) === PAL.night1 || p.get(x, y) === PAL.night2) p.set(x, y, PAL.gold1);
+    for (let j = i; j < i + RAY_BAR; j++) {
+      const m = Math.floor((j * minorStep) / major);
+      const q: V = xMajor ? [hx + Math.sign(a) * j, hy + Math.sign(b) * m] : [hx + Math.sign(a) * m, hy + Math.sign(b) * j];
+      pts.push(q, [q[0] + across[0], q[1] + across[1]]);
+    }
+    if (pts.some(([x, y]) => x < 0 || y < 0 || x >= z.w || y >= horizon - 2 || near(x, y))) continue;
+    for (const [x, y] of pts) if (p.get(x, y) === PAL.night1 || p.get(x, y) === PAL.night2) p.set(x, y, PAL.gold1);
   }
 }
 
-/** The 16 bar directions (integer steps: clean slopes only). */
-const RAY_DIRS: readonly V[] = [
-  [1, 0], [2, 1], [1, 1], [1, 2], [0, 1], [-1, 2], [-1, 1], [-2, 1],
-  [-1, 0], [-2, -1], [-1, -1], [-1, -2], [0, -1], [1, -2], [1, -1], [2, -1],
-];
+/** The burst's bar directions over the snout (x right, y down; integer steps: clean slopes only). */
+const RAY_DIRS: readonly V[] = [[1, -2], [1, -1], [2, -1]];
 
-/** A light bar's length past the halo's ring (big px). */
-const RAY_BAR = 10;
+/** A light bar's length (major-axis px) and its gap past the halo's ring (big px). */
+const RAY_BAR = 6;
+const RAY_GAP = 2;
 
 /**
  * Living art (palette swaps on the light layer only; the silhouette never moves). f0 is the reduced-motion
- * frame: the eye's full white glint, the breath core lit. Every frame changes something:
- *   the eye     glint white (f0, f1, f4, f5) → cyan4 (f2, f3): the gaze blinks with light;
- *   the breath  the orb in the open mouth flares (its cyan2 rim → cyan3, f2–f4) and at the peak (f3) spills
- *               one px of cyan1 onto the mouth's dark;
- *   the glass   ONE glint walks the wing's whole leading edge (f1–f5: 1 px → 3-px cross → 1 px, IŞ-8), and
- *               while it crosses the middle (f3) one facet flips lit (cyan3 → cyan4): the glass shimmers;
- *   the crest   the prisms catch the light one after another, head end first (f2–f4).
+ * frame and the shipping still: the eye's white glint, the picture's single brightest point. ONE white sparkle
+ * per frame (IŞ-8), and every frame changes something:
+ *   f0  rest: the eye glint white;
+ *   f1  the eye glint white; the first crest prism catches the light (cyan4, head end first);
+ *   f2  the gaze hands its light to the wing: the eye glint → cyan4, a white glint lands on the wing's leading
+ *       edge near the wrist; the second crest prism catches (big);
+ *   f3  the glint at the edge's middle with a 4-px cyan4 cross; one glass facet flips lit (cyan3 → cyan4);
+ *   f4  the glint at the edge's far end (1 px); the breath orb swells (its cyan2 rim → cyan3);
+ *   f5  the glint returns to the eye (white); the orb at its peak spills one px of cyan1 onto the mouth's dark.
  */
-const EYE_PULSE: readonly number[] = [PAL.white, PAL.white, PAL.cyan4, PAL.cyan4, PAL.white, PAL.white];
+const EYE_PULSE: readonly number[] = [PAL.white, PAL.white, PAL.cyan4, PAL.cyan4, PAL.cyan4, PAL.white];
 
 /** The wing facet that flips lit in the shimmer frame: the middle cell's lit facet (canvas mask). */
 function facetMask(z: Z): PixelCanvas {
@@ -712,38 +733,48 @@ function living(l: ArtLayers, z: Z, f: number): void {
     if (EYE_PULSE[k] === PAL.white) L.set(ex - 2, ey - 1, PAL.cyan4);
     for (const [dx, dy] of [[4, -1], [4, 0], [-2, 2], [-1, 2], [0, 2], [1, 2]] as const) on(ex + dx, ey + dy, PAL.cyan2, (c) => c === PAL.steel || c === PAL.mist);
   }
-  // the breath orb breathes: its cyan2 rim flares to cyan3 (f2–f4) and, at the peak (f3), its light spills
-  // one px onto the mouth's dark around it (cyan1); the glint stays — the orb's silhouette never moves
+  // the breath orb swells: its cyan2 rim flares to cyan3 (f4, f5) and, at the peak (f5), its light spills one
+  // px onto the mouth's dark around it (cyan1); the orb's silhouette never moves
   const [cx, cy] = fl(M(z, T(CORE_H[0], CORE_H[1])));
-  const R = z.small ? 3 : 5;
-  if (k >= 2 && k <= 4)
+  const R = z.small ? 3 : 4;
+  if (k >= 4)
     for (let dy = -R; dy <= R; dy++)
       for (let dx = -R; dx <= R; dx++) {
         const u = sub.get(cx + dx, cy + dy);
         if (u === PAL.cyan2) L.set(cx + dx, cy + dy, PAL.cyan3);
-        else if (k === 3 && (u === PAL.night1 || u === PAL.night0)) {
+        else if (k === 5 && (u === PAL.night1 || u === PAL.night0)) {
           const n4 = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b]) => sub.get(cx + dx + a, cy + dy + b) === PAL.cyan2);
           if (n4) L.set(cx + dx, cy + dy, PAL.cyan1);
         }
       }
-  // the glass glint walking the leading edge
-  if (k >= 1) {
-    const [x, y] = glintPath(z)[k - 1];
-    // (on a white bone pixel the glint shows as a cyan4 spark: it must change the picture in every frame)
+  // the glass glint walking the leading edge (f2–f4, while the eye's glint is down: one white per frame)
+  if (k >= 2 && k <= 4) {
+    const [x, y] = glintPath(z)[(k - 2) * 2];
+    // (on a white bone pixel the glint shows as a cyan4 spark: it must change the picture)
     L.set(x, y, sub.get(x, y) === PAL.white ? PAL.cyan4 : PAL.white);
-    if (k >= 2 && k <= 4 && !z.small) for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) on(x + dx, y + dy, PAL.cyan4);
+    if (k === 3 && !z.small) for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) on(x + dx, y + dy, PAL.cyan4);
   }
   // the facet shimmer
   if (k === 3) {
     const m = facetMask(z);
     for (let y = 0; y < z.h; y++) for (let x = 0; x < z.w; x++) if (m.isOpaque(x, y) && sub.get(x, y) === PAL.cyan3 && !L.isOpaque(x, y)) L.set(x, y, PAL.cyan4);
   }
-  // crest prisms: the lit facet's middle catches the light (head end first)
-  if (k >= 2 && k <= 4) {
-    const sh = crestShards(z);
-    const { tip, base } = sh[(k - 2) % sh.length];
-    const q = fl(lerp(base, tip, 0.5));
-    for (const [dx, dy] of z.small ? [[0, 0]] : [[0, 0], [-1, 0], [0, -1]]) on(q[0] + dx, q[1] + dy, PAL.cyan4, (c) => c === PAL.cyan3);
+  // crest prisms: the lit facet's middle catches the light, head end first (f1, then f2 in big)
+  const sh = crestShards(z);
+  const ci = k - 1;
+  if (ci >= 0 && ci < sh.length) {
+    // (a short streak down the middle of the lit facet: the first cyan3 pixels found, 3 big / 2 small)
+    const { tip, base, b } = sh[ci];
+    const spine = lerp(base, b, 0.35);
+    let lit = z.small ? 2 : 3;
+    const seen = new Set<string>();
+    for (let t = 0.25; t <= 0.8 && lit > 0; t += 0.05) {
+      const [x, y] = fl(lerp(spine, tip, t));
+      if (seen.has(`${x},${y}`) || sub.get(x, y) !== PAL.cyan3) continue;
+      seen.add(`${x},${y}`);
+      L.set(x, y, PAL.cyan4);
+      lit--;
+    }
   }
 }
 

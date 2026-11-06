@@ -3,17 +3,18 @@
 // Built from ./../kit.ts blocks and the Voice primitives (src/audio/synth.ts). Aggregated by ../lane-e.ts.
 //
 // Identity (§5.1 S9 Saman Korkuluk): the main colour is a LONG DRY STRAW RUSTLE, the material straw + a wooden stake,
-// the separating layers the stake's "tok" (three pitches, driven into earth) and the crow "gak" (FM + formants). Kept
+// the separating layers the stake's "tok" (three pitches, driven into soil) and the crow "gak" (FM + formants). Kept
 // apart from: S5 Harman Eleği (a short high straw toss / chaff crackle — our wind is low and wide, 150–500 Hz, and our
-// rustle is long), S12 Talih Zarı (the free-ringing wooden "tak-tak" — our stakes are choked by the earth: a damped
-// 540–800 Hz knock on a long 120 Hz thud), C6 Kovuk Devi (the 180 Hz hollow-log knock), C8 Balıkçıl (the slow wing
+// rustle is long), S12 Talih Zarı (the free-ringing wooden "tak-tak" — our stakes are choked by the soil: a 25 ms
+// 290–500 Hz knock on a 160→90 Hz earth thud + soil crunch), C6 Kovuk Devi (the 180 Hz hollow-log knock), C8 Balıkçıl (the slow wing
 // "fuff" — the crow's beats are short and crisp), S2 / C9 (string "tsing" / wire — no strings here), R3 Tüy Hayalet
 // (the only "pof": no lowpassed soft puff anywhere here — the storyboard says so).
 //   e_strawGust    the card's energy bursts over the empty zones: a LOW, WIDE dusk field wind swelling in (150–500 Hz,
 //                  a slow 0.8 s swell, wide stereo) with one distant stake creak — no high chaff (S5 owns that)
 //   e_strawDrop    one stake drops out of the sky: a short falling "fsst" (played on each stake's fall)
-//   e_strawTok1/2/3  the stake stabs INTO EARTH: a pointed "thk", a damped stake body (540 / 660 / 800 Hz: three
-//                  pitches, no free woodblock ring — S12 owns the "tak-tak"), a long 120→75 Hz earth thud, soil scatter
+//   e_strawTok1/2/3/4  the stake stabs INTO SOIL: a 160→90 Hz thud into the earth (60 ms), a choked wooden knock
+//                  (360 / 425 / 500 Hz: three pitches; a 4th stake 290 Hz, one step under the first — no free woodblock
+//                  ring, S12 owns the "tak-tak"), a gritty soil crunch, clods pattering back
 //   e_strawWrap / e_strawWrapR  straw bundles wind round the stakes on the visible gust: the long straw rustle (the
 //                  card's main colour), crossing L → R (P1) or R → L (P2) with the gust on screen
 //   e_strawCoat    an old coat drops on and snaps tight: "fwup-ŞAK" (cloth flap + snap)
@@ -22,8 +23,9 @@
 //   e_strawHand    one scarecrow's straw hands flick open (played per decoy, staggered, panned on it)
 //   e_strawEye     one scarecrow's button eyes light: two tiny bright "tik"s (played per decoy as the crow passes)
 //   e_strawPerch   the crow lands on the last scarecrow's arm: two short wingbeats, claws grip the wood, the arm creaks
-//   e_strawCrow / e_strawCrow2  the crow caws: "GAAK" … "gak" (a nasal saw falling 560 → 400 Hz through two narrow
-//                  crow formants, a light rasp; distance is reverb, not level) — two recipes, each on its beak mark
+//   e_strawCrow / e_strawCrow2  the crow caws: "GAAK" … "gak" — harsh and noisy: a glottal click, a driven saw
+//                  falling 560 → 400 Hz with its harmonics smeared (rough FM + a ~100 Hz rasp chop), broadband noise
+//                  through the "aa" formants and a 2–4 kHz grit band; distance = high-shelf cut + reverb
 //   e_strawWake    the decoys come alive (hand-over to the token): a straw bristle rising, the stakes settle into the
 //                  earth (creak + low settle), the startled crow beats off (three quick flaps)
 //   e_strawLure    the attacker's pick: the chosen decoy's straw shivers, its stake creaks, an eye ticks
@@ -36,22 +38,26 @@ import { perc } from '../../synth';
 import { sweep, thump } from '../kit';
 
 /**
- * The stake's voice: a pointed DRY WOODEN stake driven into earth, its body at `f` (Hz). The wood is the voice (a
- * clear, damped triangle knock + a 2–3 kHz dry "tk" on the attack); the earth is only a short, low support under it
- * (no free ring — S12 owns the "tak-tak").
+ * The stake's voice: a pointed wooden stake driven INTO SOIL, its wood at `f` (Hz). The earth is the voice: a heavy
+ * 150 → 90 Hz "thud into soil" (60 ms) under a short, CHOKED wooden knock (the soil grips the stake at once — no free
+ * ring: S12 owns the woodblock "tak-tak"), a gritty crunch of soil grains (low-passed crackle + a brown-noise shove)
+ * and a few clods pattering back down.
  */
 function tok(v: Voice, t: number, f: number, g: number): void {
-  // the dry "tk": the point and the grain of the wood biting — a very short bright click
-  v.noise('white', { t, g: perc(g * 0.75, 0.005, 0.0002), to: v.filt('bandpass', 2600, 1.6) });
-  v.tone('square', [[0, f * 4.1], [0.006, f * 3.6, 'e']], { t, g: perc(g * 0.09, 0.008, 0.0002), to: v.filt('bandpass', 2400, 2) });
-  // the stake's body: a damped, slightly falling wooden knock (fundamental, a weak twelfth), choked by the earth
-  v.tone('triangle', [[0, f * 1.1], [0.025, f * 0.96, 'e']], { t, g: perc(g * 1.15, 0.055, 0.0005) });
-  v.tone('triangle', [[0, f * 3.02], [0.02, f * 2.9, 'e']], { t, g: perc(g * 0.22, 0.022, 0.0004) });
-  v.noise('white', { t, g: perc(g * 0.3, 0.03, 0.0004), to: v.filt('bandpass', f * 1.6, 3.5) });
-  // the earth takes it: a short low support (6 dB under the old thud), then a little soil settles round the stake
-  thump(v, t + 0.002, 110, 80, g * 0.36, 0.06);
-  v.noise('brown', { t: t + 0.004, g: perc(g * 0.22, 0.035, 0.002), to: v.filt('lowpass', 380, 0.8) });
-  v.crackle({ t: t + 0.03, d: 0.08, n: 6, g: g * 0.1, f: 1700, q: 1.1, dec: 0.006, curve: 1.4, kind: 'pink' });
+  // the point bites: a very short, dull "tk" (no bright woodblock click — it is muffled by the soil)
+  v.noise('pink', { t, g: perc(g * 0.3, 0.006, 0.0002), to: v.filt('bandpass', 1000, 1.2) });
+  // the stake's wood: a CHOKED knock (25 ms), falling as the soil grips it
+  v.tone('triangle', [[0, f * 1.08], [0.02, f * 0.9, 'e']], { t, g: perc(g * 0.36, 0.022, 0.0005) });
+  v.noise('white', { t, g: perc(g * 0.08, 0.018, 0.0004), to: v.filt('bandpass', f * 1.5, 3) });
+  // THE THUD INTO SOIL: the earth's body, 150 → 90 Hz over 60 ms, with a soft drive for weight
+  thump(v, t + 0.003, 160, 90, g * 1.05, 0.06, { drive: 2, att: 0.002 });
+  thump(v, t + 0.004, 95, 62, g * 0.5, 0.08);
+  // the soil shoved aside: a low brown-noise crunch …
+  v.noise('brown', { t: t + 0.002, g: perc(g * 0.7, 0.045, 0.002), to: v.filt('lowpass', [[0, 900], [0.04, 300, 'e']], 0.9) });
+  // … gritty grains crunching (dense, low-mid, dry) …
+  v.crackle({ t: t + 0.004, d: 0.05, n: 12, g: g * 0.3, f: 520, q: 0.8, dec: 0.004, curve: 1.6, kind: 'pink' });
+  // … and a few clods patter back down round the stake
+  v.crackle({ t: t + 0.07, d: 0.09, n: 5, g: g * 0.08, f: 700, q: 1.1, dec: 0.005, curve: 1.2, kind: 'pink' });
 }
 
 /** The dusk field wind: low pink noise in a wide 150–500 Hz band, gusting (slow wander), over `d` s. */
@@ -102,21 +108,38 @@ function wrap(v: Voice, dir: 1 | -1): void {
 }
 
 /**
- * A crow's call far over the field: a nasal saw falling clearly f0 → f1 (the "aa" of "gaak"), a pinched attack
- * (the formants open from closed), a light rasp (a gentle flutter, FM ≈ 0.05·f — grit, not static), through two narrow
- * crow formants (1.1 / 1.9 kHz). Far away: little low end, a soft top — the distance is the reverb, not the level.
+ * A crow's call far over the field — a HARSH, NOISY "gaak": a hard 15 ms glottal click opens it; the voice is a
+ * driven saw falling f0 → f1 whose harmonics are SMEARED (FM by a ~105 Hz rough modulator, index ≈ 0.4·f, plus a
+ * random pitch wander) and chopped by a deep ~100 Hz rasp (amplitude flutter); a broadband noise layer rasps through
+ * the same "aa" formants (≈ 1.1 / 1.7 kHz) and a 2–4 kHz grit band. Distance is a high-shelf cut and the reverb.
  */
 function caw(v: Voice, t: number, d: number, f0: number, f1: number, g: number): void {
-  const far = v.filt('lowpass', 4200, 0.7, { t });
-  const hp = v.filt('highpass', 380, 0.7, { t, to: far });
-  const f1n = v.filt('bandpass', [[0, 800], [0.03, 1100, 'e'], [d, 1000]], 8, { t, to: hp });
-  const f2n = v.filt('bandpass', [[0, 1500], [0.03, 1900, 'e'], [d, 1750]], 9, { t, to: hp });
-  const rasp = v.flutter(62, 0.16, { t, d, base: 0.5, to: f1n });
-  rasp.connect(f2n);
-  const o = v.tone('sawtooth', [[0, f0 * 1.06], [0.025, f0], [d, f1, 'e']], { t, g: [[0, 0], [0.01, g], [d * 0.55, g * 0.8], [d, 0.0001, 'e']], to: rasp });
-  v.tone('sine', f0 * 0.5, { t, d: d + 0.02, g: [[0, f0 * 0.06], [d, f0 * 0.04]], to: o.osc.frequency });
-  // the nasal "g" of the attack: a short pinched burst high in the beak
-  v.noise('white', { t, g: perc(g * 0.35, 0.012, 0.0003), to: v.filt('bandpass', 2400, 3, { t, to: hp }) });
+  const shelf = v.filt('highshelf', 4600, 0.7, { t, gain: -12 });
+  const hp = v.filt('highpass', 320, 0.7, { t, to: shelf });
+  // the "aa" formants (they open from a pinched "g" in the first 30 ms)
+  const fa = v.filt('bandpass', [[0, 750], [0.03, 1100, 'e'], [d, 980]], 4.5, { t, to: hp });
+  const fb = v.filt('bandpass', [[0, 1300], [0.03, 1700, 'e'], [d, 1550]], 5, { t, to: hp });
+  const gritG = v.amp(0.45, { t, to: hp });
+  const grit = v.filt('bandpass', 3000, 1.4, { t, to: gritG });
+  // the rasp: a deep, irregular ~100 Hz amplitude chop on everything that is voiced
+  const rasp = v.flutter(100, 0.55, { t, d, base: 0.55 });
+  rasp.connect(fa);
+  rasp.connect(fb);
+  const dr = v.drive(3.5, { to: rasp, trim: 0.6 });
+  const env: [number, number, ('e' | 's')?][] = [[0, 0], [0.008, g], [d * 0.5, g * 0.85], [d, 0.0001, 'e']];
+  const o = v.tone('sawtooth', [[0, f0 * 1.1], [0.02, f0], [d, f1, 'e']], { t, g: env, to: dr });
+  // the smear: FM by a rough ~105 Hz modulator (index ≈ 0.4·f) and a random wander of the pitch
+  v.tone('triangle', 105, { t, d: d + 0.02, g: [[0, f0 * 0.42], [d, f1 * 0.36]], to: o.osc.frequency });
+  v.wander(o.osc.detune, 40, 60, { t, d: d + 0.02 });
+  // the noisy breath of the call: broadband noise through the formants and the grit band, chopped by the rasp
+  const nr = v.flutter(110, 0.6, { t, d, base: 0.5 });
+  nr.connect(fa);
+  nr.connect(fb);
+  nr.connect(grit);
+  v.noise('white', { t, d, g: [[0, 0], [0.01, g * 0.4], [d * 0.6, g * 0.28], [d, 0.0001, 'e']], to: nr });
+  // the glottal onset: a hard 15 ms click (a pinched pulse + a crack of noise)
+  v.tone('square', [[0, f0 * 1.6], [0.015, f0, 'e']], { t, g: perc(g * 0.5, 0.015, 0.0002), to: hp });
+  v.noise('white', { t, g: perc(g * 0.9, 0.012, 0.0002), to: v.filt('bandpass', 2200, 1.4, { t, to: hp }) });
 }
 
 export const RECIPES = {
@@ -147,25 +170,34 @@ export const RECIPES = {
   e_strawTok1: {
     cap: 3,
     gap: 0.03,
-    verb: 0.28,
+    verb: 0.14,
     play(v) {
-      tok(v, 0, 480, 0.6);
+      tok(v, 0, 360, 0.6);
     },
   },
   e_strawTok2: {
     cap: 3,
     gap: 0.03,
-    verb: 0.28,
+    verb: 0.14,
     play(v) {
-      tok(v, 0, 640, 0.58);
+      tok(v, 0, 425, 0.58);
     },
   },
   e_strawTok3: {
     cap: 3,
     gap: 0.03,
-    verb: 0.28,
+    verb: 0.14,
     play(v) {
-      tok(v, 0, 860, 0.56);
+      tok(v, 0, 500, 0.56);
+    },
+  },
+  e_strawTok4: {
+    cap: 3,
+    gap: 0.03,
+    verb: 0.14,
+    play(v) {
+      // the fourth stake (four empty zones): one step BELOW the first, so the run of pitches never repeats
+      tok(v, 0, 290, 0.62);
     },
   },
   e_strawWrap: {
@@ -245,7 +277,7 @@ export const RECIPES = {
     verb: 0.62,
     play(v) {
       // the first call: "GAAK" (see caw())
-      caw(v, 0, 0.27, 560, 400, 0.62);
+      caw(v, 0, 0.28, 560, 400, 0.3);
     },
   },
   e_strawCrow2: {
@@ -254,7 +286,7 @@ export const RECIPES = {
     verb: 0.62,
     play(v) {
       // the second, shorter call: "gak"
-      caw(v, 0, 0.17, 530, 410, 0.5);
+      caw(v, 0, 0.18, 530, 410, 0.22);
     },
   },
   e_strawHand: {

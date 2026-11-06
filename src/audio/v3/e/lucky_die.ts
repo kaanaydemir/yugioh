@@ -11,8 +11,8 @@
 //   e_dieForm      the card condenses into the die: a gold glint (three quick pentatonic sparkles) + the die's first click
 //   e_dieRattle    the die rattles in the caster's cupped light: an irregular run of small wooden clicks, swelling
 //   e_dieThrow     the throw: a wrist flick (a short low swish) and a rising air whoosh as it flies
-//   e_dieTak       one bounce on the floor: the card's "tak" — a corner tick, a wooden face slap (1.2–2 kHz body, 780 Hz
-//                  formant) and a 15 ms floor knock
+//   e_dieTak       one bounce on the floor: the card's "tak" — a corner tick, 25 ms later the wooden face slap (900 Hz
+//                  body + strong 2.57 × cube partial, 620 Hz box band), a 15 ms floor knock and a 3-note cube chatter
 //                  (the scene plays it ×3, each softer and higher: the bounces shrink)
 //   e_dieRoll      the roll: two edge-over-edge knocks on the floor with a dry scraping tumble, slowing down
 //   e_dieStop      the die settles: a teeter (one light tick), the last clack and a tiny wooden ring-out
@@ -21,7 +21,8 @@
 //   e_dieBoost     every spark has landed: a quick rising pentatonic marimba flourish under the +N00 numbers
 //   e_dieJackpot   a SIX: a bright struck chord (marimba + bells, the pentatonic chord) with a sparkling tail
 //   e_dieFirework  one firework: a short whistle up, a pop, a crackle of glitter (×3 on a six)
-//   e_dieDud       a ONE: a single dull "tok" on felt (muffled 240 Hz body, no ring) and a falling sigh of air
+//   e_dieDud       a ONE: a single dull "tok" on felt (muffled 240 Hz body, no ring), then a falling minor-third
+//                  marimba "aww" from the pip voice and a sigh of air
 //   e_dieFade      the die dissolves into gold motes: soft high wooden ticks drifting up into air
 
 import type { Recipe } from '../../sounds';
@@ -108,25 +109,28 @@ export const RECIPES = {
     gap: 0.05,
     verb: 0.36,
     play(v) {
-      // one bounce: "TA—K" — a hard little WOODEN die. Its corner strikes first (a short, soft-edged tick), 30 ms later
-      // its face slaps flat: the main clack, its body at 1.2–2 kHz with a short 600–900 Hz wood formant (the "tok"
-      // inside the "tak"), a 15 ms 300–400 Hz floor knock for weight, then two tiny chatter re-hits as it leaves. A faint,
-      // wide 4.7 kHz cube ring stays only as the hard-wood edge (critic round 2: the old Q12 ring read as glass).
-      dieKnock(v, 0, 1900, 0.22, { snap: 0.5, body: 0.8, dec: 0.016 });
-      dieKnock(v, 0.03, 1500, 0.5, { snap: 0.3, body: 1.3, dec: 0.06 });
-      // the wooden body rings on for a breath (a little warmth: it is a cube of wood, not a click)
-      v.tone('sine', 1180, { t: 0.032, g: perc(0.1, 0.09, 0.002) });
-      // the wood formant: a short resonant band at ~780 Hz + its tone
-      v.noise('white', { t: 0.03, g: perc(0.9, 0.045, 0.002), to: v.filt('bandpass', 780, 4) });
-      v.tone('triangle', [[0, 860], [0.02, 760, 'e']], { t: 0.03, g: perc(0.2, 0.05, 0.0015) });
-      // the floor knock (15 ms, 380 → 300 Hz)
-      thump(v, 0.03, 380, 300, 0.34, 0.016, { att: 0.0015 });
-      // the hard-wood edge (wide, quiet)
-      v.noise('white', { t: 0.03, g: perc(0.6, 0.02, 0.001), to: v.filt('bandpass', 4700, 5) });
-      v.tone('sine', 4700, { t: 0.03, g: perc(0.035, 0.03, 0.0006) });
-      // chatter as it leaves the floor
-      dieKnock(v, 0.058, 1750, 0.07, { snap: 0.5, body: 0.6, dec: 0.012 });
-      dieKnock(v, 0.08, 1950, 0.04, { snap: 0.4, body: 0.5, dec: 0.009 });
+      // one bounce: "TA-K" — a hard little WOODEN CUBE (round 4: clear of reed_heron's 1.5 kHz beak tak). Its CORNER
+      // strikes first (a small, dull tick), 25 ms later its FACE slaps flat: the main knock, its body low at ~900 Hz
+      // with a strong stiff-wood 2.57 × partial (the cube's own colour) and only a soft attack, a 15 ms floor knock for
+      // weight, then a 3-note cube CHATTER (edges re-touching, quick and descending) as it leaves the floor.
+      dieKnock(v, 0, 1100, 0.14, { snap: 0.2, body: 0.8, dec: 0.01 });
+      // the face slap
+      v.noise('white', { t: 0.025, g: perc(0.16, 0.004, 0.0003), to: v.filt('bandpass', 2600, 1.4) });
+      v.tone('triangle', [[0, 760], [0.02, 700, 'e']], { t: 0.025, g: perc(0.44, 0.06, 0.0012) });
+      v.tone('sine', 700 * 2.57, { t: 0.025, g: perc(0.24, 0.045, 0.0008) });
+      // the wood box resonance (~520 Hz band of noise)
+      v.noise('white', { t: 0.025, g: perc(0.7, 0.04, 0.002), to: v.filt('bandpass', 520, 5) });
+      // the floor knock: a short, weighty board thud (300 → 200 Hz) — the die is heavy for its size
+      thump(v, 0.025, 280, 180, 0.6, 0.035, { att: 0.0015 });
+      // chatter: three tiny edge re-hits, falling, quick
+      [
+        [0.07, 880, 0.09],
+        [0.088, 820, 0.06],
+        [0.102, 770, 0.035],
+      ].forEach(([t, f, g]) => {
+        v.tone('triangle', f, { t, g: perc(g, 0.018, 0.0008) });
+        v.tone('sine', f * 2.57, { t, g: perc(g * 0.5, 0.012, 0.0006) });
+      });
     },
   },
   e_dieRoll: {
@@ -227,16 +231,20 @@ export const RECIPES = {
   e_dieDud: {
     cap: 1,
     gap: 0.3,
-    verb: 0.15,
+    verb: 0.2,
     play(v) {
-      // a ONE: a single dull "tok" — the die lands on felt: a muffled 240 Hz wood body (low-passed, no ring, no snap
-      // brightness), a soft felt thud of filtered noise, and a falling sigh. (Its body sits above Kovuk Devi's 180 Hz
-      // hollow log.)
-      v.tone('triangle', [[0, 300], [0.025, 245, 'e']], { g: perc(0.34, 0.055, 0.0012), to: v.filt('lowpass', 620, 0.7) });
-      v.tone('sine', 490, { g: perc(0.06, 0.03, 0.001) });
-      v.noise('pink', { g: perc(0.12, 0.03, 0.001), to: v.filt('lowpass', 520, 0.8) });
-      v.noise('pink', { g: perc(0.05, 0.015, 0.001), to: v.filt('bandpass', 1100, 1.5) });
-      sweep(v, 0.06, 0.4, [900, 700, 300], 0.04, { q: 1.2, kind: 'pink', peakAt: 0.2 });
+      // a ONE: a single dull "tok" on felt — a muffled 240 Hz wood body (low-passed, no ring), a soft felt thud — then
+      // the card's own voice deflates: two marimba notes from the pip run falling a minor third ("aww": the run's root
+      // down to the A under it, soft), with a falling sigh of air under them. Louder than before
+      // (round 4: +4 dB — it is the ONE's only signature sound).
+      v.tone('triangle', [[0, 300], [0.025, 245, 'e']], { g: perc(0.54, 0.06, 0.0012), to: v.filt('lowpass', 620, 0.7) });
+      v.tone('sine', 490, { g: perc(0.09, 0.03, 0.001) });
+      thump(v, 0, 160, 95, 0.3, 0.07, { att: 0.002 });
+      v.noise('pink', { g: perc(0.2, 0.035, 0.001), to: v.filt('lowpass', 520, 0.8) });
+      v.noise('pink', { g: perc(0.07, 0.015, 0.001), to: v.filt('bandpass', 1100, 1.5) });
+      marimba(v, 0.12, midiHz(ROOT), 0.11, 0.2);
+      marimba(v, 0.28, midiHz(ROOT - 3), 0.1, 0.34);
+      sweep(v, 0.1, 0.45, [900, 700, 300], 0.05, { q: 1.2, kind: 'pink', peakAt: 0.2 });
     },
   },
   e_dieFade: {

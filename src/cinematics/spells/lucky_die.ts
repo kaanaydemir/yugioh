@@ -8,35 +8,33 @@
 // lands flat on each bounce, rolls edge over edge and settles with the rolled face UP. The face it shows is the engine's
 // value: the tumble is computed backwards from the final pose, so every frame is consistent with where it ends.
 //
-// BEAT LIST (scene ms at 1×; × 1.35 in game time with the v3 tempo). Signature ≈ 2.8 s after the opening (D = the
-// die's birth; numbers are DIE_T below). Measured (tools/measure.mjs, game ms, activation → input, round 3): six
-// 4.97 s, three 4.42 s, one 4.02 s, set card 4.58 s; camera 0.
+// BEAT LIST (scene ms at 1×; × 1.35 in game time with the v3 tempo). D = the die's birth; numbers are DIE_T below.
+// Round 4 (critic round 3): the count is played ONCE, the die keeps its dark pips, the face holds N until the numbers
+// are up, the fireworks go with the chord and burst HIGH, bounces 2 and 3 clear the floor.
 //   0      common v3 spell opening (spells/_kit): the card hovers beside its owner (a set card stands up on its tile),
 //          "TALİH ZARI" plate, short hover
 //   ~330   RELEASE: a gold orb leaves the card for the caster's cupped light just in front of it, over the BOARD floor
 //   D+0    FORM: the die condenses in four native sizes (white, hot gold, then its faces), motes pulled in — e_dieForm
 //   D+100  RATTLE: four hard shakes, a quarter turn each (the faces flicker) — e_dieRattle
 //   D+290  WIND-UP: a 3-px dip back and up
-//   D+346  THROW: an arc to the first bounce (higher for a long throw past a crowded row: it flies OVER the bodies and
-//          badges, never along them), tumbling, its 2:1 ink shadow on the floor — e_dieThrow
-//   +air   BOUNCES 1-3: "TA-K" (e_dieTak, wooden: 1.5 kHz body + 780 Hz formant + floor knock), dust ring, gold floor
-//          ring, light; every contact on FREE floor (planned with the rest spot — see below)
-//   then   ROLL edge over edge twice (e_dieRoll), TEETER (e_dieStop), STOP: the face flashes (ONE: no teeter, no flash,
-//          a dull "tok" — e_dieDud — grey dust squeezed out sideways, the light dims)
-//   +60    PIPS LIFT one by one (58 ms apart; the ONE's lone pip in 200 ms) to the FACE IN THE AIR (the rolled face
-//          redrawn flat and big, 30×30 gold frame), each ringing the next note of a rising major pentatonic run
-//          (e_diePip). ONE: as the lone pip settles the frame SAGS a pixel (its top dips, its corners droop).
-//          SIX: the struck pentatonic chord as the face completes (e_dieJackpot)
-//   then   SPARK WAVES, 62 ms apart: pip i bursts and sends one gold spark to every boosted monster; each arrival steps
-//          that badge by exactly +100 (blink, small burst, light) and ONE e_dieTick per wave rings pip i's note an
-//          octave up — the count is heard again, never a ratchet
-//   each   monster's last spark: its "+N00" (1×, one white frame then gold, no double-size pop) placed so it covers
-//          no stat plate, no other number, no enemy body; its edge climbs gold (not on a ONE); e_dieBoost on the first
-//   SIX:   150 ms after the last spark, three fireworks rise from the die and burst on CLEAR air on the caster's side
-//          (scored against enemy bodies and badges, the portrait screens, the duelists, the numbers, each other); the
-//          glitter rains from just above each boosted head onto that monster only — e_dieFirework ×3
-//   +200   the die dissolves top-down into rising motes (e_dieFade) while the spent card leaves for the graveyard
-//          from under it (at the same time, not after)
+//   D+346  THROW: an arc to the first bounce (higher for a long throw past a crowded row), tumbling, its 2:1 ink shadow
+//          on the floor — e_dieThrow. Steep faces draw their pips as ink dots / dashes (no heart-shaped blobs)
+//   +air   BOUNCES 1-3 (apex 42 / 24 / 12): each "TA-K" (e_dieTak: corner tick, face slap, cube chatter), a fresh dust
+//          ring split behind / in front of the die, a gold floor ring and a light blip
+//   +70    ROLL edge over edge twice (e_dieRoll), TEETER (e_dieStop), STOP: the face flashes (ONE: no teeter, no flash,
+//          a dull "tok" + a falling minor-third "aww" — e_dieDud — grey dust squeezed out sideways, the light dims).
+//          At rest the die LIVES: a 1-px glint walks its top edge every 300 ms, its gold pool breathes
+//   +60    PIPS: each pip of the top face sends a COPY up (the die keeps its dark pips) into the FACE IN THE AIR (the
+//          rolled face redrawn flat and big, 30×30 gold frame), 64 ms apart, each ringing the next note of a rising
+//          major pentatonic run (e_diePip). The moment a copy settles its spark leaves for every boosted monster; each
+//          arrival steps that badge by exactly +100 and rings the pip's note an octave up (e_dieTick)
+//   done   the face is complete: a gold4 frame pulse, held ≥ 350 ms and until every "+N00" is up (then the pips burst).
+//          ONE: the face sags 1 px, then 2 px, the frame dimming gold2 → gold1
+//   SIX:   the chord (e_dieJackpot) AND the first rocket from the die's top face at once; three gold / white bursts
+//          high in the air over the boosted heads, under the HUD — e_dieFirework ×3; their glitter rains onto the
+//          boosted monsters while the +600s are still lit (they live longer on a six)
+//   then   the die dissolves top-down (a six: after the last burst) into rising motes (a ONE: a few dull flakes that sink)
+//          — e_dieFade — while the spent card leaves for the graveyard from under it
 // Where it lands and HOW: restSpot() scores a grid over the CASTER's side together with the whole path — each of the
 // three bounce contacts and the roll (no body in front of it, no stat badge under it, never on a monster's tile so
 // no dust under its feet, never on a deck / graveyard stack or a duelist, never on the opponent's half), the flight
@@ -53,7 +51,7 @@
 import type Phaser from 'phaser';
 import type { CardId } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
-import { PAL, PLAYER_RAMP } from '../../art/palette';
+import { PAL } from '../../art/palette';
 import { BOARD_COLS, BOARD_MID_COL, BOARD_ROWS, DEPTH, LANE_MID, LOOK_V3, type XY, duelistXY, isoToScreen, screenToIso, monsterRow, unitDepth, zoneXY } from '../../view/layout';
 import { Raster, floorRing, onFrame, run } from '../../vfx/setpieces';
 import { Sparks as PxSparks } from '../../vfx/combat';
@@ -88,27 +86,30 @@ export const DIE_T = Object.freeze({
   windMs: 56,
   throwAt: 346,
   /** Flight segments: the throw, then the two smaller bounces. */
-  air: [300, 180, 110] as readonly number[],
-  apex: [42, 16, 6] as readonly number[],
+  air: [300, 210, 160] as readonly number[],
+  /** Apex heights (world units): every bounce clears the floor with a visible airborne gap (critic round 3). */
+  apex: [42, 24, 12] as readonly number[],
+  /** After the third tak, before the roll: the three taks are heard clean (TA-K, ta-k, tak) before the tumble. */
+  rollAfter: 70,
   roll: [120, 160] as readonly number[],
   teeterUp: 80,
   teeterDown: 30,
   /** After the stop: the flash, then the first pip. */
   pipsAfter: 60,
-  pipGap: 58,
+  pipGap: 64,
   pipRise: 110,
   /** The ONE's lone pip rises slowly. */
   pipRiseDud: 200,
-  sparksAfter: 0,
-  /** One pip wave every 62 ms: each monster's badge steps +100 per wave (seen and heard). */
-  sparkGap: 62,
+  /** The completed face in the air holds at least this long (its frame pulses gold4 as it completes). */
+  faceHold: 350,
   /** The "+N00" numbers pop this far apart (each as its monster's last spark lands). */
   numberGap: 30,
   sparkMs: 200,
-  /** After the last arrival: the fireworks (a six) and the fade. */
-  fireAfter: 150,
-  fireGap: 110,
-  holdEnd: 200,
+  /** A six: the rockets leave the die as the chord strikes, this far apart; each climbs fireUp ms to its burst. */
+  fireGap: 90,
+  fireUp: 200,
+  /** A six: the +600 numbers stay lit while the glitter falls. */
+  sixNumberLife: 840,
   fadeMs: 240,
 });
 
@@ -146,7 +147,15 @@ interface DieState {
   grounded: boolean;
   /** Its depth at rest: just under the badges, over the bodies, unless a body stands in front of it (then sorted by its floor). */
   restDepth: number;
+  /** At rest, alive: a 1-px glint walks along its top edge every IDLE_MS (scene ms when it started; −1: off). */
+  idleFrom: number;
+  /** A ONE: the dissolve sheds a third of the motes, dull, falling / drifting sideways (no celebration). */
+  dud: boolean;
 }
+
+/** The resting die's idle cycle: a glint walks its top edge in IDLE_WALK ms, every IDLE_MS. */
+const IDLE_MS = 300;
+const IDLE_WALK = 170;
 
 interface DieView {
   s: DieState;
@@ -176,6 +185,30 @@ function makeDie(sc: Phaser.Scene, s: DieState, seed: number): DieView {
     if (s.h > 0) {
       paintDie(ras.pc, BOX / 2, BOX / 2, s.h, s.M, s.look);
       ras.pc.outline(PAL.ink);
+      // the living idle: a glint walks left → right along the top edge (the pixel under the ink rim), a 3-px comet
+      if (s.idleFrom >= 0 && s.cut < 0 && !s.dud) {
+        const ph = (el - s.idleFrom) % IDLE_MS;
+        if (ph < IDLE_WALK) {
+          const pc = ras.pc;
+          let x0 = BOX;
+          let x1 = -1;
+          for (let x = 0; x < BOX; x++)
+            for (let y = 0; y < BOX; y++)
+              if (pc.get(x, y) !== null) {
+                x0 = Math.min(x0, x);
+                x1 = Math.max(x1, x);
+                break;
+              }
+          const gx = x0 + 2 + Math.floor((ph / IDLE_WALK) * Math.max(1, x1 - x0 - 4));
+          for (const [dx, col] of [[0, PAL.white], [-1, PAL.gold4], [-2, PAL.gold4], [1, PAL.gold4]] as const) {
+            const x = gx + dx;
+            if (x <= x0 || x >= x1) continue;
+            let y = 0;
+            while (y < BOX && pc.get(x, y) === null) y++;
+            if (y + 1 < BOX && pc.get(x, y + 1) !== null && pc.get(x, y + 1) !== PAL.ink) pc.set(x, y + 1, col);
+          }
+        }
+      }
     }
     if (s.cut >= 0) {
       const pc = ras.pc;
@@ -183,9 +216,14 @@ function makeDie(sc: Phaser.Scene, s: DieState, seed: number): DieView {
       for (let y = s.cut; y < Math.min(BOX, s.cut + 2); y++)
         for (let x = 0; x < BOX; x++) {
           if (pc.get(x, y) === null) continue;
-          pc.set(x, y, y === s.cut ? PAL.white : PAL.gold4);
-          if (dt > 0 && (x + y) % 3 === 0 && rnd() < 0.5)
-            motes.add({ x: ox + x, y: oy + y, vx: (rnd() - 0.5) * 18, vy: -(24 + rnd() * 40), drag: 1.2, life: 280 + rnd() * 260, colors: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], shape: rnd() < 0.18 ? 'plus' : 'px', fadeAt: 1 });
+          pc.set(x, y, s.dud ? (y === s.cut ? PAL.gold3 : PAL.gold2) : y === s.cut ? PAL.white : PAL.gold4);
+          if (dt > 0 && (x + y) % 3 === 0 && rnd() < (s.dud ? 0.17 : 0.5)) {
+            if (s.dud) {
+              // a ONE: dull flakes that sink and drift sideways (a deflation, not a celebration)
+              const side = x < BOX / 2 ? -1 : 1;
+              motes.add({ x: ox + x, y: oy + y, vx: side * (8 + rnd() * 14), vy: 4 + rnd() * 10, ay: 30, drag: 1.5, life: 260 + rnd() * 200, colors: [PAL.gold2, PAL.gold1, PAL.stone3, PAL.stone2], shape: 'px', fadeAt: 0.6 });
+            } else motes.add({ x: ox + x, y: oy + y, vx: (rnd() - 0.5) * 18, vy: -(24 + rnd() * 40), drag: 1.2, life: 280 + rnd() * 260, colors: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], shape: rnd() < 0.18 ? 'plus' : 'px', fadeAt: 1 });
+          }
         }
     }
     ras.end();
@@ -221,21 +259,31 @@ function makeDie(sc: Phaser.Scene, s: DieState, seed: number): DieView {
   };
 }
 
-/** A bounce's floor dust: a ring of floor-grey puffs thrown sideways + a few gold chips knocked off the die. */
+/**
+ * A bounce's floor dust: a ring of floor-grey puffs thrown sideways + a few gold chips knocked off the die. Split in
+ * two layers (critic round 3: grey blocks stamped ON the gold cube): the back half of the ring and the chips sit on
+ * the floor-FX layer UNDER the die (and the bodies); only the front half — thrown toward the viewer, starting below
+ * the die's front corner and moving down-screen — is drawn over it.
+ */
 function dust(sc: Phaser.Scene, at: XY, k: number, seed: number): void {
   const rnd = fxRng(seed);
-  const sp = new PxSparks(sc, unitDepth(at.y) + 0.7);
+  const backL = new PxSparks(sc, DEPTH.TILE_FX + 6);
+  const front = new PxSparks(sc, unitDepth(at.y) + 0.7);
   const n = R(10 * k) + 2;
+  const life = 220 + 160 * k;
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + rnd() * 0.3;
     const v = (22 + rnd() * 30) * (0.6 + k * 0.6);
-    sp.add({ x: at.x + Math.cos(a) * 6, y: at.y + Math.sin(a) * 3, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.5 - 6, drag: 4, life: 300 + rnd() * 200 * k, colors: [PAL.mist, PAL.stone3, PAL.stone2, PAL.night3], shape: i % 3 === 0 ? 'puff' : 'sq', size: i % 3 === 0 ? 3 : 2, grow: 4, fadeAt: 0.5 });
+    const toward = Math.sin(a) > 0.2;
+    const sp = toward ? front : backL;
+    sp.add({ x: at.x + Math.cos(a) * 7, y: at.y + Math.sin(a) * 3 + (toward ? 2 : 0), vx: Math.cos(a) * v, vy: toward ? Math.sin(a) * v * 0.5 : Math.sin(a) * v * 0.5 - 6, drag: 4, life: life + rnd() * 120 * k, colors: [PAL.mist, PAL.stone3, PAL.stone2, PAL.night3], shape: i % 3 === 0 ? 'puff' : 'sq', size: i % 3 === 0 ? 3 : 2, grow: 4, fadeAt: 0.5 });
   }
   for (let i = 0; i < R(5 * k); i++) {
     const side = i % 2 === 0 ? -1 : 1;
-    sp.add({ x: at.x + side * 4, y: at.y - 2, vx: side * (20 + rnd() * 40), vy: -(50 + rnd() * 60) * k, ay: 420, life: 300 + rnd() * 160, colors: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], shape: 'px', fadeAt: 1, floor: at.y + 2, bounce: 0.3 });
+    backL.add({ x: at.x + side * 10, y: at.y - 2, vx: side * (24 + rnd() * 40), vy: -(50 + rnd() * 60) * k, ay: 420, life: 300 + rnd() * 160, colors: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], shape: 'px', fadeAt: 1, floor: at.y + 2, bounce: 0.3 });
   }
-  sp.release();
+  backL.release();
+  front.release();
 }
 
 /**
@@ -276,21 +324,27 @@ function badgeBlink(sc: Phaser.Scene, img: Phaser.GameObjects.Image): void {
 // ================================================================ the face in the air (the readable number)
 
 interface AirFace {
-  /** Pip i arrives (rising from `from`); resolves when it is in place. */
+  /** Pip i's COPY arrives (rising from `from`); resolves when it is in place. */
   lift(i: number, from: XY, ms: number): Promise<void>;
-  /** Pip i bursts (its sparks leave from it). */
-  pop(i: number): void;
-  /** World point of pip i. */
+  /** Pip i sends its spark: one white frame on the pip (it stays — the number stays countable). */
+  send(i: number): void;
+  /** The face is complete: its frame pulses gold4 (a 1-px outer ring) for a few frames. */
+  pulse(): void;
+  /** The exit, once the numbers are up: every pip bursts into a little star, then the frame goes. */
+  burst(): Promise<void>;
+  /** World point of pip i (where it sits now). */
   at(i: number): XY;
   frame(on: boolean): void;
-  /** The ONE: the frame's top edge and corners droop 1 px (a sigh). */
-  sag(): void;
+  /** The ONE, in two steps: the whole face drops 1 px then 2 px, its frame dims gold2 → gold1. */
+  sag(step: 1 | 2): void;
   destroy(): void;
 }
 
 /**
  * The rolled face redrawn flat and big, facing the viewer, above the die: a 30×30 gold frame (it draws itself in three
- * steps) and 5×5 pips (ink rim, gold3 body, gold4 cap, white glint) that rise into it one by one.
+ * steps) and 5×5 pips (ink rim, gold3 body, gold4 cap, white glint) — copies of the die's own pips, which stay dark on
+ * its top face — rise into it one by one. The pips STAY until the "+N00" numbers are up (critic round 3: N must stay
+ * countable), then burst.
  */
 function airFace(sc: Phaser.Scene, centre: XY, value: number, dud: boolean): AirFace {
   const S = 15; // half size of the frame
@@ -300,16 +354,17 @@ function airFace(sc: Phaser.Scene, centre: XY, value: number, dud: boolean): Air
   const trail = new PxSparks(sc, DEPTH.FX_TOP + 3);
   const pips = PIPS[value];
   const spots = pips.map(([s, t]) => ({ x: centre.x + R(s * PS), y: centre.y + R(t * PS) }));
-  const state = pips.map(() => ({ shown: false, popped: -1, x: 0, y: 0 }));
+  const state = pips.map(() => ({ shown: false, popped: -1, sent: -1, x: 0, y: 0 }));
   let frameStep = 0;
-  let sagged = false;
+  let sagStep = 0;
+  let pulseAt = -1;
   let alive = true;
   let now = 0;
   const stop = onFrame(sc, (_dt, el) => {
     if (!alive) return false;
     now = el;
     const ox = ras.x;
-    const oy = ras.y;
+    const oy = ras.y - sagStep;
     ras.begin();
     const pc = ras.pc;
     // the frame: corners first, then the full rounded square (gold2 line, gold3 inner line on the lit top-left)
@@ -317,18 +372,24 @@ function airFace(sc: Phaser.Scene, centre: XY, value: number, dud: boolean): Air
       const x0 = centre.x - S - ox;
       const y0 = centre.y - S - oy;
       const n = 2 * S;
+      const pulsing = pulseAt >= 0 && el - pulseAt < 110;
+      const lit = pulsing ? PAL.gold4 : sagStep === 0 ? PAL.gold3 : sagStep === 1 ? PAL.gold2 : PAL.gold1;
+      const c = pulsing ? PAL.gold4 : sagStep < 2 ? PAL.gold2 : PAL.gold1;
       for (let i = 0; i <= n; i++) {
         const corner = i < 6 || i > n - 6;
         if (frameStep < 2 && !corner) continue;
         if (i === 0 || i === n) continue;
-        const c = dud ? PAL.gold1 : PAL.gold2;
-        // sagged: the top edge dips 1 px in its middle, the bottom corners droop 1 px
-        const dip = sagged && i > n / 3 && i < (2 * n) / 3 ? 1 : 0;
-        const droop = sagged && (i < 4 || i > n - 4) ? 1 : 0;
-        pc.set(x0 + i, y0 + dip, frameStep >= 3 ? PAL.gold3 : c);
-        pc.set(x0 + i, y0 + n + droop, c);
-        pc.set(x0, y0 + i + (sagged && i > n - 4 ? 1 : 0), frameStep >= 3 ? PAL.gold3 : c);
-        pc.set(x0 + n, y0 + i + (sagged && i > n - 4 ? 1 : 0), c);
+        pc.set(x0 + i, y0, frameStep >= 3 ? lit : c);
+        pc.set(x0 + i, y0 + n, c);
+        pc.set(x0, y0 + i, frameStep >= 3 ? lit : c);
+        pc.set(x0 + n, y0 + i, c);
+        if (pulsing && el - pulseAt < 70) {
+          // the pulse: a second, outer 1-px gold4 line (outlined in ink below)
+          pc.set(x0 + i, y0 - 1, PAL.gold4);
+          pc.set(x0 + i, y0 + n + 1, PAL.gold4);
+          pc.set(x0 - 1, y0 + i, PAL.gold4);
+          pc.set(x0 + n + 1, y0 + i, PAL.gold4);
+        }
       }
     }
     state.forEach((p, i) => {
@@ -348,14 +409,15 @@ function airFace(sc: Phaser.Scene, centre: XY, value: number, dud: boolean): Air
         if (age < 90) for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) pc.set(x + dx * (r - 1), y + dy * (r - 1), PAL.gold4);
         return;
       }
-      // the pip: a 5×5 disc
-      const body = dud ? PAL.gold2 : PAL.gold3;
-      const cap = dud ? PAL.gold3 : PAL.gold4;
+      // the pip: a 5×5 disc (one white frame as its spark leaves)
+      const hot = p.sent >= 0 && el - p.sent < 50;
+      const body = hot ? PAL.gold4 : dud ? PAL.gold2 : PAL.gold3;
+      const cap = hot ? PAL.white : dud ? PAL.gold3 : PAL.gold4;
       for (let dy = -2; dy <= 2; dy++)
         for (let dx = -2; dx <= 2; dx++) {
           if (Math.abs(dx) === 2 && Math.abs(dy) === 2) continue;
           const edge = Math.abs(dx) === 2 || Math.abs(dy) === 2;
-          pc.set(x + dx, y + dy, edge ? (dx > 0 || dy > 0 ? PAL.gold1 : body) : dx <= 0 && dy <= 0 ? cap : body);
+          pc.set(x + dx, y + dy, edge ? (dx > 0 || dy > 0 ? (hot ? PAL.gold3 : PAL.gold1) : body) : dx <= 0 && dy <= 0 ? cap : body);
         }
       if (!dud && Math.floor(el / 120 + i) % 4 !== 0) pc.set(x - 1, y - 1, PAL.white);
     });
@@ -368,6 +430,8 @@ function airFace(sc: Phaser.Scene, centre: XY, value: number, dud: boolean): Air
       const p = state[i];
       const to = spots[i];
       p.shown = true;
+      p.x = R(from.x);
+      p.y = R(from.y);
       const ctrl = { x: (from.x + to.x) / 2 + (to.x - from.x) * 0.2, y: Math.min(from.y, to.y) - 10 };
       const rnd = fxRng(i * 13 + value);
       await run(sc, ms, (t) => {
@@ -375,17 +439,26 @@ function airFace(sc: Phaser.Scene, centre: XY, value: number, dud: boolean): Air
         const a = 1 - k;
         p.x = R(a * a * from.x + 2 * a * k * ctrl.x + k * k * to.x);
         p.y = R(a * a * from.y + 2 * a * k * ctrl.y + k * k * to.y);
-        if (rnd() < 0.7) trail.add({ x: p.x + R((rnd() - 0.5) * 2), y: p.y + 2, vx: 0, vy: 6, life: 180 + rnd() * 120, colors: dud ? [PAL.gold2, PAL.gold1] : [PAL.gold4, PAL.gold3, PAL.gold2], shape: 'px', fadeAt: 1 });
+        if (rnd() < 0.7) trail.add({ x: p.x + R((rnd() - 0.5) * 2), y: p.y + 2 - sagStep, vx: 0, vy: 6, life: 180 + rnd() * 120, colors: dud ? [PAL.gold2, PAL.gold1] : [PAL.gold4, PAL.gold3, PAL.gold2], shape: 'px', fadeAt: 1 });
       });
       p.x = to.x;
       p.y = to.y;
     },
-    pop(i) {
-      state[i].popped = now;
+    send(i) {
+      state[i].sent = now;
     },
-    at: (i) => ({ ...spots[i] }),
-    sag() {
-      sagged = true;
+    pulse() {
+      pulseAt = now;
+    },
+    async burst() {
+      state.forEach((p) => (p.popped = now));
+      await wait(sc, 70);
+      frameStep = 0;
+      await wait(sc, 90);
+    },
+    at: (i) => ({ x: spots[i].x, y: spots[i].y + sagStep }),
+    sag(step) {
+      sagStep = step;
     },
     frame(on) {
       if (!on) {
@@ -489,11 +562,11 @@ function sparkField(sc: Phaser.Scene, box: { x0: number; y0: number; x1: number;
  * that falls onto the monster under it (`onto`: its head) — all stepped palette tones, no blend glow; the light layer
  * gives an air bloom only (no floor pool: the burst hangs in the air).
  */
-async function firework(sc: Phaser.Scene, from: XY, burst: XY, onto: XY | null, ramp: readonly number[], seed: number, pitch: number): Promise<void> {
+async function firework(sc: Phaser.Scene, from: XY, burst: XY, onto: XY | null, ramp: readonly number[], seed: number, pitch: number, onBurst?: () => void): Promise<void> {
   const rnd = fxRng(seed);
   const tail = new PxSparks(sc, DEPTH.FX_TOP + 5);
   const head = new Raster(sc, 0, 0, 4, 4, DEPTH.FX_TOP + 6);
-  const UP = 230;
+  const UP = DIE_T.fireUp;
   let px = from.x;
   let py = from.y;
   await run(sc, UP, (t, _el, dt) => {
@@ -511,7 +584,7 @@ async function firework(sc: Phaser.Scene, from: XY, burst: XY, onto: XY | null, 
       const steps = Math.max(1, Math.ceil(Math.hypot(x - px, y - py) / 2));
       for (let i = 0; i < steps; i++) {
         const q = { x: px + ((x - px) * i) / steps, y: py + ((y - py) * i) / steps };
-        tail.add({ x: q.x + (rnd() - 0.5) * 1.5, y: q.y + 1, vx: (rnd() - 0.5) * 10, vy: 6 + rnd() * 12, ay: 70, life: 220 + rnd() * 160, colors: [PAL.gold4, PAL.gold3, PAL.fire3, PAL.fire2, PAL.fire1], shape: 'px', fadeAt: 1 });
+        tail.add({ x: q.x + (rnd() - 0.5) * 1.5, y: q.y + 1, vx: (rnd() - 0.5) * 10, vy: 6 + rnd() * 12, ay: 70, life: 200 + rnd() * 140, colors: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2, PAL.gold1], shape: 'px', fadeAt: 1 });
       }
     }
     px = x;
@@ -519,6 +592,7 @@ async function firework(sc: Phaser.Scene, from: XY, burst: XY, onto: XY | null, 
   });
   head.destroy();
   tail.release();
+  onBurst?.();
   playV3('e_dieFirework', { volume: 0.75, pan: panAt(burst.x), pitch });
   // air bloom only: the floor pool is sent far below the screen (a pool painted at the burst's height lay on the
   // tiles as a patch with no cause)
@@ -532,7 +606,7 @@ async function firework(sc: Phaser.Scene, from: XY, burst: XY, onto: XY | null, 
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + rnd() * 0.06;
     const v = i % 2 === 0 ? 96 + (i % 3) * 6 : 64 + (i % 3) * 5;
-    sp.add({ x: burst.x, y: burst.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.8, drag: 3, ay: 40, life: 620 + rnd() * 200, colors: [PAL.white, ramp[4], ramp[4], ramp[3], ramp[3], ramp[2], ramp[1]], shape: 'sq', size: 2, fadeAt: 1 });
+    sp.add({ x: burst.x, y: burst.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.8, drag: 3, ay: 40, life: 540 + rnd() * 160, colors: [PAL.white, ramp[4], ramp[4], ramp[3], ramp[3], ramp[2], ramp[1]], shape: 'sq', size: 2, fadeAt: 1 });
   }
   // the inner ring: plus-sparks, slower, white-hot
   for (let i = 0; i < 14; i++) {
@@ -544,16 +618,18 @@ async function firework(sc: Phaser.Scene, from: XY, burst: XY, onto: XY | null, 
   for (let i = 0; i < 20; i++) {
     const a = rnd() * Math.PI * 2;
     const r = 8 + rnd() * 22;
-    sp.add({ x: burst.x + Math.cos(a) * r, y: burst.y + Math.sin(a) * r * 0.8, vy: 6 + rnd() * 8, ay: 18, life: 560 + rnd() * 360, delay: 160 + rnd() * 220, colors: [PAL.white, PAL.gold4, ramp[4], ramp[3]], shape: 'px', flicker: true, fadeAt: 1 });
+    sp.add({ x: burst.x + Math.cos(a) * r, y: burst.y + Math.sin(a) * r * 0.8, vy: 6 + rnd() * 8, ay: 18, life: 340 + rnd() * 160, delay: 90 + rnd() * 110, colors: [PAL.white, PAL.gold4, ramp[4], ramp[3]], shape: 'px', flicker: true, fadeAt: 1 });
   }
   // the GOLD GLITTER RAIN: it starts just above the boosted monster's head (not at the burst, so it never pours through
   // whatever stands between) and settles on its head and shoulders
   if (onto)
     for (let i = 0; i < 16; i++) {
       const x = onto.x + R((rnd() - 0.5) * 26);
-      sp.add({ x, y: onto.y - 14 - R(rnd() * 8), vx: (rnd() - 0.5) * 8, vy: 14 + rnd() * 16, ay: 90, life: 460 + rnd() * 220, delay: 140 + i * 16, colors: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], shape: i % 4 === 0 ? 'plus' : 'px', flicker: true, fadeAt: 1, floor: onto.y + 4 + R(rnd() * 14), bounce: 0.2 });
+      sp.add({ x, y: onto.y - 14 - R(rnd() * 8), vx: (rnd() - 0.5) * 8, vy: 14 + rnd() * 16, ay: 90, life: 320 + rnd() * 120, delay: 90 + i * 8, colors: [PAL.white, PAL.gold4, PAL.gold3, PAL.gold2], shape: i % 4 === 0 ? 'plus' : 'px', flicker: true, fadeAt: 1, floor: onto.y + 4 + R(rnd() * 14), bounce: 0.2 });
     }
   sp.release();
+  // resolve once the last glitter is down (the scene hands control back only after the show)
+  await wait(sc, 700);
 }
 
 // ================================================================ the die scene
@@ -868,14 +944,24 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
   const PS = { start: QT * 1.5, b1: 0 };
   const pose = (th: number, ph: number, ps: number): M3 => mul(rot([0, 0, 1], snap(ps)), mul(rot(axis, snap(th)), mul(rot(d, snap(ph)), final)));
 
-  const S: DieState = { fx: r.spawn.x, fy: r.spawnFloor, z: (r.spawnFloor - r.spawn.y) / KZ, jx: 0, jy: 0, h: 0, M: pose(TH.start, PH.start, PS.start), look: {}, cut: -1, shadow: 1, el: 0, grounded: false, restDepth: unitDepth(rest.y) + 0.5 };
+  const S: DieState = { fx: r.spawn.x, fy: r.spawnFloor, z: (r.spawnFloor - r.spawn.y) / KZ, jx: 0, jy: 0, h: 0, M: pose(TH.start, PH.start, PS.start), look: {}, cut: -1, shadow: 1, el: 0, grounded: false, restDepth: unitDepth(rest.y) + 0.5, idleFrom: -1, dud };
   const die = makeDie(sc, S, r.spawn.x * 3 + N);
   const pool = lightPool(sc, r.spawn.x, r.spawn.y, { color: PAL.gold3, radius: 26, floorY: r.spawnFloor, air: 0.5, airRadius: 14, intensity: 0, anim: 'breathe', fadeIn: 0 });
   pool.setIntensity(0.9, 120);
-  const follow = onFrame(sc, () => {
+  // at rest the gold pool under the die breathes in time with its glint (a soft pulse every IDLE_MS)
+  let poolBase = -1;
+  let pulseK = -1;
+  const follow = onFrame(sc, (_dt, fel) => {
     if (!pool.alive) return false;
     const c = die.centre();
     pool.setPosition(c.x, c.y, R(S.fy));
+    if (poolBase > 0 && S.idleFrom >= 0) {
+      const k = Math.floor((fel - S.idleFrom) / IDLE_MS);
+      if (k !== pulseK) {
+        pulseK = k;
+        pool.setIntensity(poolBase * (k % 2 === 0 ? 1.15 : 0.8), IDLE_MS * 0.8);
+      }
+    }
     return true;
   });
 
@@ -976,7 +1062,7 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
     sfx('e_dieTak', { volume: 0.95 * (0.55 + g * 0.45), pitch: 1 + li * 0.07, at: L.to.x });
     dust(sc, { x: R(L.to.x), y: R(L.to.y) }, g, li * 17 + N);
     bg(floorRing(sc, R(L.to.x), R(L.to.y), { r0: 6, r1: R(16 + 18 * g), ms: 260 + 80 * g, ramp: GOLD_FX, depth: DEPTH.TILE_FX + 3, width: g > 0.5 ? 2 : 1 }));
-    void lightFlash(sc, R(L.to.x), R(L.to.y) - 6, PAL.gold3, R(18 + 14 * g), 260, { floorY: R(L.to.y), intensity: 0.5 + 0.4 * g });
+    void lightFlash(sc, R(L.to.x), R(L.to.y) - 6, PAL.gold3, R(18 + 14 * g), R(180 + 80 * g), { floorY: R(L.to.y), intensity: 0.5 + 0.4 * g });
     // a one-frame dip into the floor on the hard first hit (the die's weight)
     if (li === 0) {
       S.jy = 1;
@@ -984,7 +1070,12 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
     }
   }
 
-  // ---- ROLL: edge over edge, twice; then the teeter
+  // ---- ROLL: edge over edge, twice; then the teeter. A short beat after the third tak first (it sits a moment,
+  // squashed a pixel), so the three taks are heard clean before the tumble's scrape
+  S.jy = 1;
+  await wait(sc, T.rollAfter);
+  el += T.rollAfter;
+  S.jy = 0;
   sfx('e_dieRoll', { at: b3.x });
   const rollFrom = (q: number): XY => ({ x: b3.x + step.x * 2 * H * q, y: b3.y + step.y * 2 * H * q });
   const pivotPose = (q: number, a: number) => {
@@ -1048,31 +1139,23 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
     pool.setIntensity(1, 160);
   }
 
-  // ---- PIPS LIFT into the face in the air
+  // the living idle: the glint walks its top edge, the pool breathes (not on a ONE: it lies there dull)
+  if (!dud) {
+    bg(wait(sc, 120).then(() => (S.idleFrom = S.el)));
+    poolBase = 0.85;
+  }
+
+  // ---- PIPS → FACE IN THE AIR → SPARKS, one pass (critic round 3: the count is played ONCE). Each pip of the die's top
+  // face sends a COPY up (the die keeps its dark pips: the rolled number stays readable on the die itself); the moment a
+  // copy settles in the face its spark leaves for every boosted monster, and each arrival steps that badge by exactly
+  // +100. One marimba note per pip on the lift (rising major pentatonic), the same note an octave up as its sparks land.
   await wait(sc, T.pipsAfter);
   const faceAt: XY = { x: C.x + rest.faceDx, y: C.y - 46 + rest.faceDy };
   const face = airFace(sc, faceAt, N, dud);
   face.frame(true);
   const pipFrom = pipOffsets(final, H, N).map((o) => ({ x: C.x + R(o.x), y: C.y + R(o.y) }));
   const PENTA = [0, 2, 4, 7, 9, 12];
-  const lifts: Promise<void>[] = [];
   const airLight = lightPool(sc, faceAt.x, faceAt.y, { color: PAL.gold3, radius: 18, floorY: R(S.fy), air: 0.6, airRadius: 20, intensity: 0, fadeIn: 0 });
-  for (let i = 0; i < N; i++) {
-    if (i > 0) await wait(sc, T.pipGap);
-    S.look = { emptied: { value: N, n: i + 1 } };
-    sfx('e_diePip', { pitch: Math.pow(2, (dud ? -5 : PENTA[i]) / 12), volume: dud ? 0.6 : 0.8, at: faceAt.x });
-    lifts.push(face.lift(i, pipFrom[i], dud ? T.pipRiseDud : T.pipRise));
-    airLight.setIntensity(dud ? 0.3 : 0.25 + (0.6 * (i + 1)) / N, 80);
-  }
-  await Promise.all(lifts);
-  // the ONE: the frame sags as its lone pip settles (a 1-px droop of its corners — the comic deflation)
-  if (dud) face.sag();
-  if (six) sfx('e_dieJackpot', { volume: 1 });
-
-  // ---- SPARKS, wave by wave: pip i bursts and sends one spark to every boosted monster; every arrival steps that
-  // monster's badge by exactly +100. The waves leave T.sparkGap apart (≥ 60 ms: each +100 is SEEN and HEARD), one
-  // tick per wave on the pip's own pentatonic step (the six-note count is heard twice: lift, then land)
-  await wait(sc, T.sparksAfter);
   let box = { x0: faceAt.x - 30, y0: faceAt.y - 30, x1: faceAt.x + 30, y1: faceAt.y + 30 };
   for (const a of aims) box = { x0: Math.min(box.x0, a.x - 30), y0: Math.min(box.y0, a.y - 50), x1: Math.max(box.x1, a.x + 30), y1: Math.max(box.y1, a.y + 30) };
   const field = sparkField(sc, box);
@@ -1080,6 +1163,7 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
   const bodies = boardBodies(ctx, r.player);
   const placed: Box[] = [];
   const finals: Promise<void>[] = [];
+  const numberLife = six ? T.sixNumberLife : undefined;
   // ONE "+N00" per monster as its last spark lands, placed where it covers no stat plate, no other number and no enemy
   // body (low on its own body by preference); the edge climbs gold (not on a ONE)
   const boost = async (q: (typeof live)[number], m: number): Promise<void> => {
@@ -1093,20 +1177,21 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
     if (u.retired) return;
     if (m === 0) sfx('e_dieBoost', { volume: dud ? 0.6 : 0.85, at: aims[0]?.x ?? C.x });
     const rim = dud ? Promise.resolve() : rimClimb(sc, u.sprite, { ramp: [PAL.gold2, PAL.gold3, PAL.gold4], from: 'feet', stepMs: 45, holdMs: 140, fadeMs: 120, depth: u.sprite.depth + 0.6 });
-    await Promise.all([rim, boostNumber(sc, n.x, n.y, delta, { rise: 3 })]);
+    await Promise.all([rim, boostNumber(sc, n.x, n.y, delta, { rise: 3, life: numberLife })]);
   };
   const arrivals: Promise<void>[] = [];
-  for (let i = 0; i < N; i++) {
-    if (i > 0) await wait(sc, T.sparkGap);
-    face.pop(i);
+  const tickOf = (i: number, at: number) => sfx('e_dieTick', { pitch: Math.pow(2, (dud ? -5 : PENTA[i]) / 12), volume: dud ? 0.45 : 0.6, at });
+  const wave = (i: number): void => {
+    face.send(i);
     const from = face.at(i);
-    const wave = i;
-    bg(wait(sc, T.sparkMs).then(() => sfx('e_dieTick', { pitch: Math.pow(2, (dud ? -5 : PENTA[wave]) / 12), volume: dud ? 0.45 : 0.6, at: aims[0]?.x ?? C.x })));
+    if (!live.length) arrivals.push(wait(sc, T.sparkMs).then(() => tickOf(i, C.x)));
     live.forEach((q, m) => {
       const to = aims[m];
       const bend = ((i % 2 === 0 ? 1 : -1) * (10 + ((i * 7 + m * 5) % 9))) * (to.x >= from.x ? 1 : -1);
       arrivals.push(
         field.fire(from, to, T.sparkMs + m * 16, bend).then(() => {
+          // the wave's tick rings with its first arrival: pip i's note an octave up
+          if (m === 0) tickOf(i, to.x);
           counts[m]++;
           const u = q.u!;
           if (u.retired) return;
@@ -1129,38 +1214,67 @@ async function playDie(ctx: AnyCtx, r: DieRun): Promise<void> {
         }),
       );
     });
+  };
+  const lifts: Promise<void>[] = [];
+  for (let i = 0; i < N; i++) {
+    if (i > 0) await wait(sc, T.pipGap);
+    sfx('e_diePip', { pitch: Math.pow(2, (dud ? -5 : PENTA[i]) / 12), volume: dud ? 0.6 : 0.8, at: faceAt.x });
+    const pi = i;
+    lifts.push(face.lift(i, pipFrom[i], dud ? T.pipRiseDud : T.pipRise).then(() => wave(pi)));
+    airLight.setIntensity(dud ? 0.3 : 0.25 + (0.6 * (i + 1)) / N, 80);
   }
-  // the face's frame goes once the last pip has burst
-  bg(wait(sc, 160).then(() => face.frame(false)));
-  void airLight.fadeOut(300);
-  await Promise.all(arrivals);
-  field.destroy();
-  face.destroy();
+  await Promise.all(lifts);
+  // the face is complete: it holds at least faceHold (and until every number is up). Its frame pulses gold4; a ONE
+  // SAGS instead — the whole face drops 1 px, then 2 px, its frame dimming gold2 → gold1
+  const hold = wait(sc, T.faceHold);
+  if (dud) {
+    face.sag(1);
+    bg(wait(sc, 120).then(() => face.sag(2)));
+  } else face.pulse();
 
-  // statChanges of monsters that are not on screen just settle
-  for (const q of targets) if (!live.includes(q) && q.u && !q.u.retired) void q.u.setStats(q.e.atk, q.e.def, false);
-
-  // ---- SIX: once the numbers have settled, three fireworks rise from the die and burst on clear air on the CASTER's
-  // side (never over an enemy body, a portrait screen or a duelist); the glitter rains from just above each boosted
-  // head onto that monster only
+  // ---- SIX: the chord strikes and the first rocket leaves the die's top face AT ONCE; three bursts high in the air
+  // over the caster's boosted heads (under the HUD), all gold / white; the glitter rains onto the boosted monsters
+  // while their +600 is still lit
   const shows: Promise<void>[] = [];
+  let lastBurst: Promise<void> = Promise.resolve();
   if (six) {
-    const ramps = [[PAL.gold0, PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4], PLAYER_RAMP[r.player], [PAL.fire0, PAL.fire1, PAL.fire2, PAL.fire3, PAL.fire4]] as const;
+    sfx('e_dieJackpot', { volume: 1 });
+    const ramps = [
+      [PAL.gold0, PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4],
+      [PAL.gold1, PAL.gold2, PAL.gold3, PAL.gold4, PAL.white],
+      [PAL.gold0, PAL.gold2, PAL.gold3, PAL.gold4, PAL.white],
+    ] as const;
     const heads = live.map((q) => {
       const t = q.u!.worldPoint('top');
       return { x: R(t.x), y: R(t.y) };
     });
     heads.sort((p, q) => p.x - q.x);
-    const bursts = burstSpots(heads, C, r.player, bodies, placed);
+    const top: XY = { x: C.x, y: C.y - 10 };
+    const bursts = burstSpots(heads, top, r.player, bodies, { x0: faceAt.x - 18, y0: faceAt.y - 18, x1: faceAt.x + 18, y1: faceAt.y + 18 });
     const pitches = [0.9, 1.06, 1.2];
+    const burstDone: Promise<void>[] = [];
     bursts.forEach((b, i) => {
-      shows.push(wait(sc, T.fireAfter + i * T.fireGap).then(() => firework(sc, { x: C.x + (i - 1) * 6, y: C.y - 10 }, b.burst, b.onto, ramps[i], 50 + i * 7, pitches[i])));
+      let mark: () => void = () => undefined;
+      burstDone.push(new Promise<void>((res) => (mark = res)));
+      shows.push(wait(sc, i * T.fireGap).then(() => firework(sc, { x: top.x + (i - 1) * 4, y: top.y }, b.burst, b.onto, ramps[i], 50 + i * 7, pitches[i], mark)));
     });
+    lastBurst = Promise.all(burstDone).then(() => undefined);
   }
-  await wait(sc, dud ? T.holdEnd - 60 : T.holdEnd);
 
-  // ---- the die dissolves; the spent card leaves for the graveyard from under it AT THE SAME TIME
-  sfx('e_dieFade', { volume: 0.7 });
+  await Promise.all([...arrivals, hold]);
+  field.destroy();
+  void airLight.fadeOut(260);
+  await face.burst();
+  face.destroy();
+
+  // statChanges of monsters that are not on screen just settle
+  for (const q of targets) if (!live.includes(q) && q.u && !q.u.retired) void q.u.setStats(q.e.atk, q.e.def, false);
+
+  // ---- the die dissolves (a six: once the last rocket has burst); the spent card leaves for the graveyard from under
+  // it at the same time
+  await lastBurst;
+  S.idleFrom = -1;
+  sfx('e_dieFade', { volume: dud ? 0.5 : 0.7 });
   void pool.fadeOut(T.fadeMs + 100);
   let send: Promise<void> = Promise.resolve();
   const g = evAt(ctx, r.gi, 'toGraveyard');
@@ -1204,49 +1318,47 @@ function numberSpot(home: XY, w: number, bodies: readonly Body[], placed: readon
 }
 
 /**
- * The three fireworks of a six: each burst (≈ 60 × 48 px of rings) on clear air near its boosted monster — scored
- * against the enemy bodies and badges, the portrait screens, both duelists, the top HUD, the numbers and the other
- * bursts; `onto` is the head the glitter rains on (fewer than three boosted monsters: the rest rain on nobody).
+ * The three fireworks of a six (critic round 3: they burst low, at floor level, and late): each burst hangs HIGH in
+ * the air band straight over one boosted monster's head — the burst ≈ 56 × 44 px of rings — below the top HUD, above
+ * the head (never down among the bodies), its floor point that monster's own tile, so it reads as the caster's. Scored
+ * against the portrait screens, both duelists, the stat badges, the face in the air and the other bursts; enemy bodies
+ * behind cost a little (the air over the caster's row is in front of them). `onto` is the head the glitter rains on
+ * (fewer than three boosted monsters: the spare bursts hang over the die and rain on nobody).
  */
-function burstSpots(heads: readonly XY[], die: XY, player: PlayerId, bodies: readonly Body[], numbers: readonly Box[]): { burst: XY; onto: XY | null }[] {
+function burstSpots(heads: readonly XY[], die: XY, _player: PlayerId, bodies: readonly Body[], face: Box): { burst: XY; onto: XY | null }[] {
   const pick: (XY | null)[] = heads.length >= 3 ? [heads[0], heads[Math.floor(heads.length / 2)], heads[heads.length - 1]] : [...heads];
   while (pick.length < 3) pick.push(null);
   const screens: readonly Box[] = ARENA_NT ? SCREENS.map((r) => ({ x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h })) : [];
   const avatars = [avatarBox(0), avatarBox(1)];
   const out: { burst: XY; onto: XY | null }[] = [];
-  const taken: Box[] = [];
+  const taken: Box[] = [face];
   pick.forEach((h, i) => {
-    const anchor = h ?? { x: die.x + (i - 1) * 40, y: die.y - 30 };
-    let best = { x: anchor.x, y: anchor.y - 20 };
+    const anchor = h ?? { x: die.x + (i - 1) * 34, y: die.y - 30 };
+    let best = { x: anchor.x, y: anchor.y - 40 };
     let bestC = Infinity;
-    for (let dy = -56; dy <= 64; dy += 4)
-      for (let dx = -64; dx <= 64; dx += 4) {
+    for (let y = 52; y <= anchor.y - 22; y += 2)
+      for (let dx = -30; dx <= 30; dx += 2) {
         const x = anchor.x + dx;
-        const y = anchor.y + dy;
-        const b: Box = { x0: x - 30, y0: y - 24, x1: x + 30, y1: y + 24 };
-        let c = Math.hypot(dx, dy + 10) * 2;
+        const b: Box = { x0: x - 28, y0: y - 22, x1: x + 28, y1: y + 22 };
+        // high over its head: about 48 px over the top of it, straight up
+        let c = Math.abs(y - (anchor.y - 48)) * 1.5 + Math.abs(dx) * 2;
+        // the burst's lower rim must stay above the head (no bursts down among the bodies)
+        if (b.y1 > anchor.y - 2) c += (b.y1 - anchor.y + 2) * 60;
         for (const bd of bodies) {
-          if (!bd.mine) c += area(b, pad(bd.box, 2)) * 6 + area(b, pad(bd.badge, 2)) * 6;
-          else c += area(b, bd.box) * 0.6 + area(b, bd.badge) * 6;
+          c += area(b, pad(bd.badge, 2)) * 6;
+          c += area(b, bd.box) * (bd.mine ? 0.5 : 2.5);
         }
-        for (const sr of screens) c += area(b, pad(sr, 2)) * 8;
-        for (const a of avatars) c += area(b, pad(a, 6)) * 14;
-        for (const n of numbers) c += area(b, pad(n, 2)) * 8;
-        for (const t of taken) c += area(b, t) * 3;
+        for (const sr of screens) c += area(b, pad(sr, 2)) * 4;
+        for (const a of avatars) c += area(b, pad(a, 4)) * 14;
+        for (const t of taken) c += area(b, t) * 5;
         if (b.y0 < 44) c += (44 - b.y0) * 80;
         if (b.x0 < 4 || b.x1 > 636) c += 4000;
-        // the caster's side of the board: a burst past the middle line hangs over the opponent
-        // (the floor ~20 px under it — a burst in front of / beside the caster's row reads as the caster's)
-        const g = screenToIso(x, y + 20);
-        const mid = (monsterRow(0) + monsterRow(1)) / 2;
-        const over = (mid + (player === 0 ? 0.5 : -0.5) - g.row) * (player === 0 ? 1 : -1);
-        if (over > 0) c += over * 3000;
         if (c < bestC) {
           bestC = c;
           best = { x, y };
         }
       }
-    taken.push({ x0: best.x - 30, y0: best.y - 24, x1: best.x + 30, y1: best.y + 24 });
+    taken.push({ x0: best.x - 28, y0: best.y - 22, x1: best.x + 28, y1: best.y + 22 });
     out.push({ burst: best, onto: h });
   });
   return out;

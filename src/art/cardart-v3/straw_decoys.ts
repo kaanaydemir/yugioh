@@ -214,48 +214,34 @@ function scarecrow(p: P, c: Crow, k: number, f: number): { eyes: [number, number
   return { eyes: small ? [[hcx + 1, ey]] : [[hcx + S(1), ey], [hcx + S(5), ey]] };
 }
 
-/** The crow far off (big only; dropped from the 44×34 art): ink, its upper edges caught by the teal evening light,
- * a gold4 eye; wings by frame. Facing left, toward the field. */
-function paintCrow(p: P, f: number): void {
-  // crossing the low teal spell-sun right of the front hat: an ink silhouette against the light
-  const cx = 74;
-  const cy = 12;
-  const up = f % 2 === 0;
-  // body, head, tail
-  p.rect(cx - 3, cy, 7, 2, PAL.ink);
-  p.rect(cx - 5, cy - 1, 2, 2, PAL.ink);
-  p.set(cx + 4, cy + 1, PAL.ink);
-  p.set(cx + 5, cy + 2, PAL.ink);
-  p.set(cx + 4, cy + 2, PAL.ink);
-  // the beak
-  p.set(cx - 6, cy, PAL.earth2);
-  p.set(cx - 7, cy, PAL.earth2);
-  // wings: a V up, or swept down; 2 px thick at the root
-  const wing = (x0: number, dir: number) => {
-    if (up) {
-      p.line(x0, cy, x0 + dir * 4, cy - 4, PAL.ink);
-      p.line(x0 + dir, cy, x0 + dir * 5, cy - 4, PAL.ink);
-    } else {
-      p.line(x0, cy + 1, x0 + dir * 4, cy + 4, PAL.ink);
-      p.line(x0 + dir, cy + 1, x0 + dir * 5, cy + 3, PAL.ink);
-    }
-  };
-  wing(cx - 1, -1);
-  wing(cx + 1, 1);
+/**
+ * The crow (hand-placed, both sizes): a small ink silhouette PERCHED on the left scarecrow's outer arm (as the crow of the scene lands), wings folded,
+ * facing the field (right), watching — big 6 × 4, small 4 × 2; an earth3 beak. Its teal3 rim pixel and gold eye are
+ * light (lightCrow). In the living art it turns its head once (frame 2: the beak one row down — a look down).
+ */
+const CROW_BIG = ['....kb', '.kkkk.', 'kkkk..', '.k.k..'];
+const CROW_SMALL = ['..kb', 'kkk.'];
+/** Where the crow stands (its top-left), per density. */
+const crowAt = (k: number): [number, number] => (k === 2 ? [2, 35] : [1, 23]);
+function paintCrow(p: P, k: number, f: number): void {
+  const [x, y] = crowAt(k);
+  p.stamp(k === 2 ? CROW_BIG : CROW_SMALL, { k: PAL.ink, b: PAL.earth3 }, x, y);
+  if (f === 2) {
+    // a look down at the field: the beak dips a row
+    const bx = x + (k === 2 ? 5 : 3);
+    p.erase(bx, y);
+    p.set(bx, y + 1, PAL.earth3);
+  }
 }
 
-/** The crow's light: the teal evening rim on its upper edges and the gold eye (light layer, never outlined). */
-function lightCrow(L: P, s: P, f: number): void {
-  // the evening light catches its upper edges (the picture's teal3 rim light, no new tone) so it reads against the
-  // sky; the gold eye
-  void f;
-  for (let y = 4; y < 22; y++)
-    for (let x = 64; x < 84; x++) {
-      if (s.get(x, y) !== PAL.ink) continue;
-      const above = s.get(x, y - 1);
-      if (above === null) L.set(x, y, PAL.teal3);
-    }
-  L.set(74 - 4, 11, PAL.gold3);
+/** The crow's light: one teal3 rim pixel on its back (it reads off the hat and the sky) and its gold eye. */
+function lightCrow(L: P, k: number): void {
+  const [x, y] = crowAt(k);
+  if (k === 2) {
+    L.set(x + 1, y + 1, PAL.teal3);
+    L.set(x + 2, y + 1, PAL.teal3);
+    L.set(x + 4, y, PAL.gold3);
+  } else L.set(x + 1, y + 1, PAL.teal3);
 }
 
 /** Straws streaming off the hands in the wind (subject; they drift right one step per frame), plus a few loose ones. */
@@ -314,20 +300,22 @@ function paintField(b: P, k: number): void {
     const g = Math.max(1, q(gap, k));
     for (let x = (dy * 5) % (d + g); x < b.w; x += d + g)
       // the near furrows are turned earth (earth1 clods), the far ones fade into the dusk (night1)
-      for (let i = 0; i < d; i++) if (b.get(x + i, y) === PAL.night0) b.set(x + i, y, dy >= 13 ? PAL.earth1 : PAL.night1);
+      for (let i = 0; i < d; i++) if (b.get(x + i, y) === PAL.night0) b.set(x + i, y, PAL.earth1);
   }
 }
 
 function paint(l: ArtLayers, f: number, k: number): void {
   paintBackdrop(l.backdrop, 'SPELL', { as: 'sun', focus: [FOCUS[0] - 2, FOCUS[1] + 6], radius: 24 });
   paintField(l.backdrop, k);
+  // six backdrop tones (IŞ-11): the sun's darkest edge ring joins its teal1 band
+  l.backdrop.replace(PAL.teal0, PAL.teal1);
   const s = l.subject;
   const eyes: { at: [number, number]; main: boolean }[] = [];
   for (const c of [LEFT, RIGHT, FRONT]) {
     const r = scarecrow(s, c, k, f);
     for (const e of r.eyes) eyes.push({ at: e, main: c === FRONT });
   }
-  if (k === 2) paintCrow(s, f);
+  paintCrow(s, k, f);
   paintStraws(s, k, f);
   ink(s);
   // the rim only where the matter faces right (head, hat, coat side): never under the sleeves (a lit line there
@@ -337,10 +325,10 @@ function paint(l: ArtLayers, f: number, k: number): void {
     return c === null || c === PAL.ink;
   };
   const side = (x: number, y: number) => k === 1 && y >= 14 && (x < 14 || x > 30);
-  rim(s, PAL.teal3, { skip: [PAL.gold3, PAL.gold2, PAL.gold1, PAL.leaf3], only: (x, y) => open(x + 1, y) && !side(x, y) && !(k === 2 && y < 22 && y > 4 && x > 62 && x < 86) });
+  rim(s, PAL.teal3, { skip: [PAL.gold3, PAL.gold2, PAL.gold1, PAL.leaf3], only: (x, y) => open(x + 1, y) && !side(x, y) });
   // light: the button eyes (2×2 big / 1 px small), the front ones brightest, glinting by frame
   const L = l.light;
-  if (k === 2) lightCrow(L, s, f);
+  lightCrow(L, k);
   for (const e of eyes) {
     const [x, y] = e.at;
     if (k === 2 && e.main) {

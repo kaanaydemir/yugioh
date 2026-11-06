@@ -225,6 +225,9 @@ export function paintDie(p: PixelCanvas, ox: number, oy: number, h: number, m: M
     const ry = Math.max(1.1, pr * Math.hypot(U.y, V.y));
     const cx = ox + c.x;
     const cy = oy + c.y;
+    // a steeply foreshortened face (its short axis under ~6 px on screen): the round pip mask would rasterise as hearts
+    // and arrows, so its pips become 1–2 px ink dots / short dashes along the face's long axis (stamped after the fill)
+    const thin = Math.min(ls, lt) < 6;
     const ex = Math.abs(U.x) + Math.abs(V.x) + 1;
     const ey = Math.abs(U.y) + Math.abs(V.y) + 1;
     for (let y = Math.floor(cy - ey); y <= Math.ceil(cy + ey); y++)
@@ -248,7 +251,7 @@ export function paintDie(p: PixelCanvas, ox: number, oy: number, h: number, m: M
         else if (as > k - es * 0.2 && at > k - et * 0.2) col = bev;
         // pips (only on faces big enough to hold them): screen-aligned ovals round the projected pip centre, so a pip
         // is a clean pixel blob on every face (a 2:1 oval on the top, an upright one on a side), never a sheared sliver
-        if (ls > 3 && lt > 3 && !look.noPips)
+        if (!thin && ls > 3 && lt > 3 && !look.noPips)
           for (let i = 0; i < pips.length; i++) {
             const [ps, pt] = pips[i];
             const px = U.x * ps + V.x * pt;
@@ -272,6 +275,23 @@ export function paintDie(p: PixelCanvas, ox: number, oy: number, h: number, m: M
           }
         p.set(x, y, col);
       }
+    if (thin && !look.noPips && ls > 1.5 && lt > 1.5 && look.tint !== 'white') {
+      // the long axis on screen (a unit step along it), for the dash
+      const Lx = ls >= lt ? U.x : V.x;
+      const Ly = ls >= lt ? U.y : V.y;
+      const ll = Math.hypot(Lx, Ly) || 1;
+      const sx = Math.round(Lx / ll);
+      const sy = Math.round(Ly / ll);
+      const dash = Math.max(ls, lt) >= 9;
+      for (let i = 0; i < pips.length; i++) {
+        if (i < gone) continue;
+        const [ps, pt] = pips[i];
+        const x = Math.floor(cx + U.x * ps + V.x * pt);
+        const y = Math.floor(cy + U.y * ps + V.y * pt);
+        p.set(x, y, pipC);
+        if (dash && (sx !== 0 || sy !== 0)) p.set(x + sx, y + sy, pipC);
+      }
+    }
   }
 }
 

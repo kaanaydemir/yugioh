@@ -108,40 +108,64 @@ describe('crystal_wyrm card picture', () => {
       [r.small, r.smallPx],
     ] as const) {
       const area = pic.w * pic.h;
-      // the glass is a large shape (≥ 12 % of the window), the horns a clear accent (≥ 4 %) in the subject
+      // the glass is a large shape (≥ 12 % of the window), the horns a clear accent in the subject: their lit
+      // golds (gold3 / gold4, not the card light's gold2 rim) ≥ 2 %
       expect(count(l.subject, CYAN) / area, l.size).toBeGreaterThan(0.12);
-      expect(count(l.subject, GOLD) / area, l.size).toBeGreaterThan(0.04);
+      expect(count(l.subject, [PAL.gold3, PAL.gold4]) / area, l.size).toBeGreaterThan(0.02);
+      expect(count(l.subject, GOLD) / area, l.size).toBeGreaterThan(0.03);
       // the LIGHT recipe: the backdrop's light shape is gold
       expect(count(l.backdrop, [PAL.gold1, PAL.gold2]) / area, l.size).toBeGreaterThan(0.2);
     }
     // the white dragon (the sprite's / cut-in's value): white is a major tone of the picture, beside the mist
     expect(count(r.bigPx, [PAL.white]) / (88 * 68)).toBeGreaterThan(0.06);
     expect(count(r.smallPx, [PAL.white]) / (44 * 34)).toBeGreaterThan(0.05);
-    // THE BEAT: the breath orb in the open mouth — a white glint on a cyan4 core (big: a 3×3 core in a cyan3
-    // ring and a cyan2 rim; small: a hand-placed 2×2 core), framed by the mouth's dark
+    // THE BEAT: the breath orb in the open mouth — a cyan4 core with NO white (big: a 5-px sphere, a cyan4
+    // plus in cyan3 / cyan2; small: a hand-placed 2×2 core, one cyan4 and three cyan3, in a cyan2 ring), framed
+    // by the mouth's dark
     for (const [l, core] of [
-      [r.big, 8],
-      [r.small, 3],
+      [r.big, 5],
+      [r.small, 1],
     ] as const) {
       const s = l.subject;
       let orbs = 0;
       for (let y = 0; y < s.h; y++)
         for (let x = 0; x < s.w; x++) {
-          if (s.get(x, y) !== PAL.white || s.get(x + 1, y) !== PAL.cyan4 || s.get(x, y + 1) !== PAL.cyan4) continue;
+          if (s.get(x, y) !== PAL.cyan4 || s.get(x - 1, y) === PAL.cyan4 || s.get(x, y - 1) === PAL.cyan4) continue;
           let n = 0;
           let dark = 0;
-          for (let dy = -4; dy <= 4; dy++)
-            for (let dx = -4; dx <= 4; dx++) {
+          let white = 0;
+          for (let dy = -3; dy <= 3; dy++)
+            for (let dx = -3; dx <= 3; dx++) {
               const c = s.get(x + dx, y + dy);
               if (c === PAL.cyan4) n++;
               if (c === PAL.night0 || c === PAL.night1) dark++;
+              if (c === PAL.white && Math.abs(dx) <= 1 && Math.abs(dy) <= 1) white++;
             }
-          if (n >= core && dark >= 6) orbs++;
+          if (n >= core && n <= core + 1 && dark >= 6 && white === 0) orbs++;
         }
-      expect(orbs, l.size).toBe(1);
+      expect(orbs, l.size).toBeGreaterThanOrEqual(1);
+    }
+    // the eye is the single brightest point (§3): frame 0's only white sparkle on the light layer sits on the eye
+    for (const [l, f] of [
+      [r.big, card.focus],
+      [r.small, card.focusSmall!],
+    ] as const) {
+      const whites: [number, number][] = [];
+      for (let y = 0; y < l.light.h; y++) for (let x = 0; x < l.light.w; x++) if (l.light.get(x, y) === PAL.white) whites.push([x, y]);
+      expect(whites.length, l.size).toBe(1);
+      expect(Math.hypot(whites[0][0] - f[0], whites[0][1] - f[1]), l.size).toBeLessThanOrEqual(2);
+    }
+    // IŞ-8: at most one white sparkle on the light layer in every living frame
+    for (let f = 0; f < 6; f++) {
+      const rf = renderArt(card, f);
+      for (const l of [rf.big, rf.small]) {
+        let w = 0;
+        for (let y = 0; y < l.light.h; y++) for (let x = 0; x < l.light.w; x++) if (l.light.get(x, y) === PAL.white) w++;
+        expect(w, `${l.size} f${f}`).toBeLessThanOrEqual(1);
+      }
     }
     // the orb flares on the light layer (its rim → cyan3 in the swell frames)
-    for (const l of [renderArt(card, 3).big, renderArt(card, 3).small]) expect(count(l.light, [PAL.cyan3]), l.size).toBeGreaterThanOrEqual(l.size === 'big' ? 10 : 4);
+    for (const l of [renderArt(card, 5).big, renderArt(card, 5).small]) expect(count(l.light, [PAL.cyan3]), l.size).toBeGreaterThanOrEqual(l.size === 'big' ? 6 : 4);
     // the eye: cyan iris pixels right at the focus (big) and its white glint on frame 0 (both sizes)
     const [fx, fy] = card.focus;
     let iris = 0;

@@ -73,3 +73,44 @@ describe('straw_decoys card art', () => {
       expect(s.isolated).toBeLessThanOrEqual(0.1);
     });
 });
+
+// ---- the cinematic's pure painters (src/cinematics/spells/_straw_decoys_paint.ts): palette only, every crow pose
+// inside its raster, the flying poses within the clearance the glide is planned with (CROW_LOW / CROW_HIGH)
+import { PixelCanvas } from '../../src/art/pixel';
+import { PAL } from '../../src/art/palette';
+import * as SP from '../../src/cinematics/spells/_straw_decoys_paint';
+
+describe('straw_decoys painters', () => {
+  const pal = new Set<number>(Object.values(PAL) as number[]);
+  it('the crow: palette only, flying poses inside CROW_LOW / CROW_HIGH, the caw throws the head up', () => {
+    const heads: Record<string, number> = {};
+    for (const pose of ['up', 'mid', 'down', 'flare', 'perch', 'crouch', 'caw', 'cawEnd', 'bob'] as const) {
+      const p = new PixelCanvas(SP.CW, SP.CH);
+      SP.paintCrowPx(p, pose, pose === 'caw' ? 2 : 0);
+      const b = p.bounds();
+      expect(b, pose).not.toBeNull();
+      for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) {
+        const c = p.get(x, y);
+        if (c !== null) expect(pal.has(c), `${pose} ${x},${y}`).toBe(true);
+      }
+      if (pose === 'up' || pose === 'mid' || pose === 'down') {
+        expect(b!.y + b!.h - 1 - SP.CFY).toBeLessThanOrEqual(SP.CROW_LOW);
+        expect(SP.CFY - b!.y).toBeLessThanOrEqual(SP.CROW_HIGH);
+      }
+      heads[pose] = b!.y;
+    }
+    expect(heads.caw).toBeLessThan(heads.perch);
+  });
+  it('the scarecrow: the stab crater and the sack head paint palette-only pixels', () => {
+    const p = new PixelCanvas(SP.RW, SP.RH);
+    SP.paintDecoyPx(p, { ...SP.freshBuild(), stake: true, stakeY: 0, sink: 2, squash1: 2, crater: 1, wrap: 1, coatY: 0, headY: 0, hatY: 0, arm: 4 }, 0);
+    let n = 0;
+    for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) {
+      const c = p.get(x, y);
+      if (c === null) continue;
+      n++;
+      expect(pal.has(c)).toBe(true);
+    }
+    expect(n).toBeGreaterThan(300);
+  });
+});
