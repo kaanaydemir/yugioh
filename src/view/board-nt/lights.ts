@@ -136,19 +136,34 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
   // arena v3 "Fog" (hedef-gorunum-3): low cumulus streaks (art/arena-nt/lights.ts FOG_BANKS) lying on the hall floor at
   // both edges, under the stage's depth (never over the board), clear of the brazier pools; each one sways slowly on its
   // own period (big banks slow, thin wisps a little faster) so the layers slide past each other.
-  // [bank, x, y, flipX, ampX, ampY, period ms, phase ms]
+  // [bank, x, y, flipX, ampX, ampY, period ms, phase ms] — back banks (0–3) first, then the lit-cap front banks; every
+  // placement has its own baked bank (no flipX), so all caps face the same upper-left light
   const BANKS: readonly [number, number, number, boolean, number, number, number, number][] = [
-    // left edge, back to front
-    [3, -30, 160, false, 5, 1, 17000, 0],
-    [1, -40, 196, false, 7, 1, 21000, 5200],
-    [2, -24, 238, false, 6, 1, 15000, 9100],
-    [5, 18, 278, false, 9, 0, 12000, 3300],
-    // right edge
-    [3, 556, 172, true, -5, 1, 18000, 7400],
-    [0, 530, 208, true, -7, 1, 22000, 1800],
-    [2, 566, 262, true, -6, 1, 16000, 11800],
-    [4, 504, 288, true, -9, 0, 12500, 6100],
-    [5, 590, 146, true, -8, 0, 13500, 8800],
+    // back layer
+    [0, -74, 148, false, 6, 1, 26000, 0],
+    [3, -46, 226, false, 7, 1, 23000, 9000],
+    [2, 486, 156, false, -6, 1, 27000, 4000],
+    [1, 518, 228, false, -7, 1, 24000, 15000],
+    [14, -64, 120, false, 6, 1, 25000, 12000],
+    [19, 494, 132, false, -6, 1, 25500, 3000],
+    // left edge, front
+    [15, 18, 136, false, 9, 1, 16500, 4400],
+    [4, -28, 166, false, 9, 1, 17000, 2000],
+    [8, 32, 192, false, 12, 0, 13000, 6400],
+    [5, -52, 204, false, 8, 1, 21000, 5200],
+    [6, -18, 246, false, 9, 1, 15000, 9100],
+    [9, 8, 282, false, 12, 0, 12000, 3300],
+    // right edge, front
+    [12, 578, 150, false, -12, 0, 13500, 8800],
+    [10, 536, 176, false, -9, 1, 18000, 7400],
+    [7, 514, 200, false, -7, 1, 16000, 1800],
+    [11, 552, 252, false, -8, 1, 19000, 11800],
+    [13, 492, 286, false, -12, 0, 12500, 6100],
+    // stage base skirts + right plinth foot
+    [16, 50, 206, false, 8, 1, 17500, 10200],
+    [17, 190, 262, false, 9, 1, 15500, 4700],
+    [18, 408, 258, false, -8, 1, 16500, 12300],
+    [20, 540, 148, false, -8, 1, 18500, 7000],
   ];
   BANKS.forEach(([i, x, y, flip, ax, ay, period, phase], k) =>
     addFog(lightFrame.fogBank(i), x, y, flip, NT_DEPTH.platform - 0.18 + k * 0.001, ax, ay, period, phase),

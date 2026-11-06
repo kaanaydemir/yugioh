@@ -531,3 +531,82 @@ Son: `shots/arena/fr3-3.png`, `fr3-3-sbs.png`, `fr3-3-pool.png`. typecheck temiz
 vitest arena-nt + board-nt 34/34. v1: değişiklik yalnız v3 zemin dokusunda (`hallfloor.ts`).
 Kalan farklar: hedef zemin daha gri-mor ve sisle benekli; sol üst zeminin bir kısmı koyu sis dither'ı altında (sis maddesi);
 hedefteki sahne tabanı/duvar boruları yok (sahne/duvar maddeleri).
+
+#### Sis — v3 kümülüs sis şeritleri (2026-11-06)
+Önce: `shots/arena/fog-0.png` (+ `fog-0-sbs.png`, yakın `fog-0-zl.png` / `fog-0-zr.png`, sissiz `fog-0-nofog.png`).
+Boşluklar: sis zeminden KOYU (night0/ink) → kara leke gibi; tüm alanı ekran-kapısı Bayer dither'ı; hologram kaidelerini/zemini
+geniş kaplıyor. Hedef: zeminden bir basamak AÇIK, gri-mor, kenarı basamaklı kümülüs şeritleri, açık tepe, dither yok.
+Dosyalar: `src/art/arena-nt/lights.ts` (yeni `FOG_BANKS` + `paintFogBank`, `lightFrame.fogBank`), `src/view/board-nt/lights.ts`
+(eski fogBack/Front/Wisp yerleşimi yerine 12 şerit).
+1. Şerit boyacısı: üst üste binen basık puflar (arkadan öne), gövde night3, pufun sol-üst kapağı geniş stone1 bandı, en üst
+   1 px kenar stone2 (ışığa bakan kenar), puflar arası night2 dikiş, alt kenar düz-mercek ve yer yer 1 px kopuk; dither YOK,
+   saf palet, opak (`fog-1.png` → `fog-2.png` → `fog-4.png`). İlk deneme 1 px stone1 çizgi kontur gibi okundu → geniş kapak
+   bandına çevrildi; stone1 tek başına gölge gibi okundu → stone2 tepe kenarı eklendi.
+2. Yerleşim: sol 5 / sağ 7 şerit, zemin kenarlarında, sahne derinliğinin altında (`platform − 0.18`, tahtanın üstüne asla
+   çıkmaz), mangal havuzlarının dışında; kaide-arkası (holo üstü) sis kaldırıldı → hologramlar temiz.
+3. Salınım: her şerit kendi periyodunda (11–22 s) ±5–10 px yatay, ±0–1 px dikey sinüs (sinüs → döngü dikişi yok);
+   büyük şeritler yavaş, ince tüller hızlı → katmanlar birbirinin üstünden kayıyor (`fog-3-film-r.png`, 8 kare × 2.5 s).
+Son: `shots/arena/fog-5.png`, `fog-4-sbs.png`, `fog-4-zl.png`, `fog-4-zr.png`. typecheck temiz, palcheck PASS (`fog-5.png`).
+v1: board-nt / arena-nt yalnız v3 yolunda. (Eski fogBack/Front/Wisp kareleri atlasta duruyor ama kullanılmıyor.)
+Kalan farklar: hedef sis daha yoğun/geniş ve daha yumuşak (çok basamaklı gri-mor geçiş); paletimizde 2a2f54/393e66 yok → gövde
+night3 biraz mavi, kapak stone1 biraz gri; sağdaki aynalanmış şeritlerde aydınlık kapak sağ-üstte kalıyor.
+
+#### Sis — eleştiri turu 1/3 düzeltmeleri (2026-11-06)
+Önce: `shots/arena/fogc1-0.png` (+ `fogc1-0-sbs.png`, yakın `fogc1-0-zl.png` / `fogc1-0-zr.png`). Dosyalar: `src/art/arena-nt/lights.ts`
+(`FOG_BANKS`, `paintFogBank`), `src/view/board-nt/lights.ts` (yerleşim).
+1. **#5 eski kareler** (geçerli): fogBack/fogFront/fogWisp kareleri, `Lobe`/`sampleLobes` ve boyacıları atlastan silindi.
+2. **#1 gri-kahve bulut kesikleri** (geçerli): tek soğuk aile — gövde night3, ışığa bakan sol-üst kapak ince night4 bandı (2–3 px),
+   alt ayak ve puf dikişleri night2 (zemine eriyor); geniş stone1 kapak kaldırıldı. En büyük kabarıkların tepesinde yalnız 1 px stone2
+   parıltı (`fogc1-1` → `fogc1-2` → `fogc1-3`). Kapak yalnız altında ≥3 px puf olan yerde → tek piksellik kapak "iğneleri" yok.
+3. **#2 seyrek/ince** (geçerli): 1–3 üst üste puf sırası (bankalar kubbeleniyor) + arkada 5 büyük koyu arka banka (night3 gövde, night2
+   ayak, kapaksız, dış kenarı 1 px tahta-dışı dama sönümü); sol ejderha kaidesinin dibine bir arka + bir ön banka (`fogc1-4-zl.png`).
+   Toplam 16 banka.
+4. **#3 damga elipsler** (geçerli): puf yarıçapı k² dağılımlı, aralık 0.55–1.6×rx, her pufun basıklığı ±%15; uçlar 1–2 px gövde tonunda
+   kesik kuyruklara sivriliyor; puf-başı night2 alt bantları (pul deseni yapıyordu, `fogc1-1-z4.png`) bankanın tek alt satırına indi.
+5. **#4 aynalı sağ şeritler** (geçerli): flipX kaldırıldı; her yerleşimin kendi pişmiş bankası var → tüm kapaklar sol-üstte.
+6. Salınım: arka bankalar 23–27 s / ±6–7 px, ön bankalar 12–21 s / ±7–12 px (sinüs → dikiş yok); film `fogc1-4-film-r.png`
+   (8 kare × 2.5 s) katmanların birbirinin üstünden kaydığını gösteriyor. Sağ banka 7 mangal havuzuna değdiği için 10 px sağa alındı.
+Son: `shots/arena/fogc1-5.png`, `fogc1-5-sbs.png`, `fogc1-5-zr.png`, `fogc1-4-zl.png`. typecheck temiz, palcheck PASS (`fogc1-5.png`).
+v1: değişiklik yalnız v3 yolundaki board-nt sis atlas karelerinde.
+Kalan farklar: hedef sis daha açık/gri-mor (2a2a48 / 37406b) — paletimizde en yakın night3/night4 biraz mavi; zeminimiz hedeften
+mavi olduğundan sis/zemin ayrımı hedeften az (zemin maddesi). a6Hover kart önizlemesi sol sisi filmde örtüyor (sol film sağdan kontrol edildi).
+
+#### Sis — eleştiri turu 2/3 düzeltmeleri (2026-11-06)
+Önce: `shots/arena/fogc2-0.png` (+ `fogc2-0-sbs.png`, yakın `fogc2-0-zr.png`). Dosyalar: `src/art/arena-nt/lights.ts`
+(`FOG_BANKS`, `paintFogBank`), `src/view/board-nt/lights.ts` (yerleşim). (Not: shot.mjs 1280×720 PNG veriyor; karşılaştırmalar 640×360'a NN küçültülerek.)
+1. **#1/#2 görünmüyor / zeminle ton ayrımı yok** (geçerli): ön bankalar bir basamak açıldı — gövde night4, ışık kapağı stone2 (gri-mor),
+   en parlak kabarık tepesi 1 px stone3, ayak/puf dikişi night3 (eskiden night3/night4/night2). Arka bankalar: night3 gövde + her
+   kabarığın tepesinde 2 px night4 kenar, ayak night2 → arka katman da zeminden okunuyor, ön katmandan koyu kalıyor (`fogc2-1.png`,
+   `fogc2-1-zr.png`, `fogc2-1-zl.png`). Paletimizde hedefin 2a2a48/37406b'sine tam karşılık yok; mor (void) aile fazla doygun,
+   stone1 night3 zeminle aynı parlaklıkta → night4 + stone2 kapak seçildi.
+2. **#3 sahne eteği ve heykel kaideleri boş** (geçerli): 5 yeni banka (toplam 21): sol etek (50,206), ön etek (190,262), sağ-ön etek
+   (408,258), sağ hologram kaidesinin dibine bir arka (494,132) + bir ön (540,148); hepsi platform derinliğinin altında, karolara değmiyor
+   (`fogc2-2.png`, `fogc2-2-zb.png`, `fogc2-2-zr.png`).
+3. **#4 tüylü/benekli kenarlar** (geçerli): uç tüllerdeki rastgele 1 px boşluklar kaldırıldı → kuyruk %70'te temiz bitiyor; dama sönümü
+   zaten yalnız arka bankaların en dış satırında (`fogc2-3.png`, `fogc2-3-zl.png`).
+4. **#5 kayma doğrulanmadı** (geçerli): film `fogc2-3-film-r.png` (8 kare × 2.5 s, sağ kenar): katmanlar farklı periyotlarla birbirinin
+   üstünden kayıyor, sinüs → döngü dikişi yok.
+5. **#6 farklı sahne** — bilgi; değişiklik gerekmez.
+Son: `shots/arena/fogc2-3.png`, `fogc2-3-sbs.png`, `fogc2-3-zl.png`, `fogc2-2-zr.png`, film `fogc2-3-film-r.png`. typecheck temiz, palcheck PASS.
+v1: değişiklik yalnız v3 yolundaki board-nt sis atlas kareleri/yerleşiminde.
+Kalan farklar: sis hedeften daha mavi (zemin de hedeften mavi ve açık: zemin maddesi); hedefte sis daha yumuşak çok basamaklı;
+ön etek bankasının çoğu ipucu çubuğu / el kartlarının altında kalıyor.
+
+#### Sis — eleştiri turu 3/3 düzeltmeleri (2026-11-06)
+Önce: `shots/arena/fogc3-0.png` (+ `fogc3-0-sbs.png`). Dosya: `src/art/arena-nt/lights.ts` (`FOG_BANKS`, `paintFogBank`).
+1. **#1 doygun kobalt mavisi** (geçerli): mavi night3/night4 gövde → düşük doygunluklu gri-mor. Ön bankalar: gövde stone1, ışık kenarı
+   1 px stone2 + altında stone1/stone2 dama geçiş satırı, alt ayak night2, ayakla gövde arası night2/stone1 dama, puf dikişi night2,
+   uç tüller stone1. Arka bankalar: gövde night2/stone1 dama (≈ #2a2d4c ~ hedef 282949), kabarık kenarı stone1, ayak night2
+   (`fogc3-1.png`, `fogc3-1-sbs.png`, `fogc3-1-zl.png`).
+2. **#2 düz levha / sert kapak** (geçerli): ön bankalar alçaltıldı ve inceltildi (squash ×0.72, en çok 2 sıra → ~4–9 px), yanlarda
+   en dış sütun night2/stone1 dama sönümü → pürüzlü tüllü uçlar; alt tarafta 3 basamak (gövde → dama → night2) (`fogc3-2.png`,
+   `fogc3-2-zl.png`, `fogc3-2-sbs.png`).
+3. **#3 kahverengi kapaklar** (geçerli): mavi gövde gitti → stone2 kenar artık aynı gri-mor ailenin bir basamağı; geniş stone2/stone3
+   kapak ve stone3 parıltısı kaldırıldı.
+4. **#4 kapsama** — reddedildi/değişiklik yok: eleştirmen sağ kaide bankasını kabul ediyor; etek bankalarının HUD altında kalması
+   HUD yerleşimi değişmeden çözülemez.
+5. **#5 kayma** — film `fogc3-2-film-r.png` (8 kare × 2.5 s, sağ kenar): yavaş kayma, dikiş/patlama yok.
+Son: `shots/arena/fogc3-2.png`, `fogc3-2-sbs.png`, `fogc3-2-zl.png`, `fogc3-2-film-r.png`. typecheck temiz, palcheck PASS,
+arena testleri 34/34. v1: değişiklik yalnız v3 board-nt sis atlas karelerinde.
+Kalan farklar: zemin hedeften mavi/açık (zemin maddesi) → sis/zemin ayrımı hâlâ hedeften keskin; hedefte sis biraz daha mor (3a3f67),
+bizim stone1 gövde biraz daha nötr; ön etek bankası büyük ölçüde ipucu çubuğu / el kartları altında.

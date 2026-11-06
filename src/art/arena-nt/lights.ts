@@ -19,9 +19,6 @@ export const lightFrame = {
   pool: (shape: number, level: number): string => `pool:${shape}:${level}`,
   halo: (level: number): string => `halo:${level}`,
   tile: (side: 0 | 1, level: number, i: number): string => `edge:${side}:${level}:${i}`,
-  fogBack: (variant: number): string => `fog:back:${variant}`,
-  fogFront: (variant: number): string => `fog:front:${variant}`,
-  fogWisp: (variant: number): string => `fog:wisp:${variant}`,
   /** arena v3 "Fog": one low cumulus fog streak of FOG_BANKS (hedef-gorunum-3). */
   fogBank: (i: number): string => `fog:bank:${i}`,
   torch: (frame: number): string => `torch:${frame}`,
@@ -111,125 +108,12 @@ function paintHalo(level: number): PixelCanvas {
 
 // ---------------------------------------------------------------------------------------------- layered fog & warm torches
 
-interface Lobe {
-  cx: number;
-  cy: number;
-  rx: number;
-  ry: number;
-  w: number;
-}
-
-function sampleLobes(x: number, y: number, lobes: readonly Lobe[], phase: number): number {
-  let d = 0;
-  for (let i = 0; i < lobes.length; i++) {
-    const l = lobes[i];
-    const waveX = Math.sin((y * 0.09) + phase + i * 1.7) * 6;
-    const waveY = Math.cos((x * 0.07) - phase + i * 1.3) * 4;
-    const dx = (x - (l.cx + waveX)) / l.rx;
-    const dy = (y - (l.cy + waveY)) / l.ry;
-    const r2 = dx * dx + dy * dy;
-    if (r2 < 1) {
-      const v = (1 - r2) * (1 - r2) * l.w;
-      d = 1 - (1 - d) * (1 - v);
-    }
-  }
-  return d;
-}
-
-/** Upper-outer fog bank covering stands, wall corners, and hologram statues (210 × 150). */
-function paintFogBack(variant: number): PixelCanvas {
-  const W = 210;
-  const H = 150;
-  const p = new PixelCanvas(W, H);
-  const phase = variant * 1.6;
-  const lobes: readonly Lobe[] = [
-    { cx: 24, cy: 52, rx: 95, ry: 48, w: 0.92 },
-    { cx: 70, cy: 78, rx: 110, ry: 54, w: 0.85 },
-    { cx: 118, cy: 96, rx: 92, ry: 46, w: 0.72 },
-    { cx: 36, cy: 112, rx: 88, ry: 44, w: 0.88 },
-    { cx: 145, cy: 68, rx: 64, ry: 34, w: 0.52 },
-  ];
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const d = sampleLobes(x, y, lobes, phase);
-      if (d <= 0.08) continue;
-      const th = bayer4(x + variant * 2, y + variant);
-      if (d < th * 0.75) continue;
-      // Billow crest highlight vs deep mist body
-      const crest = sampleLobes(x, y - 6, lobes, phase) < d - 0.06;
-      if (d > 0.72) {
-        p.set(x, y, crest && d < 0.84 && th < 0.5 ? PAL.night2 : d > 0.86 && x < 48 ? PAL.ink : PAL.night0);
-      } else if (d > 0.45) {
-        p.set(x, y, crest && th < 0.45 ? PAL.night2 : th < 0.6 ? PAL.night1 : PAL.night0);
-      } else {
-        p.set(x, y, th < 0.35 ? PAL.night1 : PAL.night0);
-      }
-    }
-  }
-  return p;
-}
-
-/** Lower-outer fog bank covering lower stands, hologram plinths, and apron floor corners (250 × 185). */
-function paintFogFront(variant: number): PixelCanvas {
-  const W = 250;
-  const H = 185;
-  const p = new PixelCanvas(W, H);
-  const phase = variant * 1.8 + 0.7;
-  const lobes: readonly Lobe[] = [
-    { cx: 28, cy: 48, rx: 105, ry: 48, w: 0.9 },
-    { cx: 82, cy: 84, rx: 118, ry: 56, w: 0.86 },
-    { cx: 40, cy: 136, rx: 125, ry: 60, w: 0.95 },
-    { cx: 124, cy: 142, rx: 116, ry: 52, w: 0.82 },
-    { cx: 176, cy: 158, rx: 82, ry: 38, w: 0.62 },
-  ];
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const d = sampleLobes(x, y, lobes, phase);
-      if (d <= 0.08) continue;
-      const th = bayer4(x + variant * 2, y + variant);
-      if (d < th * 0.72) continue;
-      const crest = sampleLobes(x, y - 5, lobes, phase) < d - 0.05;
-      if (d > 0.74) {
-        p.set(x, y, crest && d < 0.85 && th < 0.55 ? PAL.night2 : d > 0.88 && x < 54 && y > 110 ? PAL.ink : PAL.night0);
-      } else if (d > 0.44) {
-        p.set(x, y, crest && th < 0.5 ? PAL.night2 : th < 0.65 ? PAL.night1 : PAL.night0);
-      } else {
-        p.set(x, y, th < 0.4 ? PAL.night1 : PAL.night0);
-      }
-    }
-  }
-  return p;
-}
-
-/** Soft drifting mist wisp layer (150 × 84) that glides slowly across the fog banks. */
-function paintFogWisp(variant: number): PixelCanvas {
-  const W = 150;
-  const H = 84;
-  const p = new PixelCanvas(W, H);
-  const phase = variant * 2.1;
-  const lobes: readonly Lobe[] = [
-    { cx: 52, cy: 42, rx: 56, ry: 26, w: 0.72 },
-    { cx: 94, cy: 48, rx: 48, ry: 24, w: 0.66 },
-    { cx: 34, cy: 50, rx: 38, ry: 20, w: 0.6 },
-  ];
-  for (let y = 0; y < H; y++) {
-    for (let x = 0; x < W; x++) {
-      const d = sampleLobes(x, y, lobes, phase);
-      if (d <= 0.14) continue;
-      const th = bayer4(x + variant, y);
-      if (d * 0.82 > th) {
-        p.set(x, y, d > 0.52 && th < 0.45 ? PAL.night2 : PAL.night1);
-      }
-    }
-  }
-  return p;
-}
-
-// ---------------------------------------------------------------------------------------------- v3 cumulus fog streaks
-// hedef-gorunum-3: the fog is low, LIGHTER than the slate floor, grey-violet cumulus streaks lying on the floor: billowy
-// stepped tops with a pale crest, flat-ish frayed bottoms, no screen-door dither. Each streak is a row of overlapping
-// squashed puffs painted back to front: body night3, a 1–2 px stone1 crest on each puff's upper rim (the puffs in front
-// cover the ones behind, so the crests read as layered billows), a night2 seam where a puff tucks under its neighbour.
+// ---------------------------------------------------------------------------------------------- v3 cumulus fog banks
+// hedef-gorunum-3: the fog is low, a step LIGHTER than the slate floor, cool grey-violet banks lying on the floor. One
+// cool family only (night2 → night3 → night4): body night3, the lit upper-left cap a thin night4 band, the underside /
+// tuck seams night2, so the bank melts into the night1/night2 floor at its foot. Each bank is 1–3 stacked rows of
+// overlapping puffs of varied size and spacing, its ends tapering into 1–2 px body-tone wisps. Back banks (layer 'back')
+// are larger and darker (no cap) and their outer rim is a 1 px off-board checker fade (never on the board top).
 
 export interface FogBankSpec {
   w: number;
@@ -239,15 +123,37 @@ export interface FogBankSpec {
   r0: number;
   r1: number;
   squash: number;
+  /** stacked puff rows (1 = a streak, 2–3 = a bank) */
+  rows: number;
+  layer: 'back' | 'front';
 }
 
 export const FOG_BANKS: readonly FogBankSpec[] = [
-  { w: 136, h: 30, seed: 3, r0: 8, r1: 18, squash: 0.66 },
-  { w: 160, h: 34, seed: 11, r0: 9, r1: 20, squash: 0.64 },
-  { w: 104, h: 24, seed: 7, r0: 7, r1: 15, squash: 0.66 },
-  { w: 124, h: 28, seed: 19, r0: 8, r1: 17, squash: 0.64 },
-  { w: 84, h: 14, seed: 23, r0: 6, r1: 9, squash: 0.5 },
-  { w: 70, h: 12, seed: 29, r0: 5, r1: 8, squash: 0.5 },
+  // back layer: large, dark, low-cap banks behind the streaks
+  { w: 190, h: 52, seed: 41, r0: 10, r1: 24, squash: 0.58, rows: 3, layer: 'back' },
+  { w: 170, h: 46, seed: 43, r0: 9, r1: 22, squash: 0.58, rows: 3, layer: 'back' },
+  { w: 210, h: 50, seed: 47, r0: 10, r1: 24, squash: 0.56, rows: 3, layer: 'back' },
+  { w: 150, h: 40, seed: 53, r0: 8, r1: 20, squash: 0.58, rows: 2, layer: 'back' },
+  // front layer: lit-cap banks and thin streaks
+  { w: 136, h: 34, seed: 3, r0: 6, r1: 17, squash: 0.45, rows: 2, layer: 'front' },
+  { w: 160, h: 38, seed: 11, r0: 7, r1: 19, squash: 0.43, rows: 2, layer: 'front' },
+  { w: 112, h: 28, seed: 7, r0: 5, r1: 14, squash: 0.45, rows: 2, layer: 'front' },
+  { w: 124, h: 30, seed: 19, r0: 6, r1: 16, squash: 0.43, rows: 2, layer: 'front' },
+  { w: 92, h: 16, seed: 23, r0: 4, r1: 9, squash: 0.37, rows: 1, layer: 'front' },
+  { w: 80, h: 14, seed: 29, r0: 4, r1: 8, squash: 0.37, rows: 1, layer: 'front' },
+  { w: 146, h: 34, seed: 31, r0: 6, r1: 18, squash: 0.43, rows: 2, layer: 'front' },
+  { w: 118, h: 30, seed: 37, r0: 5, r1: 15, squash: 0.45, rows: 2, layer: 'front' },
+  { w: 100, h: 16, seed: 59, r0: 4, r1: 9, squash: 0.37, rows: 1, layer: 'front' },
+  { w: 86, h: 15, seed: 61, r0: 4, r1: 8, squash: 0.37, rows: 1, layer: 'front' },
+  // around the hologram plinths' feet (left dragon)
+  { w: 170, h: 40, seed: 67, r0: 8, r1: 20, squash: 0.58, rows: 2, layer: 'back' },
+  { w: 104, h: 24, seed: 71, r0: 5, r1: 12, squash: 0.43, rows: 2, layer: 'front' },
+  // critique 2: along the stage's base (left skirt, front skirt) and the right hologram plinth's foot
+  { w: 124, h: 30, seed: 73, r0: 6, r1: 15, squash: 0.43, rows: 2, layer: 'front' },
+  { w: 112, h: 24, seed: 79, r0: 5, r1: 12, squash: 0.43, rows: 2, layer: 'front' },
+  { w: 100, h: 22, seed: 83, r0: 5, r1: 11, squash: 0.43, rows: 2, layer: 'front' },
+  { w: 160, h: 40, seed: 89, r0: 8, r1: 20, squash: 0.58, rows: 2, layer: 'back' },
+  { w: 108, h: 26, seed: 97, r0: 5, r1: 13, squash: 0.43, rows: 2, layer: 'front' },
 ];
 
 function fogRng(seed: number): () => number {
@@ -262,32 +168,55 @@ function fogRng(seed: number): () => number {
   };
 }
 
+interface FogPuff {
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+}
+
 export function paintFogBank(spec: FogBankSpec): PixelCanvas {
   const { w: W, h: H } = spec;
+  const back = spec.layer === 'back';
   const p = new PixelCanvas(W, H);
   const rnd = fogRng(spec.seed);
-  // bottom contour: a flat floor line that rises toward both ends (lens) with a slow 1 px wave
   const base = H - 2;
-  const bottom = (x: number): number => {
-    const u = (x + 0.5) / W;
-    const lift = Math.pow(Math.abs(u - 0.5) * 2, 3) * H * 0.45;
-    return Math.round(base - lift + Math.sin(x * 0.11 + spec.seed) * 0.8);
-  };
-  // puffs: centres march along x; the tallest in the middle third, smaller toward the tapered ends
-  const puffs: { cx: number; cy: number; rx: number; ry: number }[] = [];
-  let x = 4 + rnd() * 6;
-  while (x < W - 4) {
-    const u = x / W;
-    const env = Math.sin(Math.PI * Math.min(1, Math.max(0, u))) * 0.7 + 0.3;
-    const rx = (spec.r0 + (spec.r1 - spec.r0) * rnd()) * env;
-    const ry = Math.max(2, rx * spec.squash);
-    const cy = base - ry * (0.55 + 0.25 * rnd());
-    puffs.push({ cx: x, cy, rx, ry });
-    x += rx * (0.9 + 0.5 * rnd());
+  // wisp tails: the outer ~12 % at each end is left for 1–2 px body-tone wisps
+  const tailL = Math.round(W * (0.08 + rnd() * 0.06));
+  const tailR = Math.round(W * (0.08 + rnd() * 0.06));
+  const x0 = tailL;
+  const x1 = W - tailR;
+  const span = x1 - x0;
+  const puffs: FogPuff[] = [];
+  for (let row = 0; row < spec.rows; row++) {
+    // upper rows are shorter (centred, a random offset) and their puffs smaller → a bank that domes up unevenly
+    const inset = row === 0 ? 0 : span * (0.12 + 0.12 * row + rnd() * 0.08);
+    const shift = row === 0 ? 0 : (rnd() - 0.5) * span * 0.18;
+    const a = x0 + inset + shift;
+    const b = x1 - inset + shift;
+    const scale = 1 - row * 0.2;
+    let x = a + rnd() * 4;
+    while (x < b) {
+      const u = (x - a) / Math.max(1, b - a);
+      const env = Math.sin(Math.PI * Math.min(1, Math.max(0, u))) * 0.65 + 0.35;
+      const k = rnd();
+      const rx = Math.max(3, (spec.r0 + (spec.r1 - spec.r0) * k * k) * env * scale);
+      const ry = Math.max(2, rx * spec.squash * (0.85 + rnd() * 0.3));
+      const lift = row === 0 ? 0 : puffs.filter((q) => Math.abs(q.cx - x) < q.rx).reduce((m, q) => Math.max(m, q.ry * 1.1), ry * 0.8);
+      const cy = base - ry * (0.5 + 0.3 * rnd()) - lift * (0.75 + rnd() * 0.2);
+      if (cy - ry >= 0) puffs.push({ cx: x, cy, rx, ry });
+      x += rx * (0.55 + rnd() * 1.05);
+    }
   }
-  // back to front: shorter (lower) puffs are drawn first so the tall billows sit in front of them
-  const order = puffs.map((_, i) => i).sort((a, b) => puffs[b].cy - puffs[a].cy || a - b);
-  const inside = (q: { cx: number; cy: number; rx: number; ry: number }, px: number, py: number): number => {
+  // bottom contour: flat floor line rising toward both ends with a slow 1 px wave
+  const bottom = (x: number): number => {
+    const u = (x + 0.5 - x0) / Math.max(1, span);
+    const e = Math.min(1, Math.abs(u - 0.5) * 2);
+    return Math.round(base - Math.pow(e, 3) * H * 0.25 + Math.sin(x * 0.11 + spec.seed) * 0.8);
+  };
+  // back to front: lower rows first, then within a row the smaller puffs first
+  const order = puffs.map((_, i) => i).sort((i, j) => puffs[j].cy - puffs[i].cy || i - j);
+  const inside = (q: FogPuff, px: number, py: number): number => {
     const dx = (px + 0.5 - q.cx) / q.rx;
     const dy = (py + 0.5 - q.cy) / q.ry;
     return dx * dx + dy * dy;
@@ -302,28 +231,65 @@ export function paintFogBank(spec: FogBankSpec): PixelCanvas {
         owner[py * W + px] = i;
       }
   }
+  // wisps: 1–2 px body-tone tails trailing off each end at the bank's foot, broken into dashes
+  const wisp = (from: number, to: number, dir: number): void => {
+    let y = base - 1 - Math.floor(rnd() * 3);
+    for (let n = 0, x = from; dir > 0 ? x < to : x > to; x += dir, n++) {
+      const t = Math.abs(x - from) / Math.max(1, Math.abs(to - from));
+      if (t > 0.7) break; // a clean tapering tail (critique 2 #4: no 1-px speckle fragments)
+      if (n % 9 === 8 && rnd() < 0.5) y = Math.max(1, Math.min(base, y + (rnd() < 0.5 ? -1 : 1)));
+      if (y >= 0 && y < H && owner[y * W + x] < 0) owner[y * W + x] = -2;
+      if (t < 0.45 && y + 1 < H && owner[(y + 1) * W + x] < 0) owner[(y + 1) * W + x] = -2;
+    }
+  };
+  const left = Math.max(0, Math.floor(Math.min(...puffs.map((q) => q.cx - q.rx * 0.6))));
+  const right = Math.min(W - 1, Math.ceil(Math.max(...puffs.map((q) => q.cx + q.rx * 0.6))));
+  wisp(left, 0, -1);
+  wisp(right, W - 1, 1);
+  const own = (x: number, y: number): number => (x < 0 || y < 0 || x >= W || y >= H ? -1 : owner[y * W + x]);
   for (let py = 0; py < H; py++)
     for (let px = 0; px < W; px++) {
-      const i = owner[py * W + px];
-      if (i < 0) continue;
+      const i = own(px, py);
+      if (i === -1) continue;
+      if (i === -2) {
+        p.set(px, py, PAL.stone1);
+        continue;
+      }
       const q = puffs[i];
-      // crest: the lit upper-left cap of each billow (a broad flat band, not an outline) + a 1 px rim on every top edge
-      const up1 = py - 1 < 0 || owner[(py - 1) * W + px] !== i;
       const ny = (py + 0.5 - q.cy) / q.ry;
       const nx = (px + 0.5 - q.cx) / q.rx;
-      let c: number = PAL.night3;
-      if (up1 && ny < 0.2) c = PAL.stone1;
-      else if (ny < -0.28 + nx * 0.35 && nx < 0.55) c = PAL.stone1;
-      // seam: where this puff tucks under the one in front of it (right edge meets another puff) → night2
-      const right = px + 1 < W ? owner[py * W + px + 1] : -1;
-      if (right >= 0 && right !== i && ny > -0.1) c = PAL.night2;
+      const up1 = own(px, py - 1) !== i;
+      const deep = own(px, py + 2) === i && own(px, py + 1) === i; // ≥ 3 px of this puff below → never a cap-only line
+      const edge = own(px - 1, py) === -1 || own(px + 1, py) === -1 || own(px, py - 1) === -1 || own(px, py + 1) === -1;
+      if (back) {
+        // back bank: night3 body over a night2 lower half; outer rim a 1 px checker fade (off-board only)
+        if (edge && ((px + py) & 1)) continue;
+        // a lit 2 px night4 rim on top of each exposed billow so the back layer reads over the night2/night3 floor
+        const rim = up1 || own(px, py - 2) !== i;
+        // critique 3 #1: desaturated grey-violet — body a night2/stone1 checker (≈ hedef 282949), lit rim stone1
+        const ck = (px + py) & 1;
+        const fb = bottom(px) - py;
+        p.set(px, py, fb <= 0 ? PAL.night2 : fb === 1 ? PAL.night2 : rim && ny < -0.1 ? PAL.stone1 : ck ? PAL.night2 : PAL.stone1);
+        continue;
+      }
+      // critique 3 #1/#3: one desaturated grey-violet family — body stone1, a 1 px stone2 lit edge (+ a stone1/stone2
+      // checker transition row) on the upper-left of each exposed billow, the underside stepping down to night2
+      const ck = (px + py) & 1;
+      let c: number = PAL.stone1;
+      const up2 = own(px, py - 2) !== i;
+      if (deep && nx < 0.5 && ny < -0.2 && up1) c = PAL.stone2;
+      else if (deep && nx < 0.5 && ny < -0.2 && up2 && q.ry >= 5) c = ck ? PAL.stone2 : PAL.stone1;
+      // underside falloff: body → stone1/night2 checker → night2 at the foot
+      const fb = bottom(px) - py;
+      if (fb <= 0) c = PAL.night2;
+      else if (fb === 1) c = ck ? PAL.night2 : PAL.stone1;
+      // critique 3 #2: ragged side falloff — the outermost column of a billow steps to a night2/stone1 checker
+      if (c === PAL.stone1 && (own(px - 1, py) === -1 || own(px + 1, py) === -1)) c = ck ? PAL.night2 : PAL.stone1;
+      // tuck seam where a puff slides under its right-hand neighbour
+      const r = own(px + 1, py);
+      if (r >= 0 && r !== i && ny > -0.2 && ny < 0.6) c = PAL.night2;
       p.set(px, py, c);
     }
-  // frayed bottom: a few 2–4 px gaps along the bottom row so the streak does not end on a ruled line
-  for (let px = 0; px < W; px++) {
-    const b = bottom(px);
-    if (b >= 0 && b < H && (Math.floor(px / 3) * 7 + spec.seed) % 5 === 0) p.erase(px, b);
-  }
   return p;
 }
 
@@ -563,11 +529,6 @@ export function bakeLights(): LightsBake {
     for (let L = 1; L <= LIGHT_LEVELS; L++) parts.push([lightFrame.pool(i, L), paintPool(s, L)]);
   });
   for (let L = 1; L <= LIGHT_LEVELS; L++) parts.push([lightFrame.halo(L), paintHalo(L)]);
-  for (let v = 0; v < 2; v++) {
-    parts.push([lightFrame.fogBack(v), paintFogBack(v)]);
-    parts.push([lightFrame.fogFront(v), paintFogFront(v)]);
-    parts.push([lightFrame.fogWisp(v), paintFogWisp(v)]);
-  }
   FOG_BANKS.forEach((b, i) => parts.push([lightFrame.fogBank(i), paintFogBank(b)]));
   for (let f = 0; f < 3; f++) {
     parts.push([lightFrame.torch(f), paintTorch(f)]);
