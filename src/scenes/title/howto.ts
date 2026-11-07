@@ -266,7 +266,7 @@ const PAGES: Page[] = [
     title: 'Goal',
     lines: [
       'Each player starts with 4000 LP. Bring your opponent\'s LP to 0 to win the duel.',
-      'The standard deck is 20 cards: 12 monsters, 5 Spells and 3 Traps. Both players play the same cards, shuffled.',
+      'Each player picks a deck of 40 to 80 cards (up to 3 copies of a card) in the deck picker, or plays a preset.',
       LOOK_V3 ? 'Your opening hand is 5 cards; on your turn you draw a 6th. If you must draw and your deck is empty, you lose.' : 'Your opening hand is 4 cards. If you must draw and your deck is empty, you lose.',
       'A player who surrenders loses.',
     ],
