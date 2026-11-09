@@ -26,6 +26,8 @@ import { createCrowdLayer } from './crowd';
 import { createFloorLayer } from './floor';
 import { createHologramsLayer } from './holograms';
 import { createLightsLayer } from './lights';
+import { createGlowLayer } from './glow';
+import { BOARD_V4 } from '../layout';
 import { createPadsLayer } from './pads';
 import { createPlatformLayer } from './platform';
 import { createScreensLayer } from './screens';
@@ -63,6 +65,8 @@ export class BoardViewNt implements ArenaViewApi {
       createFloorLayer(ctx),
       createPadsLayer(ctx),
       createLightsLayer(ctx),
+      // arena v4 step 2: the light & value layer (veils over the hall / stage / daises, the light sources' glow)
+      ...(BOARD_V4 ? [createGlowLayer(ctx)] : []),
     ];
     // the board is built dark for the intro (BoardView lights:false): the layers start dark too
     if (opts.lights === false) for (const l of this.layers) void l.setLights?.(false, false);

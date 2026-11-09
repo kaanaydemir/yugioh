@@ -18,7 +18,7 @@ import { PAL } from '../../art/palette';
 import { attributeLightColor, lightFlash } from '../light';
 import type { Attribute } from '../../data/cards';
 import type { GameEvent, PlayerId } from '../../engine/types';
-import { zoneXY } from '../layout';
+import { BOARD_V4, zoneXY } from '../layout';
 import { REDUCED_MOTION } from '../v3/motion';
 import type { CrowdReaction } from './api';
 import { NT_DEPTH } from './layout-nt';
@@ -28,6 +28,8 @@ import { ensureNtTexture } from './textures';
 type Img = Phaser.GameObjects.Image;
 
 const FOG_BANK_KEY = 'nt:fog:bank-v3';
+/** Arena v4: the fog's light (multiply tint): the hall's cool dim ambient (board-nt/glow.ts AMBIENT), a notch brighter. */
+const FOG_TINT_V4 = 0x8c90b0;
 const FOG_WISP_KEY = 'nt:fog:wisp-v3';
 const TORCH_GLOW_KEY = 'nt:torch:glow-v3';
 
@@ -128,6 +130,9 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
   // pixels, no alpha); it lies LOW (hall floor, the stage's foot, the hologram plinths) in layers that drift slowly.
   const addFog = (frame: string, x: number, y: number, flipX: boolean, depth: number, ampX: number, ampY: number, period: number, phase: number): void => {
     const img = ctx.add(scene.add.image(x, y, NT_LIGHTS_KEY, frame).setOrigin(0).setFlipX(flipX).setDepth(depth));
+    // arena v4 step 2 (value separation): the fog lies in the hall's dim light like the floor under it (a multiply tint —
+    // the light layer's job, the baked fog pixels stay as they are), so it never reads brighter than the monsters
+    if (BOARD_V4) img.setTint(FOG_TINT_V4);
     fogs.push({ img, baseX: x, baseY: y, ampX, ampY, period, phase, lastX: x, lastY: y });
   };
   void FOG_BANK_KEY;

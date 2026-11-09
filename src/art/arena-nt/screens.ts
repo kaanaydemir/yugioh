@@ -28,9 +28,18 @@ import { type AtlasRect, type NtAtlas, packAtlas } from './wall-kit';
 /** Texture key of this layer's atlas / sheet (frames named inside). */
 export const NT_SCREENS_KEY = 'nt:screens';
 
-/** Bezel: 6 px left / right, 4 px top / bottom around the 80 × 56 window. */
-export const FRAME_W = 92;
-export const FLAT_H = 64;
+/**
+ * The picture window. Arena v4 step 2 (owner: the bigger stage covered the lower half of the P1 screen and a corner of the P2
+ * one): the screens are smaller and hang higher / further out, so the whole window clears the stage edge. The window shows a
+ * 64 × 46 crop of the 80 × 56 portrait (the full head, hair and coat collar; PIC_CROP_X picks the columns per duelist).
+ */
+export const PIC_W = BOARD_V4 ? 64 : PORTRAIT_W;
+export const PIC_H = BOARD_V4 ? 46 : PORTRAIT_H;
+/** First portrait column the window shows, per duelist (the face sits a little left in P1's portrait, right in P2's). */
+export const PIC_CROP_X: readonly [number, number] = BOARD_V4 ? [8, 12] : [0, 0];
+/** Bezel: 6 px left / right, 4 px top / bottom around the window (80 × 56; arena v4 64 × 46). */
+export const FRAME_W = PIC_W + 12;
+export const FLAT_H = PIC_H + 8;
 /** One pixel of height per this many columns. */
 export const SHEAR = 6;
 /** Rows the shear adds to the frame (the whole sheared frame is FRAME_H rows high). */
@@ -39,10 +48,18 @@ export const FRAME_H = FLAT_H + SHEAR_ROWS;
 /** Where the picture sits inside the (flat) frame. */
 export const PIC_AT = { x: 6, y: 4 } as const;
 /** Where the screens hang (the layout-nt SCREENS rects: tests keep them equal). */
-export const SCREEN_AT: readonly { x: number; y: number }[] = [
-  { x: 148, y: 22 },
-  { x: 396, y: 22 },
-];
+// arena v4: left 128..203 (between the left torch's pillar and the stage's far-left edge: the window's inner lower corner sits
+// 1 px above the edge), right 402..477 (left of the P2 panel, its window 1 px above the far-right edge); both are symmetric
+// about the stage's far edge (centre x 302), one row below the phase bar
+export const SCREEN_AT: readonly { x: number; y: number }[] = BOARD_V4
+  ? [
+      { x: 128, y: 21 },
+      { x: 402, y: 21 },
+    ]
+  : [
+      { x: 148, y: 22 },
+      { x: 396, y: 22 },
+    ];
 /** The platform's upper-left edge the left screen is cut along (screen y = PLATE_CUT_A − x / 2). */
 // arena v4: the bigger block's far-left edge runs 24 px higher (y = 170 − x / 2)
 export const PLATE_CUT_A = BOARD_V4 ? 170 : 194;
@@ -106,7 +123,8 @@ export function shearPiece(c: PixelCanvas, who: 0 | 1, ox: number, oy: number): 
  * in front of it, so up to column NOTCH.x the bezel ends at row NOTCH.row (abs y 71) and then drops in a steep staircase
  * (NOTCH.slope rows per column) back to its natural bottom. The name plate (right-aligned) starts right of the notch.
  */
-export const NOTCH = { x: 33, row: 49, slope: 3 } as const;
+// arena v4: the P2 duelist (feet 424,108; head top y 74) stands under columns 17..29 of the smaller right screen
+export const NOTCH = BOARD_V4 ? ({ x: 30, row: 52, slope: 3 } as const) : ({ x: 33, row: 49, slope: 3 } as const);
 
 /** The platform cut of the left screen / the duelist notch of the right one: the lowest frame row (sheared frame space) allowed at column x. */
 function cutRow(who: 0 | 1, x: number): number {
@@ -270,25 +288,30 @@ function diffBox(base: PixelCanvas, v: PixelCanvas): { x: number; y: number; w: 
 export type ScreenOverlayKind = 'blink' | 'hurt' | 'glad' | 'swayN' | 'swayP';
 export const OVERLAY_KINDS: readonly ScreenOverlayKind[] = ['blink', 'hurt', 'glad', 'swayN', 'swayP'];
 
+/** The part of a portrait the window shows (the whole portrait before arena v4). */
+function windowCrop(who: 0 | 1, c: PixelCanvas): PixelCanvas {
+  return PIC_W === c.w && PIC_H === c.h ? c : c.crop(PIC_CROP_X[who], 0, PIC_W, PIC_H);
+}
+
 /** The portrait variant each overlay kind replaces its patch with. */
 function variantOf(who: 0 | 1, kind: ScreenOverlayKind): PixelCanvas {
   switch (kind) {
     case 'blink':
     case 'hurt':
     case 'glad':
-      return grade(paintPortrait(who, { mood: kind as PortraitMood }));
+      return windowCrop(who, grade(paintPortrait(who, { mood: kind as PortraitMood })));
     case 'swayN':
-      return grade(paintPortrait(who, { sway: -1 }));
+      return windowCrop(who, grade(paintPortrait(who, { sway: -1 })));
     case 'swayP':
-      return grade(paintPortrait(who, { sway: 1 }));
+      return windowCrop(who, grade(paintPortrait(who, { sway: 1 })));
   }
 }
 
 /** The scan line: a dithered lit row over a dim row, 80 wide, sheared like the picture (flat row 0 = the line). */
 function paintScan(who: 0 | 1): Sheared {
   const R = who === 0 ? RAMPS.cyan : RAMPS.crim;
-  const flat = new PixelCanvas(PORTRAIT_W, 2);
-  for (let x = 0; x < PORTRAIT_W; x++) {
+  const flat = new PixelCanvas(PIC_W, 2);
+  for (let x = 0; x < PIC_W; x++) {
     if (x % 2 === 0) flat.set(x, 0, R[1]);
     flat.set(x, 1, R[0]);
   }
@@ -308,10 +331,12 @@ export function paintPlate(who: 0 | 1, label: PixelCanvas): { canvas: PixelCanva
   flat.rect(1, 1, w - 2, h - 2, PAL.ink);
   flat.blit(label, 3, 1);
   // sits in the picture's lower corner on the side of the screen's own colour (left: lower-left, right: lower-right)
-  const fx = who === 0 ? PIC_AT.x + 3 : PIC_AT.x + PORTRAIT_W - 3 - w;
+  // (arena v4 step 2: flush with the bezel's outer edge — the right one then clears the P2 duelist's head)
+  const fx = BOARD_V4 ? (who === 0 ? 0 : FRAME_W - w) : who === 0 ? PIC_AT.x + 3 : PIC_AT.x + PIC_W - 3 - w;
   // the right plate sits two rows higher so its lower-left corner stays inside the notched bezel
-  // arena v4: the bigger stage's far-left edge covers the left screen's lower corner, so its plate goes to the upper-left corner
-  const fy = BOARD_V4 && who === 0 ? PIC_AT.y + 3 : PIC_AT.y + PORTRAIT_H - 3 - h - (who === 1 ? 2 : 0);
+  // arena v4 step 2: the smaller window has no room for a plate over the picture (it hid the mouth), so the plate hangs on the
+  // lower bezel of the outer (low) side, like a tab: two rows over the picture, the rest over the bezel and below the screen
+  const fy = BOARD_V4 ? PIC_AT.y + PIC_H - 2 : PIC_AT.y + PIC_H - 3 - h - (who === 1 ? 2 : 0);
   const s = shearPiece(flat, who, fx, fy);
   return { canvas: s.canvas, x: s.x, y: s.y };
 }
@@ -330,11 +355,9 @@ export function paintReadout(who: 0 | 1, big: PixelCanvas, small: PixelCanvas): 
   const flat = new PixelCanvas(w, big.h + 1 + small.h);
   flat.blit(big, Math.floor((w - big.w) / 2), 0);
   flat.blit(small, Math.floor((w - small.w) / 2), big.h + 1);
-  // arena v4: on the left screen the readout moves up-left, clear of the stage edge that now covers the lower right of the window
-  const v4l = BOARD_V4 && who === 0;
-  const cx = who === 0 ? PIC_AT.x + (v4l ? 32 : 40) : PIC_AT.x + 52;
-  const fx = Math.min(PIC_AT.x + PORTRAIT_W - 2 - w, Math.max(PIC_AT.x + 2, cx - (w >> 1)));
-  const fy = PIC_AT.y + (v4l ? 14 : 22);
+  const cx = PIC_AT.x + Math.round((who === 0 ? 0.5 : 0.65) * PIC_W);
+  const fx = Math.min(PIC_AT.x + PIC_W - 2 - w, Math.max(PIC_AT.x + 2, cx - (w >> 1)));
+  const fy = PIC_AT.y + Math.round(PIC_H * 0.4);
   return shearPiece(flat, who, fx, fy);
 }
 
@@ -367,7 +390,7 @@ export function screensBake(): ScreensBake {
   const parts: [string, PixelCanvas][] = [];
   const at: Record<string, { x: number; y: number }> = {};
   for (const who of [0, 1] as const) {
-    const base = grade(paintPortrait(who));
+    const base = windowCrop(who, grade(paintPortrait(who)));
     const basePic = shearPiece(raster(base.clone()), who, PIC_AT.x, PIC_AT.y);
     clipToWindow(basePic, who);
     parts.push([picName(who), basePic.canvas]);

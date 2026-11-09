@@ -146,11 +146,17 @@ export const CORRIDOR: Rect = { x: 306, y: 58, w: 28, h: 10 };
  * inner corner is cut along the platform's upper-left edge (y = 194 − x / 2). Left = the player (blue), right = the opponent (crimson).
  * Inner portrait area: 80×56 inside.
  */
-export const SCREENS: readonly Rect[] = [
-  { x: 148, y: 22, w: 92, h: 79 },
-  { x: 396, y: 22, w: 92, h: 79 },
-];
-export const SCREEN_INNER = { w: 80, h: 56 } as const;
+// arena v4 step 2: smaller (76 × 66, a 64 × 46 window), higher and further out, so the whole picture clears the bigger stage
+export const SCREENS: readonly Rect[] = BOARD_V4
+  ? [
+      { x: 128, y: 21, w: 76, h: 66 },
+      { x: 402, y: 21, w: 76, h: 66 },
+    ]
+  : [
+      { x: 148, y: 22, w: 92, h: 79 },
+      { x: 396, y: 22, w: 92, h: 79 },
+    ];
+export const SCREEN_INNER = BOARD_V4 ? ({ w: 64, h: 46 } as const) : ({ w: 80, h: 56 } as const);
 
 // ---------------------------------------------------------------- holograms
 

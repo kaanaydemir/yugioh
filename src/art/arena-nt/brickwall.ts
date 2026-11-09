@@ -7,6 +7,7 @@
 // The banners and the torches themselves are animated sprites placed from the data below (src/view/board-nt/wall.ts,
 // src/view/board-nt/lights.ts). Pure PixelCanvas code: runs in Node.
 
+import { BOARD_V4 } from '../../view/layout';
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { hash01 } from './wall-kit';
@@ -46,10 +47,14 @@ export const BRICK_PILLARS: readonly { x: number; w: number }[] = [
 ];
 
 /** Hanging banners (screen x / y of the rod's left end; 16 × 46 sprites). Both crimson with a gold sigil, as in the target. */
-export const BRICK_BANNERS: readonly { x: number; y: number }[] = [
-  { x: 131, y: 22 },
-  { x: 513, y: 52 },
-];
+// arena v4 step 2: the smaller portrait screens moved out over the left banner's spot; banners in the gaps between the screens
+// and the tower crowded the top centre (tried, owner ask: a calmer top), so the v4 wall hangs none
+export const BRICK_BANNERS: readonly { x: number; y: number }[] = BOARD_V4
+  ? []
+  : [
+      { x: 131, y: 22 },
+      { x: 513, y: 52 },
+    ];
 
 /** Small status boxes with LEDs (screen x / y of the box; the LEDs blink in the view). */
 export const BRICK_BOXES: readonly { x: number; y: number; w: number; h: number; leds: readonly (readonly [number, number, number])[] }[] = [

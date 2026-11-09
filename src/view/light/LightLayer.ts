@@ -37,7 +37,7 @@ import { PixelCanvas } from '../../art/pixel';
 import { monsterFrame, monsterTextureKey } from '../../art/textures';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { ZoneEntry } from '../../duel/FieldView';
-import { DEPTH, duelistXY, GAME_H, GAME_W, LOOK_V3, type XY } from '../layout';
+import { BOARD_V4, DEPTH, duelistXY, GAME_H, GAME_W, LOOK_V3, type XY } from '../layout';
 import { NT_DEPTH, ntIso, PLATE_OUTLINE, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1 } from '../board-nt/layout-nt';
 import { onDuelStart } from '../../duel/seeds';
 import { type Stamp, StepPatch, quantize, stepImgRev } from './stepped';
@@ -1337,6 +1337,138 @@ function ensureRimTex(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite): string
   return key;
 }
 
+// ---------------------------------------------------------------- arena v4 step 2: the monsters pop (owner, hedef-gorunum-4-isik)
+// The arena's veils (src/view/board-nt/glow.ts) push the floor down to dark cool tones; each monster on the board gets
+//   - a thin RIM light on its BACK edge in its owner's colour (P1 cyan, P2 crimson): the 1-px band just inside the ink outline
+//     on the side it turns its back to (frame space −x for every monster: they are drawn facing right and P2 is flipX), down to
+//     its feet; baked per sheet frame + colour from the frame's own pixels and laid over the sprite with its exact transform,
+//     so it follows every frame (idle, attack, summon) and is hidden while the sprite is masked, piped, flash-filled or gone;
+//   - a crisp dark CONTACT shadow: hard-edged multiply bands (no dither, no gradient) — a dark core under the feet, a lighter
+//     contact ring and a short cast tail down-right (key light top-left). Multiply composes with whatever light lies under it
+//     (the veil, the zone glow, the seat), which the old re-coloured opaque shadow could not;
+//   - a light POOL on its tile in its OWNER's colour (the seat, two steps in the core): the board reads as two lit camps, the
+//     colour ties each monster to its side even for a mirrored P2 sprite, and an attribute pool would repeat the colour the
+//     monster already carries in its own palette and summon FX (a FIRE monster on an orange pool loses its silhouette).
+export const UNIT_LIGHT_V4 = BOARD_V4 && LOOK_V3;
+const OWNER_LIGHT: readonly [number, number] = [PAL.cyan3, PAL.crim3];
+const OWNER_RIM: readonly [number, number] = [PAL.cyan3, PAL.crim3];
+/** Multiply factors (0xRRGGBB) of the contact shadow bands: core, contact ring, cast tail. */
+const SHADOW_MUL = [0, 0x2e2c3e, 0x6a6880, 0x8a88a0] as const;
+
+interface MulShadow {
+  key: string;
+  x0: number;
+  y0: number;
+}
+const mulShadowCache = new Map<string, MulShadow>();
+/** The v4 contact shadow of a unit (feet at (0, 0)): a cached multiply texture of hard-edged bands. */
+function ensureMulShadowTex(scene: Phaser.Scene, rx: number, ry: number, len: number): MulShadow {
+  const sk = `${rx}x${ry}x${len}`;
+  const key = `light:v4shd:${sk}`;
+  const hit = mulShadowCache.get(sk);
+  if (hit && scene.textures.exists(key)) return hit;
+  const rxO = rx + 1;
+  const ryO = ry + 1;
+  const rxC = Math.max(4, Math.round(rx * 0.6));
+  const ryC = Math.max(2, Math.round(ry * 0.6));
+  // a short cast tail down-right along the floor (iso: 2 px right per px down)
+  const L = Math.max(8, Math.min(22, Math.round(len * 0.3)));
+  const ang = Math.atan2(1, 2);
+  const ca = Math.cos(ang);
+  const sa = Math.sin(ang);
+  const ccx = ca * L * 0.5;
+  const ccy = sa * L * 0.5;
+  const a = L * 0.5 + rx * 0.5;
+  const b = Math.max(3, ry * 0.75);
+  const x0 = -rxO - 1;
+  const y0 = -ryO - 1;
+  const x1 = Math.ceil(ccx + a) + 1;
+  const y1 = Math.ceil(Math.max(ryO, ccy + b + a * sa)) + 1;
+  const w = x1 - x0 + 1;
+  const h = y1 - y0 + 1;
+  const p = new PixelCanvas(w, h);
+  for (let j = 0; j < h; j++)
+    for (let i = 0; i < w; i++) {
+      const dx = x0 + i + 0.5;
+      const dy = y0 + j + 0.5;
+      let l = 0;
+      const ux = dx - ccx;
+      const uy = dy - ccy;
+      const pa = (ux * ca + uy * sa) / a;
+      const pb = (-ux * sa + uy * ca) / b;
+      if (pa * pa + pb * pb <= 1) l = 3;
+      if ((dx / rxO) ** 2 + (dy / ryO) ** 2 <= 1) l = 2;
+      if ((dx / rxC) ** 2 + (dy / ryC) ** 2 <= 1) l = 1;
+      // pure white = no change under multiply (the texture is opaque: light-layer factors, not art colours)
+      p.set(i, j, l ? SHADOW_MUL[l] : 0xffffff);
+    }
+  if (!scene.textures.exists(key)) scene.textures.addCanvas(key, p.toCanvas());
+  const out = { key, x0, y0 };
+  mulShadowCache.set(sk, out);
+  return out;
+}
+
+/** The v4 tile pool of a unit: a flat-banded iso ellipse (ADD), centred in the texture, in `color` × the band levels. */
+function ensurePoolTexV4(scene: Phaser.Scene, rx: number, ry: number, color: number): string {
+  const key = `light:v4pool:${rx}x${ry}:${color.toString(16)}`;
+  if (scene.textures.exists(key)) return key;
+  const w = rx * 2;
+  const h = ry * 2;
+  const p = new PixelCanvas(w, h);
+  const r0 = (color >> 16) & 255;
+  const g0 = (color >> 8) & 255;
+  const b0 = color & 255;
+  const BANDS = [0.62, 0.62, 0.4, 0.22];
+  for (let j = 0; j < h; j++)
+    for (let i = 0; i < w; i++) {
+      const dx = (i + 0.5 - rx) / rx;
+      const dy = (j + 0.5 - ry) / ry;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d >= 1) continue;
+      const k = BANDS[Math.min(BANDS.length - 1, Math.floor(d * BANDS.length))];
+      p.set(i, j, (Math.round(r0 * k) << 16) | (Math.round(g0 * k) << 8) | Math.round(b0 * k));
+    }
+  scene.textures.addCanvas(key, p.toCanvas());
+  return key;
+}
+
+/**
+ * The v4 back-edge rim of a sprite frame in `color`: the opaque, non-ink pixels whose back neighbour (frame −x, or −x −y) is
+ * outside the silhouette or its 1-px ink outline. Read from the frame's pixels (no monster art is touched); cached per frame.
+ */
+function ensureRimTexV4(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, color: number): string | null {
+  const f = s.frame;
+  const texKey = s.texture?.key;
+  if (!f || !texKey) return null;
+  const key = `light:v4rim:${texKey}:${f.name}:${color.toString(16)}`;
+  if (scene.textures.exists(key)) return key;
+  const rgba = frameRGBA(f);
+  if (!rgba) return null;
+  const w = f.realWidth;
+  const h = f.realHeight;
+  const p = new PixelCanvas(w, h);
+  const aAt = (x: number, y: number): number => (x < 0 || x >= w || y < 0 || y >= h ? 0 : rgba[(y * w + x) * 4 + 3]);
+  const cAt = (x: number, y: number): number => {
+    const i = (y * w + x) * 4;
+    return (rgba[i] << 16) | (rgba[i + 1] << 8) | rgba[i + 2];
+  };
+  // outside: transparent, or the ink outline with transparency right behind it
+  const out = (x: number, y: number, dx: number, dy: number): boolean => aAt(x, y) < 128 || (cAt(x, y) === PAL.ink && aAt(x + dx, y + dy) < 128);
+  let n = 0;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      if (aAt(x, y) < 250) continue;
+      if (cAt(x, y) === PAL.ink) continue;
+      if (out(x - 1, y, -1, 0) || out(x - 1, y - 1, -1, -1)) {
+        p.set(x, y, color);
+        n++;
+      }
+    }
+  scene.textures.addCanvas(key, p.toCanvas());
+  void n;
+  return key;
+}
+
 /**
  * Stepped mode: a monster's own light is ONE flat seat on its pad (the still's drawLights: the
  * wyrm's cyan seat, the magus' violet one) — its glow colour (MONSTER_GLOW spill, else the
@@ -1348,7 +1480,14 @@ class SteppedUnitLight {
   readonly unit: MonsterUnit;
   private readonly scene: Phaser.Scene;
   private readonly patch: StepPatch;
-  private readonly shadow: StepUnitShadow;
+  /** The stepped re-coloured shadow (v3 before arena v4); null in arena v4 (mulShadow). */
+  private readonly shadow: StepUnitShadow | null;
+  /** Arena v4: the hard-edged multiply contact shadow. */
+  private readonly mulShadow: Img | null;
+  private readonly mulTex: MulShadow | null;
+  /** Arena v4: the owner-colour light pool on the tile (ADD, over the card lying on the tile, under the shadow). */
+  private readonly pool: Img | null;
+  private poolKey = '';
   private readonly rimImg: Img;
   private readonly lvl = new Ramp(0);
   private readonly color: number;
@@ -1372,10 +1511,27 @@ class SteppedUnitLight {
     this.rx = Math.round(Math.max(12, Math.min(24, ow.w * 0.36)));
     this.ry = Math.max(4, Math.round(this.rx * 0.37));
     this.patch = layer.makePatch();
-    // readability pass: a long cast shadow falling down-right from the feet (key light top left)
-    // pixel compliance pass: contact + cast shadow are one stepped, palette-only shadow (StepUnitShadow)
-    this.shadow = new StepUnitShadow(this.scene, layer.makeSteppedImage('__DEFAULT', DEPTH.SHADOW + 0.05), this.rx, this.ry, ow.h);
+    if (UNIT_LIGHT_V4) {
+      // arena v4 step 2: a crisp multiply contact shadow (see UNIT_LIGHT_V4); the contact ellipse a little tighter than the seat
+      this.shadow = null;
+      this.mulTex = ensureMulShadowTex(this.scene, Math.max(8, this.rx - 3), Math.max(3, this.ry - 1), ow.h);
+      this.mulShadow = layer.makeSteppedImage(this.mulTex.key, DEPTH.SHADOW + 0.05).setOrigin(0).setBlendMode(Phaser.BlendModes.MULTIPLY);
+      this.pool = layer.makeSteppedImage('__DEFAULT', DEPTH.SHADOW - 1).setBlendMode(Phaser.BlendModes.ADD);
+    } else {
+      // readability pass: a long cast shadow falling down-right from the feet (key light top left)
+      // pixel compliance pass: contact + cast shadow are one stepped, palette-only shadow (StepUnitShadow)
+      this.shadow = new StepUnitShadow(this.scene, layer.makeSteppedImage('__DEFAULT', DEPTH.SHADOW + 0.05), this.rx, this.ry, ow.h);
+      this.mulShadow = null;
+      this.mulTex = null;
+      this.pool = null;
+    }
     this.rimImg = layer.makeSteppedImage('__DEFAULT', unit.sprite.depth + 0.01);
+  }
+
+  private hideFoot(): void {
+    this.shadow?.update(0, 0, false);
+    this.mulShadow?.setVisible(false);
+    this.pool?.setVisible(false);
   }
 
   tick(dt: number, _t: number, gain: number, onField: boolean, layer: LightLayer): boolean {
@@ -1389,7 +1545,7 @@ class SteppedUnitLight {
     if (!onField && lv <= 0.003 && vis <= 0.003) return false;
     if (!s.active) {
       this.patch.draw([]);
-      this.shadow.update(0, 0, false);
+      this.hideFoot();
       this.rimImg.setVisible(false);
       return lv > 0.003 && onField;
     }
@@ -1399,12 +1555,33 @@ class SteppedUnitLight {
     // lit from the top-left: the seat sits a hair right of the anchor, like the still's seats
     const cx = Math.round(s.x + (u.flipX ? -1 : 1) * 2);
     const cy = Math.round(groundY - 1);
-    this.patch.draw(level > 0 ? [{ kind: 'ellipse', cx, cy, rx: this.rx, ry: this.ry, level: Math.min(1, level), hue: this.color, core: 0 }] : []);
+    if (UNIT_LIGHT_V4 && this.pool) {
+      // the owner-colour pool on the tile: it lies OVER the card on the tile (an opaque seat under the card never showed),
+      // flat bands, fading with the unit (alpha = its light level) and shrinking as it lifts off
+      const k = Math.min(1, gain * layer.groupGain('unit') * lv / (1 + air / 30));
+      if (this.shown && s.visible && !u.retired && k > 0.02) {
+        const rx = this.rx + 6;
+        const key = ensurePoolTexV4(this.scene, rx, Math.max(5, Math.round(rx / 2)), OWNER_LIGHT[u.player]);
+        if (key !== this.poolKey) {
+          this.poolKey = key;
+          this.pool.setTexture(key);
+        }
+        this.pool.setPosition(cx, cy).setAlpha(Math.round(k * 4) / 4).setVisible(true);
+      } else this.pool.setVisible(false);
+    } else this.patch.draw(level > 0 ? [{ kind: 'ellipse', cx, cy, rx: this.rx, ry: this.ry, level: Math.min(1, level), hue: this.color, core: 0 }] : []);
 
     // Replace MonsterUnit's checkerboard dither shadow with smooth radial contact shadow + floor shadow + light pool
     if (u.shadow?.active) u.shadow.setAlpha(0);
     const showFoot = this.shown && s.visible && !u.retired && lv > 0.25 && u.lift < 28;
-    this.shadow.update(Math.round(s.x), Math.round(groundY), showFoot);
+    if (this.mulShadow && this.mulTex) {
+      if (showFoot) this.mulShadow.setPosition(Math.round(s.x) + this.mulTex.x0, Math.round(groundY) + this.mulTex.y0).setVisible(true);
+      else this.mulShadow.setVisible(false);
+    } else this.shadow?.update(Math.round(s.x), Math.round(groundY), showFoot);
+
+    if (UNIT_LIGHT_V4) {
+      this.syncRim();
+      return true;
+    }
 
     // Subtle 1-px top-left rim on the unit sprite
     const showRim = this.shown && s.visible && !u.retired && s.alpha >= 0.99 && !s.isCropped && s.scaleX === 1 && s.scaleY === 1 && s.angle === 0;
@@ -1428,15 +1605,56 @@ class SteppedUnitLight {
     return true;
   }
 
+  /**
+   * Arena v4: lay the owner-colour back rim over the sprite with its exact transform (frame, flip, origin, position, scale,
+   * angle, alpha, depth). Called from tick and again right before the camera renders (LightLayer: main camera PRE_RENDER),
+   * so a cinematic that moves / re-frames the sprite late in the frame (claim pins, PRE_RENDER) never leaves the rim behind.
+   * Hidden while the sprite is masked, runs a post pipeline (the hologram materialise), shows a flash fill or a crop.
+   */
+  syncRim(): void {
+    const u = this.unit;
+    const s = u.sprite;
+    const rim = this.rimImg;
+    if (!rim.active) return;
+    const piped = (s as unknown as { postPipelines?: unknown[] }).postPipelines?.length ?? 0;
+    const flash = s.isTinted && (s as unknown as { tintFill?: boolean }).tintFill === true;
+    const show = this.shown && s.active && s.visible && !u.retired && s.alpha > 0.05 && !s.isCropped && !s.mask && !piped && !flash;
+    if (!show) {
+      if (rim.visible) rim.setVisible(false);
+      return;
+    }
+    const key = ensureRimTexV4(this.scene, s, OWNER_RIM[u.player]);
+    if (!key) {
+      rim.setVisible(false);
+      return;
+    }
+    if (rim.texture.key !== key) rim.setTexture(key);
+    rim
+      .setOrigin(s.originX, s.originY)
+      .setFlipX(s.flipX)
+      .setFlipY(s.flipY)
+      .setPosition(s.x, s.y)
+      .setScale(s.scaleX, s.scaleY)
+      .setAngle(s.angle)
+      .setAlpha(s.alpha)
+      .setScrollFactor(s.scrollFactorX, s.scrollFactorY)
+      .setDepth(s.depth + 0.01)
+      .setVisible(true);
+  }
+
   images(): Img[] {
-    return [this.patch.img, this.shadow.img, this.rimImg];
+    const out = [this.patch.img, this.rimImg];
+    if (this.shadow) out.push(this.shadow.img);
+    if (this.mulShadow) out.push(this.mulShadow);
+    if (this.pool) out.push(this.pool);
+    return out;
   }
 
   setShown(on: boolean): void {
     this.shown = on;
     this.patch.setShown(on);
     if (!on) {
-      this.shadow.update(0, 0, false);
+      this.hideFoot();
       this.rimImg.setVisible(false);
     }
   }
@@ -1448,7 +1666,9 @@ class SteppedUnitLight {
   destroy(): void {
     this.dead = true;
     this.patch.destroy();
-    this.shadow.destroy();
+    this.shadow?.destroy();
+    if (this.mulShadow?.active) this.mulShadow.destroy();
+    if (this.pool?.active) this.pool.destroy();
     if (this.rimImg.active) this.rimImg.destroy();
     this.lvl.flush();
   }
@@ -1600,6 +1820,16 @@ export class LightLayer {
   private destroyed = false;
   private readonly onUpdate: (time: number, delta: number) => void;
   private readonly onShutdown: () => void;
+  private rimCam: Phaser.Cameras.Scene2D.Camera | null = null;
+  private readonly onRimSync = (): void => {
+    for (const sl of this.steppedUnits.values()) {
+      try {
+        sl.syncRim();
+      } catch (e) {
+        console.error('[light] rim sync failed', e);
+      }
+    }
+  };
   private readonly onKey: ((e: KeyboardEvent) => void) | null = null;
   /** Called when the layer is destroyed (index.ts clears its registry). */
   onDestroy: (() => void) | null = null;
@@ -1668,6 +1898,11 @@ export class LightLayer {
     };
     this.onShutdown = () => this.destroy();
     scene.events.on(Phaser.Scenes.Events.POST_UPDATE, this.onUpdate);
+    // arena v4: the monster rims follow their sprites to the last moment before the main camera draws (after every PRE_RENDER pin)
+    if (this.stepped && UNIT_LIGHT_V4) {
+      this.rimCam = scene.cameras?.main ?? null;
+      this.rimCam?.on(Phaser.Cameras.Scene2D.Events.PRE_RENDER, this.onRimSync);
+    }
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, this.onShutdown);
     scene.events.once(Phaser.Scenes.Events.DESTROY, this.onShutdown);
     if (import.meta.env?.DEV) {
@@ -1937,6 +2172,8 @@ export class LightLayer {
     if (this.destroyed) return;
     this.destroyed = true;
     this.scene.events.off(Phaser.Scenes.Events.POST_UPDATE, this.onUpdate);
+    this.rimCam?.off(Phaser.Cameras.Scene2D.Events.PRE_RENDER, this.onRimSync);
+    this.rimCam = null;
     this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN, this.onShutdown);
     this.scene.events.off(Phaser.Scenes.Events.DESTROY, this.onShutdown);
     if (this.onKey) window.removeEventListener('keydown', this.onKey);

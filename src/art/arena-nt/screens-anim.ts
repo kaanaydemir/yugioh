@@ -10,7 +10,7 @@
 //   tear      a 4-px band of the picture slips 2 px sideways for 80 ms, very rarely
 //   breath    the frame's neon line goes bright for 500 ms every ~6 s while the player is not the active one
 
-import { PORTRAIT_H, PORTRAIT_W } from './portraits';
+import { PIC_H as PORTRAIT_H, PIC_W as PORTRAIT_W } from './screens';
 
 interface Sched {
   blinkP: number;

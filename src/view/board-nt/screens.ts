@@ -30,7 +30,8 @@ import {
   PIC_AT,
 } from '../../art/arena-nt/screens';
 import { blinkAt, breathAt, flickerAt, scanAt, sweepAt, swayAt, tearAt } from '../../art/arena-nt/screens-anim';
-import { PORTRAIT_W } from '../../art/arena-nt/portraits';
+import { FRAME_W, PIC_H, PIC_W as PORTRAIT_W } from '../../art/arena-nt/screens';
+import { BOARD_V4 } from '../layout';
 import { canvasTexture } from '../../art/textures';
 import { PixelCanvas } from '../../art/pixel';
 import { textCanvas } from '../v3/hudSkin';
@@ -93,7 +94,7 @@ function plateNames(scene: Phaser.Scene): [string, string] {
 const READOUT_MS = 1500;
 
 /** Ceiling rods (a 3-px steel bar with a lit edge) the screens hang from: x offsets inside the screen, top y of the bezel there. */
-const ROD_X = [14, 76] as const;
+const ROD_X = [14, FRAME_W - 16] as const;
 
 export function createScreensLayer(ctx: NtCtx): NtLayer {
   const scene = ctx.scene;
@@ -220,7 +221,11 @@ export function createScreensLayer(ctx: NtCtx): NtLayer {
     const flat = new PixelCanvas(w, lbl.h + 1 + val.h);
     flat.blit(lbl, 0, 0);
     flat.blit(val, w - val.w, lbl.h + 1);
-    const sh = shearPiece(flat, who, PIC_AT.x + 1, PIC_AT.y + 4);
+    // arena v4 step 2: the cropped window has no free strip beside the face any more, so the readout sits low on the coat,
+    // in the lower corner away from the name plate (P1: lower right, P2: lower left)
+    const sh = BOARD_V4
+      ? shearPiece(flat, who, who === 0 ? PIC_AT.x + PORTRAIT_W - 2 - w : PIC_AT.x + 2, PIC_AT.y + PIC_H - 3 - flat.h)
+      : shearPiece(flat, who, PIC_AT.x + 1, PIC_AT.y + 4);
     if (!scene.textures.exists(key)) canvasTexture(scene, key, sh.canvas);
     s.numKey = key;
     s.numAt = { x: SCREENS[who].x + sh.x, y: SCREENS[who].y + sh.y };

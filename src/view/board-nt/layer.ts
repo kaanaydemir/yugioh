@@ -12,7 +12,7 @@ import { NT_DEBUG } from './flag';
 import { ensureNtTexture } from './textures';
 import type { PixelCanvas } from '../../art/pixel';
 
-export type NtLayerName = 'platform' | 'floor' | 'pads' | 'wall' | 'stands' | 'crowd' | 'screens' | 'holograms' | 'lights';
+export type NtLayerName = 'platform' | 'floor' | 'pads' | 'wall' | 'stands' | 'crowd' | 'screens' | 'holograms' | 'lights' | 'glow';
 /** The build-phase owner of a layer (docs §9). */
 export type NtOwner = 'A1' | 'A2' | 'B1' | 'B2' | 'C';
 
