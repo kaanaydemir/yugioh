@@ -46,7 +46,7 @@ import { PixelCanvas, type Pt } from '../../art/pixel';
 import { isoCanvas, ISO_CX, ISO_CY } from '../../art/cards';
 import type { PlayerId } from '../../engine/types';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { topAt } from '../../still/arena';
+import { topAtLive as topAt } from '../../still/arena'; // arena v4: the board as drawn (spaced zones)
 import { DEPTH, duelistXY, screenToIso, zoneXY, type XY } from '../../view/layout';
 import { STEP_DEPTH } from '../../view/light';
 import { V3_A6_B } from '../../view/v3flags';

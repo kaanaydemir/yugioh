@@ -20,7 +20,13 @@
 
 import { PAL } from '../art/palette';
 import type { Color, PixelCanvas, Pt } from '../art/pixel';
-import { BOARD_COLS, cellKind, isoToScreen, zoneAtCell, zoneXY, type XY } from '../view/layout';
+// arena v4 (BOARD_V4): the still keeps the original contiguous grid (isoToScreenRef), the reference the calm art is cut from
+import { BOARD_COLS, BOARD_V4, cellKind, isoToScreen as isoToScreenLive, isoToScreenRef as isoToScreen, screenToIso as screenToIsoLive, zoneAtCell, zoneCell, type XY } from '../view/layout';
+import { PLATE_OUTLINE, ntIso } from '../view/board-nt/layout-nt';
+const zoneXY = (p: 0 | 1, spot: 'monster', i: number): XY => {
+  const c = zoneCell(p, spot, i);
+  return isoToScreen(c.col, c.row);
+};
 import {
   G0,
   G1,
@@ -187,6 +193,47 @@ export function topAt(x: number, y: number): { kind: TopKind; color: Color } | n
   const t = rawTop(x, y);
   if (t && t.kind === 'trim' && trimTipOuter(x, y)) return { kind: 'border', color: T.border };
   return t;
+}
+
+/** Arena v4: the stage top outline (screen px), for topAtLive. */
+let v4Plate: XY[] | null = null;
+/** Arena v4: true when screen point (x, y) lies on the stage top (the v4 block's octagon). */
+export function onV4Plate(x: number, y: number): boolean {
+  if (!v4Plate) v4Plate = PLATE_OUTLINE.map(([c, r]) => ntIso(c, r));
+  const P = v4Plate;
+  // convex, clockwise on screen: inside = on the right of every edge (screen y down)
+  for (let i = 0; i < P.length; i++) {
+    const a = P[i];
+    const b = P[(i + 1) % P.length];
+    if ((b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x) < 0) return false;
+  }
+  return true;
+}
+
+/**
+ * topAt() on the board as it is drawn NOW. Before arena v4 that is topAt() itself. Arena v4 (layout BOARD_V4: spaced zones)
+ * keeps the still in the original contiguous grid, so a pixel inside a drawn zone tile answers what the same pixel of that
+ * zone's tile answers in the still (pad / pile / line …), any other pixel on the stage top is plain border stone, off the
+ * stage null. The banish pads are not drawn in v4 (layout BANISH_PAD): plain stone there too.
+ */
+export function topAtLive(x: number, y: number): { kind: TopKind; color: Color } | null {
+  if (!BOARD_V4) return topAt(x, y);
+  const g = screenToIsoLive(x + 0.5, y + 0.5);
+  const col = Math.round(g.col);
+  const row = Math.round(g.row);
+  const z = zoneAtCell(col, row);
+  if (z && z.spot !== 'banish') {
+    const live = isoToScreenLive(col, row);
+    const dx = x - live.x;
+    const dy = y - live.y;
+    // inside this tile's own 64×32 diamond only (the box corners belong to the neighbours in the still)
+    if (Math.abs(dx + 0.5) / 32 + Math.abs(dy + 0.5) / 16 <= 1) {
+      const ref = isoToScreen(col, row);
+      const t = topAt(ref.x + dx, ref.y + dy);
+      if (t && (t.kind === 'pad' || t.kind === 'pile' || t.kind === 'line')) return t;
+    }
+  }
+  return onV4Plate(x + 0.5, y + 0.5) ? { kind: 'border', color: T.border } : null;
 }
 
 /** True on the platform's top surface (where floor light / contact shadows may fall). */

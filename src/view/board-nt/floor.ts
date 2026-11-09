@@ -9,7 +9,7 @@ import { buildCalmArt, calmZones } from '../board-calm/art';
 import { PAL, RAMPS } from '../../art/palette';
 import type { FieldView } from '../../duel/FieldView';
 import type { GameEvent, PlayerId } from '../../engine/types';
-import { type BoardSpot, zoneXY } from '../layout';
+import { BANISH_PAD, type BoardSpot, zoneXY } from '../layout';
 import { CENTER_EMBLEM, NT_COLS, NT_DEPTH, NT_ROWS, PLATE_OUTLINE, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1, ntIso } from './layout-nt';
 import { mulberry32 } from '../../art/pixel';
 import { TEX } from '../../vfx/core';
@@ -264,7 +264,8 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
   void PLATE_X0;
   void PLATE_Y0;
   const slotKey = NT_FLOOR_KEY;
-  const slots: Slot[] = calmZones().map((z) => {
+  // arena v4: the banish pads are not drawn (BANISH_PAD: nothing is ever shown there — no empty inset holes)
+  const slots: Slot[] = calmZones().filter((z) => BANISH_PAD || z.spot !== 'banish').map((z) => {
     const c = zoneXY(z.player, z.spot, z.index);
     const pile = z.spot !== 'monster' && z.spot !== 'spellTrap';
     const shown = FLOOR_FRAMES.slot(z.player, pile);

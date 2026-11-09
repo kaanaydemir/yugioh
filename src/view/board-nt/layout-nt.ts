@@ -12,7 +12,7 @@
 //
 // All numbers are screen pixels (x right, y down), integer. Rect = {x, y, w, h}.
 
-import { DEPTH, UI, type Rect, type XY } from '../layout';
+import { BOARD_V4, DEPTH, HINT_Y, UI, duelistXY, type Rect, type XY } from '../layout';
 
 // ---------------------------------------------------------------- the fixed 7×5 reference grid
 
@@ -39,22 +39,29 @@ export function ntIso(col: number, row: number): XY {
 // Column sides: 0.375 tile margin. Row sides (the two long edges): 0.5625 tile, exactly so far that each duelist dais's back edge
 // (layout.duelistXY ± the 40×20 pad diamond, its edge parallel to the stage edge) lies flush on the stage edge: the daises are
 // attached to the long edges (P1 in front of the near-left edge, P2 behind the far-right one), never floating off it.
-export const PLATE_C0 = -0.875;
-export const PLATE_C1 = NT_COLS - 0.5 + 0.375; // 6.875
-export const PLATE_R0 = -1.0625;
+//
+// ARENA v4 (BOARD_V4, layout.ts V4_COL_U / V4_ROW_V: spaced zones + a neutral middle lane): ONE symmetric block round the new tile
+// positions, u ∈ ±150, v ∈ ±132 about the board centre (320, 160) (u, v as layout.ts: 32 units = one tile = one step of this 7×5
+// reference grid). Column ends: 0.375 tile past the outer pads' far edges... cut by the end caps 12 px outside the outermost tile
+// tips (x 128 / 512); long edges: 20 px behind each duelist dais's lower step, so BOTH daises stand ON the stage (equal, no ledge).
+export const PLATE_C0 = BOARD_V4 ? 3 - 150 / 32 : -0.875; // v4 -1.6875
+export const PLATE_C1 = BOARD_V4 ? 3 + 150 / 32 : NT_COLS - 0.5 + 0.375; // 6.875 (v4 7.6875)
+export const PLATE_R0 = BOARD_V4 ? 2 - 132 / 32 : -1.0625; // v4 -2.125
 // arena pixel/polish round 3 (#1): the near-left edge moves out 30 px (0.9375 row) so the P1 dais stands ON the stage (one convex
 // block, no L notch round a protruding dais base); the far-right edge stays (the P2 dais keeps its ledge behind it).
-export const PLATE_R1 = NT_ROWS - 0.5 + 1.5; // 6.0
+export const PLATE_R1 = BOARD_V4 ? 2 + 132 / 32 : NT_ROWS - 0.5 + 1.5; // 6.0 (v4 6.125)
 /**
  * The chamfer lines (screen px): vertical end caps x, flat far / near edges y. Arena pass round 2: BIG cuts so the slab reads as
  * an octagon (hedef-gorunum-3): the side caps cut 20 px off the left / right tips (20-px tall vertical caps, still 10 px clear of
  * the outer tile corners), the far edge 13 px (52-px flat edge, 2 px clear of the far tile corner); the near flat edge stays
  * 328..364 (arena-nt/lights.ts splits blue / crimson at its right end, x 364).
  */
-export const PLATE_X0 = 118;
-export const PLATE_X1 = 522;
-export const PLATE_Y0 = 62;
-export const PLATE_Y1 = 262;
+// arena v4: caps x 116 / 524 (12 px outside the tile tips 128 / 512), far flat edge y 36 (12 px above the P2 deck pad's top tip,
+// y 48), near flat edge y 284 (10 px below the P1 deck pad's bottom tip, y 274)
+export const PLATE_X0 = BOARD_V4 ? 116 : 118;
+export const PLATE_X1 = BOARD_V4 ? 524 : 522;
+export const PLATE_Y0 = BOARD_V4 ? 36 : 62;
+export const PLATE_Y1 = BOARD_V4 ? 284 : 262;
 /**
  * Height of the side armour below the top edge (J1: 28, was 18; J4: a THICK slab, 52): coping 3 + groove, upper armour plate 12,
  * light channel 6, main armour plate 18 (big bevelled panel face), belt 5, footing flange 4 incl. the bottom outline. The stands /
@@ -75,7 +82,11 @@ export function ntGrid(x: number, y: number): [number, number] {
  */
 // The four sharp corners of the tight block are far (294, 49), right (542, 173), near (346, 271), left (98, 147); the
 // chamfer lines cut 13 px off the far tip, 9 px off the near tip and 20 px off the side tips (the near flat edge is 328..364).
-export const PLATE_OUTLINE: readonly [number, number][] = [
+// arena v4: the same eight vertices on the v4 block (point-symmetric about (320, 160)):
+// (116, 190) (116, 112) (268, 36) (336, 36) (524, 130) (524, 208) (372, 284) (304, 284).
+export const PLATE_OUTLINE: readonly [number, number][] = BOARD_V4
+  ? [ntGrid(116, 190), ntGrid(116, 112), ntGrid(268, 36), ntGrid(336, 36), ntGrid(524, 130), ntGrid(524, 208), ntGrid(372, 284), ntGrid(304, 284)]
+  : [
   ntGrid(PLATE_X0, 187), // near-left corner (left face start)
   ntGrid(PLATE_X0, 137), // left end cap, top
   ntGrid(268, PLATE_Y0), // far flat edge, left end
@@ -87,25 +98,32 @@ export const PLATE_OUTLINE: readonly [number, number][] = [
 ];
 
 /** The extreme points of the plate's top (screen): the middle of the flat far edge, the right / left end caps, the middle of the flat near edge. */
-export const PLATE_CORNERS = {
-  apex: { x: 294, y: PLATE_Y0 },
-  right: { x: PLATE_X1, y: 173 },
-  bottom: { x: 316, y: PLATE_Y1 },
-  left: { x: PLATE_X0, y: 162 },
-} as const;
+export const PLATE_CORNERS = BOARD_V4
+  ? ({ apex: { x: 302, y: PLATE_Y0 }, right: { x: PLATE_X1, y: 169 }, bottom: { x: 338, y: PLATE_Y1 }, left: { x: PLATE_X0, y: 151 } } as const)
+  : ({
+      apex: { x: 294, y: PLATE_Y0 },
+      right: { x: PLATE_X1, y: 173 },
+      bottom: { x: 316, y: PLATE_Y1 },
+      left: { x: PLATE_X0, y: 162 },
+    } as const);
 
 /** Screen bounding box of the plate top (duelist pads are inside it). */
 export const PLATE_TOP: Rect = { x: PLATE_X0, y: PLATE_Y0, w: PLATE_X1 - PLATE_X0, h: PLATE_Y1 - PLATE_Y0 };
 /** Plate + side armour (the lowest point is the flat near edge: y 262 + FACE_H = 308, behind the hint plate / hand: HUD draws over it). */
 export const PLATE_FULL: Rect = { x: PLATE_X0, y: PLATE_Y0, w: PLATE_X1 - PLATE_X0, h: PLATE_Y1 - PLATE_Y0 + FACE_H };
 /** Soft contact shadow under the platform (ink, stepped): may run under the HUD, never above y 140. */
-export const PLATE_SHADOW: Rect = { x: 88, y: 140, w: 464, h: 196 };
+export const PLATE_SHADOW: Rect = BOARD_V4 ? { x: 84, y: 130, w: 472, h: 214 } : { x: 88, y: 140, w: 464, h: 196 };
 
 /** The two duelist pads: the 58×35 canvas box (cell 56×28) around the duelist's feet = layout.duelistXY; the pad diamond itself is 40×20 (art/arena-nt/pads.ts PAD_HALF). */
-export const DUELIST_PADS: readonly Rect[] = [
-  { x: 185, y: 200, w: 56, h: 28 }, // P1, feet (213, 214), cyan border
-  { x: 399, y: 92, w: 56, h: 28 }, // P2, feet (427, 106), crimson border
-];
+export const DUELIST_PADS: readonly Rect[] = BOARD_V4
+  ? ([0, 1] as const).map((p) => {
+      const f = duelistXY(p); // arena v4: P1 feet (216, 212), P2 (424, 108)
+      return { x: Math.round(f.x) - 28, y: Math.round(f.y) - 14, w: 56, h: 28 };
+    })
+  : [
+      { x: 185, y: 200, w: 56, h: 28 }, // P1, feet (213, 214), cyan border
+      { x: 399, y: 92, w: 56, h: 28 }, // P2, feet (427, 106), crimson border
+    ];
 
 /** The neutral centre strip (no-man's land, row 2): its emblem is a tiny original mark, 16×8, at the board centre. */
 export const CENTER_EMBLEM: Rect = { x: 312, y: 156, w: 16, h: 8 };
@@ -196,7 +214,7 @@ export const KEEP_OUT: Record<string, Rect> = {
   p2Panel: { x: UI.p2Panel.x, y: UI.p2Panel.y, w: UI.p2Panel.w, h: UI.p2Panel.h },
   p2MiniHand: { x: 540, y: 68, w: 46, h: 12 },
   inspect: { x: UI.inspect.x, y: UI.inspect.y, w: UI.inspect.w, h: UI.inspect.h },
-  hint: { x: 174, y: 262, w: 292, h: 26 },
+  hint: { x: 174, y: BOARD_V4 ? HINT_Y : 262, w: 292, h: 26 },
   p1Panel: { x: UI.p1Panel.x, y: UI.p1Panel.y, w: UI.p1Panel.w, h: UI.p1Panel.h },
   hand: { x: UI.hand.x, y: 290, w: UI.hand.w, h: 70 },
   buttons: { x: 500, y: 300, w: 136, h: 56 },

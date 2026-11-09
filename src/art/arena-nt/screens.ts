@@ -19,6 +19,7 @@
 //   scan:<who>             one sheared scan line (a dithered 1-px lit row, a dim row under it) that rolls down the picture.
 // Everything is flat tone bands, opaque or fully transparent: no alpha anywhere.
 
+import { BOARD_V4 } from '../../view/layout';
 import { PAL, RAMPS } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { PORTRAIT_H, PORTRAIT_W, type PortraitMood, paintPortrait } from './portraits';
@@ -43,7 +44,8 @@ export const SCREEN_AT: readonly { x: number; y: number }[] = [
   { x: 396, y: 22 },
 ];
 /** The platform's upper-left edge the left screen is cut along (screen y = PLATE_CUT_A − x / 2). */
-export const PLATE_CUT_A = 194;
+// arena v4: the bigger block's far-left edge runs 24 px higher (y = 170 − x / 2)
+export const PLATE_CUT_A = BOARD_V4 ? 170 : 194;
 
 type Pt = readonly [number, number];
 
@@ -308,7 +310,8 @@ export function paintPlate(who: 0 | 1, label: PixelCanvas): { canvas: PixelCanva
   // sits in the picture's lower corner on the side of the screen's own colour (left: lower-left, right: lower-right)
   const fx = who === 0 ? PIC_AT.x + 3 : PIC_AT.x + PORTRAIT_W - 3 - w;
   // the right plate sits two rows higher so its lower-left corner stays inside the notched bezel
-  const fy = PIC_AT.y + PORTRAIT_H - 3 - h - (who === 1 ? 2 : 0);
+  // arena v4: the bigger stage's far-left edge covers the left screen's lower corner, so its plate goes to the upper-left corner
+  const fy = BOARD_V4 && who === 0 ? PIC_AT.y + 3 : PIC_AT.y + PORTRAIT_H - 3 - h - (who === 1 ? 2 : 0);
   const s = shearPiece(flat, who, fx, fy);
   return { canvas: s.canvas, x: s.x, y: s.y };
 }
@@ -327,9 +330,11 @@ export function paintReadout(who: 0 | 1, big: PixelCanvas, small: PixelCanvas): 
   const flat = new PixelCanvas(w, big.h + 1 + small.h);
   flat.blit(big, Math.floor((w - big.w) / 2), 0);
   flat.blit(small, Math.floor((w - small.w) / 2), big.h + 1);
-  const cx = who === 0 ? PIC_AT.x + 40 : PIC_AT.x + 52;
+  // arena v4: on the left screen the readout moves up-left, clear of the stage edge that now covers the lower right of the window
+  const v4l = BOARD_V4 && who === 0;
+  const cx = who === 0 ? PIC_AT.x + (v4l ? 32 : 40) : PIC_AT.x + 52;
   const fx = Math.min(PIC_AT.x + PORTRAIT_W - 2 - w, Math.max(PIC_AT.x + 2, cx - (w >> 1)));
-  const fy = PIC_AT.y + 22;
+  const fy = PIC_AT.y + (v4l ? 14 : 22);
   return shearPiece(flat, who, fx, fy);
 }
 

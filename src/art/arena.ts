@@ -11,7 +11,8 @@
 
 import type Phaser from 'phaser';
 import type { PlayerId } from '../engine/types';
-import { BOARD_COLS, BOARD_ROWS, type BoardSpot, duelistXY, isoToScreen, screenToIso } from '../view/layout';
+import { onV4Plate } from '../still/arena';
+import { BOARD_COLS, BOARD_ROWS, BOARD_V4, type BoardSpot, duelistXY, isoToScreen, screenToIso } from '../view/layout';
 import { PAL, RAMPS, type Ramp } from './palette';
 import { type Color, PixelCanvas, mix, mulberry32 } from './pixel';
 import { canvasTexture, sheetTexture } from './textures';
@@ -1500,6 +1501,8 @@ export function buildCrackField(origin: { col: number; row: number }, seed = 7):
   const put = (wx: number, wy: number) => {
     const x = Math.round(wx) - R.x;
     const y = Math.round(wy) - R.y;
+    // arena v4: the cracks stay on the stage top (the old slab margin is not the v4 block's)
+    if (BOARD_V4 && !onV4Plate(Math.round(wx) + 0.5, Math.round(wy) + 0.5)) return;
     if (x >= 0 && y >= 0 && x < W && y < H) isCrack[y * W + x] = 1;
   };
 
@@ -1514,8 +1517,22 @@ export function buildCrackField(origin: { col: number; row: number }, seed = 7):
       const r = Math.round(g.row);
       const ctr = isoToScreen(c, r);
       const d = tileDV(wx - (ctr.x - 32), wy - (ctr.y - 16));
-      if (d < 1) isCrack[y * W + x] = 1;
+      // arena v4 (spaced zones): only a thin ring hugging each tile — the gaps between tiles are stage stone, not lava
+      if (d < 1 && (!BOARD_V4 || (d >= -1.5 && onV4Plate(wx + 0.5, wy + 0.5) && cellZone(c, r)?.spot !== 'banish'))) isCrack[y * W + x] = 1;
     }
+  // arena v4: 1-px fissures along the middle of every gap link the rings (the lava runs from tile to tile)
+  if (BOARD_V4) {
+    for (let k = 0; k <= BOARD_COLS; k++) {
+      const a = isoToScreen(k - 0.5, -0.5);
+      const b = isoToScreen(k - 0.5, BOARD_ROWS - 0.5);
+      linePx(Math.round(a.x), Math.round(a.y), Math.round(b.x), Math.round(b.y), (x, y) => put(x, y));
+    }
+    for (let k = 0; k <= BOARD_ROWS; k++) {
+      const a = isoToScreen(-0.5, k - 0.5);
+      const b = isoToScreen(BOARD_COLS - 0.5, k - 0.5);
+      linePx(Math.round(a.x), Math.round(a.y), Math.round(b.x), Math.round(b.y), (x, y) => put(x, y));
+    }
+  }
 
   // 2) fissures through the border: jagged walks from the grid edge to the slab edge
   const jag = (c0: number, r0: number, dc: number, dr: number, len: number) => {
@@ -1554,6 +1571,8 @@ export function buildCrackField(origin: { col: number; row: number }, seed = 7):
     if (onRows && rnd() < 0.7) jag(-0.5, v, -1, 0, SLAB_E - 0.04);
   }
   // 3) drips down the faces (vertical, with a heavier drop at the end)
+  // arena v4: the fissures end on the top, short of the walls — no drips (they would hang in mid-stage)
+  if (BOARD_V4) drips.length = 0;
   for (const d of drips) {
     const len = 5 + Math.floor(rnd() * 8);
     for (let k = 0; k < len; k++) put(d.x, d.y + k);

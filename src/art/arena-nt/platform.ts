@@ -8,13 +8,15 @@ import { type Color, PixelCanvas } from '../pixel';
 import { PAL } from '../palette';
 import { NT_PAL } from './palette';
 import { type Atlas, Surface, packAtlas } from './platform-pack';
+import { BOARD_V4 } from '../../view/layout';
 
 /** Texture keys: the platform body (hull, top, shadow) and the fx atlas (frames named inside). */
 export const NT_PLATFORM_KEY = 'nt:platform';
 export const NT_PLATFORM_FX_KEY = 'nt:platform:fx';
 
 /** Screen rect of the body texture: the plate (104..536 × 52..296) + corner blocks above + the contact shadow around. */
-export const PLATFORM_BOX = { x: 88, y: 36, w: 464, h: 290 } as const;
+// arena v4 (BOARD_V4): the bigger block (x 116..524, y 36..284 + the 46-px wall) and its shadow
+export const PLATFORM_BOX = BOARD_V4 ? ({ x: 84, y: 20, w: 472, h: 330 } as const) : ({ x: 88, y: 36, w: 464, h: 290 } as const);
 
 // ---------------------------------------------------------------- tones
 

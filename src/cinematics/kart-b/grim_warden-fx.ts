@@ -21,7 +21,7 @@ import { framePixels } from '../../vfx/hologram';
 import { Raster, bayer } from '../../vfx/setpieces';
 import { onFrame } from '../../vfx/combat';
 import { stepsAt } from '../../view/light/stepped';
-import { topAt } from '../../still/arena';
+import { topAtLive as topAt } from '../../still/arena'; // arena v4: the board as drawn (spaced zones)
 
 export const TAU = Math.PI * 2;
 const PALSET = new Set<number>(Object.values(PAL) as number[]);

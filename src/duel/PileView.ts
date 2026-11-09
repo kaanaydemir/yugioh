@@ -18,7 +18,7 @@ import { PixelCanvas, mix } from '../art/pixel';
 import { addStaticCanvas } from '../art/textures';
 import type { PlayerId } from '../engine/types';
 import { pixelText } from '../ui/text';
-import { DEPTH, type XY, zoneXY } from '../view/layout';
+import { BOARD_V4, DEPTH, type XY, pileTagAnchor, tagLeft, zoneXY } from '../view/layout';
 import { V3_A6_A } from '../view/v3flags';
 import { tween, wait } from '../vfx/core';
 
@@ -179,8 +179,10 @@ export class PileView {
     const R = PLAYER_RAMP[this.player];
     const s = String(this.n);
     const w = s.length * 4 + 5;
-    const x = Math.round(this.home.x - w / 2);
-    const y = Math.round(this.home.y + 8);
+    // arena v4: the deck / graveyard pads sit on the board's corners — the tag goes beside the stack (layout.pileTagAnchor)
+    const anchor = BOARD_V4 ? pileTagAnchor(this.player, this.kind) : null;
+    const x = anchor ? tagLeft(anchor, w) : Math.round(this.home.x - w / 2);
+    const y = anchor ? anchor.y : Math.round(this.home.y + 8);
     this.tag.clear();
     if (this.n > 0) {
       this.tag.fillStyle(PAL.ink, V3_A6_A ? 1 : 0.85).fillRect(x, y, w, 9);
@@ -188,7 +190,7 @@ export class PileView {
       this.tag.fillStyle(R[0], 1).fillRect(x + 1, y + 8, w - 2, 1);
     }
     this.label.setText(s);
-    this.label.setPosition(Math.round(this.home.x), y + 5);
+    this.label.setPosition(anchor ? x + Math.floor(w / 2) : Math.round(this.home.x), y + 5);
     this.label.setTint(this.kind === 'deck' && this.n <= 3 ? PAL.crim3 : PAL.mist);
     this.label.setVisible(this.n > 0);
     this.tag.setVisible(this.n > 0);

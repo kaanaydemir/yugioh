@@ -4,6 +4,7 @@
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { FACE_H, PLATE_OUTLINE, ntIso } from '../../view/board-nt/layout-nt';
+import { BOARD_V4 } from '../../view/layout';
 import { type NtAtlas, packAtlas } from './wall-kit';
 
 export const NT_LIGHTS_KEY = 'arena-nt:lights';
@@ -432,7 +433,7 @@ export const torchFrame = {
 export const EDGE_TILE = 16;
 export const EDGE_REACH = 24;
 const EDGE_SKIP = 14;
-const EDGE_BOX = { x: 96, y: 140, w: 464, h: 208 } as const;
+const EDGE_BOX = BOARD_V4 ? ({ x: 84, y: 140, w: 472, h: 220 } as const) : ({ x: 96, y: 140, w: 464, h: 208 } as const);
 
 function plateMask(): PixelCanvas {
   const m = new PixelCanvas(EDGE_BOX.w, EDGE_BOX.h);

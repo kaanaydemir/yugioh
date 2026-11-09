@@ -38,6 +38,13 @@
 //   (288, 80) instead of (320, 96), the camera never changes.
 //   Tile-corner bounding box x 128..512, y 64..256 (v1: x 160..480, y 80..240).
 //
+// ── arena v4 (BOARD_V4 = v3 look + 5+5 zones + the Neon Tower arena, the browser default) ── the same 7×5 grid and cells
+//   as ZONES5, but the projection is warped per axis (V4_COL_U / V4_ROW_V): lanes 44 px apart along the lane axis, the two
+//   monster rows 72 apart across a 40-px plain neutral lane, back rows 36 behind them, outer pads 36 beyond the outer lanes.
+//   Board centre (320, 160) unchanged. P1 monsters (196,134)…(372,222), P1 S/T (160,152)…(336,240), field (160,116),
+//   graveyard (408,240), deck (372,258), duelist (216,212); P2 = the 180° rotation (deck (268,62), duelist (424,108)).
+//   The banish pads get no floor slot (BANISH_PAD). isoToScreenRef / screenToIsoRef keep the contiguous grid (the still / calm art).
+//
 // In both variants player 2's board is player 1's rotated 180° around the board center.
 // Player 1 (id 0, cyan) sits at the lower-left, player 2 (id 1, crimson) at the upper-right.
 // The duel axis runs lower-left → upper-right, so P1 sprites face RIGHT and P2 sprites are flipX.
@@ -109,6 +116,17 @@ function detectZones5(): boolean {
   return false;
 }
 
+/**
+ * Arena v4 board (step 1, owner decision 2026-11-09, docs/v3/ref/hedef-gorunum-4.png): the 5+5 board of the v3 look with the
+ * Neon Tower arena (the default in a browser) gets SPACED zones: the same 64×32 tiles and the same 7×5 grid (rows, columns,
+ * zone cells, the 180° rotation: everything integer stays as it was), but the grid → screen projection is warped per axis
+ * (piecewise linear), so the five lanes stand 44 px apart along the lane axis (12-px gaps between the tiles), the two players'
+ * monster rows have a 40-px plain-stone neutral lane between them (1.25 tiles; was one 32-px tile row) and the outer pads sit
+ * 4 px off the lanes. See V4_COL_U / V4_ROW_V. With ?arena=old (calm arena), ?zones=3 and the v1 look nothing changes.
+ * Read once at module init (BOARD_V4 is an `export const`, like LOOK / ZONES5).
+ */
+export const BOARD_V4: boolean = ZONES5 && ntArenaOn();
+
 /** Pick the v1 (today's look) or the v3 value (for module-level constants elsewhere). */
 export function byLook<T>(v1: T, v3: T): T {
   return LOOK_V3 ? v3 : v1;
@@ -175,16 +193,68 @@ export interface XY {
   y: number;
 }
 
+// ---------------------------------------------------------------- arena v4 projection (BOARD_V4 only)
+//
+// Screen of an axis pair (u, v): x = 320 + u − v, y = 160 + (u + v) / 2 (u runs along the lanes, screen down-right; v along the
+// duel axis, screen down-left; one 64×32 tile spans 32 units of each). Integer cols / rows map through the tables below,
+// fractional ones linearly between them, and beyond the outer cells at 32 units per grid step (one tile, as before: "half a
+// tile past the back row" still means the tile edge). All table values are even, so every cell centre is a whole pixel.
+// The board centre (3, 2) stays (320, 160).
+
+/** u of each grid column: outer pads ±124 (4-px gap to the lanes), lanes 44 apart (12-px gaps). */
+export const V4_COL_U: readonly number[] = [-124, -88, -44, 0, 44, 88, 124];
+/** v of each grid row: back rows ±72 (4-px gap behind the monster rows), monster rows ±36 (a 40-px neutral lane between). */
+export const V4_ROW_V: readonly number[] = [-72, -36, 0, 36, 72];
+/** Units per grid step beyond the outer cells (one tile). */
+const V4_OUT = 32;
+
+function warp(t: readonly number[], g: number): number {
+  const n = t.length - 1;
+  if (g <= 0) return t[0] + g * V4_OUT;
+  if (g >= n) return t[n] + (g - n) * V4_OUT;
+  const i = Math.floor(g);
+  return t[i] + (g - i) * (t[i + 1] - t[i]);
+}
+
+function unwarp(t: readonly number[], w: number): number {
+  const n = t.length - 1;
+  if (w <= t[0]) return (w - t[0]) / V4_OUT;
+  if (w >= t[n]) return n + (w - t[n]) / V4_OUT;
+  let i = 0;
+  while (i < n - 1 && w > t[i + 1]) i++;
+  return i + (w - t[i]) / (t[i + 1] - t[i]);
+}
+
+/** The pre-v4 contiguous projection (64×32 tiles edge to edge) — every look's original grid. */
+export function isoToScreenRef(col: number, row: number): XY {
+  return { x: BOARD_OX + (col - row) * (TILE_W / 2), y: BOARD_OY + (col + row) * (TILE_H / 2) };
+}
+
+/** Inverse of isoToScreenRef. */
+export function screenToIsoRef(x: number, y: number): { col: number; row: number } {
+  const a = (x - BOARD_OX) / (TILE_W / 2);
+  const b = (y - BOARD_OY) / (TILE_H / 2);
+  return { col: (a + b) / 2, row: (b - a) / 2 };
+}
+
 /** Center of grid tile (col, row) in screen pixels. Accepts fractional coords for in-between points. */
 export function isoToScreen(col: number, row: number): XY {
-  return { x: BOARD_OX + (col - row) * (TILE_W / 2), y: BOARD_OY + (col + row) * (TILE_H / 2) };
+  if (!BOARD_V4) return { x: BOARD_OX + (col - row) * (TILE_W / 2), y: BOARD_OY + (col + row) * (TILE_H / 2) };
+  const u = warp(V4_COL_U, col);
+  const v = warp(V4_ROW_V, row);
+  return { x: 320 + u - v, y: 160 + (u + v) / 2 };
 }
 
 /** Inverse projection: screen → fractional grid coords. */
 export function screenToIso(x: number, y: number): { col: number; row: number } {
-  const a = (x - BOARD_OX) / (TILE_W / 2);
-  const b = (y - BOARD_OY) / (TILE_H / 2);
-  return { col: (a + b) / 2, row: (b - a) / 2 };
+  if (!BOARD_V4) {
+    const a = (x - BOARD_OX) / (TILE_W / 2);
+    const b = (y - BOARD_OY) / (TILE_H / 2);
+    return { col: (a + b) / 2, row: (b - a) / 2 };
+  }
+  const dx = x - 320;
+  const dy = 2 * (y - 160);
+  return { col: unwarp(V4_COL_U, (dx + dy) / 2), row: unwarp(V4_ROW_V, (dy - dx) / 2) };
 }
 
 /** Screen center of the board (the middle of the no-man's land / energy bridge). v1 (320,160), v2 (320,176). */
@@ -335,6 +405,8 @@ export function facesLeft(player: PlayerId): boolean {
  */
 export function duelistXY(player: PlayerId): XY {
   if (ARENA_V2) return player === 0 ? isoToScreen(3, 6.25) : isoToScreen(3, -1.25);
+  // arena v4: one tile behind the back row on the centre lane, whole pixels: P1 (216, 212), P2 (424, 108)
+  if (BOARD_V4) return player === 0 ? isoToScreen(BOARD_MID_COL, 5) : isoToScreen(BOARD_MID_COL, -1);
   return player === 0 ? isoToScreen(BOARD_MID_COL, 5.35) : isoToScreen(BOARD_MID_COL, -1.35);
 }
 
@@ -381,6 +453,13 @@ const PILE_TAG_SIDE_DX = 23;
  */
 export function pileTagAnchor(player: PlayerId, kind: 'deck' | 'graveyard'): TagAnchor {
   const home = zoneXY(player, kind);
+  // arena v4: the deck / graveyard pads sit on the board's far / near corners, so the tag goes beside the stack (as v2), on
+  // the tile's outer side: P1 right of it (the hint plate starts right under the P1 deck pad), P2 left of it
+  if (BOARD_V4) {
+    const y = Math.round(home.y) - Math.floor(PILE_TAG_H / 2);
+    const x = Math.round(home.x);
+    return player === 0 ? { x: x + PILE_TAG_SIDE_DX, y, align: 'left' } : { x: x - PILE_TAG_SIDE_DX, y, align: 'right' };
+  }
   if (!ARENA_V2) return { x: home.x, y: Math.round(home.y + 8), align: 'center' };
   const y = Math.round(home.y) - Math.floor(PILE_TAG_H / 2);
   const x = Math.round(home.x);
@@ -558,8 +637,15 @@ function ntArenaOn(): boolean {
 }
 const UI_Z: UiLayout = ZONES5 ? { ...UI_BASE, inspect: { ...UI_BASE.inspect, w: INSPECT_W_Z5 } } : UI_BASE;
 export const UI: UiLayout = ntArenaOn() ? { ...UI_Z, p2Panel: { ...UI_Z.p2Panel, h: P2_PANEL_COMPACT_H } } : UI_Z;
+/** Arena v4: top of the hint line plate — right under the P1 deck pad's bottom tip (y 274); the hand's resting tops are at 292. */
+export const HINT_Y_V4 = 275;
 /** Y of the hint line plate (v3 HUD). */
-export const HINT_Y: number = ZONES5 ? HINT_Y_Z5 : 252;
+export const HINT_Y: number = BOARD_V4 ? HINT_Y_V4 : ZONES5 ? HINT_Y_Z5 : 252;
+/**
+ * Whether the banish pads get a floor slot. Arena v4: no — nothing is ever shown there (the engine's banish pile has no view), and
+ * the owner rule is "only real zones are inset tiles"; their cells stay in the grid (zoneCell / zoneXY still answer).
+ */
+export const BANISH_PAD: boolean = !BOARD_V4;
 
 export function panelRect(player: PlayerId): Rect {
   return player === 0 ? UI.p1Panel : UI.p2Panel;

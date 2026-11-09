@@ -69,7 +69,7 @@ import type { PlayerId } from '../../engine/types';
 import { ATTRIBUTE_RAMP, PAL, RAMPS } from '../../art/palette';
 import type { PixelCanvas } from '../../art/pixel';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
-import { LANE_MID, BOARD_MID_COL, BOARD_OX, BOARD_OY, DEPTH, LANE_COLS, TILE_H, TILE_W, type XY, isoToScreen, monsterRow, screenToIso, zoneXY } from '../../view/layout';
+import { LANE_MID, BOARD_MID_COL, BOARD_OX, BOARD_OY, BOARD_V4, V4_COL_U, V4_ROW_V, DEPTH, LANE_COLS, TILE_H, TILE_W, type XY, isoToScreen, monsterRow, screenToIso, zoneXY } from '../../view/layout';
 import { lightBeam, lightFlash, lightPool, type LightHandle } from '../../view/light';
 import { REDUCED_MOTION } from '../../view/v3/motion';
 import { wait } from '../../vfx/core';
@@ -259,6 +259,13 @@ export function shatterKey(brk: number, d: number): number {
 
 const HW = TILE_W / 2;
 const HH = TILE_H / 2;
+/**
+ * Arena v4 (layout BOARD_V4: the projection is warped per axis): the dome is built in the LOCAL linear frame of the defender's
+ * monster row — SU px of u per column (the lane pitch), SV px of v per row (the monster row's pitch) — so it still spans the
+ * spaced lanes. Before v4 both are HW (one tile, the uniform grid).
+ */
+const SU = BOARD_V4 ? V4_COL_U[2] - V4_COL_U[1] : HW;
+const SV = BOARD_V4 ? V4_ROW_V[1] - V4_ROW_V[0] : HW;
 const SQ3 = Math.sqrt(3);
 /** The old dome's hex size in lattice units (./_mirror.ts HEX). */
 const HEX = 0.13;
@@ -300,10 +307,10 @@ export function domeShape(side: PlayerId): DomeShape {
     rz,
     huK: ra / 1.78,
     c,
-    x0: Math.floor(c.x - (ra + rb) * HW) - 3,
-    x1: Math.ceil(c.x + (ra + rb) * HW) + 3,
-    y0: Math.floor(c.y - (ra + rb) * HH - rz) - 3,
-    y1: Math.ceil(c.y + (ra + rb) * HH) + 3,
+    x0: Math.floor(c.x - (ra * SU + rb * SV)) - 3,
+    x1: Math.ceil(c.x + (ra * SU + rb * SV)) + 3,
+    y0: Math.floor(c.y - (ra * SU + rb * SV) / 2 - rz) - 3,
+    y1: Math.ceil(c.y + (ra * SU + rb * SV) / 2) + 3,
   };
 }
 
@@ -382,7 +389,11 @@ export function domeField(shape: DomeShape): DomeField {
   const h = y1 - y0;
   const n = w * h;
   const k = 1 / TILE_H;
-  const qa = (k * k) / (ra * ra) + (k * k) / (rb * rb) + 1 / (rz * rz);
+  // arena v4: per-axis floor slide (a px of height moves the floor point 1 px along u and v: 1/SU columns, 1/SV rows)
+  const kA = BOARD_V4 ? 1 / SU : k;
+  const kB = BOARD_V4 ? 1 / SV : k;
+  const c4 = BOARD_V4 ? shape.c : null;
+  const qa = (kA * kA) / (ra * ra) + (kB * kB) / (rb * rb) + 1 / (rz * rz);
   const keyOf = [new Int32Array(n).fill(-1), new Int32Array(n).fill(-1)];
   const thick = new Float32Array(n);
   const U = [new Float32Array(n), new Float32Array(n)];
@@ -395,9 +406,16 @@ export function domeField(shape: DomeShape): DomeField {
     const q0 = (y0 + j - BOARD_OY) / HH;
     for (let i = 0; i < w; i++) {
       const P = (x0 + i + 0.5 - BOARD_OX) / HW;
-      const A0 = (P + q0) / 2 - a0;
-      const B0 = (q0 - P) / 2 - b0;
-      const qb = 2 * k * (A0 / (ra * ra) + B0 / (rb * rb));
+      let A0 = (P + q0) / 2 - a0;
+      let B0 = (q0 - P) / 2 - b0;
+      if (c4) {
+        // the local linear frame round the dome centre: u, v offsets in px → columns / rows
+        const dx = x0 + i + 0.5 - c4.x;
+        const dy = 2 * (y0 + j - c4.y);
+        A0 = (dx + dy) / 2 / SU;
+        B0 = (dy - dx) / 2 / SV;
+      }
+      const qb = c4 ? 2 * ((kA * A0) / (ra * ra) + (kB * B0) / (rb * rb)) : 2 * k * (A0 / (ra * ra) + B0 / (rb * rb));
       const qc = (A0 * A0) / (ra * ra) + (B0 * B0) / (rb * rb) - 1;
       const disc = qb * qb - 4 * qa * qc;
       if (disc < 0) continue;
@@ -408,8 +426,8 @@ export function domeField(shape: DomeShape): DomeField {
         // pass 0: the near shell (the larger height on this pixel's view ray), 1: the far one
         const z = pass === 0 ? (-qb + sq) / (2 * qa) : (-qb - sq) / (2 * qa);
         if (z < 0) continue;
-        const u = (A0 + z * k) / ra;
-        const wv = (B0 + z * k) / rb;
+        const u = (A0 + z * kA) / ra;
+        const wv = (B0 + z * kB) / rb;
         const v = z / rz;
         const hx = hexAt(u * huK, v);
         const key = ((hx.rx + 512) * 1024 + (hx.rz + 512)) * 2 + pass;

@@ -36,7 +36,9 @@ import { type Color, PixelCanvas, type Pt } from '../../art/pixel';
 import type { PlayerId } from '../../engine/types';
 import { topAt, type TopKind } from '../../still/arena';
 import { G0, G1, GR1, HULL, KEEL_TIP, OUTLINE, SLAB_T, WALL_H, gp, inGrid, insideOutline, pixelGrid, rimY, standsBottomY } from '../../still/arena-geom';
-import { BOARD_COLS, BOARD_MID_COL, BOARD_ROWS, type BoardSpot, GAME_H, GAME_W, LANES, ZONES5, cellKind, isoToScreen, zoneAtCell, zoneCell } from '../layout';
+// arena v4 (BOARD_V4): the calm art is cut from the still in the original contiguous grid (isoToScreenRef); BoardViewCalm places
+// the per-zone images (pads / masks) at the real layout.zoneXY, so only the skipped slab / trims / bg keep the old shape
+import { BOARD_COLS, BOARD_MID_COL, BOARD_ROWS, type BoardSpot, GAME_H, GAME_W, LANES, ZONES5, cellKind, isoToScreenRef as isoToScreen, zoneAtCell, zoneCell } from '../layout';
 
 // ---------------------------------------------------------------- tones (as src/still/arena.ts T)
 

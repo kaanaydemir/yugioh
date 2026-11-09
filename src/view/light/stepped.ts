@@ -18,7 +18,7 @@
 import type Phaser from 'phaser';
 import { PAL, RAMPS } from '../../art/palette';
 import type { Color } from '../../art/pixel';
-import { topAt } from '../../still/arena';
+import { topAtLive as topAt } from '../../still/arena'; // arena v4: the board as drawn (spaced zones)
 import { DEPTH, GAME_H, GAME_W } from '../layout';
 
 /** Depth of stepped floor light: over the calm board's pads (TILE), under its pad fills (TILE + 1). */

@@ -6,6 +6,7 @@
 // The braziers themselves (stone posts + animated flames) are sprites drawn by the lights layer.
 
 import { NT_OX, NT_OY } from '../../view/board-nt/layout-nt';
+import { BOARD_V4 } from '../../view/layout';
 import { type Color, PixelCanvas } from '../pixel';
 import { PAL } from '../palette';
 import { bayer4 } from './lights';
@@ -15,7 +16,8 @@ import { bayer4 } from './lights';
 /** Brazier bases: the bottom tip of the plinth (screen px). Flame centre = base + (0, BRAZIER.flameY - BRAZIER.h + 1). */
 export const BRAZIERS: readonly { x: number; y: number; period: number; phase: number }[] = [
   { x: 141, y: 284, period: 540, phase: 0 },
-  { x: 522, y: 245, period: 600, phase: 230 },
+  // arena v4: the bigger block's near-right wall reaches y 255 at x 522 — the right brazier steps out past the right end cap
+  BOARD_V4 ? { x: 540, y: 266, period: 600, phase: 230 } : { x: 522, y: 245, period: 600, phase: 230 },
 ];
 
 type FeatureKind = 'plate' | 'grate';

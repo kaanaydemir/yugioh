@@ -3,7 +3,8 @@
 // so the calm still keeps the exact board silhouette without importing the game's texture module.
 // Grid → screen always goes through src/view/layout.ts (isoToScreen / screenToIso, 5×5 of 64×32).
 
-import { BOARD_COLS, BOARD_MID_COL, BOARD_ROWS, isoToScreen, screenToIso } from '../view/layout';
+// arena v4 (BOARD_V4): the still keeps the original contiguous grid (the *Ref projection)
+import { BOARD_COLS, BOARD_MID_COL, BOARD_ROWS, isoToScreenRef as isoToScreen, screenToIsoRef as screenToIso } from '../view/layout';
 
 /** The slab extends SLAB_E tiles beyond the 5×5 grid; its side faces are SLAB_T px thick. */
 export const SLAB_E = 0.375;

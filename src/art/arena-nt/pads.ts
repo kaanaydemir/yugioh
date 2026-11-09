@@ -3,6 +3,7 @@
 // Pure PixelCanvas code (no Phaser).
 
 import { DUELIST_PADS, FACE_H, PLATE_OUTLINE, ntIso } from '../../view/board-nt/layout-nt';
+import { BOARD_V4 } from '../../view/layout';
 import { PAL, RAMPS } from '../palette';
 import { type Color, PixelCanvas } from '../pixel';
 import { NT_PAL } from './palette';
@@ -126,6 +127,9 @@ function paintBase(p: PixelCanvas, player: 0 | 1, foot: { x: number; y: number; 
   // arena pixel/polish round 3 (#1): when the stage edge lies beyond the whole base (P1 now stands ON the widened stage) there
   // is no bump to paint: the dais and its light pool sit straight on the stage top.
   if (player === 0 && oc + foot.hh + m <= -2) return;
+  // arena v4: the symmetric block carries BOTH daises on its top (each long edge runs ~7 px past its dais's lower step): no
+  // bump, no ledge — the two daises are the same
+  if (BOARD_V4) return;
   const q0 = Math.floor(qc - foot.hh - m);
   const q1 = Math.ceil(qc + foot.hh + m);
   // P1 grows out (o > 0) and covers the stage rim rows inside (o down to -3); P2 grows back (o < 0) and covers o up to +2
@@ -220,10 +224,11 @@ function paintPad(player: 0 | 1, level: number): PixelCanvas {
   const band: Color = ramp[[1, 1, 2, 2][level]];
   const pool: Color = ramp[[0, 1, 1, 1][level]];
   const poolOut: Color = ramp[[0, 0, 0, 1][level]];
-  const lowRise = DAIS.lowRise + (player === 1 ? 2 : 0);
+  // arena v4: both daises equal (same steps, same stone); before, P2's lower riser was 2 px taller to show over its ledge
+  const lowRise = DAIS.lowRise + (player === 1 && !BOARD_V4 ? 2 : 0);
   // critique round 3 (#5): P2's risers one step toward the navy ramp (target: navy-grey faces): the shaded risers night3 (night4 on the lit side read too blue: rejected)
   const lit2: Color = S[2];
-  const shd1: Color = player === 1 ? PAL.night3 : S[1];
+  const shd1: Color = player === 1 && !BOARD_V4 ? PAL.night3 : S[1];
   const lowY = cy + DAIS.rise;
   const lowHw = PAD_HALF.w + DAIS.stepW;
   const lowHh = PAD_HALF.h + DAIS.stepH;
