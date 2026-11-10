@@ -86,6 +86,7 @@ export function describeEvent(state: GameState, ev: GameEvent, batch?: readonly 
       return `Turn ${ev.turn} - ${playerName(ev.player)}`;
     case 'phaseChange':
       if (ev.phase === 'battle') return `${playerName(ev.player)} enters the Battle Phase!`;
+      if (ev.phase === 'main2') return `${playerName(ev.player)}: Main Phase 2.`;
       if (ev.phase === 'end') return `${playerName(ev.player)}: End Phase.`;
       return null;
     case 'tribute':

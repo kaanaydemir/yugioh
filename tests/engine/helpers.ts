@@ -270,7 +270,7 @@ export function checkInvariants(s: GameState): void {
   if (s.winner === null) {
     assert(s.phase !== 'draw', 'stuck in draw phase');
     if (s.pending?.kind === 'discard') assert(s.phase === 'end', 'discard outside end phase');
-    if (!s.pending) assert(s.phase === 'main' || s.phase === 'battle', `idle in ${s.phase}`);
+    if (!s.pending) assert(s.phase === 'main' || s.phase === 'battle' || s.phase === 'main2', `idle in ${s.phase}`);
     if (s.pending?.kind === 'trapResponse') {
       // the turn player answers only a quick spell of the opponent (spell_seal window, activator = the opponent)
       const nested = s.pending.trigger.kind === 'spellActivated' && s.pending.trigger.player !== s.activePlayer;

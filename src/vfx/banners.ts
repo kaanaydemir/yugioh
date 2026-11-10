@@ -540,6 +540,7 @@ const PHASE_LABEL: Record<Phase, string> = {
   draw: 'DRAW PHASE',
   main: 'MAIN PHASE',
   battle: 'BATTLE PHASE',
+  main2: 'MAIN PHASE 2',
   end: 'END PHASE',
 };
 
@@ -547,6 +548,7 @@ const PHASE_RAMP: Record<Phase, Ramp> = {
   draw: RAMPS.night,
   main: RAMPS.night,
   battle: RAMPS.crim,
+  main2: RAMPS.night,
   end: RAMPS.void,
 };
 
@@ -556,7 +558,7 @@ export async function phaseBanner(scene: Phaser.Scene, phase: Phase): Promise<vo
   if (phase === 'battle') void edgePulse(scene, PAL.crim2);
   const sp = { ...STYLE.phase, ramp: PHASE_RAMP[phase], hold: phase === 'battle' ? 420 : STYLE.phase.hold };
   try {
-    await sweepBanner(scene, PHASE_LABEL[phase], sp, PHASE_RAMP[phase], { textColor: phase === 'main' ? PAL.gold4 : PAL.white });
+    await sweepBanner(scene, PHASE_LABEL[phase], sp, PHASE_RAMP[phase], { textColor: phase === 'main' || phase === 'main2' ? PAL.gold4 : PAL.white });
   } catch (e) {
     console.error('[banners]', e);
   }

@@ -99,7 +99,7 @@ describe('turn flow', () => {
     expect(b.state.phase).toBe('battle');
     // no spells, summons or sets in battle phase
     const types = new Set(legalActions(b.state).map((a) => a.type));
-    expect([...types].sort()).toEqual(['attack', 'endTurn', 'surrender']);
+    expect([...types].sort()).toEqual(['attack', 'endBattle', 'endTurn', 'surrender']);
     const e = play(b.state, { type: 'endTurn', player: 0 });
     expect(e.state.activePlayer).toBe(1);
     expect(e.state.players[1].normalSummonUsed).toBe(false);

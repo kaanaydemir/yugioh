@@ -508,6 +508,7 @@ export function normalizeAction(s: GameState, a: Action): Action {
       return out;
     }
     case 'enterBattle':
+    case 'endBattle':
     case 'endTurn':
     case 'surrender':
       return { type: a.type, player: a.player };

@@ -324,7 +324,7 @@ describe('C5 Hurda Akıncıları (attackThenDefense)', () => {
     const c = scenario({ phase: 'battle', p0: { monsters: ['scrap_raiders'] }, p1: { spellTraps: ['chains_of_light'] } });
     let r = play(c, atk(0, 0, null));
     r = play(r.state, respond(r.state, 'chains_of_light', 1));
-    expect(r.state.activePlayer).toBe(1);
+    expect(r.state.phase).toBe('main2'); // the battle ended: Main Phase 2
     expect(r.state.players[0].monsters[0]!.position).toBe('defense');
     expect(r.state.players[0].monsters[0]!.lockPositionTurn).toBe(c.turn + 2);
   });

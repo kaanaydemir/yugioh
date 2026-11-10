@@ -3,7 +3,7 @@
 // face-down cards (it does not peek at hidden monsters or set cards).
 
 import { isMonster, isSpell, isTrap, type Attribute, type MonsterCardDef } from '../data/cards';
-import { EngineError, HAND_LIMIT, other, type Action, type GameState, type PlayerId, type Uid, type ZoneRef } from './types';
+import { EngineError, HAND_LIMIT, isMainPhase, other, type Action, type GameState, type PlayerId, type Uid, type ZoneRef } from './types';
 import { actingPlayer, legalActions } from './rules';
 import { attackLocked, battleNumbers, currentAtk, currentDef, defOf, equipBonus, equipOfEffect, fieldAtkModifier, findMonster, hasAllSeals, hasPiercing, monsterDefOf, shrouded, uidAt, volcanoActive } from './query';
 import { CARDS, MAGNET_PIECE_IDS, SEAL_IDS } from '../data/cards';
@@ -57,7 +57,7 @@ function decide(s: GameState, legal: Action[], me: PlayerId, rng: Rng): Action |
       return best(legal, rng, (a) => (a.type === 'discard' ? -a.uids.reduce((t, u) => t + keepValue(s, me, u), 0) : -Infinity));
     return null;
   }
-  if (s.phase === 'main') return decideMain(s, legal, me, rng);
+  if (isMainPhase(s.phase)) return decideMain(s, legal, me, rng);
   if (s.phase === 'battle') return decideBattle(s, legal, me, rng);
   return null;
 }
@@ -508,6 +508,25 @@ function ownValueAny(s: GameState, uid: Uid): number {
 // ---- main phase -------------------------------------------------------------------------
 
 function decideMain(s: GameState, legal: Action[], me: PlayerId, rng: Rng): Action | null {
+  const a = mainStep(s, legal, me, rng);
+  if (a) return a;
+  if (legal.some((a) => a.type === 'enterBattle') && bestAttackScore(s, me) > 0)
+    return legal.find((a) => a.type === 'enterBattle')!;
+  return legal.find((a) => a.type === 'endTurn') ?? null;
+}
+
+/** Steps that only pay for a coming battle (one-turn ATK boosts): never in Main Phase 2. (Lazy: the steps are declared below.) */
+const battleOnlySteps = (): readonly Step[] => [tryOgre, tryDie, tryBattleCry];
+/** Steps that wait for Main Phase 2 when a battle is coming (set the back row after the attacks). */
+const afterBattleSteps = (): readonly Step[] => [trySetTrap, trySetForHandLimit];
+
+/** The first main-phase step that wants to act, or null (Main 1 or Main 2). */
+function mainStep(s: GameState, legal: Action[], me: PlayerId, rng: Rng): Action | null {
+  const main2 = s.phase === 'main2';
+  // Main Phase 1 before an attack worth making: the back row is set in Main Phase 2 instead
+  const battleNext = !main2 && legal.some((a) => a.type === 'enterBattle') && bestAttackScore(s, me) > 0;
+  const battleOnly = battleOnlySteps();
+  const afterBattle = afterBattleSteps();
   // Removal and flip effects first (a face-down thorn_lurker is worth more flipped than tributed),
   // then develop the board, then buffs, then defensive setup.
   const steps = [
@@ -542,12 +561,24 @@ function decideMain(s: GameState, legal: Action[], me: PlayerId, rng: Rng): Acti
     trySetForHandLimit,
   ];
   for (const step of steps) {
+    if (main2 && battleOnly.includes(step)) continue;
+    if (battleNext && afterBattle.includes(step)) continue;
     const a = step(s, legal, me, rng);
     if (a) return a;
   }
-  if (legal.some((a) => a.type === 'enterBattle') && bestAttackScore(s, me) > 0)
-    return legal.find((a) => a.type === 'enterBattle')!;
-  return legal.find((a) => a.type === 'endTurn') ?? null;
+  return null;
+}
+
+/** After the attacks: is there anything worth doing in Main Phase 2 (a card to set, a summon not yet made…)? */
+function main2Worth(s: GameState, me: PlayerId, rng: Rng): boolean {
+  const hyp = structuredClone(s);
+  hyp.phase = 'main2';
+  const legal = legalActions(hyp).filter((a) => a.player === me);
+  try {
+    return mainStep(hyp, legal, me, rng) !== null;
+  } catch {
+    return false;
+  }
 }
 
 type Step = (s: GameState, legal: Action[], me: PlayerId, rng: Rng) => Action | null;
@@ -1002,6 +1033,8 @@ function decideBattle(s: GameState, legal: Action[], me: PlayerId, rng: Rng): Ac
   const attacks = legal.filter((a): a is Extract<Action, { type: 'attack' }> => a.type === 'attack');
   const pick = bestWithScore(attacks, rng, (a) => attackScore(s, me, a.attackerZone, a.targetZone));
   if (pick && pick.score > 0) return pick.item;
+  const toMain2 = legal.find((a) => a.type === 'endBattle');
+  if (toMain2 && main2Worth(s, me, rng)) return toMain2;
   return legal.find((a) => a.type === 'endTurn') ?? null;
 }
 

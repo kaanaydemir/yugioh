@@ -13,7 +13,13 @@ import type { CardId } from '../data/cards';
 
 export type PlayerId = 0 | 1;
 export type Uid = number;
-export type Phase = 'draw' | 'main' | 'battle' | 'end';
+/** 'main2' (additive, owner decision 2026-11): Main Phase 2, after the Battle Phase. 'main' is Main Phase 1. */
+export type Phase = 'draw' | 'main' | 'battle' | 'main2' | 'end';
+
+/** Either Main Phase (1 or 2): summons, sets, spells, position changes and ignition effects are allowed. */
+export function isMainPhase(phase: Phase): boolean {
+  return phase === 'main' || phase === 'main2';
+}
 export type Position = 'attack' | 'defense';
 
 export const START_LP = 4000;
@@ -211,8 +217,10 @@ export type Action =
   | { type: 'enterBattle'; player: PlayerId }
   /** targetZone null = direct attack. */
   | { type: 'attack'; player: PlayerId; attackerZone: number; targetZone: number | null }
-  /** Ends the turn from main or battle phase. */
+  /** Ends the turn from a main phase or the battle phase (from battle: Main Phase 2 is passed by). */
   | { type: 'endTurn'; player: PlayerId }
+  /** Ends the Battle Phase: the turn goes on in Main Phase 2 (additive). */
+  | { type: 'endBattle'; player: PlayerId }
   /** Answer to a trapResponse decision: a trap uid to activate, or null to decline. */
   | { type: 'respond'; player: PlayerId; uid: Uid | null }
   | { type: 'chooseTarget'; player: PlayerId; target: ZoneRef }

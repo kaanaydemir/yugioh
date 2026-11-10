@@ -344,7 +344,7 @@ describe('traps', () => {
     expect(r.state.players[1].monsters[0]).not.toBeNull(); // the attack never happened
   });
 
-  it('chains_of_light negates the attack, ends the battle phase and passes the turn', () => {
+  it('chains_of_light negates the attack and ends the battle phase: the attacker goes on to Main Phase 2', () => {
     const s = attackScenario('chains_of_light');
     const trap = uidOf(s, 'chains_of_light');
     const shade = uidOf(s, 'shade_assassin');
@@ -353,15 +353,12 @@ describe('traps', () => {
       'activate:chains_of_light',
       'attackNegated',
       'toGraveyard:chains_of_light',
-      'phaseChange:end',
-      'turnStart:p1',
-      'phaseChange:draw',
-      'draw:stone_sentinel',
-      'phaseChange:main',
+      'phaseChange:main2',
     ]);
     expect(r.events[3]).toEqual({ type: 'attackNegated', player: 0, attackerUid: shade, byUid: trap });
-    expect(r.state.activePlayer).toBe(1);
-    expect(r.state.turn).toBe(4);
+    expect(r.state.activePlayer).toBe(0);
+    expect(r.state.phase).toBe('main2');
+    expect(r.state.turn).toBe(3);
     expect(r.state.players[1].monsters[0]).not.toBeNull();
   });
 
@@ -373,7 +370,7 @@ describe('traps', () => {
       s.cards[uid] = { uid, cardId: 'healing_spring', owner: 0 };
       s.players[0].hand.push(uid);
     }
-    const r = play(s, { type: 'attack', player: 0, attackerZone: 0, targetZone: 0 }, { type: 'respond', player: 1, uid: uidOf(s, 'chains_of_light') });
+    const r = play(s, { type: 'attack', player: 0, attackerZone: 0, targetZone: 0 }, { type: 'respond', player: 1, uid: uidOf(s, 'chains_of_light') }, { type: 'endTurn', player: 0 });
     expect(seq(r.state, r.events).slice(-2)).toEqual(['phaseChange:end', 'decision:discard']);
     expect(r.state.pending).toEqual({ kind: 'discard', player: 0, count: 1 });
   });

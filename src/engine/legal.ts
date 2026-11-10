@@ -2,7 +2,7 @@
 // accepts exactly the actions listed here (after normalisation), so it must be complete.
 
 import { MAGNET_PIECE_IDS, isMonster, isSpell, isTrap, type SpellCardDef } from '../data/cards';
-import { other, type Action, type GameState, type PlayerId, type SpellTrapSlot, type Uid } from './types';
+import { isMainPhase, other, type Action, type GameState, type PlayerId, type SpellTrapSlot, type Uid } from './types';
 import {
   allSpellTrapRefs,
   combinations,
@@ -56,7 +56,7 @@ export function legalActions(s: GameState): Action[] {
   const me = s.players[p];
   const opp = s.players[other(p)];
 
-  if (s.phase === 'main') {
+  if (isMainPhase(s.phase)) {
     // Normal / Tribute Summon and Set (shared once-per-turn right). festival_square: once the right is
     // spent, one more Level <= 4 monster may be summoned / set without tributes.
     const extraOnly = me.normalSummonUsed && extraSummonAvailable(s, p);
@@ -125,8 +125,8 @@ export function legalActions(s: GameState): Action[] {
     });
     if (canSummon) pushFusions(s, p, out);
 
-    // The first turn of the duel has no battle.
-    if (s.turn > 1) out.push({ type: 'enterBattle', player: p });
+    // The first turn of the duel has no battle (and so no Main Phase 2); Main Phase 2 has no second battle.
+    if (s.phase === 'main' && s.turn > 1) out.push({ type: 'enterBattle', player: p });
     out.push({ type: 'endTurn', player: p });
   } else if (s.phase === 'battle') {
     if (s.turn > 1 && !attackLocked(s, p)) {
@@ -149,6 +149,7 @@ export function legalActions(s: GameState): Action[] {
           out.push({ type: 'attack', player: p, attackerZone, targetZone: null });
       });
     }
+    out.push({ type: 'endBattle', player: p });
     out.push({ type: 'endTurn', player: p });
   }
 

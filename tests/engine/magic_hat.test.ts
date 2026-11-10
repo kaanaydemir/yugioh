@@ -424,7 +424,7 @@ describe('bot', () => {
           const r = apply(state, a);
           activated += r.events.filter((e) => e.type === 'hatsShuffled').length;
           state = r.state;
-          // invariants (checkInvariants through play) + hats only exist during the attacker's turn
+          // invariants (checkInvariants through play) + hats only exist during the attacker's Battle Phase
           checkInvariants(state);
           const hats = state.players.flatMap((p) => p.monsters.filter((m) => m?.hat));
           if (hats.length) expect(state.phase === 'battle' || state.pending !== null).toBe(true);

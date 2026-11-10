@@ -230,6 +230,8 @@ type Task =
   | { k: 'spellResolve'; a: Extract<Action, { type: 'activateSpell' }>; fromHand: boolean; stZone: number | null; trigger?: TrapTrigger }
   | { k: 'endPhase' }
   | { k: 'nextTurn' }
+  /** The Battle Phase ends: end-of-battle effects, then Main Phase 2. */
+  | { k: 'endBattle' }
   // ---- batch 2 ----
   /** mudgrasp_spirit (`uid`) was attacked in defense: the attacker turns to defense, locked on its next turn. */
   | { k: 'mudPin'; uid: Uid; attackerUid: Uid; controller: PlayerId }
@@ -337,6 +339,8 @@ class Resolver {
         return this.resolveSpell(t.a, t.fromHand, t.stZone, t.trigger);
       case 'endPhase':
         return this.endPhase();
+      case 'endBattle':
+        return this.endBattle();
       case 'nextTurn':
         return this.beginTurn(other(this.s.activePlayer), this.s.turn + 1, false);
       case 'mudPin':
@@ -396,9 +400,16 @@ class Resolver {
     }
   }
 
+  /** Battle Phase → Main Phase 2: "when the Battle Phase ends" effects first (scrap_raiders), then the phase. */
+  private endBattle(): void {
+    for (const pl of PLAYERS) this.endHats(pl, 'turnEnd'); // magic_hat: the hats live only while the battle lasts
+    this.raidersRest();
+    this.withStats(() => this.setPhase('main2'));
+  }
+
   private endPhase(): void {
     for (const pl of PLAYERS) this.endHats(pl, 'turnEnd'); // magic_hat: tokens vanish, a hidden monster flips back face-up
-    this.raidersRest(); // scrap_raiders: the Battle Phase is over
+    this.raidersRest(); // scrap_raiders: the Battle Phase is over (no-op when Main Phase 2 already ran it)
     this.withStats(() => this.setPhase('end'));
     const p = this.s.activePlayer;
     this.tickContinuous(p);
@@ -915,6 +926,10 @@ class Resolver {
       case 'endTurn':
         this.queue.length = 0;
         this.queue.push({ k: 'endPhase' }, { k: 'nextTurn' });
+        return;
+      case 'endBattle':
+        this.queue.length = 0;
+        this.queue.push({ k: 'endBattle' });
         return;
       case 'respond':
         return this.respond(a.player, a.uid);
@@ -1577,9 +1592,9 @@ class Resolver {
         const attackerUid = pd.trigger.kind === 'attackDeclared' ? pd.trigger.attackerUid : -1;
         this.emit({ type: 'attackNegated', player: other(p), attackerUid, byUid: uid });
         finish();
-        // The battle phase ends and the turn passes.
+        // The battle phase ends: the attacker goes on to Main Phase 2.
         this.queue.length = 0;
-        this.queue.push({ k: 'endPhase' }, { k: 'nextTurn' });
+        this.queue.push({ k: 'endBattle' });
         return;
       }
       case 'spellActivateNegate': {

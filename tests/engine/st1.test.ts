@@ -847,7 +847,8 @@ describe('sandstorm (Kum Fırtınası): negate the attack, the attacker side goe
     const r = play(w.state, respond(w.state, 'chains_of_light', 1));
     expect(r.state.pending).toBeNull();
     expect(r.state.players[1].spellTraps.filter(Boolean)).toHaveLength(1);
-    expect(r.state.activePlayer).toBe(1); // chains ended the turn
+    expect(r.state.activePlayer).toBe(0); // chains ended the battle: Main Phase 2
+    expect(r.state.phase).toBe('main2');
   });
 });
 
