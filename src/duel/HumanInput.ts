@@ -172,6 +172,8 @@ export class HumanInput {
     scene.input.on(Phaser.Input.Events.POINTER_MOVE, (p: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
       // v3 (F7): over the trap prompt's plate the board under it is not hovered (its cards show in the inspect panel)
       if (V3_A6_B && this.mode === 'trap' && over && over.length) return;
+      // v3 K11: the graveyard panel holds the pointer (its own hover drives the inspect panel)
+      if (V3_A6_B && gravePanelOpen(scene)) return;
       this.hover(p.x, p.y);
     });
     const onKey = (e: KeyboardEvent) => {

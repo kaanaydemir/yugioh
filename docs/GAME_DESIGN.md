@@ -38,9 +38,15 @@ Tarz kuralı: oyunun **orijinal piksel dili** korunur — 640×360, tam sayı b�
 | El sınırı | Bitiş Aşamasında 6 (fazlası atılır) |
 | İlk tur | İlk oyuncu saldıramaz. Eski kural (v1): kart da çekmez. v3 kuralı: her iki oyuncu 5 kartla başlar, sırası gelen oyuncu 6. kartı çeker (ilk oyuncu da 1. turda çeker, atlama yok) |
 
-**Tur akışı:** Çekme Aşaması → Ana Aşama → Savaş Aşaması → Bitiş Aşaması. Speed Duel'deki gibi 2. Ana Aşama yoktur.
+**Tur akışı:** Çekme Aşaması → 1. Ana Aşama → Savaş Aşaması → 2. Ana Aşama → Bitiş Aşaması (sahip kararı 2026-11: klasik Yu-Gi-Oh! gibi 2. Ana Aşama vardır; motor fazı `main2`).
+- 1. Ana Aşamadan **TURU BİTİR** denirse savaş da 2. Ana Aşama da atlanır, doğrudan Bitiş Aşamasına geçilir.
+- Savaş Aşamasında **ANA 2** düğmesi (`endBattle` hamlesi) Savaş Aşamasını bitirir ve 2. Ana Aşamaya geçer; Savaş Aşamasındaki **TURU BİTİR** 2. Ana Aşamayı boş geçer (doğrudan Bitiş).
+- 2. Ana Aşamadan **TURU BİTİR** → Bitiş Aşaması.
+- Düellonun ilk turunda Savaş Aşaması olmadığından 2. Ana Aşama da yoktur: 1. Ana Aşama → Bitiş.
+- "Savaş Aşaması bittiğinde" tetiklenen etkiler (Hurda Akıncıları savunmaya geçer) Savaş → 2. Ana geçişinde çözülür. "Bu tur" / "Bitiş Aşamasına kadar" süren etkiler 2. Ana Aşamada da sürer.
 
-### Ana Aşama
+### Ana Aşama (1. ve 2.)
+Aşağıdakilerin hepsi iki Ana Aşamada da yapılabilir; turda 1 kez sınırları iki aşama için ortaktır (1. Ana Aşamada çağırma yapan 2. Ana Aşamada yeniden çağıramaz; bu tur saldıran canavar 2. Ana Aşamada pozisyon değiştiremez).
 - **Normal Çağırma / Kapalı Koyma:** Turda 1 kez (ikisi toplam 1 hak). Seviye 1–4 kurbansız, 5–6 için 1 kurban, 7 ve üzeri için 2 kurban.
 - **Çevirerek Çağırma:** Daha önceki bir turda kapalı konmuş canavar, açık saldırı pozisyonuna çevrilir.
 - **Pozisyon değiştirme:** Açık canavar, sahaya geldiği tur değilse, bu tur saldırmadıysa ve bu tur pozisyonu değişmediyse, turda 1 kez.
@@ -118,7 +124,7 @@ Tarz kuralı: oyunun **orijinal piksel dili** korunur — 640×360, tam sayı b�
 | Kart | Tetik | Etki |
 |---|---|---|
 | **Ayna Kalkanı** (`mirror_barrier`) | Rakip saldırı ilan ettiğinde | Rakibin saldırı pozisyonundaki tüm canavarlarını yok et |
-| **Işık Zincirleri** (`chains_of_light`) | Rakip saldırı ilan ettiğinde | Saldırıyı geçersiz kıl. Savaş Aşaması biter, tur Bitiş Aşamasına geçer. |
+| **Işık Zincirleri** (`chains_of_light`) | Rakip saldırı ilan ettiğinde | Saldırıyı geçersiz kıl. Savaş Aşaması biter, saldıran oyuncu 2. Ana Aşamaya geçer. |
 | **Yer Yarığı** (`chasm_trap`) | Rakip ATK ≥ 1000 bir canavarı Normal/Kurbanla Çağırdığında | O canavarı yok et |
 
 ### Genişletilmiş havuz ve emekli kartlar
@@ -275,6 +281,7 @@ parçaları korur (kurban etmez, Ruh Çağrısı ile geri getirir).
 ### `phaseChange`
 - Faz çubuğundaki işaretçi kayar.
 - Savaş fazında kırmızı nabız ve "SAVAŞ AŞAMASI" pankartı çıkar, müzik yoğunlaşır.
+- 2. Ana Aşama (Savaş → Ana 2): işaretçi ileri, ANA 2 hücresine kayar; savaş hücresinin kızıl dolgusu iki adımda söner, müzik sakin seviyesine iner; turun oyuncusunun canavarları sırayla oyuncu renginde bir kontur yanıp söner (soğuma dalgası). v1 görünümünde faz çubuğu 4 hücre kalır: işaretçi ANA hücresine geri kayar ve etiket "MAIN 2" olur.
 
 ### `summon`: normal (~1,6 sn)
 | Zaman | Ne olur |

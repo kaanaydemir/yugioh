@@ -18,7 +18,7 @@ export const GRAVE = Object.freeze({
   w: 400,
   h: 150,
   /** Gap between the plate's bottom edge and the screen's bottom edge. */
-  bottom: 4,
+  bottom: 0,
   /** Cards shown at once; more scroll. */
   visible: 7,
   cardW: 48,
@@ -64,7 +64,7 @@ export const GRAVE = Object.freeze({
   /** Reduced motion: two palette steps of two frames each (open and close). */
   reducedStepMs: 2 * FRAME,
   /** The title stamps two letters a frame once the plate is full. */
-  lettersPerFrame: 2,
+  lettersPerFrame: 4,
 });
 
 /** The card pitch (one card + the gap). */

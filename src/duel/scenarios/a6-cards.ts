@@ -66,6 +66,39 @@ const PACK: Record<string, Scenario> = {
       { ui: 'key', key: 'Enter', ms: 1500 },
     ],
   },
+  // ---- K11, the graveyard panel (step A6): the other player's pile, a long one (scrolling), an empty one
+  a6GraveP2: {
+    desc: "UI: a click on the OTHER player's graveyard (P2's, 3 cards), ← → focus, Enter pins, Esc",
+    stage: { p0: { hand: ['tide_golem'], graveyard: ['ember_wolf'] }, p1: { graveyard: ['volt_lizard', 'mirror_barrier', 'crystal_wyrm'], monsters: [null, 'stone_sentinel'] } },
+    steps: [
+      { ui: 'move', at: { pile: [1, 'graveyard'] }, ms: 200 },
+      { ui: 'click', at: { pile: [1, 'graveyard'] }, ms: 400 },
+      { ui: 'key', key: 'ArrowRight', ms: 150 },
+      { ui: 'key', key: 'ArrowRight', ms: 150 },
+      { ui: 'key', key: 'Enter', ms: 300 },
+      { ui: 'key', key: 'Escape', ms: 350 },
+    ],
+  },
+  a6GraveMany: {
+    desc: 'UI: a 10-card graveyard (scrolls past 7): open with M, → to the end (the shelf scrolls), Esc',
+    stage: { p0: { hand: ['tide_golem'], graveyard: [...EIGHT, 'stone_sentinel', 'volt_lizard'] } },
+    steps: [
+      { ui: 'move', at: { xy: [320, 180] }, ms: 100 },
+      { ui: 'key', key: 'm', ms: 400 },
+      ...Array.from({ length: 9 }, () => ({ ui: 'key' as const, key: 'ArrowRight', ms: 120 })),
+      { ui: 'wait', ms: 250 },
+      { ui: 'key', key: 'Escape', ms: 350 },
+    ],
+  },
+  a6GraveEmpty: {
+    desc: 'UI: a click on an empty graveyard ("Graveyard is empty"), then a click outside the plate closes it',
+    stage: { p0: { hand: ['tide_golem'], monsters: [null, 'storm_hawk'] } },
+    steps: [
+      { ui: 'move', at: { pile: [0, 'graveyard'] }, ms: 200 },
+      { ui: 'click', at: { pile: [0, 'graveyard'] }, ms: 400 },
+      { ui: 'click', at: { xy: [320, 60] }, ms: 350 },
+    ],
+  },
 };
 
 export default PACK;
