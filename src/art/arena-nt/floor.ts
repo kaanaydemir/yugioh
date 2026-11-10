@@ -3,7 +3,8 @@
 // and red (P2) tile borders with much less outer glow. Pure PixelCanvas code (no Phaser).
 
 import { buildCalmArt } from '../../view/board-calm/art';
-import { PAL } from '../palette';
+import { BOARD_V4 } from '../../view/layout';
+import { PAL, RAMPS } from '../palette';
 import { type Color, PixelCanvas } from '../pixel';
 import { NT_PAL } from './palette';
 import { buildPlatformArt, emblemCanvas } from './platform';
@@ -23,7 +24,32 @@ export const FLOOR_FRAMES = {
   /** the centre emblem at ring levels (blue 0..3, red 0..3) */
   emblem: (blue: number, red: number) => `emblem:${blue}:${red}`,
   dash: (k: number) => `dash:${k}`,
+  /** arena v4 step 3: the Field Spell seal of `player` — `theme` 'none' (empty; `lv` 0, `boost` 0 / 1) or the active field's theme at light level `lv` 1..3 */
+  seal: (player: 0 | 1, theme: SealTheme, lv = 0, boost = 0) => `seal:${player}:${theme}:${lv}:${boost}`,
+  /** arena v4 step 3: the raised deck / graveyard pad of `player` (a pad, not an inset play tile) */
+  pile: (player: 0 | 1, kind: 'deck' | 'graveyard', state = SLOT_EMPTY, boost = 0) => `pile:${player}:${kind}:${state}:${boost}`,
 };
+
+/** Arena v4 step 3: the light theme of a face-up Field Spell ('none' = empty seal). */
+export type SealTheme = 'none' | 'fire' | 'water' | 'void' | 'gold';
+export const SEAL_THEMES: readonly Exclude<SealTheme, 'none'>[] = ['fire', 'water', 'void', 'gold'];
+/** The ramp each field theme lights its seal (and the zone-border glow) with. */
+export const SEAL_RAMP: Record<Exclude<SealTheme, 'none'>, readonly number[]> = { fire: RAMPS.fire, water: RAMPS.water, void: RAMPS.void, gold: RAMPS.gold };
+/** Field Spell card id → its light theme. */
+export function fieldTheme(cardId: string | null | undefined): SealTheme {
+  switch (cardId) {
+    case 'volcano_arena':
+      return 'fire';
+    case 'tidal_bay':
+      return 'water';
+    case 'shadow_cavern':
+      return 'void';
+    case 'festival_square':
+      return 'gold';
+    default:
+      return cardId ? 'gold' : 'none';
+  }
+}
 
 export interface FloorArt {
   atlas: Atlas;
@@ -105,6 +131,169 @@ function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): 
   return p;
 }
 
+// ---------------------------------------------------------------- arena v4 step 3: pads that are not play tiles
+// Owner (2026-11-10): the Field Spell zone "looks like one extra square on the board". The play zones are INSET tiles (a dark recess,
+// a bright 1-px player line); the non-play slots are RAISED PADS instead: a smaller plate standing a few px proud of the stage, a
+// dim metal rim, a riser below it and an engraved glyph — so they never line up as a 6th monster / spell tile.
+//   field     — an elongated hex SEAL (48 × 16, flat top / bottom, 2:1 slanted sides), dim rim with six player-coloured rivets,
+//               an engraved ring + four-point star; lit in the active Field Spell's theme (three light levels).
+//   deck / GY — a smaller raised diamond plate (48 × 24) with player-coloured corner clips only and an engraved card-stack /
+//               headstone glyph.
+
+/** Centre of the 64 × 32 slot box (the calm zone line's extent). */
+function slotCentre(): { cx: number; cy: number } {
+  const m = buildCalmArt().masks;
+  let x0 = 64;
+  let x1 = -1;
+  let y0 = 32;
+  let y1 = -1;
+  for (let j = 0; j < 32; j++)
+    for (let i = 0; i < 64; i++)
+      if (m.line.get(i, j) !== null) {
+        x0 = Math.min(x0, i);
+        x1 = Math.max(x1, i);
+        y0 = Math.min(y0, j);
+        y1 = Math.max(y1, j);
+      }
+  return { cx: (x0 + x1 + 1) / 2, cy: (y0 + y1 + 1) / 2 };
+}
+
+type Mask = (i: number, j: number) => boolean;
+const edgeOf = (inside: Mask, i: number, j: number): boolean => inside(i, j) && (!inside(i - 1, j) || !inside(i + 1, j) || !inside(i, j - 1) || !inside(i, j + 1));
+
+/** Engrave `groove` pixels (ink, or `glow` when lit) with a lit lip one row below (light from above). */
+function engrave(p: PixelCanvas, groove: Mask, inside: Mask, glow: Color | null, lip: Color): void {
+  for (let j = 0; j < 32; j++)
+    for (let i = 0; i < 64; i++) {
+      if (!inside(i, j)) continue;
+      if (groove(i, j)) p.set(i, j, glow ?? NT_PAL.ink);
+      else if (glow === null && groove(i, j - 1)) p.set(i, j, lip);
+    }
+}
+
+function sealFrame(player: 0 | 1, theme: SealTheme, lv: number, boost: number): PixelCanvas {
+  const p = new PixelCanvas(64, 32);
+  const { cx, cy } = slotCentre();
+  const own = player === 0 ? NT_PAL.blue : NT_PAL.red;
+  const tr = theme === 'none' ? null : SEAL_RAMP[theme];
+  const L = tr ? lv : 0;
+  const HW = 27;
+  const HH = 7.5;
+  const dX = (i: number): number => i + 0.5 - cx;
+  const dY = (j: number): number => j + 0.5 - cy;
+  const inside: Mask = (i, j) => i >= 0 && j >= 0 && i < 64 && j < 32 && Math.abs(dY(j)) <= HH && Math.abs(dX(i)) <= HW - 2 * Math.abs(dY(j));
+  // the riser: 2 px below the seal's lower edges (left half lit, right half in shade), an ink foot
+  for (let j = 0; j < 32; j++)
+    for (let i = 0; i < 64; i++) {
+      if (inside(i, j)) continue;
+      const up = inside(i, j - 1) ? 1 : inside(i, j - 2) ? 2 : inside(i, j - 3) ? 3 : 0;
+      if (!up || dY(j) < 0) continue;
+      p.set(i, j, up === 3 ? NT_PAL.ink : dX(i) < 0 ? PAL.stone1 : PAL.stone0);
+    }
+  // lit halo just outside the rim (the two upper levels; it peeks out round a card lying on the seal)
+  if (tr && L >= 2)
+    for (let j = 0; j < 32; j++)
+      for (let i = 0; i < 64; i++)
+        if (!inside(i, j) && p.get(i, j) === null && (inside(i - 1, j) || inside(i + 1, j) || inside(i, j - 1) || inside(i, j + 1))) p.set(i, j, tr[1]);
+  const rimC: Color = tr ? tr[[1, 2, 3, 3][L]] : NT_PAL.metal[2];
+  const rivet: Color = tr ? tr[[2, 3, 4, 4][L]] : own[boost ? 3 : 2];
+  const verts = [
+    [-HW + 0.5, 0],
+    [HW - 0.5, 0],
+    [-HW / 2 + 4, -HH],
+    [HW / 2 - 4, -HH],
+    [-HW / 2 + 4, HH],
+    [HW / 2 - 4, HH],
+  ];
+  const ring = (i: number, j: number): number => Math.sqrt((dX(i) / 2) ** 2 + dY(j) ** 2);
+  const disc: Mask = (i, j) => ring(i, j) < 5.6;
+  const ringPx: Mask = (i, j) => edgeOf(disc, i, j);
+  // four-point star: long horizontal arms (iso), short vertical ones, a centre dot
+  const star: Mask = (i, j) => {
+    const x = dX(i);
+    const y = dY(j);
+    return (Math.abs(y) < 0.6 && Math.abs(x) < 3.6) || (Math.abs(x) < 0.6 && Math.abs(y) < 2.1);
+  };
+  for (let j = 0; j < 32; j++)
+    for (let i = 0; i < 64; i++) {
+      if (!inside(i, j)) continue;
+      const x = dX(i);
+      const y = dY(j);
+      let c: Color;
+      if (edgeOf(inside, i, j)) {
+        c = rimC;
+        if (verts.some(([vx, vy]) => Math.abs(x - vx) < 1.6 && Math.abs(y - vy) < 0.6)) c = rivet;
+      } else if (inside(i, j - 2) === false || inside(i, j - 1) === false) c = tr && L >= 2 ? tr[1] : PAL.stone3; // lit top lip
+      else if (!inside(i, j + 2)) c = tr && L >= 2 ? tr[0] : PAL.stone0; // lower inner edge in shade
+      else c = tr && L >= 2 ? tr[0] : PAL.stone1;
+      p.set(i, j, c);
+    }
+  // the engraving: ring + star (grooves; lit in the theme's tone when the field is active)
+  const groove: Mask = (i, j) => ringPx(i, j) || star(i, j);
+  if (!tr) engrave(p, groove, inside, null, PAL.stone2);
+  else {
+    const gR = tr[[1, 2, 3, 3][L]];
+    const gS = tr[[1, 3, 4, 4][L]];
+    engrave(p, ringPx, inside, gR, PAL.stone2);
+    engrave(p, star, inside, gS, PAL.stone2);
+    if (L >= 3) p.set(Math.floor(cx), Math.floor(cy), PAL.white);
+  }
+  return p;
+}
+
+function pileFrame(player: 0 | 1, kind: 'deck' | 'graveyard', state: number, boost: number): PixelCanvas {
+  const p = new PixelCanvas(64, 32);
+  const { cx, cy } = slotCentre();
+  const own = player === 0 ? NT_PAL.blue : NT_PAL.red;
+  const on = state !== SLOT_EMPTY;
+  const HH = 11.5;
+  const dX = (i: number): number => i + 0.5 - cx;
+  const dY = (j: number): number => j + 0.5 - cy;
+  const inside: Mask = (i, j) => i >= 0 && j >= 0 && i < 64 && j < 32 && Math.abs(dX(i)) / 2 + Math.abs(dY(j)) <= HH;
+  for (let j = 0; j < 32; j++)
+    for (let i = 0; i < 64; i++) {
+      if (inside(i, j)) continue;
+      const up = inside(i, j - 1) ? 1 : inside(i, j - 2) ? 2 : inside(i, j - 3) ? 3 : 0;
+      if (!up || dY(j) < 0) continue;
+      p.set(i, j, up === 3 ? NT_PAL.ink : dX(i) < 0 ? PAL.stone1 : PAL.stone0);
+    }
+  const clip: Color = own[on || boost ? 3 : 2];
+  for (let j = 0; j < 32; j++)
+    for (let i = 0; i < 64; i++) {
+      if (!inside(i, j)) continue;
+      const x = dX(i);
+      const y = dY(j);
+      let c: Color;
+      if (edgeOf(inside, i, j)) c = Math.abs(x) > 15 || Math.abs(y) > 7.5 ? clip : NT_PAL.metal[2];
+      else if (!inside(i, j - 1) || !inside(i, j - 2)) c = PAL.stone3;
+      else if (!inside(i, j + 1)) c = PAL.stone0;
+      else c = on ? own[0] : PAL.stone2;
+      p.set(i, j, c);
+    }
+  const glyph: Mask =
+    kind === 'deck'
+      ? (i, j) => {
+          // two stacked iso card outlines
+          const a = (k: number): boolean => {
+            const e = Math.abs(dX(i)) / 2 + Math.abs(dY(j) + k);
+            return e >= 3.6 && e < 4.6;
+          };
+          return a(1.5) || (a(-1.5) && !(Math.abs(dX(i)) / 2 + Math.abs(dY(j) + 1.5) < 4.6));
+        }
+      : (i, j) => {
+          // a headstone: round top, straight sides, a base line
+          const x = dX(i);
+          const y = dY(j) + 1;
+          const top = y < -1.5 && Math.abs(Math.sqrt(x * x + ((y + 1.5) * 1.6) ** 2) - 3.5) < 0.6;
+          const side = y >= -1.5 && y < 3 && Math.abs(Math.abs(x) - 3.5) < 0.6;
+          const base = Math.abs(y - 3) < 0.6 && Math.abs(x) < 5.5;
+          const cross = (Math.abs(x) < 0.6 && y > -3 && y < 1.5) || (Math.abs(y + 1) < 0.6 && Math.abs(x) < 1.6);
+          return top || side || base || cross;
+        };
+  engrave(p, glyph, inside, null, PAL.stone3);
+  return p;
+}
+
 export function buildFloorArt(): FloorArt {
   if (cached) return cached;
   const t0 = performance.now();
@@ -113,6 +302,13 @@ export function buildFloorArt(): FloorArt {
     for (const pile of [false, true])
       for (const state of pile ? [SLOT_EMPTY, SLOT_OCCUPIED] : [SLOT_EMPTY, SLOT_OCCUPIED, SLOT_DOWN])
         for (const boost of [0, 1]) list.push([FLOOR_FRAMES.slot(player, pile, state, boost), slotFrame(player, pile, state, boost)]);
+  if (BOARD_V4)
+    for (const player of [0, 1] as const) {
+      for (const boost of [0, 1]) list.push([FLOOR_FRAMES.seal(player, 'none', 0, boost), sealFrame(player, 'none', 0, boost)]);
+      for (const th of SEAL_THEMES) for (let lv = 1; lv <= 3; lv++) list.push([FLOOR_FRAMES.seal(player, th, lv), sealFrame(player, th, lv, 0)]);
+      for (const kind of ['deck', 'graveyard'] as const)
+        for (const state of [SLOT_EMPTY, SLOT_OCCUPIED]) for (const boost of [0, 1]) list.push([FLOOR_FRAMES.pile(player, kind, state, boost), pileFrame(player, kind, state, boost)]);
+    }
   for (let b = 0; b < 4; b++) for (let r = 0; r < 4; r++) list.push([FLOOR_FRAMES.emblem(b, r), emblemCanvas(b, r)]);
   const dashes: FloorArt['dashes'] = [];
   buildPlatformArt().dashes.forEach((px, k) => {

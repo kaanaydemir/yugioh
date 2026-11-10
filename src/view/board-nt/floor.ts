@@ -1,15 +1,15 @@
 // Neon Tower layer: FLOOR (slots / grid) — owner A1.
 // Readability pass: apron rail strips and blinking lamps stay off so the floor around the platform stays calm and dark.
 
-import type Phaser from 'phaser';
-import { FLOOR_FRAMES, NT_FLOOR_KEY, SLOT_DOWN, SLOT_EMPTY, SLOT_OCCUPIED, buildFloorArt } from '../../art/arena-nt/floor';
+import Phaser from 'phaser';
+import { FLOOR_FRAMES, NT_FLOOR_KEY, SLOT_DOWN, SLOT_EMPTY, SLOT_OCCUPIED, SEAL_RAMP, type SealTheme, buildFloorArt, fieldTheme } from '../../art/arena-nt/floor';
 import type { FloorArt } from '../../art/arena-nt/floor';
 import { APRON_BOX, NT_APRON_FX_KEY, NT_APRON_KEY, buildApronArt, type ApronArt } from '../../art/arena-nt/apron';
 import { buildCalmArt, calmZones } from '../board-calm/art';
 import { PAL, RAMPS } from '../../art/palette';
 import type { FieldView } from '../../duel/FieldView';
 import type { GameEvent, PlayerId } from '../../engine/types';
-import { BANISH_PAD, type BoardSpot, zoneXY } from '../layout';
+import { BANISH_PAD, BOARD_V4, type BoardSpot, zoneXY } from '../layout';
 import { CENTER_EMBLEM, NT_COLS, NT_DEPTH, NT_ROWS, PLATE_OUTLINE, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1, ntIso } from './layout-nt';
 import { mulberry32 } from '../../art/pixel';
 import { TEX } from '../../vfx/core';
@@ -19,6 +19,32 @@ import { ensureNtTexture } from './textures';
 type Img = Phaser.GameObjects.Image;
 
 const APRON_Z = 9.96;
+
+/** Arena v4 step 3: the lit field seal's light pool (white, stepped bands; tinted with the theme at run time). */
+const SEAL_HALO = { w: 80, h: 40 } as const;
+const SEAL_HALO_KEY = 'nt:floor:sealhalo';
+function ensureSealHalo(scene: Phaser.Scene): string {
+  if (scene.textures.exists(SEAL_HALO_KEY)) return SEAL_HALO_KEY;
+  const { w, h } = SEAL_HALO;
+  const t = scene.textures.createCanvas(SEAL_HALO_KEY, w, h);
+  if (!t) return '__DEFAULT';
+  const img = new ImageData(w, h);
+  const bands = [0.5, 0.32, 0.16];
+  for (let j = 0; j < h; j++)
+    for (let i = 0; i < w; i++) {
+      const dx = (i + 0.5 - w / 2) / (w / 2);
+      const dy = (j + 0.5 - h / 2) / (h / 2);
+      const r = Math.sqrt(dx * dx + dy * dy);
+      if (r >= 1) continue;
+      const v = Math.round(255 * bands[Math.min(2, Math.floor(r * 3))]);
+      const o = (j * w + i) * 4;
+      img.data[o] = img.data[o + 1] = img.data[o + 2] = v;
+      img.data[o + 3] = 255;
+    }
+  t.getContext().putImageData(img, 0, 0);
+  t.refresh();
+  return SEAL_HALO_KEY;
+}
 
 // ---------------------------------------------------------------- smooth slot borders (readability pass)
 // Owner feedback 2026-11-02: the tile lines of hedef-gorunum-1/2 are smooth, ours were hard 1-px stairs.
@@ -254,6 +280,11 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
     state: number;
     boost: number;
     shown: string;
+    /** arena v4 field seal: the theme it shows / lights toward, when that theme changed, the level it fades from */
+    theme: SealTheme;
+    themeAt: number;
+    fromLv: number;
+    lv: number;
   }
   // owner decision 2026-11-02: back to the fb7243b board top — the smooth stone-flag texture over the plate and the smooth,
   // thin slot lines (the pixel-dither version read as "dotted"). The thick stage, daises and side walls of h3 stay.
@@ -268,10 +299,46 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
   const slots: Slot[] = calmZones().filter((z) => BANISH_PAD || z.spot !== 'banish').map((z) => {
     const c = zoneXY(z.player, z.spot, z.index);
     const pile = z.spot !== 'monster' && z.spot !== 'spellTrap';
-    const shown = FLOOR_FRAMES.slot(z.player, pile);
+    const shown = frameOf(z.player, z.spot, pile, SLOT_EMPTY, 0, 'none', 0);
     const img = ctx.add(scene.add.image(c.x - 32, c.y - 16, slotKey, shown).setOrigin(0).setDepth(NT_DEPTH.floor + 0.25));
-    return { img, player: z.player, spot: z.spot, index: z.index, pile, state: SLOT_EMPTY, boost: 0, shown };
+    return { img, player: z.player, spot: z.spot, index: z.index, pile, state: SLOT_EMPTY, boost: 0, shown, theme: 'none' as SealTheme, themeAt: -1e9, fromLv: 0, lv: 0 };
   });
+  // arena v4 step 3: the non-play slots are raised pads (field seal, deck / graveyard plates), not inset tiles
+  function frameOf(player: PlayerId, spot: BoardSpot, pile: boolean, state: number, boost: number, theme: SealTheme, lv: number): string {
+    if (BOARD_V4 && spot === 'field') return theme === 'none' || lv <= 0 ? FLOOR_FRAMES.seal(player, 'none', 0, boost) : FLOOR_FRAMES.seal(player, theme, lv);
+    if (BOARD_V4 && (spot === 'deck' || spot === 'graveyard')) return FLOOR_FRAMES.pile(player, spot, state === SLOT_EMPTY ? SLOT_EMPTY : SLOT_OCCUPIED, boost);
+    return FLOOR_FRAMES.slot(player, pile, state, boost);
+  }
+  /** The face-up Field Spell's theme on a seal ('none' when empty / face-down). */
+  const themeOf = (z: { player: PlayerId }, f: FieldView): SealTheme => {
+    try {
+      const e = f.entry(z.player, 'field', 0);
+      return e && e.tile.faceUp ? fieldTheme(e.cardId) : 'none';
+    } catch {
+      return 'none';
+    }
+  };
+  /**
+   * The seal's light level (0 … 3) at time t: it ignites in stepped notches (0 → 1 → 2 → 3, 110 ms each) with a double flare
+   * on top, then breathes slowly between 2 and 3 (each seal on its own phase); it goes out the same way down.
+   */
+  const sealLevel = (z: { theme: SealTheme; themeAt: number; fromLv: number; player: PlayerId }, t: number): number => {
+    const k = t - z.themeAt;
+    if (z.theme === 'none') return Math.max(0, z.fromLv - Math.floor(k / 110) - 1);
+    if (k < 330) return Math.max(z.fromLv, Math.min(3, Math.floor(k / 110) + 1));
+    if (k < 900) return Math.floor((k - 330) / 95) % 2 === 0 ? 3 : 2;
+    const u = (((k - 900) / 2600 + z.player * 0.37) % 1 + 1) % 1;
+    return u < 0.55 ? 3 : 2;
+  };
+  // the lit seal's light pool (ADD, white, tinted with the theme): it spreads round a card lying on the seal, 3 stepped bands
+  const haloKey = ensureSealHalo(scene);
+  const halos = new Map<object, Img>();
+  for (const z of slots)
+    if (BOARD_V4 && z.spot === 'field') {
+      const c = zoneXY(z.player, 'field', 0);
+      halos.set(z, ctx.add(scene.add.image(Math.round(c.x) - SEAL_HALO.w / 2, Math.round(c.y) - SEAL_HALO.h / 2, haloKey).setOrigin(0).setBlendMode(Phaser.BlendModes.ADD).setDepth(NT_DEPTH.floor + 0.32).setVisible(false)));
+    }
+  const haloShown = new Map<object, string>();
   const fieldView = (): FieldView | null => (scene as unknown as { views?: { field?: FieldView } }).views?.field ?? null;
   const stateOf = (z: Slot, f: FieldView): number => {
     try {
@@ -284,6 +351,9 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
       return SLOT_EMPTY;
     }
   };
+  // the theme a seal fades out in (it remembers its last lit theme)
+  const fadeTheme = new Map<object, SealTheme>();
+  const lastTheme = (z: object): SealTheme => fadeTheme.get(z) ?? 'gold';
   const liftUntil: [number, number] = [0, 0];
   let nextScan = 0;
 
@@ -332,10 +402,34 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
         for (const z of slots) {
           const st = lit && f ? stateOf(z, f) : SLOT_EMPTY;
           const bo = lit && (active === z.player || t < liftUntil[z.player]) ? 1 : 0;
-          const name = FLOOR_FRAMES.slot(z.player, z.pile, st, bo);
-          if (name !== z.shown) {
-            z.img.setFrame(name);
-            z.shown = name;
+          z.state = st;
+          z.boost = bo;
+          if (BOARD_V4 && z.spot === 'field') {
+            const th = lit && f ? themeOf(z, f) : 'none';
+            if (th !== z.theme) {
+              if (z.theme !== 'none') fadeTheme.set(z, z.theme);
+              z.fromLv = z.lv;
+              z.theme = th;
+              z.themeAt = t;
+            }
+          }
+        }
+      }
+      for (const z of slots) {
+        if (BOARD_V4 && z.spot === 'field') z.lv = sealLevel(z, t);
+        const name = frameOf(z.player, z.spot, z.pile, z.state, z.boost, z.theme === 'none' && z.lv > 0 ? lastTheme(z) : z.theme, z.lv);
+        if (name !== z.shown) {
+          z.img.setFrame(name);
+          z.shown = name;
+        }
+        const halo = halos.get(z);
+        if (halo) {
+          const th = z.theme === 'none' ? lastTheme(z) : z.theme;
+          const key = `${th}:${z.lv}`;
+          if (haloShown.get(z) !== key) {
+            haloShown.set(z, key);
+            halo.setVisible(z.lv > 0 && th !== 'none');
+            if (z.lv > 0 && th !== 'none') halo.setTint(SEAL_RAMP[th][2]).setAlpha([0, 0.4, 0.7, 1][z.lv]);
           }
         }
       }

@@ -534,7 +534,8 @@ export function bakeLights(): LightsBake {
     for (let L = 1; L <= LIGHT_LEVELS; L++) parts.push([lightFrame.pool(i, L), paintPool(s, L)]);
   });
   for (let L = 1; L <= LIGHT_LEVELS; L++) parts.push([lightFrame.halo(L), paintHalo(L)]);
-  FOG_BANKS.forEach((b, i) => parts.push([lightFrame.fogBank(i), paintFogBank(b)]));
+  // arena v4 step 3: the cumulus banks are replaced by the fog ribbons (./fog-ribbons.ts) — not baked
+  if (!BOARD_V4) FOG_BANKS.forEach((b, i) => parts.push([lightFrame.fogBank(i), paintFogBank(b)]));
   for (let f = 0; f < 3; f++) {
     parts.push([lightFrame.torch(f), paintTorch(f)]);
     parts.push([torchFrame.sconce(f), paintMountedTorch('sconce', f)]);

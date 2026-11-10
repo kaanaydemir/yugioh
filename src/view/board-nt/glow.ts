@@ -31,7 +31,8 @@
 import Phaser from 'phaser';
 import { frameRGBA } from '../../art/atlas';
 import { BRICK_TORCHES } from '../../art/arena-nt/brickwall';
-import { FLOOR_FRAMES, NT_FLOOR_KEY } from '../../art/arena-nt/floor';
+import { FLOOR_FRAMES, NT_FLOOR_KEY, SEAL_RAMP, fieldTheme } from '../../art/arena-nt/floor';
+import type { FieldView } from '../../duel/FieldView';
 import { BRAZIER, BRAZIERS } from '../../art/arena-nt/hallfloor';
 import { NT_PADS_KEY, PAD_CANVAS, padFrame } from '../../art/arena-nt/pads';
 import { NT_PLATFORM_KEY, PLATFORM_BOX } from '../../art/arena-nt/platform';
@@ -53,6 +54,7 @@ export const GLOW_Z = {
   stageGlow: NT_DEPTH.platform + 1.47,
   daisVeil: NT_DEPTH.pads + 0.05,
   zoneGlow: NT_DEPTH.floor + 0.3,
+  brazierVeil: NT_DEPTH.platform + 1.505,
 } as const;
 
 const KEY = {
@@ -62,6 +64,8 @@ const KEY = {
   stageGlow: 'nt:v4light:stageglow',
   daisVeil: (p: number): string => `nt:v4light:daisveil:${p}`,
   zoneGlow: 'nt:v4light:zoneglow',
+  zoneGlowWhite: 'nt:v4light:zoneglow:white',
+  brazierVeil: (i: number): string => `nt:v4light:brazierveil:${i}`,
 } as const;
 
 // ---------------------------------------------------------------- tuning (QA: window.__neon.ntGlow)
@@ -245,10 +249,11 @@ function stageK(x: number, y: number, top: boolean): { k: number; warm: number }
     if (r < 1) warm = Math.max(warm, r < 0.45 ? 2 : 1);
   }
   if (!top) return { k: warm === 2 ? 0.66 : warm === 1 ? 0.56 : 0.46, warm };
-  const ex = (x - 322) / 200;
-  const ey = (y - 162) / 118;
-  const e = ex * ex + ey * ey;
-  return { k: e < 0.42 ? 0.6 : e < 0.78 ? 0.55 : 0.5, warm: 0 };
+  // step 3 (a): ONE flat level on the bare stage top. The three-band key pool (0.6 / 0.55 / 0.5) left faint elliptical contour
+  // rings on the flat stone; the pools of light on the top are the units' own (LightLayer) and the zone borders' spill.
+  void x;
+  void y;
+  return { k: 0.56, warm: 0 };
 }
 
 function veilPixel(d: Uint8ClampedArray, o: number, f: RGB): void {
@@ -311,6 +316,27 @@ function bakeDaisVeil(frames: (Uint8ClampedArray | null)[], w: number, h: number
   return d;
 }
 
+/** Step 3 (b): the brazier posts' veil (stone → dark, warm-lit from the flame above; the flame pixels of every frame stay). */
+function bakePostVeil(frames: (Uint8ClampedArray | null)[], w: number, h: number): Uint8ClampedArray {
+  const d = new Uint8ClampedArray(w * h * 4);
+  const base = frames[0];
+  for (let j = 0; j < h; j++)
+    for (let i = 0; i < w; i++) {
+      const o = (j * w + i) * 4;
+      let lit = false;
+      for (const f of frames) if (f && f[o + 3] >= 128 && EMISSIVE.has((f[o] << 16) | (f[o + 1] << 8) | f[o + 2])) lit = true;
+      if (!base || base[o + 3] < 128 || lit) {
+        veilPixel(d, o, [1, 1, 1]);
+        continue;
+      }
+      const c = (base[o] << 16) | (base[o + 1] << 8) | base[o + 2];
+      // the post's top (near the fire) a notch brighter than its foot
+      const k = j < BRAZIER.flameY + 8 ? 0.62 : j < BRAZIER.flameY + 20 ? 0.52 : 0.44;
+      veilPixel(d, o, TRIM.has(c) ? [0.9, 0.82, 0.72] : gradeFactor(c, k, 0.3, WARM));
+    }
+  return d;
+}
+
 // ---------------------------------------------------------------- stage glow (daises, braziers on the walls)
 
 const STAGE = PLATFORM_BOX;
@@ -339,20 +365,30 @@ function bakeStageGlow(stagePx: Uint8ClampedArray | null): Uint8ClampedArray {
 /** Bounding box of every slot image (the plate top). */
 const ZONE_BOX = { x: 100, y: 24, w: 440, h: 276 } as const;
 
-function bakeZoneGlow(slotPx: (player: 0 | 1, pile: boolean) => Uint8ClampedArray | null): Uint8ClampedArray {
+/** The resting frame of a zone's slot image (arena v4 step 3: the field seal and the deck / graveyard pads are their own frames). */
+function zoneFrame(player: 0 | 1, spot: string): string {
+  if (spot === 'field') return FLOOR_FRAMES.seal(player, 'none');
+  if (spot === 'deck' || spot === 'graveyard') return FLOOR_FRAMES.pile(player, spot);
+  return FLOOR_FRAMES.slot(player, spot !== 'monster' && spot !== 'spellTrap');
+}
+
+/**
+ * The zone-border spill. `white`: every border's spill in neutral white at the same levels (the theme glow: tinted at run time
+ * with the active Field Spell's colour, crossfaded against the players' own colours).
+ */
+function bakeZoneGlow(slotPx: (player: 0 | 1, frame: string) => Uint8ClampedArray | null, white = false): Uint8ClampedArray {
   const { w, h } = ZONE_BOX;
   const d = new Uint8ClampedArray(w * h * 4);
   const OUT = [0, 0.34, 0.17, 0.07];
   const IN = [0, 0.26, 0.1];
   for (const z of calmZones()) {
     if (!BANISH_PAD && z.spot === 'banish') continue;
-    const pile = z.spot !== 'monster' && z.spot !== 'spellTrap';
-    const px = slotPx(z.player, pile);
+    const px = slotPx(z.player, zoneFrame(z.player, z.spot));
     if (!px) continue;
     const c = zoneXY(z.player, z.spot, z.index);
     const sx = Math.round(c.x) - 32;
     const sy = Math.round(c.y) - 16;
-    const col = rgb(z.player === 0 ? PAL.cyan2 : PAL.crim2);
+    const col: RGB = white ? [1, 1, 1] : rgb(z.player === 0 ? PAL.cyan2 : PAL.crim2);
     const neon = (u: number, v: number): boolean => {
       if (u < 0 || v < 0 || u >= 64 || v >= 32) return false;
       const o = (v * 64 + u) * 4;
@@ -383,6 +419,41 @@ function bakeZoneGlow(slotPx: (player: 0 | 1, pile: boolean) => Uint8ClampedArra
       }
   }
   return d;
+}
+
+// ---------------------------------------------------------------- the active Field Spell
+
+/**
+ * Which face-up Field Spell lights the board (step 3 (c)): read from the duel's FieldView every 150 ms. With both players' field
+ * zones lit, the one that came up last wins. `color` = the theme's light tone.
+ */
+function fieldWatcher(scene: Phaser.Scene): { current(t: number): { color: number } | null } {
+  let next = 0;
+  let cur: { color: number } | null = null;
+  const seen: (string | null)[] = [null, null];
+  let lastUp: 0 | 1 | null = null;
+  return {
+    current(t) {
+      if (t < next) return cur;
+      next = t + 150;
+      const f = (scene as unknown as { views?: { field?: FieldView } }).views?.field ?? null;
+      const ids: (string | null)[] = [0, 1].map((p) => {
+        try {
+          const e = f?.entry(p as 0 | 1, 'field', 0);
+          return e && e.tile.faceUp ? e.cardId : null;
+        } catch {
+          return null;
+        }
+      });
+      for (const p of [0, 1] as const) if (ids[p] && ids[p] !== seen[p]) lastUp = p;
+      seen[0] = ids[0];
+      seen[1] = ids[1];
+      const p = lastUp !== null && ids[lastUp] ? lastUp : ids[0] ? 0 : ids[1] ? 1 : null;
+      const th = p === null ? 'none' : fieldTheme(ids[p]);
+      cur = th === 'none' ? null : { color: SEAL_RAMP[th][3] };
+      return cur;
+    },
+  };
 }
 
 // ---------------------------------------------------------------- the layer
@@ -443,11 +514,27 @@ export function createGlowLayer(ctx: NtCtx): NtLayer {
     veil(scene.add.image(r.x + 28 - PAD_CANVAS.cx, r.y + 14 - PAD_CANVAS.cy, k).setOrigin(0).setDepth(GLOW_Z.daisVeil).setBlendMode(MUL));
   });
 
+  // ---- step 3 (b): the braziers' stone posts are veiled like the stage stone (warm, from their own fire); every pixel that is
+  // flame in ANY of the six frames keeps its light, so the flames stay bright
+  BRAZIERS.forEach((b, i) => {
+    const frames = Array.from({ length: BRAZIER.frames }, (_, f) => framePx(scene, `nt:hall:brazier:${f}`));
+    if (!frames[0]) return;
+    const k = texFrom(scene, KEY.brazierVeil(i), BRAZIER.w, BRAZIER.h, () => bakePostVeil(frames, BRAZIER.w, BRAZIER.h));
+    veil(scene.add.image(b.x - BRAZIER.cx, b.y - BRAZIER.h + 1, k).setOrigin(0).setDepth(GLOW_Z.brazierVeil).setBlendMode(MUL));
+  });
+
   // ---- zone borders
-  const zoneKey = texFrom(scene, KEY.zoneGlow, ZONE_BOX.w, ZONE_BOX.h, () =>
-    bakeZoneGlow((player, pile) => framePx(scene, NT_FLOOR_KEY, FLOOR_FRAMES.slot(player, pile))),
-  );
-  glows.push(add(scene.add.image(ZONE_BOX.x, ZONE_BOX.y, zoneKey).setOrigin(0).setDepth(GLOW_Z.zoneGlow).setBlendMode(ADD)));
+  const slotPx = (player: 0 | 1, frame: string): Uint8ClampedArray | null => framePx(scene, NT_FLOOR_KEY, frame);
+  const zoneKey = texFrom(scene, KEY.zoneGlow, ZONE_BOX.w, ZONE_BOX.h, () => bakeZoneGlow(slotPx));
+  const zoneGlow = add(scene.add.image(ZONE_BOX.x, ZONE_BOX.y, zoneKey).setOrigin(0).setDepth(GLOW_Z.zoneGlow).setBlendMode(ADD));
+  // step 3 (c): the same spill in white, tinted with the active Field Spell's theme colour; the two crossfade in stepped notches
+  const themeKey = texFrom(scene, KEY.zoneGlowWhite, ZONE_BOX.w, ZONE_BOX.h, () => bakeZoneGlow(slotPx, true));
+  const themeGlow = add(scene.add.image(ZONE_BOX.x, ZONE_BOX.y, themeKey).setOrigin(0).setDepth(GLOW_Z.zoneGlow + 0.001).setBlendMode(ADD).setVisible(false));
+  const field = fieldWatcher(scene);
+  let themeMix = 0; // 0 … 4 notches toward the theme
+  let themeShown = -1;
+  let themeTint = -1;
+  let themeStepAt = 0;
 
   let lights = true;
   let veilsOn = true;
@@ -480,6 +567,25 @@ export function createGlowLayer(ctx: NtCtx): NtLayer {
       if (k !== shownLv) {
         shownLv = k;
         for (const g of glows) g.setVisible(k > 0).setAlpha(k);
+        themeShown = -1;
+      }
+      // the zone borders' spill takes the active Field Spell's colour (one notch per 80 ms toward / away from it)
+      const fs = field.current(t);
+      if (t >= themeStepAt) {
+        themeStepAt = t + 80;
+        const goal = fs ? 4 : 0;
+        if (themeMix !== goal) themeMix += goal > themeMix ? 1 : -1;
+      }
+      if (fs && fs.color !== themeTint) {
+        themeTint = fs.color;
+        themeGlow.setTint(fs.color);
+      }
+      const mixKey = themeMix * 10 + Math.round(k * 3);
+      if (mixKey !== themeShown) {
+        themeShown = mixKey;
+        const m = themeMix / 4;
+        zoneGlow.setVisible(k > 0 && m < 1).setAlpha(k * (1 - 0.8 * m));
+        themeGlow.setVisible(k > 0 && m > 0).setAlpha(k * m * 1.25);
       }
       // the torch halos flicker with the flames (two baked frames on an irregular rhythm)
       const b = Math.floor(t / 230);

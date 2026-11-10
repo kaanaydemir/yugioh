@@ -86,6 +86,8 @@ export interface PlatformArt {
   corners: { x: number; y: number; side: 0 | 1 }[];
   rim: { x: number; y: number }[][];
   dashes: { x: number; y: number }[][];
+  /** arena v4 step 3: the walls' small status LEDs (screen px; lit by the view, blinking): side 0 cyan, 1 crimson, 2 amber */
+  leds: { x: number; y: number; side: Side }[];
   ms: number;
   laps: Record<string, number>;
 }
@@ -119,6 +121,7 @@ export function buildPlatformArt(): PlatformArt {
   const stripMasks: [string, PixelCanvas][] = [];
   const vents: PlatformArt['vents'] = [];
   const rim: PlatformArt['rim'] = [];
+  LEDS.length = 0;
   const x0 = PLATFORM_BOX.x;
   const y0 = PLATFORM_BOX.y;
   const x1 = x0 + PLATFORM_BOX.w;
@@ -156,6 +159,7 @@ export function buildPlatformArt(): PlatformArt {
     corners,
     rim,
     dashes,
+    leds: [...LEDS],
     ms: Math.round((performance.now() - t0) * 10) / 10,
     laps,
   };
@@ -316,6 +320,10 @@ const STRIP_ROWS = [CH0 + 1, CH0 + 1] as const;
 // highlights; shaded faces body stone0 with stone1 highlights; seams ink.
 const WALL_LIT = [PAL.stone2, PAL.stone1, PAL.stone2, PAL.stone1, PAL.stone0, PAL.stone2, PAL.stone1, PAL.stone0] as const;
 const WALL_SHD = [PAL.stone1, PAL.stone0, PAL.stone1, PAL.stone0, INK, PAL.stone1, PAL.stone0, INK] as const;
+/** arena v4 step 3: the LED spots collected while painting the faces (buildPlatformArt copies them out). */
+const LEDS: PlatformArt['leds'] = [];
+/** arena v4 step 3: the owner colour of the coping light strip at x on a face (the neutral middle splits at the right face's middle). */
+const stripSide = (s: Side, x: number): 0 | 1 => (s === 2 ? (x < 448 ? 0 : 1) : s);
 const hash = (n: number): number => {
   let h = (n * 374761393) ^ 0x5bd1e995;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
@@ -364,8 +372,14 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
     const mid = (sx0 + sx1) >> 1;
     for (let v = 0; v < FACE_H; v++) {
       let c: Color;
-      if (v < COP_N) c = v === 0 ? W[0] : v === 1 ? W[1] : INK;
-      else if (v < UP0 + UP_N) {
+      const top = STRIP_TONES[stripSide(side, x)];
+      if (v < COP_N) {
+        c = v === 0 ? W[0] : v === 1 ? W[1] : INK;
+        // arena v4 step 3: a light strip in the owner's colour right under the chamfered top edge (a bright 1-px line over a
+        // dim spill row), broken at every panel seam by a dark clip; a brighter bead in each panel's middle
+        if (BOARD_V4 && v === 1) c = seamInk || seamLit ? INK : Math.abs(x - mid) < 2 ? top[4] : top[2];
+        if (BOARD_V4 && v === 2) c = seamInk || seamLit ? INK : top[3];
+      } else if (v < UP0 + UP_N) {
         const u = v - UP0;
         c = u === 0 ? W[2] : u < UP_N - 1 ? W[3] : W[4];
         if (u >= 1 && u < UP_N - 1 && lx === 2 && pi >= 0) c = W[2];
@@ -373,7 +387,14 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
         // round 4 (#5): every second panel carries a 1-px top highlight (slight panel relief, not a flat wall)
         if (u === 1 && pi % 2 === 0 && lx >= 2 && rx >= 1) c = W[2];
         // a tiny status pip in the upper right of every other panel (player colour, 1 px)
-        if (u === 3 && rx === 4 && (pi + id) % 2 === 0) c = tones[4];
+        if (u === 3 && rx === 4 && (pi + id) % 2 === 0) c = BOARD_V4 ? N0 : tones[4];
+        if (BOARD_V4) {
+          // step 3: a small slatted grille in the upper band of every other panel (dark slots, a lit lower lip each)
+          const gx = x - (sx0 + 4);
+          if ((pi + id) % 2 === 1 && gx >= 0 && gx < Math.min(10, plen - 9) && u >= 3 && u <= 8) c = u % 2 === 1 ? INK : W[4];
+          // rivets at the panel's upper corners
+          if (u === 1 && (lx === 3 || rx === 2)) c = W[0];
+        }
       } else if (v === CH0 - 1 || v === MAIN0 - 1 || v === BELT0 - 1) c = INK;
       else if (v < CH0 + CH_N) {
         const u = v - CH0;
@@ -403,6 +424,8 @@ function paintFace(S: Surface, f: FaceDef, id: number, strips: Omit<StripPiece, 
         runs.set(pi, arr);
       }
     }
+    if (BOARD_V4 && rx === 4 && (pi + id) % 2 === 0) LEDS.push({ x, y: yt + UP0 + 3, side });
+    if (BOARD_V4 && x === mid && kind !== 0 && kind !== 3 && pi % 2 === 1) LEDS.push({ x, y: yt + BELT0 + 1, side: 2 });
     if (x === mid - 4 && kind === 0) wins.push({ x, v: MAIN0 + 4, side, tall: true });
     if (x === mid + 1 && kind === 0) wins.push({ x, v: MAIN0 + 4, side, tall: true });
     lipPts.push({ x, y: yt - 1 });

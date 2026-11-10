@@ -247,6 +247,12 @@ function paintPad(player: 0 | 1, level: number): PixelCanvas {
   // hard cast shadow (one flat stone0 band, no ink) on the stone below / right of the dais
   for (let j = 0; j < h; j++)
     for (let i = 0; i < w; i++) if (inset(i, j, cx + 2, baseY + 1, lowHw, lowHh) >= 0) p.set(i, j, S[0]);
+  if (BOARD_V4) {
+    paintDaisV4(d, player, level, { lowY, lowHw, lowHh, lowRise, lit2, shd1 });
+    d.outline(NT_PAL.ink);
+    p.blit(d, 0, 0);
+    return p;
+  }
   // lower step: slate top, a thin light line on its two front edges, a lit / shaded riser
   paintStep(
     d,
@@ -275,6 +281,51 @@ function paintPad(player: 0 | 1, level: number): PixelCanvas {
   d.outline(NT_PAL.ink);
   p.blit(d, 0, 0);
   return p;
+}
+
+/**
+ * Arena v4 step 3: the dais polished — the same two stone steps for both players, the owner colour carried by the STEPS (the lower
+ * step's top a dark owner tone with a lit owner line on its front edges, its riser a lit owner band between stone) and a glowing
+ * RING underfoot on the top step (an iso circle round the feet, one tone up per glow level, a lit core at the peak).
+ */
+function paintDaisV4(
+  d: PixelCanvas,
+  player: 0 | 1,
+  level: number,
+  g: { lowY: number; lowHw: number; lowHh: number; lowRise: number; lit2: Color; shd1: Color },
+): void {
+  const { cx, cy } = PAD_CANVAS;
+  const ramp = player === 0 ? NT_PAL.blue : NT_PAL.red;
+  const line: Color = ramp[[2, 2, 3, 3][level]];
+  const ringC: Color = ramp[[1, 2, 3, 4][level]];
+  const ringIn: Color = ramp[[0, 1, 1, 2][level]];
+  paintStep(
+    d,
+    g.lowY,
+    g.lowHw,
+    g.lowHh,
+    g.lowRise,
+    (_i, j, dv) => (dv < 1 ? (j + 0.5 > g.lowY ? line : ramp[1]) : dv < 2.2 ? S[2] : ramp[0]),
+    (left, dd) => (dd >= g.lowRise ? S[0] : dd === 2 ? ramp[left ? 2 : 1] : left ? g.lit2 : g.shd1),
+  );
+  paintStep(
+    d,
+    cy,
+    PAD_HALF.w,
+    PAD_HALF.h,
+    DAIS.rise,
+    (i, j, dv) => {
+      if (dv < 1) return line;
+      const dx = (i + 0.5 - cx) / 2;
+      const dy = j + 0.5 - cy;
+      const r = Math.sqrt(dx * dx + dy * dy);
+      if (r >= 4.6 && r < 5.6) return ringC;
+      if (r >= 3.6 && r < 4.6) return ringIn;
+      if (r < 2.2 && level === 3) return ramp[1];
+      return r < 3.6 ? S[0] : S[2];
+    },
+    (left, dd) => (dd === 1 ? line : dd === DAIS.rise ? S[0] : dd === 3 ? ramp[left ? 1 : 0] : left ? g.lit2 : g.shd1),
+  );
 }
 
 export interface PadsArt {

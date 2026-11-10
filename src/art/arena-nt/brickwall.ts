@@ -49,8 +49,14 @@ export const BRICK_PILLARS: readonly { x: number; w: number }[] = [
 /** Hanging banners (screen x / y of the rod's left end; 16 × 46 sprites). Both crimson with a gold sigil, as in the target. */
 // arena v4 step 2: the smaller portrait screens moved out over the left banner's spot; banners in the gaps between the screens
 // and the tower crowded the top centre (tried, owner ask: a calmer top), so the v4 wall hangs none
+// step 3 (d): two banners come back where they crowd nothing: the left one in the brick bay right of the left screen (x 212..227,
+// 30 px clear of the torch at 276, under the phase bar's end), the right one in the bay right of the right torch, under the P2
+// panel (x 516..531, y 52..97: the v1 spot; clear of the screen (≤ 478) and the hologram (≥ 548))
 export const BRICK_BANNERS: readonly { x: number; y: number }[] = BOARD_V4
-  ? []
+  ? [
+      { x: 212, y: 24 },
+      { x: 516, y: 52 },
+    ]
   : [
       { x: 131, y: 22 },
       { x: 513, y: 52 },

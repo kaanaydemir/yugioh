@@ -12,6 +12,7 @@ import {
   lightFrame,
   torchFrame,
 } from '../../art/arena-nt/lights';
+import { RIBBONS, RIBBON_FRAMES, paintRibbon, ribbonKey } from '../../art/arena-nt/fog-ribbons';
 import { BRICK_TORCHES, NT_WALL_TORCH_KEY, WALL_TORCH, paintWallTorch } from '../../art/arena-nt/brickwall';
 import { BRAZIER, BRAZIERS, paintBrazier } from '../../art/arena-nt/hallfloor';
 import { PAL } from '../../art/palette';
@@ -176,9 +177,47 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
     [5, 46, 236, false, 7, 1, 22500, 7600],
     [7, 470, 262, false, -7, 1, 20500, 3900],
   ];
-  BANKS.forEach(([i, x, y, flip, ax, ay, period, phase], k) =>
-    addFog(lightFrame.fogBank(i), x, y, flip, NT_DEPTH.platform - 0.18 + k * 0.001, ax, ay, period, phase),
-  );
+  if (!BOARD_V4)
+    BANKS.forEach(([i, x, y, flip, ax, ay, period, phase], k) =>
+      addFog(lightFrame.fogBank(i), x, y, flip, NT_DEPTH.platform - 0.18 + k * 0.001, ax, ay, period, phase),
+    );
+
+  // arena v4 step 3 (owner: no "cotton-ball" clouds): thin layered fog RIBBONS (art/arena-nt/fog-ribbons.ts) low round the
+  // stage's base and at the hall's sides. Back ribbons lie behind the stage (under its depth: only their ends past the walls
+  // show), front ribbons drift over the foot of the stage walls (above the stage veil, under the braziers). Each placement
+  // flows through its 16 baked frames on its own rhythm and sways slowly along x (never into the HUD: every placement stays
+  // above the hint plate / P1 panel / buttons, y + h ≤ 284 at the hint, ≤ 290 elsewhere).
+  const ribbons: { img: Img; frames: string[]; ms: number; off: number; last: number; baseX: number; ampX: number; period: number; phase: number; lastX: number }[] = [];
+  if (BOARD_V4) {
+    const keys = RIBBONS.map((spec, i) => Array.from({ length: RIBBON_FRAMES }, (_, f) => ensureNtTexture(scene, 'fog-ribbon', ribbonKey(i, f), () => paintRibbon(spec, f))));
+    // [ribbon, x, y, front, ampX, sway period ms, ms per frame, phase ms, flipX]
+    const PLACE: readonly [number, number, number, boolean, number, number, number, number, boolean][] = [
+      // back: the hall floor at both sides, behind the stage and round the hologram plinths' feet
+      [0, -28, 150, false, 10, 31000, 210, 0, false],
+      [2, -60, 196, false, 12, 27000, 190, 7000, true],
+      [1, -10, 226, false, 9, 33000, 230, 3000, false],
+      [0, 468, 168, false, -10, 29000, 200, 11000, true],
+      [2, 470, 214, false, -12, 26000, 220, 5000, false],
+      [1, 520, 246, false, -9, 34000, 240, 16000, true],
+      [1, 18, 262, false, 8, 30000, 250, 9000, false],
+      [2, -40, 128, false, 11, 35000, 215, 14000, false],
+      [0, 500, 140, false, -11, 32000, 205, 2500, false],
+      [1, 70, 178, false, 8, 28000, 235, 19000, true],
+      [0, 540, 190, false, -9, 30500, 225, 21000, true],
+      // front: over the foot of the stage walls (left face bottom y = 236 + (x − 116) / 2, right face 330 − (x − 372) / 2)
+      [3, 64, 240, true, 7, 22000, 170, 2000, false],
+      [4, 96, 254, true, 9, 25000, 160, 8000, true],
+      [5, 0, 276, true, 8, 21000, 180, 4000, false],
+      [3, 470, 260, true, -7, 23000, 175, 6000, true],
+      [4, 486, 234, true, -9, 24000, 165, 12000, false],
+      [5, 548, 272, true, -8, 20000, 185, 1000, true],
+    ];
+    PLACE.forEach(([i, x, y, front, ampX, period, ms, phase, flip], k) => {
+      const depth = front ? NT_DEPTH.platform + 1.48 + k * 0.0001 : NT_DEPTH.platform - 0.18 + k * 0.001;
+      const img = ctx.add(scene.add.image(x, y, keys[i][0]).setOrigin(0).setFlipX(flip).setDepth(depth));
+      ribbons.push({ img, frames: keys[i], ms, off: (k * 5) % RIBBON_FRAMES, last: -1, baseX: x, ampX, period, phase, lastX: x });
+    });
+  }
 
   // 4. mounted torches (wall sconces / post braziers) with an ordered-dither warm glow behind them
   const torches: TorchLight[] = TORCH_SPOTS.map((spot) => {
@@ -246,6 +285,18 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
     },
     tick(_dt, t) {
       if (!REDUCED_MOTION) {
+        for (const r of ribbons) {
+          const f = (Math.floor((t + r.phase) / r.ms) + r.off) % RIBBON_FRAMES;
+          if (f !== r.last) {
+            r.last = f;
+            r.img.setTexture(r.frames[f]);
+          }
+          const nx = r.baseX + Math.round(Math.sin(((t + r.phase) / r.period) * Math.PI * 2) * r.ampX);
+          if (nx !== r.lastX) {
+            r.lastX = nx;
+            r.img.setX(nx);
+          }
+        }
         for (const f of fogs) {
           const rad = ((t + f.phase) / f.period) * Math.PI * 2;
           const nx = f.baseX + Math.round(Math.sin(rad) * f.ampX);

@@ -67,6 +67,16 @@ export function createPlatformLayer(ctx: NtCtx): NtLayer {
     next: 3000 + i * 1700 + rnd() * 2500,
   }));
 
+  // arena v4 step 3: the walls' status LEDs blink, each on its own rhythm (steady blink, double blink or a slow breath)
+  const ledTone = (side: 0 | 1 | 2, hi: boolean): number => (side === 0 ? (hi ? PAL.cyan4 : PAL.cyan2) : side === 1 ? (hi ? PAL.crim4 : PAL.crim2) : hi ? PAL.gold4 : PAL.gold2);
+  const leds = (art.leds ?? []).map((l, i) => ({
+    img: ctx.add(scene.add.image(l.x, l.y, TEX.px1).setOrigin(0).setDepth(NT_DEPTH.platformFx + 0.4).setVisible(false)),
+    side: l.side,
+    period: 900 + Math.floor(rnd() * 1800),
+    phase: rnd() * 4000,
+    mode: i % 3,
+    shown: -1,
+  }));
   let lights = true;
   let active: PlayerId | null = null;
   let pending: { until: number; done: () => void } | null = null;
@@ -133,6 +143,16 @@ export function createPlatformLayer(ctx: NtCtx): NtLayer {
       for (const p of puffs) p.img.setVisible(false);
       for (const g of glints) g.img.setVisible(false);
       for (const q of sweepPx) q.setVisible(false);
+      for (const l of leds) {
+        const u = (((t + l.phase) % l.period) + l.period) % l.period / l.period;
+        // 0 off, 1 dim, 2 bright
+        const lv = !lights ? 0 : l.mode === 0 ? (u < 0.5 ? 2 : 0) : l.mode === 1 ? (u < 0.08 || (u > 0.16 && u < 0.24) ? 2 : 1) : u < 0.33 ? 1 : u < 0.66 ? 2 : 1;
+        if (lv !== l.shown) {
+          l.shown = lv;
+          l.img.setVisible(lv > 0);
+          if (lv > 0) l.img.setTint(ledTone(l.side, lv === 2));
+        }
+      }
     },
     destroy() {
       destroyed = true;
