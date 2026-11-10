@@ -12,7 +12,7 @@ import { NT_DEBUG } from './flag';
 import { ensureNtTexture } from './textures';
 import type { PixelCanvas } from '../../art/pixel';
 
-export type NtLayerName = 'platform' | 'floor' | 'pads' | 'wall' | 'stands' | 'crowd' | 'screens' | 'holograms' | 'lights' | 'glow';
+export type NtLayerName = 'platform' | 'floor' | 'pads' | 'wall' | 'stands' | 'crowd' | 'screens' | 'holograms' | 'lights' | 'glow' | 'react';
 /** The build-phase owner of a layer (docs §9). */
 export type NtOwner = 'A1' | 'A2' | 'B1' | 'B2' | 'C';
 
@@ -29,7 +29,8 @@ export interface NtLayer {
   tick?(dt: number, t: number): void;
   /** The floodlights come on / go off (the intro ignition); `animate` false = at once. */
   setLights?(on: boolean, animate: boolean): Promise<void>;
-  setActivePlayer?(player: PlayerId | null): void;
+  /** `animate` false: a silent state change (a restart / sync), true: the turn passed on screen (arena v4 step 4). */
+  setActivePlayer?(player: PlayerId | null, animate?: boolean): void;
   /** A game event reached the cinematic director (summon, attack, damage …): short reactions (crowd, holograms, screens, lights). */
   onGameEvent?(ev: GameEvent, info?: NtEventInfo): void;
   /** BoardView.crowd(kind, side, power). */

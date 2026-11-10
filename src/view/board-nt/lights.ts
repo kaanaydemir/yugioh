@@ -204,6 +204,9 @@ export function createLightsLayer(ctx: NtCtx): NtLayer {
       [0, 500, 140, false, -11, 32000, 205, 2500, false],
       [1, 70, 178, false, 8, 28000, 235, 19000, true],
       [0, 540, 190, false, -9, 30500, 225, 21000, true],
+      // step 4 (8a): two more back layers low on the hall floor at both sides (denser banks, like the target)
+      [2, -84, 240, false, 10, 36000, 245, 4500, true],
+      [2, 500, 228, false, -10, 34500, 235, 17500, false],
       // front: over the foot of the stage walls (left face bottom y = 236 + (x − 116) / 2, right face 330 − (x − 372) / 2)
       [3, 64, 240, true, 7, 22000, 170, 2000, false],
       [4, 96, 254, true, 9, 25000, 160, 8000, true],

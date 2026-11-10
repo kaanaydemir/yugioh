@@ -34,7 +34,8 @@ export const FLOOR_FRAMES = {
 export type SealTheme = 'none' | 'fire' | 'water' | 'void' | 'gold';
 export const SEAL_THEMES: readonly Exclude<SealTheme, 'none'>[] = ['fire', 'water', 'void', 'gold'];
 /** The ramp each field theme lights its seal (and the zone-border glow) with. */
-export const SEAL_RAMP: Record<Exclude<SealTheme, 'none'>, readonly number[]> = { fire: RAMPS.fire, water: RAMPS.water, void: RAMPS.void, gold: RAMPS.gold };
+// arena v4 step 4 (8b): Tidal Bay lights in TEAL (the water ramp's blue sat next to P1's cyan; teal parts from it)
+export const SEAL_RAMP: Record<Exclude<SealTheme, 'none'>, readonly number[]> = { fire: RAMPS.fire, water: RAMPS.teal, void: RAMPS.void, gold: RAMPS.gold };
 /** Field Spell card id → its light theme. */
 export function fieldTheme(cardId: string | null | undefined): SealTheme {
   switch (cardId) {
@@ -270,29 +271,100 @@ function pileFrame(player: 0 | 1, kind: 'deck' | 'graveyard', state: number, boo
       else c = on ? own[0] : PAL.stone2;
       p.set(i, j, c);
     }
-  const glyph: Mask =
-    kind === 'deck'
-      ? (i, j) => {
-          // two stacked iso card outlines
-          const a = (k: number): boolean => {
-            const e = Math.abs(dX(i)) / 2 + Math.abs(dY(j) + k);
-            return e >= 3.6 && e < 4.6;
-          };
-          return a(1.5) || (a(-1.5) && !(Math.abs(dX(i)) / 2 + Math.abs(dY(j) + 1.5) < 4.6));
-        }
-      : (i, j) => {
-          // a headstone: round top, straight sides, a base line
-          const x = dX(i);
-          const y = dY(j) + 1;
-          const top = y < -1.5 && Math.abs(Math.sqrt(x * x + ((y + 1.5) * 1.6) ** 2) - 3.5) < 0.6;
-          const side = y >= -1.5 && y < 3 && Math.abs(Math.abs(x) - 3.5) < 0.6;
-          const base = Math.abs(y - 3) < 0.6 && Math.abs(x) < 5.5;
-          const cross = (Math.abs(x) < 0.6 && y > -3 && y < 1.5) || (Math.abs(y + 1) < 0.6 && Math.abs(x) < 1.6);
-          return top || side || base || cross;
-        };
-  engrave(p, glyph, inside, null, PAL.stone3);
+  if (kind === 'deck') {
+    // two stacked iso card outlines (engraved)
+    const glyph: Mask = (i, j) => {
+      const a = (k: number): boolean => {
+        const e = Math.abs(dX(i)) / 2 + Math.abs(dY(j) + k);
+        return e >= 3.6 && e < 4.6;
+      };
+      return a(1.5) || (a(-1.5) && !(Math.abs(dX(i)) / 2 + Math.abs(dY(j) + 1.5) < 4.6));
+    };
+    engrave(p, glyph, inside, null, PAL.stone3);
+    return p;
+  }
+  // step 4 (8d): the graveyard's mark is a small raised HEADSTONE (a lit stone with an ink outline and a carved cross on a
+  // slab), not a faint groove — readable at 1×; P2's stands upright for P2 (rotated 180°, its light still from the upper left)
+  paintHeadstone(p, cx, cy, player === 1, inside);
   return p;
 }
+
+/** The graveyard pad's headstone (whole pixels round the pad centre; `flip` = rotated 180° for the far player). */
+function paintHeadstone(p: PixelCanvas, cx: number, cy: number, flip: boolean, inside: Mask): void {
+  const ox = Math.floor(cx);
+  const oy = Math.floor(cy);
+  // the glyph in local pixel coords (u right, v down), v = 0 the middle row; 9 × 10 px
+  const R = [
+    '..XXXXX..',
+    '.XXXXXXX.',
+    'XXXX+XXXX',
+    'XX+++++XX',
+    'XXXX+XXXX',
+    'XXXX+XXXX',
+    'XXXXXXXXX',
+    'XXXXXXXXX',
+    'BBBBBBBBBBB',
+  ];
+  const body = (u: number, v: number): string => {
+    const row = R[v + 4];
+    if (!row) return '.';
+    const w = row.length;
+    const c = row[u + (w >> 1)];
+    return c ?? '.';
+  };
+  const at = (u: number, v: number): string => (flip ? body(-u, -v) : body(u, v));
+  const solid = (u: number, v: number): boolean => at(u, v) !== '.';
+  for (let v = -6; v <= 6; v++)
+    for (let u = -7; u <= 7; u++) {
+      const i = ox + u;
+      const j = oy + v;
+      if (!inside(i, j)) continue;
+      const c = at(u, v);
+      if (c === '.') {
+        // the ink outline round the stone (and its cast shadow one px down-right)
+        if (solid(u - 1, v) || solid(u + 1, v) || solid(u, v - 1) || solid(u, v + 1)) p.set(i, j, NT_PAL.ink);
+        else if (solid(u - 1, v - 1)) p.set(i, j, PAL.stone0);
+        continue;
+      }
+      if (c === '+') p.set(i, j, NT_PAL.ink);
+      else if (c === 'B') p.set(i, j, PAL.stone2);
+      else {
+        // lit from the upper left: the upper-left rim stone4, the lower-right rim stone2, the face stone3
+        const lit = !solid(u - 1, v) || !solid(u, v - 1);
+        const shd = !solid(u + 1, v) || !solid(u, v + 1);
+        p.set(i, j, lit ? PAL.stone4 : shd ? PAL.stone2 : PAL.stone3);
+      }
+    }
+}
+
+// ---------------------------------------------------------------- arena v4 step 4: zone shape masks (white)
+// The outline / interior of each zone shape — the inset play tile, the field seal, the deck / graveyard pad — in white, for
+// the arena's tile shockwaves and for the hover / selection highlight that follows each zone's own shape (8c).
+
+export type ZoneShape = 'slot' | 'seal' | 'pile';
+
+export function zoneShapeMask(shape: ZoneShape, part: 'line' | 'fill'): PixelCanvas {
+  const p = new PixelCanvas(64, 32);
+  const { cx, cy } = slotCentre();
+  const dX = (i: number): number => i + 0.5 - cx;
+  const dY = (j: number): number => j + 0.5 - cy;
+  let inside: Mask;
+  if (shape === 'slot') {
+    const m = buildCalmArt().masks;
+    inside = (i, j) => i >= 0 && j >= 0 && i < 64 && j < 32 && (m.line.get(i, j) !== null || m.fill.get(i, j) !== null);
+  } else if (shape === 'seal') inside = (i, j) => i >= 0 && j >= 0 && i < 64 && j < 32 && Math.abs(dY(j)) <= 7.5 && Math.abs(dX(i)) <= 27 - 2 * Math.abs(dY(j));
+  else inside = (i, j) => i >= 0 && j >= 0 && i < 64 && j < 32 && Math.abs(dX(i)) / 2 + Math.abs(dY(j)) <= 11.5;
+  for (let j = 0; j < 32; j++)
+    for (let i = 0; i < 64; i++) {
+      if (!inside(i, j)) continue;
+      const edge = edgeOf(inside, i, j);
+      if (part === 'line' ? edge : !edge) p.set(i, j, PAL.white);
+    }
+  return p;
+}
+
+/** The half extents of a zone shape's outline (for chevrons round it). */
+export const ZONE_SHAPE_HALF: Record<ZoneShape, { w: number; h: number }> = { slot: { w: 32, h: 16 }, seal: { w: 27, h: 8 }, pile: { w: 23, h: 12 } };
 
 export function buildFloorArt(): FloorArt {
   if (cached) return cached;

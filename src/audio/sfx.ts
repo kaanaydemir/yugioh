@@ -47,6 +47,7 @@ import type { KartFSfxName } from './v3/kart-f';
 import type { UiCardSfxName } from './v3/ui-cards';
 import type { UiFlowSfxName } from './v3/ui-flow';
 import type { KiteSfxName } from './v3/kite_fencer';
+import type { ArenaSfxName } from './v3/arena';
 
 export type SfxName =
   // UI
@@ -99,7 +100,9 @@ export type SfxName =
   | VenomSfxName
   | KartFSfxName
   | UiCardSfxName
-  | UiFlowSfxName;
+  | UiFlowSfxName
+  // arena v4 step 4 (additive): the reactive arena (src/audio/v3/arena.ts)
+  | ArenaSfxName;
 
 export interface SfxOpts {
   /** 0..1, default 1. */
@@ -364,6 +367,10 @@ export const sfx = {
   /** Extra: sfx volume 0..1 (music has its own, music.setVolume). */
   setVolume(v: number): void {
     sfxVolume = clamp(v, 0, 1);
+  },
+  /** Extra (arena v4 step 4, additive): the sfx volume 0..1 set with setVolume (the arena ambience follows it). */
+  volume(): number {
+    return sfxVolume;
   },
   /** Extra: true once the AudioContext is running (after unlock). */
   isRunning(): boolean {

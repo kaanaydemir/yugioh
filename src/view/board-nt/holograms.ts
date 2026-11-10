@@ -48,6 +48,9 @@ import { monsterFrame, whenMonstersBuilt } from '../../art/textures';
 import { packAtlas, hash01, type NtAtlas } from '../../art/arena-nt/wall-kit';
 import type { GameEvent, PlayerId } from '../../engine/types';
 import { HOLOS, NT_DEPTH } from './layout-nt';
+import { BOARD_V4 } from '../layout';
+import { sfx } from '../../audio/sfx';
+import { lowLp } from './duel-watch';
 import type { NtCtx, NtLayer } from './layer';
 import { ensureNtTexture } from './textures';
 
@@ -104,6 +107,12 @@ interface Station {
   rows: number;
   ready: boolean;
   flareAt: number;
+  /** arena v4 step 4: a glitch (a big hit to the owner): when, how hard (1 light, 2 heavy); a pulse (the owner's spell); low LP */
+  glitchAt: number;
+  glitchPow: number;
+  pulseAt: number;
+  low: boolean;
+  pose: string;
   last: { fname: string; mat: boolean; ring: number; hide: number; dx: number; tear: string; floor: number; beam: string };
 }
 
@@ -175,6 +184,11 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
       rows: 0,
       ready: false,
       flareAt: -9999,
+      glitchAt: -9999,
+      glitchPow: 0,
+      pulseAt: -9999,
+      low: false,
+      pose: '',
       last: { fname: '', mat: false, ring: -1, hide: -1, dx: 0, tear: '', floor: -1, beam: '' },
     };
   });
@@ -240,6 +254,15 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
     })
     .catch((e) => console.error('[arena-nt] hologram bake failed', e));
 
+  let nextLow = 0;
+  /** A hit to `side`'s duelist: its hologram glitches (a heavy one also buzzes, quietly). */
+  const glitch = (side: PlayerId, pow: 1 | 2): void => {
+    const st = stations[side];
+    if (now - st.glitchAt < 200 && st.glitchPow >= pow) return;
+    st.glitchAt = now;
+    st.glitchPow = pow;
+    if (pow > 1) sfx.play('arenaGlitch', { volume: 0.22, pan: side === 0 ? -0.8 : 0.8 });
+  };
   const hashPos = (side: 0 | 1, i: number, lap: number): { x: number; w: number } => ({ x: Math.round((hash01(side * 31 + i, lap, 7) - 0.5) * 92), w: 1 });
 
   function update(st: Station, t: number): void {
@@ -251,7 +274,8 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
     const flaring = flareAgo >= 0 && flareAgo < FLARE_MS;
 
     // ---- ring chase (fast during the flare), cone
-    const rk = Math.floor(t / (flaring ? 60 : 170) + st.side * 2) % RING_FRAMES;
+    const pulsing = t - st.pulseAt >= 0 && t - st.pulseAt < 520;
+    const rk = Math.floor(t / (flaring ? 60 : pulsing ? 90 : st.low ? 270 : 170) + st.side * 2) % RING_FRAMES;
     if (rk !== L.ring) {
       L.ring = rk;
       st.ring.setFrame(ringName(st.side, rk));
@@ -261,7 +285,7 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
     st.cone.setY(cy - 2 - (Math.floor(t / 520 + st.side) % 2));
 
     // ---- motes: climb, restart at a new place each lap (3.5× faster burst while flaring)
-    const speed = flaring ? 3.5 : 1;
+    const speed = flaring ? 3.5 : pulsing ? 2 : st.low ? 0.6 : 1;
     const top = h.pedestal.cy - h.box.y;
     for (let i = 0; i < MOTES; i++) {
       const period = 2400 + i * 330;
@@ -331,13 +355,29 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
       c.setCrop();
       L.hide = -1;
     }
-    const idx = Math.floor((t + tm.phase) / tm.dwell) % st.frames.length;
+    // arena v4 step 4: low LP — the creature slumps (2 px lower, a slower loop); it stays bright
+    const idx = Math.floor((t + tm.phase) / (st.low ? tm.dwell * 1.5 : tm.dwell)) % st.frames.length;
+    const ga = t - st.glitchAt;
+    const glitching = ga >= 0 && ga < (st.glitchPow > 1 ? 380 : 200);
+    const gk = glitching ? Math.floor(ga / 40) : -1;
+    const jx = glitching ? [2, -3, 1, -2, 3, -1, 2, 0, -2, 1][gk % 10] * (st.glitchPow > 1 ? 1 : 0.5) : 0;
+    const pose = `${Math.round(jx)}:${st.low ? 2 : 0}`;
+    if (pose !== st.pose) {
+      st.pose = pose;
+      c.setPosition(h.pedestal.cx - st.anchor.x + Math.round(jx), h.pedestal.cy - 1 - st.anchor.y + (st.low ? 2 : 0));
+    }
     // the flash of a summon (white), else the flicker's opacity step, else the loop frame
     const fl = flickerStep(st.side, t);
     let frame = st.frames[idx];
     let hide = 0;
     if (flaring && flareAgo < 110) frame = 'flash';
-    else if (!flaring) {
+    else if (glitching) {
+      // the hit: the creature stutters through drop-outs and opacity steps, a white frame on the first beat
+      const seq = st.glitchPow > 1 ? ['flash', 'H', 'd2', 'F', 'H', 'd1', 'd2', 'F', 'd1', 'F'] : ['d1', 'H', 'd2', 'F', 'd1'];
+      const g = seq[gk % seq.length];
+      if (g === 'H') hide = 1;
+      else if (g !== 'F') frame = g;
+    } else if (!flaring) {
       if (fl === 1) frame = 'd1';
       else if (fl === 2) frame = 'd2';
       else if (fl === 3) hide = 1;
@@ -353,14 +393,17 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
       c.setVisible(hide === 0);
     }
     // a tear: a 6-row slice of the creature slips sideways for 70 ms (drawn over the creature)
-    const ts = flaring ? null : tearAt(st.side, t, box.h);
-    const tk = ts ? `${ts.y}:${ts.dx}:${frame}` : '';
+    let ts = flaring ? null : tearAt(st.side, t, box.h);
+    // a glitch tears a new slice every 40 ms, further than the idle tear
+    if (glitching) ts = { y: Math.floor(hash01(st.side * 5 + 3, gk, 13) * (box.h - 14)) + 4, dx: (gk % 2 === 0 ? 5 : -6) * (st.glitchPow > 1 ? 1 : 0.6) };
+    if (ts) ts.dx = Math.round(ts.dx);
+    const tk = ts ? `${ts.y}:${ts.dx}:${frame}:${st.pose}` : '';
     if (tk !== L.tear) {
       L.tear = tk;
       if (!ts) tr.setVisible(false);
       else {
         tr.setFrame(st.frames[idx]).setCrop(0, ts.y, box.w, 6).setVisible(true);
-        tr.setPosition(h.pedestal.cx - st.anchor.x + ts.dx, h.pedestal.cy - 1 - st.anchor.y);
+        tr.setPosition(h.pedestal.cx - st.anchor.x + ts.dx, h.pedestal.cy - 1 - st.anchor.y + (st.low ? 2 : 0));
       }
     }
   }
@@ -370,6 +413,10 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
     owner: 'B2',
     tick(dt: number, t: number): void {
       now = t;
+      if (BOARD_V4 && t >= nextLow) {
+        nextLow = t + 250;
+        for (const st of stations) st.low = lowLp(scene, st.side);
+      }
       // slice the baking: jobs until the per-tick budget is spent
       if (started && jobs.length) {
         const t0 = performance.now();
@@ -387,7 +434,15 @@ export function createHologramsLayer(ctx: NtCtx): NtLayer {
       return Promise.resolve();
     },
     onGameEvent(ev: GameEvent): void {
-      if (ev.type === 'summon') stations[ev.player as PlayerId].flareAt = now;
+      if (ev.type === 'summon') {
+        stations[ev.player as PlayerId].flareAt = now;
+        if (BOARD_V4) sfx.play('arenaHoloSurge', { volume: 0.2, pan: ev.player === 0 ? -0.8 : 0.8 });
+      }
+      if (!BOARD_V4) return;
+      // arena v4 step 4: the owner's hologram reacts to the duel
+      if (ev.type === 'damage' && ev.amount >= 500) glitch(ev.player, ev.amount >= 1000 || ev.lpAfter <= 1000 ? 2 : 1);
+      else if (ev.type === 'destroy' && ev.location === 'monster') glitch(ev.player, 1);
+      else if (ev.type === 'activate' && ev.kind !== 'monsterEffect') stations[ev.player].pulseAt = now;
     },
     destroy(): void {
       destroyed = true;

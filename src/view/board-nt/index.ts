@@ -27,6 +27,8 @@ import { createFloorLayer } from './floor';
 import { createHologramsLayer } from './holograms';
 import { createLightsLayer } from './lights';
 import { createGlowLayer } from './glow';
+import { createReactLayer } from './react';
+import { ShapedHighlights, shapedZone } from './zone-hl';
 import { BOARD_V4 } from '../layout';
 import { createPadsLayer } from './pads';
 import { createPlatformLayer } from './platform';
@@ -47,10 +49,13 @@ export class BoardViewNt implements ArenaViewApi {
   private t = 0;
   private destroyed = false;
   private unobserve: (() => void) | null = null;
+  /** arena v4 step 4 (8c): the field seal / deck / graveyard pads highlight in their own shape */
+  private readonly shaped: ShapedHighlights | null;
 
   constructor(scene: Phaser.Scene, opts: BoardViewCalmOptions = {}) {
     this.scene = scene;
     this.calm = new BoardViewCalm(scene, { ...opts, skip: { ...NT_SKIP, ...opts.skip } });
+    this.shaped = BOARD_V4 ? new ShapedHighlights(scene) : null;
     const ctx = makeCtx(scene, this.objs);
     // far → near (the order is only bookkeeping: depth comes from NT_DEPTH)
     // owner decision 2026-11-02: no spectators / seats / grandstands in the hall (stands + crowd layers off);
@@ -67,6 +72,8 @@ export class BoardViewNt implements ArenaViewApi {
       createLightsLayer(ctx),
       // arena v4 step 2: the light & value layer (veils over the hall / stage / daises, the light sources' glow)
       ...(BOARD_V4 ? [createGlowLayer(ctx)] : []),
+      // arena v4 step 4: the reactive arena + living details (turn sweep, shockwaves, low-LP alarm, field ambience, idle life)
+      ...(BOARD_V4 ? [createReactLayer(ctx)] : []),
     ];
     // the board is built dark for the intro (BoardView lights:false): the layers start dark too
     if (opts.lights === false) for (const l of this.layers) void l.setLights?.(false, false);
@@ -101,10 +108,12 @@ export class BoardViewNt implements ArenaViewApi {
   }
 
   highlightZone(player: PlayerId, spot: BoardSpot, index: number, color: number | null): void {
+    if (this.shaped && shapedZone(spot)) return this.shaped.set(player, spot, index, color);
     this.calm.highlightZone(player, spot, index, color);
   }
 
   clearHighlights(): void {
+    this.shaped?.clear();
     this.calm.clearHighlights();
   }
 
@@ -118,7 +127,7 @@ export class BoardViewNt implements ArenaViewApi {
 
   setActivePlayer(player: PlayerId | null, animate = true): void {
     this.calm.setActivePlayer(player, animate);
-    for (const l of this.layers) l.setActivePlayer?.(player);
+    for (const l of this.layers) l.setActivePlayer?.(player, animate);
   }
 
   setTheme(theme: ArenaTheme, animate = true, from: PlayerId | null = null): Promise<void> {
@@ -145,6 +154,7 @@ export class BoardViewNt implements ArenaViewApi {
     this.unobserve = null;
     this.scene.events.off(Phaser.Scenes.Events.UPDATE, this.tick, this);
     this.scene.events.off(Phaser.Scenes.Events.SHUTDOWN, this.destroy, this);
+    this.shaped?.destroy();
     for (const l of this.layers) l.destroy();
     for (const o of this.objs) o.destroy();
     this.objs.length = 0;
@@ -170,6 +180,7 @@ export class BoardViewNt implements ArenaViewApi {
     if (this.destroyed) return;
     const dt = Math.min(50, delta) * this.scene.time.timeScale;
     this.t += dt;
+    this.shaped?.tick(dt);
     for (const l of this.layers) l.tick?.(dt, this.t);
   }
 }

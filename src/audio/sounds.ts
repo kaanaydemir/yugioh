@@ -32,6 +32,7 @@ import { KART_F_RECIPES } from './v3/kart-f';
 import { UI_CARD_RECIPES } from './v3/ui-cards';
 import { UI_FLOW_RECIPES } from './v3/ui-flow';
 import { V3_KITE_RECIPES } from './v3/kite_fencer';
+import { ARENA_RECIPES } from './v3/arena';
 
 export interface Recipe {
   /** Reverb send 0..1. */
@@ -1130,4 +1131,5 @@ export const RECIPES: Record<SfxName, Recipe> = {
   ...UI_CARD_RECIPES, // A6 UI sounds, cards (./v3/ui-cards.ts; written by A6-A)
   ...UI_FLOW_RECIPES, // A6 UI sounds, flow (./v3/ui-flow.ts; written by A6-A)
   ...V3_KITE_RECIPES, // Uçurtma Eskrimci (kite_fencer, lane C) — ./v3/kite_fencer.ts
+  ...ARENA_RECIPES, // arena v4 step 4: the reactive arena's sounds (./v3/arena.ts)
 };

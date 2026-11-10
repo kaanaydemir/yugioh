@@ -28,13 +28,14 @@ export interface RibbonSpec {
   layer: 'back' | 'front';
 }
 
+// step 4 (8a): thicker bands toward the target's heavier floor fog (same canvases: the bands still fit inside them)
 export const RIBBONS: readonly RibbonSpec[] = [
-  { w: 196, h: 18, seed: 3, thick: 8, wave: 2.5, layer: 'back' },
-  { w: 164, h: 16, seed: 7, thick: 7, wave: 2, layer: 'back' },
-  { w: 228, h: 20, seed: 11, thick: 9, wave: 3, layer: 'back' },
-  { w: 132, h: 13, seed: 13, thick: 6, wave: 1.5, layer: 'front' },
-  { w: 150, h: 14, seed: 17, thick: 6, wave: 2, layer: 'front' },
-  { w: 110, h: 12, seed: 19, thick: 5, wave: 1.5, layer: 'front' },
+  { w: 196, h: 18, seed: 3, thick: 11, wave: 2.5, layer: 'back' },
+  { w: 164, h: 16, seed: 7, thick: 9.5, wave: 2, layer: 'back' },
+  { w: 228, h: 20, seed: 11, thick: 12, wave: 3, layer: 'back' },
+  { w: 132, h: 13, seed: 13, thick: 8, wave: 1.5, layer: 'front' },
+  { w: 150, h: 14, seed: 17, thick: 8.5, wave: 2, layer: 'front' },
+  { w: 110, h: 12, seed: 19, thick: 7, wave: 1.5, layer: 'front' },
 ];
 
 export const ribbonKey = (i: number, f: number): string => `nt:fog:ribbon:${i}:${f}`;
@@ -48,8 +49,9 @@ const hash = (n: number): number => {
 
 /** Alpha levels (0..255) of the three bands and their palette tones, per layer. */
 const BANDS = {
-  back: { tones: [PAL.night2, PAL.night3, PAL.stone2], alpha: [46, 86, 120] },
-  front: { tones: [PAL.night3, PAL.stone2, PAL.stone3], alpha: [52, 96, 132] },
+  // step 4 (8a): a notch denser (the target's fog reads as a thick layer, not a veil)
+  back: { tones: [PAL.night2, PAL.night3, PAL.stone2], alpha: [58, 106, 146] },
+  front: { tones: [PAL.night3, PAL.stone2, PAL.stone3], alpha: [62, 112, 152] },
 } as const;
 
 export function paintRibbon(spec: RibbonSpec, frame: number): PixelCanvas {

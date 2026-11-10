@@ -427,9 +427,9 @@ function bakeZoneGlow(slotPx: (player: 0 | 1, frame: string) => Uint8ClampedArra
  * Which face-up Field Spell lights the board (step 3 (c)): read from the duel's FieldView every 150 ms. With both players' field
  * zones lit, the one that came up last wins. `color` = the theme's light tone.
  */
-function fieldWatcher(scene: Phaser.Scene): { current(t: number): { color: number } | null } {
+function fieldWatcher(scene: Phaser.Scene): { current(t: number): { color: number; fire: boolean } | null } {
   let next = 0;
-  let cur: { color: number } | null = null;
+  let cur: { color: number; fire: boolean } | null = null;
   const seen: (string | null)[] = [null, null];
   let lastUp: 0 | 1 | null = null;
   return {
@@ -450,7 +450,7 @@ function fieldWatcher(scene: Phaser.Scene): { current(t: number): { color: numbe
       seen[1] = ids[1];
       const p = lastUp !== null && ids[lastUp] ? lastUp : ids[0] ? 0 : ids[1] ? 1 : null;
       const th = p === null ? 'none' : fieldTheme(ids[p]);
-      cur = th === 'none' ? null : { color: SEAL_RAMP[th][3] };
+      cur = th === 'none' ? null : { color: SEAL_RAMP[th][3], fire: th === 'fire' };
       return cur;
     },
   };
@@ -580,12 +580,13 @@ export function createGlowLayer(ctx: NtCtx): NtLayer {
         themeTint = fs.color;
         themeGlow.setTint(fs.color);
       }
-      const mixKey = themeMix * 10 + Math.round(k * 3);
+      const mixKey = themeMix * 10 + Math.round(k * 3) + (fs?.fire ? 100 : 0);
       if (mixKey !== themeShown) {
         themeShown = mixKey;
         const m = themeMix / 4;
         zoneGlow.setVisible(k > 0 && m < 1).setAlpha(k * (1 - 0.8 * m));
-        themeGlow.setVisible(k > 0 && m > 0).setAlpha(k * m * 1.25);
+        // step 4: Volcano is the busiest theme (its lava runs through the seams) — its border glow is held lower
+        themeGlow.setVisible(k > 0 && m > 0).setAlpha(k * m * (fs?.fire ? 0.6 : 1.25));
       }
       // the torch halos flicker with the flames (two baked frames on an irregular rhythm)
       const b = Math.floor(t / 230);
