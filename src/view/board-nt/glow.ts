@@ -340,8 +340,10 @@ function bakePostVeil(frames: (Uint8ClampedArray | null)[], w: number, h: number
       }
       const c = (base[o] << 16) | (base[o + 1] << 8) | base[o + 2];
       // the post's top (near the fire) a notch brighter than its foot
-      const k = j < BRAZIER.flameY + 8 ? 0.62 : j < BRAZIER.flameY + 20 ? 0.52 : 0.44;
-      veilPixel(d, o, TRIM.has(c) ? [0.9, 0.82, 0.72] : gradeFactor(c, k, 0.3, WARM));
+      const k = j < BRAZIER.flameY + 8 ? 0.62 : j < BRAZIER.flameY + 20 ? 0.52 : j < BRAZIER.h - 22 ? 0.44 : 0.56; // v5: the stepped base sits in its own light pool
+      // v5 step 3: the stepped base's treads (warm stone, painted lit by the fire) keep more of their light
+      const tread = c === PAL.earth2 || c === PAL.earth3 || c === PAL.earth4;
+      veilPixel(d, o, TRIM.has(c) ? [0.9, 0.82, 0.72] : gradeFactor(c, tread ? 0.72 : k, 0.3, WARM));
     }
   return d;
 }

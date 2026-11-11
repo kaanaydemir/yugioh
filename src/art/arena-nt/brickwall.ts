@@ -21,8 +21,9 @@ export const BRICKWALL_H = 110;
 /** Wall-sconce torches: the FLAME centre on screen (the sconce sprite hangs below it). */
 export const BRICK_TORCHES: readonly { x: number; y: number }[] = [
   { x: 119, y: 58 },
-  { x: 276, y: 40 },
-  { x: 364, y: 40 },
+  // arena v5 step 4: the two gate torches hang 10 px higher (at y 40 the stage's far edge hid the left one)
+  { x: 276, y: BOARD_V4 ? 30 : 40 },
+  { x: 364, y: BOARD_V4 ? 30 : 40 },
   { x: 501, y: 68 },
 ];
 
@@ -40,8 +41,9 @@ export function paintPoolFlicker(i: number): PixelCanvas {
 export const BRICK_PILLARS: readonly { x: number; w: number }[] = [
   { x: -6, w: 18 },
   { x: 109, w: 20 },
-  { x: 268, w: 16 },
-  { x: 356, w: 16 },
+  // arena v5 step 4: the two gate pillars are broader (they frame the centre gate)
+  BOARD_V4 ? { x: 262, w: 22 } : { x: 268, w: 16 },
+  BOARD_V4 ? { x: 356, w: 22 } : { x: 356, w: 16 },
   { x: 531, w: 20 },
   { x: 606, w: 20 },
 ];
@@ -204,8 +206,9 @@ function paintBrickWallInner(): PixelCanvas {
     }
   }
 
-  // ---- centre plaque (behind the emblem; the emblem sprite sits at 293, 21 · 54 × 25)
-  {
+  // ---- centre plaque (behind the emblem; the emblem sprite sits at 293, 21 · 54 × 25); arena v5 step 4: the carved gate
+  if (BOARD_V4) paintGate(s, (x, y) => p.get(x - ox, y - oy));
+  else {
     const px = 286;
     const py = 15;
     const pw = 68;
@@ -253,8 +256,16 @@ function paintBrickWallInner(): PixelCanvas {
     s(vx + vw - 2, vy + vh + 2, PAL.stone1);
   }
 
-  // ---- pillars (drawn over the bricks)
-  for (const pl of BRICK_PILLARS) paintPillarAt(s, pl.x, pl.w);
+  // ---- pillars (drawn over the bricks); v5 step 4: each casts a 3-px shadow on the brick to its right (depth)
+  if (BOARD_V4)
+    for (const pl of BRICK_PILLARS)
+      for (let y = BRICK_TOP; y < PLINTH_Y; y++)
+        for (let d = 1; d <= 3; d++) {
+          const x = pl.x + pl.w + d - 1;
+          const c = p.get(x - ox, y - oy);
+          if (c !== null && (d < 3 || (x + y) % 2 === 0)) s(x, y, DARKER.get(c) ?? c);
+        }
+  for (const pl of BRICK_PILLARS) (BOARD_V4 ? paintPillarV5 : paintPillarAt)(s, pl.x, pl.w);
 
   // ---- wall pipes on the right (two vertical runs with clamps, bending into the vault)
   for (const [px, lit] of [
@@ -296,6 +307,180 @@ function paintBrickWallInner(): PixelCanvas {
   }
   for (let x = X0 + 3; x < X1; x += 24) for (let y = PLINTH_Y + 2; y < oy + H - 1; y++) s(x, y, PAL.ink);
   return p;
+}
+
+/** One step darker (the pillars' cast shadow on the brick, the gate's recess). */
+const DARKER: ReadonlyMap<number, number> = new Map([
+  [PAL.earth4, PAL.earth3],
+  [PAL.earth3, PAL.earth2],
+  [PAL.earth2, PAL.skin1],
+  [PAL.earth1, PAL.earth0],
+  [PAL.skin2, PAL.skin1],
+  [PAL.skin1, PAL.skin0],
+  [PAL.skin0, PAL.earth0],
+  [PAL.stone3, PAL.stone2],
+  [PAL.stone2, PAL.stone1],
+  [PAL.stone1, PAL.stone0],
+  [PAL.stone0, PAL.ink],
+  [PAL.night1, PAL.night0],
+  [PAL.night0, PAL.ink],
+]);
+
+/** Warm-or-cool stone tones of a pixel (the sconces' stepped pools): highlight, face, shade. */
+function stoneTones(x: number, y: number): { hi: number; face: number; shade: number } {
+  const lit = lightAt(x, y, bay(x, y));
+  return {
+    hi: lit >= 3 ? PAL.skin2 : lit >= 1 ? PAL.skin1 : PAL.stone3,
+    face: lit >= 3 ? PAL.skin1 : lit >= 1 ? PAL.skin0 : PAL.stone2,
+    shade: lit >= 3 ? PAL.skin0 : lit >= 1 ? PAL.stone1 : PAL.stone1,
+  };
+}
+
+/**
+ * Arena v5 step 4: the carved centre GATE of the back wall (an original design): a round arch of dressed voussoirs with a tall
+ * carved keystone, straight jambs in courses, and in its deep recess a pair of iron-banded door leaves (planks, rivets, the
+ * centre seam). The arch's soffit throws a shadow into the recess, its right reveal catches the light. The steel emblem sprite
+ * (view/board-nt/wall.ts) hangs in the arch's head as the carved medallion. The stage hides the gate's lower half.
+ */
+const GATE = { cx: 320, cy: 54, r0: 27, r1: 35 } as const;
+function paintGate(s: (x: number, y: number, c: number) => void, get: (x: number, y: number) => number | null): void {
+  const { cx, cy, r0, r1 } = GATE;
+  void get;
+  const SEG = Math.PI / 9;
+  for (let y = VAULT_BOTTOM; y < PLINTH_Y; y++)
+    for (let x = cx - r1 - 1; x <= cx + r1; x++) {
+      const dx = x + 0.5 - cx;
+      const dy = y + 0.5 - cy;
+      const arch = dy < 0;
+      const dist = arch ? Math.hypot(dx, dy) : Math.abs(dx);
+      if (dist >= r1 + 3) continue;
+      const T = stoneTones(x, y);
+      // an outer moulding round the arch: an ink groove, then a lit 1-px bead (upper-left brighter)
+      if (dist >= r1 + 2) {
+        if (arch) s(x, y, dx < 0 ? T.hi : T.face);
+        continue;
+      }
+      if (dist >= r1) {
+        s(x, y, PAL.ink);
+        continue;
+      }
+      if (dist >= r0) {
+        // the voussoir ring (arch) / the jambs (courses every 7 px)
+        let joint = false;
+        if (arch) {
+          const a = Math.atan2(-dy, dx); // 0 (right) … π (left)
+          const k = Math.round(a / SEG);
+          joint = Math.abs(a - k * SEG) * dist < 0.55 && k > 0 && k < 9;
+        } else joint = (y - cy) % 7 === 6;
+        if (dist < r0 + 1) joint = true; // the inner edge line
+        if (joint) {
+          s(x, y, PAL.ink);
+          continue;
+        }
+        // light from the top left: the outer lip of the upper-left half is lit, the inner edge in shade
+        const lip = dist > r1 - 1.6 && (arch ? dx < 6 : dx < 0);
+        const inner = dist < r0 + 2.4;
+        const block = arch ? Math.floor(Math.atan2(-dy, dx) / SEG + 0.5) : Math.floor((y - cy) / 7) + 20;
+        const alt = (block * 7 + (dx < 0 ? 3 : 0)) % 3 === 0;
+        s(x, y, lip ? T.hi : inner ? T.shade : alt ? T.shade : T.face);
+        continue;
+      }
+      // the recess: soffit shadow under the arch, the right reveal lit, then the door leaves
+      if (arch && dist > r0 - 3) {
+        s(x, y, dx > 4 ? PAL.stone0 : PAL.ink);
+        continue;
+      }
+      if (!arch && dist > r0 - 2) {
+        s(x, y, dx > 0 ? PAL.stone0 : PAL.ink);
+        continue;
+      }
+      const lx = Math.abs(dx);
+      let c: number = PAL.night0;
+      // the leaves' seam: firelight from the corridor behind the gate leaks through it (warm, brighter lower down)
+      if (lx < 1) c = y > cy - 6 ? (y > cy + 2 ? PAL.fire2 : PAL.fire1) : PAL.ink;
+      else if (lx < 2 && y > cy) c = PAL.fire0;
+      else if (Math.floor(lx) % 5 === 0) c = PAL.ink; // planks
+      const band = (y - (cy - 14)) % 13;
+      if (band === 0) c = PAL.stone1;
+      else if (band === 1) c = PAL.stone0;
+      if (band === 0 && Math.floor(lx) % 6 === 3) c = PAL.stone2; // rivets
+      s(x, y, c);
+    }
+  // the keystone: a taller block on the arch's crown with a carved diamond, standing 3 px proud of the ring
+  const kTop = cy - r1 - 3;
+  for (let y = kTop; y <= cy - r0 + 1; y++)
+    for (let x = cx - 5; x <= cx + 4; x++) {
+      const w = 5 - Math.floor((y - kTop) / 4); // tapering toward the recess
+      if (x < cx - w || x > cx + w - 1) continue;
+      const T = stoneTones(x, y);
+      const edge = x === cx - w || x === cx + w - 1 || y === kTop || y === cy - r0 + 1;
+      let c: number = edge ? PAL.ink : x < cx - 1 ? T.hi : T.face;
+      const dd = Math.abs(x + 0.5 - cx) + Math.abs(y - (kTop + 5));
+      if (!edge && dd < 2.6) c = dd < 1.4 ? PAL.gold2 : T.shade;
+      s(x, y, c);
+    }
+}
+
+/**
+ * Arena v5 step 4: a broad stone pillar with a stepped capital (abacus, echinus, astragal), a fluted shaft (one sunk channel
+ * with a lit lip) and a stepped base (plinth + torus); tones lifted by the nearest sconce like the bricks.
+ */
+function paintPillarV5(s: (x: number, y: number, c: number) => void, x0: number, w: number): void {
+  const top = VAULT_BOTTOM - 4;
+  const baseY = PLINTH_Y - 5;
+  // [y offset from top / from baseY, extra width each side] of the capital / base mouldings
+  const cap: readonly [number, number][] = [
+    [0, 4],
+    [1, 4],
+    [2, 4],
+    [3, 3],
+    [4, 2],
+    [5, 2],
+    [6, 1],
+  ];
+  const base: readonly [number, number][] = [
+    [0, 1],
+    [1, 2],
+    [2, 2],
+    [3, 3],
+    [4, 3],
+    [5, 4],
+    [6, 4],
+    [7, 4],
+    [8, 4],
+  ];
+  for (let y = top; y < PLINTH_Y + 8; y++) {
+    const ci = y - top;
+    const bi = y - baseY;
+    const ext = ci < cap.length ? cap[ci][1] : bi >= 0 ? base[Math.min(base.length - 1, bi)][1] : 0;
+    const xa = x0 - ext;
+    const xb = x0 + w - 1 + ext;
+    const moulding = ci < cap.length || bi >= 0;
+    // a moulding's top row is lit, the row where it steps in is an ink line (the step's shadow)
+    const prevExt = ci < cap.length ? (ci > 0 ? cap[ci - 1][1] : -1) : bi > 0 ? base[Math.min(base.length - 1, bi - 1)][1] : 0;
+    const stepRow = moulding && ext !== prevExt;
+    for (let x = xa; x <= xb; x++) {
+      const T = stoneTones(x, y);
+      const i = x - xa;
+      const n = xb - xa;
+      let c: number;
+      if (i === 0 || i === n || y === top || y === PLINTH_Y + 7) c = PAL.ink;
+      else if (moulding) {
+        if (stepRow) c = ext > prevExt && ci < cap.length ? PAL.ink : i < n * 0.7 ? T.hi : T.face;
+        else c = i === 1 ? T.hi : i < n * 0.7 ? T.face : T.shade;
+        if (ci === cap.length - 1 || bi === 0) c = PAL.ink;
+      } else {
+        // the shaft: lit left edge, a sunk channel (ink + lit lip) at 40 %, shaded right third, soft course seams
+        const ch = Math.round(n * 0.42);
+        if (i === 1) c = T.hi;
+        else if (i === ch) c = T.shade === PAL.stone1 ? PAL.stone0 : T.shade;
+        else if (i === ch + 1) c = T.hi;
+        else if ((y - top) % 12 === 0) c = i < n * 0.7 ? T.shade : PAL.ink;
+        else c = i < n * 0.7 ? T.face : T.shade;
+      }
+      s(x, y, c);
+    }
+  }
 }
 
 /** A square stone pillar: capital (2 px wider), courses every 10 px, base; tones lifted by the nearest sconce. */

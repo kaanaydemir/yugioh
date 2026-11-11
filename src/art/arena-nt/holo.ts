@@ -11,6 +11,7 @@
 //   mote:<side>:<k>   1-3 px digital motes
 // Pure PixelCanvas code, no alpha.
 
+import { BOARD_V4 } from '../../view/layout';
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { HOLO_LOOKS } from './holo-bake';
@@ -22,10 +23,15 @@ export const ntHoloCreatureKey = (side: 0 | 1): string => `nt:holo:c${side}`;
 
 /** The pedestal: top-ellipse radii, height of the cylinder side, the margin of the floor glow. */
 export const PED = { rx: 54, ry: 12, side: 9, pad: 8 } as const;
+/**
+ * Arena v5 step 4: the stepped tech plinth under the same top ellipse — drum height, the ledge's radii, the lower plinth's height,
+ * and the margin round it for the cables running off to the floor.
+ */
+export const PED5 = { drum: 8, lrx: 61, lry: 15, plinth: 7, pad: 18 } as const;
 /** The pedestal image (origin = the centre of the top ellipse at PED_AT). */
-export const PED_W = 2 * (PED.rx + PED.pad) + 2;
-export const PED_AT = { x: PED.rx + PED.pad + 1, y: PED.ry + 5 } as const;
-export const PED_H = PED_AT.y + PED.side + PED.ry + 6;
+export const PED_W = BOARD_V4 ? 2 * (PED5.lrx + PED5.pad) + 2 : 2 * (PED.rx + PED.pad) + 2;
+export const PED_AT = BOARD_V4 ? ({ x: PED5.lrx + PED5.pad + 1, y: PED.ry + 5 } as const) : ({ x: PED.rx + PED.pad + 1, y: PED.ry + 5 } as const);
+export const PED_H = BOARD_V4 ? PED_AT.y + PED5.drum + 1 + PED5.lry + PED5.plinth + 10 : PED_AT.y + PED.side + PED.ry + 6;
 /** The ring overlay (the top ellipse's inner ring, 4 chase frames). */
 export const RING_W = 2 * PED.rx + 3;
 export const RING_H = 2 * PED.ry + 3;
@@ -50,7 +56,130 @@ function arcY(cx: number, cy: number, rx: number, ry: number, x: number): number
   return ry * Math.sqrt(Math.max(0, 1 - u * u));
 }
 
+/**
+ * Arena v5 step 4 (hedef-gorunum-5): the hologram's TECH PEDESTAL — a stepped round plinth. Top to bottom: the top face (a lit
+ * metal rim, dark plates with radial seams, a raised emitter ring with light nodes round the creature's feet), the upper drum
+ * (lit left, shade right; panels, each with a small light in the owner's colour: blue left, magenta right), a ledge stepping out
+ * (a lit front edge and a ring of small lights), the lower plinth (darker, vents, a dim neon band), its contact shadow, and two
+ * armoured cables leaving the plinth's foot and running off along the floor. Palette only, opaque pixels.
+ */
+function paintPedV5(side: 0 | 1): PixelCanvas {
+  const R = HOLO_LOOKS[side].ramp;
+  const L = side === 0 ? [PAL.cyan0, PAL.cyan1, PAL.cyan2, PAL.cyan3, PAL.cyan4] : [PAL.mag0, PAL.mag1, PAL.mag2, PAL.mag3, PAL.mag4];
+  const c = new PixelCanvas(PED_W, PED_H);
+  const cx = PED_AT.x;
+  const cy = PED_AT.y;
+  const { rx, ry } = PED;
+  const { drum, lrx, lry, plinth } = PED5;
+  const ly = cy + drum + 1; // the ledge's top-ellipse centre
+  const inE = (x: number, y: number, ex: number, ey: number, a: number, b: number): boolean => {
+    const u = (x + 0.5 - ex) / a;
+    const v = (y + 0.5 - ey) / b;
+    return u * u + v * v <= 1;
+  };
+  const shadeOf = (u: number): number => (u < -0.55 ? N.n3 : u < -0.1 ? N.n2 : u < 0.5 ? N.n1 : N.n0);
+  // ---- contact shadow on the floor and the two cables (drawn first: the plinth stands on them)
+  for (let y = 0; y < PED_H; y++)
+    for (let x = 0; x < PED_W; x++) if (inE(x, y, cx + 3, ly + plinth + 2, lrx + 3, lry + 2)) c.set(x, y, N.ink);
+  const cable = (pts: readonly (readonly [number, number])[]): void => {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [x0, y0] = pts[i];
+      const [x1, y1] = pts[i + 1];
+      const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      for (let k = 0; k <= n; k++) {
+        const x = Math.round(x0 + ((x1 - x0) * k) / n);
+        const y = Math.round(y0 + ((y1 - y0) * k) / n);
+        c.set(x, y - 2, N.ink).set(x, y - 1, PAL.stone2).set(x, y, N.n3).set(x, y + 1, N.n1).set(x, y + 2, N.ink);
+        if ((x + 3) % 9 === 0) c.set(x, y - 1, PAL.stone2).set(x, y, PAL.stone1).set(x, y + 1, PAL.stone0);
+      }
+    }
+  };
+  const fy = ly + plinth + lry - 2;
+  cable([[cx - 30, fy - 2], [cx - 44, fy + 3], [cx - 62, fy + 5], [cx - lrx - PED5.pad, fy + 6]]);
+  cable([[cx + 34, fy - 2], [cx + 48, fy + 4], [cx + 66, fy + 6], [cx + lrx + PED5.pad, fy + 6]]);
+  // ---- the lower plinth's side (between the ledge's lower arc and the same arc `plinth` px lower)
+  for (let x = cx - lrx; x <= cx + lrx; x++) {
+    const top = ly + Math.round(arcY(cx, ly, lrx, lry, x));
+    const bot = top + plinth;
+    const u = (x - cx) / lrx;
+    for (let y = top; y <= bot; y++) {
+      const r = y - top;
+      let col: number = u < -0.55 ? N.n2 : u < -0.1 ? N.n1 : N.n0;
+      if (r === 0) col = u < 0 ? PAL.stone3 : PAL.stone2; // the ledge's lit front edge
+      else if (r === 2) col = u < 0.3 ? L[1] : L[0]; // a dim neon band
+      else if (r >= 4 && r <= 5 && (x - cx + 200) % 10 < 4 && Math.abs(u) < 0.85) col = N.ink; // vent slots
+      else if ((x - cx + 200) % 20 === 0) col = N.ink; // plate seams
+      if (y === bot) col = N.ink;
+      c.set(x, y, col);
+    }
+  }
+  for (const x of [cx - lrx, cx + lrx]) c.vline(x, ly, ly + plinth, N.ink);
+  // ---- the ledge's top face (a ring round the drum's foot): dark metal, a lit outer rim, a ring of small lights
+  for (let y = 0; y < PED_H; y++)
+    for (let x = 0; x < PED_W; x++) {
+      if (!inE(x, y, cx, ly, lrx, lry)) continue;
+      const outer = !inE(x, y, cx, ly, lrx - 1.5, lry - 1);
+      c.set(x, y, outer ? (y + 0.5 < ly ? PAL.stone2 : PAL.stone3) : N.n1);
+    }
+  c.ellipseRing(cx, ly, lrx + 1, lry + 1, N.ink);
+  for (let k = 0; k < 28; k++) {
+    const a = (k / 28) * Math.PI * 2;
+    const x = Math.round(cx + Math.cos(a) * (lrx - 4));
+    const y = Math.round(ly + Math.sin(a) * (lry - 2));
+    if (Math.sin(a) < -0.2) continue; // the back of the ring hides behind the drum
+    c.set(x, y, L[3]).set(x + 1, y, L[2]);
+  }
+  // ---- the upper drum's side
+  for (let x = cx - rx; x <= cx + rx; x++) {
+    const top = cy + Math.round(arcY(cx, cy, rx, ry, x));
+    const bot = cy + drum + Math.round(arcY(cx, cy, rx, ry, x));
+    const u = (x - cx) / rx;
+    const panel = (((x - cx + 216) % 12) + 12) % 12;
+    for (let y = top; y <= bot; y++) {
+      const r = y - top;
+      let col: number = shadeOf(u);
+      if (r < 2) col = u < 0 ? PAL.stone2 : PAL.stone1; // the rim's lip carries down the side
+      else if (panel === 0) col = N.ink; // panel seams
+      else if (r === 4 || r === 5) {
+        // each panel's small light (2 × 2, brighter on the lit side), set in a dark socket
+        if (panel === 5 || panel === 6) col = r === 4 ? L[u < 0.5 ? 4 : 3] : L[u < 0.5 ? 3 : 2];
+        else if (panel === 4 || panel === 7) col = N.ink;
+      } else if (r === drum - 1 && panel > 1 && panel < 11) col = N.n0; // the panel's foot
+      if (y === bot) col = N.ink;
+      c.set(x, y, col);
+    }
+  }
+  for (const x of [cx - rx, cx + rx]) c.vline(x, cy, cy + drum, N.ink);
+  // ---- the top face: ink outline, the lit metal rim, dark plates with radial seams, the emitter ring
+  c.ellipse(cx, cy, rx + 1, ry + 1, N.ink);
+  c.ellipse(cx, cy, rx, ry, PAL.stone3);
+  c.ellipse(cx, cy, rx - 2, ry - 1, PAL.stone2);
+  c.ellipse(cx, cy, rx - 3, ry - 1, N.n1);
+  c.ellipse(cx, cy, rx - 4, ry - 2, N.n0);
+  for (let a = Math.PI * 0.55; a < Math.PI * 1.45; a += 0.012) c.set(Math.round(cx + Math.cos(a) * rx), Math.round(cy + Math.sin(a) * ry), PAL.mist);
+  // the plates: eight radial seams between the rim and the emitter ring
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2 + Math.PI / 8;
+    for (let t = 0.48; t < 0.92; t += 0.01) c.set(Math.round(cx + Math.cos(a) * (rx - 4) * t), Math.round(cy + Math.sin(a) * (ry - 2) * t), N.ink);
+  }
+  // a stepped light pool in the owner's ramp round the emitter (two flat bands, no dither)
+  c.ellipseRing(cx, cy, rx - 12, ry - 4, R[1]);
+  // the emitter ring: a raised metal collar (lit top, ink foot) with light nodes, the lit spot under the creature inside it
+  c.ellipse(cx, cy + 1, 24, 6, N.ink);
+  c.ellipse(cx, cy, 24, 6, PAL.stone2);
+  c.ellipse(cx, cy, 22, 5, N.n0);
+  for (let a = Math.PI * 0.6; a < Math.PI * 1.5; a += 0.03) c.set(Math.round(cx + Math.cos(a) * 24), Math.round(cy + Math.sin(a) * 6), PAL.stone3);
+  for (let k = 0; k < 10; k++) {
+    const a = (k / 10) * Math.PI * 2;
+    c.set(Math.round(cx + Math.cos(a) * 23), Math.round(cy + Math.sin(a) * 5.5), L[3]);
+  }
+  c.ellipse(cx, cy, 16, 3, R[1]);
+  c.ellipse(cx, cy, 10, 2, R[2]);
+  return c;
+}
+
 function paintPed(side: 0 | 1): PixelCanvas {
+  if (BOARD_V4) return paintPedV5(side);
   const R = HOLO_LOOKS[side].ramp;
   const c = new PixelCanvas(PED_W, PED_H);
   const cx = PED_AT.x;
