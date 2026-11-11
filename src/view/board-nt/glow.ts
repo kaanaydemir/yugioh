@@ -37,7 +37,7 @@ import { BRAZIER, BRAZIERS } from '../../art/arena-nt/hallfloor';
 import { NT_PADS_KEY, PAD_CANVAS, padFrame } from '../../art/arena-nt/pads';
 import { NT_PLATFORM_KEY, PLATFORM_BOX } from '../../art/arena-nt/platform';
 import { PAL, RAMPS } from '../../art/palette';
-import { BANISH_PAD, zoneXY } from '../layout';
+import { BANISH_PAD, BOARD_V4, zoneXY } from '../layout';
 import { hasLight, lightEnabled } from '../light';
 import { calmZones } from '../board-calm/art';
 import { DUELIST_PADS, HOLOS, NT_DEPTH, PLATE_OUTLINE, SCREENS, ntIso } from './layout-nt';
@@ -226,6 +226,9 @@ function gradeFactor(c: number, k: number, desat: number, tint: RGB): RGB {
 
 const COOL: RGB = [0.92, 0.96, 1.08];
 const WARM: RGB = [1.08, 0.94, 0.78];
+/** Arena v5 step 1: the stage top's grade tint (violet-grey slate) and switch. */
+const VIOLET: RGB = [1.04, 0.88, 1.08];
+const V5_TOP = BOARD_V4;
 
 /** Is (x, y) on the stage TOP (the octagon), not its side walls? */
 function onTop(x: number, y: number, poly: readonly { x: number; y: number }[]): boolean {
@@ -284,8 +287,12 @@ function bakeStageVeil(px: Uint8ClampedArray, w: number, h: number): Uint8Clampe
         veilPixel(d, o, [0.86, 0.84, 0.86]);
         continue;
       }
-      const { k, warm } = stageK(x + 0.5, y + 0.5, onTop(x + 0.5, y + 0.5, poly));
-      veilPixel(d, o, gradeFactor(c, k, 0.32, warm ? WARM : COOL));
+      const top = onTop(x + 0.5, y + 0.5, poly);
+      const { k, warm } = stageK(x + 0.5, y + 0.5, top);
+      // arena v5 step 1: the flagstone top keeps more of the slate ramp's violet (hedef-gorunum-5: violet-grey stone), a little
+      // less darkening on its now textured tones (the stage's MEAN stays where it was: the painter's flags are mostly stone1)
+      if (top && V5_TOP) veilPixel(d, o, gradeFactor(c, 0.68, 0.1, VIOLET));
+      else veilPixel(d, o, gradeFactor(c, k, 0.32, warm ? WARM : COOL));
     }
   return d;
 }
@@ -369,7 +376,7 @@ const ZONE_BOX = { x: 100, y: 24, w: 440, h: 276 } as const;
 function zoneFrame(player: 0 | 1, spot: string): string {
   if (spot === 'field') return FLOOR_FRAMES.seal(player, 'none');
   if (spot === 'deck' || spot === 'graveyard') return FLOOR_FRAMES.pile(player, spot);
-  return FLOOR_FRAMES.slot(player, spot !== 'monster' && spot !== 'spellTrap');
+  return FLOOR_FRAMES.slot(player, spot !== 'monster' && spot !== 'spellTrap', 0, 0, spot === 'spellTrap');
 }
 
 /**

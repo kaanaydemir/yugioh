@@ -20,7 +20,7 @@ export const SLOT_DOWN = 2;
 /** Frame names. */
 export const FLOOR_FRAMES = {
   /** a slot of `player` (0 / 1) in `state` (SLOT_*), `boost` 0 / 1 = the border one tone up (side to move, a reaction); `pile` = the single pads (field, graveyard, deck, banish) */
-  slot: (player: 0 | 1, pile: boolean, state = SLOT_EMPTY, boost = 0) => `slot:${player}:${pile ? 'pile' : 'main'}:${state}:${boost}`,
+  slot: (player: 0 | 1, pile: boolean, state = SLOT_EMPTY, boost = 0, st = false) => `slot:${player}:${pile ? 'pile' : st && BOARD_V4 ? 'st' : 'main'}:${state}:${boost}`,
   /** the centre emblem at ring levels (blue 0..3, red 0..3) */
   emblem: (blue: number, red: number) => `emblem:${blue}:${red}`,
   dash: (k: number) => `dash:${k}`,
@@ -61,7 +61,8 @@ export interface FloorArt {
 
 let cached: FloorArt | null = null;
 
-function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): PixelCanvas {
+function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number, st = false): PixelCanvas {
+  if (BOARD_V4 && !pile) return recessFrame(player, state, boost, st);
   const m = buildCalmArt().masks;
   const p = new PixelCanvas(64, 32);
   const ramp = player === 0 ? NT_PAL.blue : NT_PAL.red;
@@ -129,6 +130,92 @@ function slotFrame(player: 0 | 1, pile: boolean, state: number, boost: number): 
     }
   }
   void pile;
+  return p;
+}
+
+
+// ---------------------------------------------------------------- arena v5 step 1: recessed play zones
+// Each monster / spell-trap zone is a slightly RECESSED square slot in the flagstones (docs/v3/ref/hedef-gorunum-5.png): the
+// stone lip round it (an ink edge on the far sides, a lit stone lip on the near sides), the far inner wall in shade above a
+// hidden neon cove at its foot, the owner-colour light coming from INSIDE (the cove line + the light on the inner walls + a
+// soft spill on the slot floor), a deep dark floor, and an engraved ring-and-glyph in the centre (monster zones a four-point
+// star, spell / trap zones a small lozenge with a dot). Same 58 × 30 footprint (the calm tile mask) as before, so every
+// highlight, flash and shockwave keyed on the zone frames stays aligned. Levels: L 0 empty, 1 empty on the side to move or
+// occupied, 2 occupied on the side to move.
+
+/** Rows from (i, j) up / down to the first pixel outside the calm tile mask. */
+function rowsOut(tile: PixelCanvas, i: number, j: number, dir: -1 | 1): number {
+  let n = 0;
+  let y = j;
+  while (y >= 0 && y < 32 && tile.get(i, y) !== null) {
+    n++;
+    y += dir;
+  }
+  return n;
+}
+
+function recessFrame(player: 0 | 1, state: number, boost: number, st: boolean): PixelCanvas {
+  const m = buildCalmArt().masks;
+  const p = new PixelCanvas(64, 32);
+  const ramp = player === 0 ? NT_PAL.blue : NT_PAL.red;
+  const on = state !== SLOT_EMPTY;
+  const L = (on ? 1 : 0) + (boost ? 1 : 0);
+  // crim is darker than cyan at the same step (luma ≈ 132 vs 177): the red spill one step up so both sides weigh the same
+  const lift = player === 1 ? 1 : 0;
+  const R = (k: number): Color => ramp[Math.max(0, Math.min(4, k))];
+  const floor: Color = player === 0 ? PAL.night0 : PAL.void0;
+  const { cx, cy } = slotCentre();
+  const dX = (i: number): number => i + 0.5 - cx;
+  const dY = (j: number): number => j + 0.5 - cy;
+  // the engraving: a ring (an iso circle) + the glyph, an inset square groove between it and the walls
+  const disc: Mask = (i, j) => Math.hypot(dX(i) / 2, dY(j)) < 5.2;
+  const ring: Mask = (i, j) => edgeOf(disc, i, j);
+  const glyph: Mask = st
+    ? (i, j) => {
+        // a small lozenge with a centre dot
+        const e = Math.abs(dX(i)) / 2 + Math.abs(dY(j));
+        return (e >= 2 && e < 3) || (Math.abs(dX(i)) < 1 && Math.abs(dY(j)) < 0.6);
+      }
+    : (i, j) => {
+        // a four-point sparkle: long iso arms along x, short ones along y, 1-px arms
+        const x = Math.abs(dX(i));
+        const y = Math.abs(dY(j));
+        return (y < 0.6 && x < 4.6) || (x < 1 && y < 2.6) || (y < 1 && x < 2);
+      };
+  const gRing: Color = R([1, 1, 2][L] + (L > 0 ? lift : 0));
+  const gStar: Color = R([1, 2, 2][L] + (L > 0 ? lift : 0));
+  const gInset: Color = R([0, 1, 1][L]);
+  const innerD: Mask = (i, j) => Math.abs(dX(i)) / 2 + Math.abs(dY(j)) < 9;
+  const inset: Mask = (i, j) => innerD(i, j) && (!innerD(i, j - 1) || !innerD(i, j + 1));
+  for (let j = 0; j < 32; j++)
+    for (let i = 0; i < 64; i++) {
+      if (m.tile.get(i, j) === null) continue;
+      const kFar = rowsOut(m.tile, i, j, -1) - 1;
+      const kNear = rowsOut(m.tile, i, j, 1) - 1;
+      let c: Color;
+      if (kFar <= kNear && kFar < 3) {
+        // the far side: the lip's shadow edge, the neon strip under the lip, the inner wall lit by it
+        c = [NT_PAL.ink, R(3), R([1, 2, 2][L] + lift)][kFar];
+      } else if (kNear < kFar && kNear < 2) {
+        // the near side: a lit stone lip, the neon strip peeking out under it
+        c = kNear === 0 ? PAL.stone3 : R(3);
+      } else {
+        // the slot floor: a narrow stepped spill in front of the walls, then the deep floor
+        const dn = kFar <= kNear ? kFar - 2 : kNear - 1;
+        const spill = [[], [0], [1, 0]][L];
+        c = dn - 1 < spill.length ? R(spill[dn - 1] + (spill[dn - 1] > 0 ? lift : 0)) : floor;
+        if (inset(i, j)) c = gInset;
+        if (glyph(i, j)) c = gStar;
+        else if (ring(i, j)) c = gRing;
+        else if (on && disc(i, j)) c = R(0);
+      }
+      if (state === SLOT_DOWN && (kFar === 0 || kNear === 0 || kFar === 1 || kNear === 1)) {
+        const dx = Math.abs(dX(i));
+        const dy = Math.abs(dY(j));
+        if ((dx > 25 && dy < 2.5) || (dy > 12 && dx < 3.5)) c = NT_PAL.metal[3];
+      }
+      p.set(i, j, c);
+    }
   return p;
 }
 
@@ -374,6 +461,11 @@ export function buildFloorArt(): FloorArt {
     for (const pile of [false, true])
       for (const state of pile ? [SLOT_EMPTY, SLOT_OCCUPIED] : [SLOT_EMPTY, SLOT_OCCUPIED, SLOT_DOWN])
         for (const boost of [0, 1]) list.push([FLOOR_FRAMES.slot(player, pile, state, boost), slotFrame(player, pile, state, boost)]);
+  // arena v5 step 1: the spell / trap zones carry their own engraved glyph
+  if (BOARD_V4)
+    for (const player of [0, 1] as const)
+      for (const state of [SLOT_EMPTY, SLOT_OCCUPIED, SLOT_DOWN])
+        for (const boost of [0, 1]) list.push([FLOOR_FRAMES.slot(player, false, state, boost, true), slotFrame(player, false, state, boost, true)]);
   if (BOARD_V4)
     for (const player of [0, 1] as const) {
       for (const boost of [0, 1]) list.push([FLOOR_FRAMES.seal(player, 'none', 0, boost), sealFrame(player, 'none', 0, boost)]);

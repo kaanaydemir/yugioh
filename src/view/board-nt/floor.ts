@@ -307,7 +307,7 @@ export function createFloorLayer(ctx: NtCtx): NtLayer {
   function frameOf(player: PlayerId, spot: BoardSpot, pile: boolean, state: number, boost: number, theme: SealTheme, lv: number): string {
     if (BOARD_V4 && spot === 'field') return theme === 'none' || lv <= 0 ? FLOOR_FRAMES.seal(player, 'none', 0, boost) : FLOOR_FRAMES.seal(player, theme, lv);
     if (BOARD_V4 && (spot === 'deck' || spot === 'graveyard')) return FLOOR_FRAMES.pile(player, spot, state === SLOT_EMPTY ? SLOT_EMPTY : SLOT_OCCUPIED, boost);
-    return FLOOR_FRAMES.slot(player, pile, state, boost);
+    return FLOOR_FRAMES.slot(player, pile, state, boost, spot === 'spellTrap');
   }
   /** The face-up Field Spell's theme on a seal ('none' when empty / face-down). */
   const themeOf = (z: { player: PlayerId }, f: FieldView): SealTheme => {
