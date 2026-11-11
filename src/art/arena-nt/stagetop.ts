@@ -137,15 +137,17 @@ function stoneAt(u: number, v: number): StoneHit {
   // field mixes stone1 / stone2 flags, the key-lit back-left mostly stone2 (the light falloff the target has: lighter upper
   // left), the lower right mostly stone1, a few dark stone0 flags and a few violet-grey ones (base 5: void1)
   let base: number;
+  // arena v5 step 2 (brighter stone): the whole field one step up — mid-tone stone2 flags, a few darker stone1 ones; the lane a
+  // darker cobble path (stone1 pavers, a stone2 one in four) between two long light kerbs
   if (kerb) base = 2;
-  else if (c.lane) base = seed < 0.3 ? 0 : seed > 0.9 ? 2 : 1;
+  else if (c.lane) base = seed < 0.12 ? 0 : seed > 0.72 ? 2 : 1;
   else {
     const cu = (u0 + u1) / 2;
     const cv = (v0 + v1) / 2;
     // screen x + 2y of the stone's centre (the old KEY_BAND line, x + 2y < 722): the back-left half of the stage is key-lit
     const k = 320 + cu - cv + 2 * (160 + (cu + cv) / 2);
     const lit = k + (seed - 0.5) * 160 < 722;
-    base = seed < 0.09 ? 0 : seed > 0.93 ? 5 : lit ? (seed > 0.8 ? 1 : 2) : seed > 0.74 ? 2 : 1;
+    base = seed < 0.06 ? 0 : seed > 0.93 ? 5 : lit ? (seed > 0.88 ? 1 : 2) : seed > 0.78 ? 1 : 2;
   }
   return { id, du0: u - u0, dv0: v - v0, du1: u1 - u, dv1: v1 - v, lane: c.lane, kerb, base, seed };
 }
@@ -172,9 +174,10 @@ function emblemRegion(u: number, v: number): number {
   const k = Math.round(a / step);
   const off = a - k * step; // angle from the nearest ray
   const axis = ((k % 2) + 2) % 2 === 0;
-  const reach = axis ? 19.5 : 13.5;
-  const halfW = (axis ? 0.52 : 0.46) * (1 - r / reach);
-  if (r < reach && Math.abs(off) < halfW + 0.07) {
+  // step 2: chunkier points (the thin diagonal ones read as scratches at 1x): the diagonals shorter and wider, both a little wider
+  const reach = axis ? 19.5 : 12.5;
+  const halfW = (axis ? 0.62 : 0.66) * (1 - r / reach);
+  if (r < reach && Math.abs(off) < halfW + 0.1) {
     const ray = k * step;
     // the facet whose outward normal points toward the light (from −u −v, i.e. angle −135°) is lit
     const normal = ray + (off > 0 ? Math.PI / 2 : -Math.PI / 2);
@@ -236,7 +239,8 @@ function crackDist(u: number, v: number): { d: number; moss: boolean } {
   return { d: best, moss };
 }
 
-const VIO = [PAL.void0, PAL.void1, PAL.stone2] as const;
+// step 2: the odd cool flag is a blue-slate stone (night2 shade, night3 face, stone3 lit lip) at the brighter stone level
+const VIO = [PAL.night2, PAL.night3, PAL.stone3] as const;
 /** Stone ramp tone `i` (0..3); 4..6 = the violet-grey flag's tones (void0 shade, void1 face, stone2 lit lip). */
 const tone = (i: number): Color => (i >= 4 && i <= 6 ? VIO[i - 4] : ST[Math.max(0, Math.min(3, i))]);
 
@@ -280,7 +284,9 @@ export function floorTone(x: number, y: number): Color {
       const wob = 1 + 0.22 * Math.sin(ang * 3 + h * 9) + 0.12 * Math.sin(ang * 5 + h * 4);
       const e = ((s.du0 - cx) / rx) ** 2 + ((s.dv0 - cy) / ry) ** 2;
       if (e < wob * wob) {
-        if (s.base === 2 || s.base === 5) t -= 1;
+        // step 2: the worn blotch on a mid-tone flag is a darker stain or (one in three) a paler worn patch
+        if (s.base === 2) t += h > 0.75 ? 1 : -1;
+        else if (s.base === 5) t -= 1;
         else if (s.base === 1) t += h > 0.72 ? 1 : -1;
         else if (s.base === 0 && h > 0.7) t += 1;
         break;
@@ -310,7 +316,7 @@ export function floorTone(x: number, y: number): Color {
   // ---- hairline cracks (+ moss in a couple of them) and faint scratches
   if (!s.kerb) {
     const c = crackDist(u, v);
-    if (c.d < 0.62) return c.moss && hash2(Math.floor(u), Math.floor(v)) < 0.55 ? PAL.leaf1 : s.base >= 4 ? PAL.void0 : tone(Math.min(t, s.base) - 1);
+    if (c.d < 0.62) return c.moss && hash2(Math.floor(u), Math.floor(v)) < 0.55 ? PAL.leaf1 : s.base >= 4 ? PAL.night1 : tone(Math.min(t, s.base) - 1);
     // the crack's lower lip catches the light (carved, not drawn)
     const cb = crackDist(above.u, above.v);
     if (cb.d < 0.62 && !c.moss) return tone(s.base + 1);
@@ -330,7 +336,7 @@ function emblemTone(x: number, y: number, u: number, v: number, lastRow: boolean
   // with a raised faceted eight-point star and a centre boss. Grooves (1 px, ink / stone0) where the carving steps down, a lit lip
   // where a raised part's upper edge catches the key light. Faint: no tone above stone3, which the veil darkens.
   if (lastRow) return PAL.ink;
-  if (firstRow) return PAL.stone2;
+  if (firstRow) return PAL.stone3;
   const reg = emblemRegion(u, v);
   const raised = (q: number): boolean => q === 2 || q === 3 || q === 7 || q === 6;
   const same = (p: number, q: number): boolean => p === q || ((p === 3 || p === 7) && (q === 3 || q === 7));
@@ -345,15 +351,17 @@ function emblemTone(x: number, y: number, u: number, v: number, lastRow: boolean
   if (raised(reg) && !same(down, reg) && !raised(down)) return PAL.stone0;
   if (raised(reg) && !same(up, reg) && !raised(up)) return PAL.stone3;
   if (!raised(reg) && raised(up) && !same(up, reg)) return PAL.ink; // the shadow a raised part throws on the sunken field
+  // step 2: readable at the brighter stone level — raised parts stone2 / stone3, the sunken field stone1, grooves ink; the star's
+  // shaded facet stays stone2 (was stone0: the dark half of each point read as a scratch)
   switch (reg) {
     case 2:
       return PAL.stone2;
     case 3:
-      return PAL.stone2;
+      return PAL.stone3;
     case 7:
-      return PAL.stone0;
+      return PAL.stone2;
     case 6:
-      return Math.hypot(u, v) < 1.2 ? PAL.stone0 : PAL.stone2;
+      return Math.hypot(u, v) < 1.2 ? PAL.stone1 : PAL.stone3;
     case 5:
       return PAL.stone1;
     default:
@@ -380,7 +388,8 @@ export function rimTone(d: number, side: number, along: number, x: number): Colo
   const blk = Math.floor((along + 400) / 22);
   const ja = (((along + 400) % 22) + 22) % 22;
   const bt = hash(blk * 13 + side * 101);
-  const face = lit ? (bt < 0.22 ? 1 : 2) : bt < 0.3 ? 2 : 1;
+  // step 2: the coping one step lighter with the brighter floor (a light stone border round the top, as the target)
+  const face = lit ? (bt < 0.2 ? 3 : 2) : bt < 0.3 ? 1 : 2;
   if (d < RIM_W - 2) {
     // block joints (ink) with a lit lip on the joint's left side
     if (ja < 1) return PAL.ink;

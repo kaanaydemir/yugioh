@@ -44,12 +44,30 @@ export function ntIso(col: number, row: number): XY {
 // positions, u ∈ ±150, v ∈ ±132 about the board centre (320, 160) (u, v as layout.ts: 32 units = one tile = one step of this 7×5
 // reference grid). Column ends: 0.375 tile past the outer pads' far edges... cut by the end caps 12 px outside the outermost tile
 // tips (x 128 / 512); long edges: 20 px behind each duelist dais's lower step, so BOTH daises stand ON the stage (equal, no ledge).
-export const PLATE_C0 = BOARD_V4 ? 3 - 150 / 32 : -0.875; // v4 -1.6875
-export const PLATE_C1 = BOARD_V4 ? 3 + 150 / 32 : NT_COLS - 0.5 + 0.375; // 6.875 (v4 7.6875)
-export const PLATE_R0 = BOARD_V4 ? 2 - 132 / 32 : -1.0625; // v4 -2.125
+//
+// ARENA v5 step 2 (hedef-gorunum-5: a RECTANGLE with cut corners, the daises on small extensions): the block shrinks along the
+// duel axis to v ∈ ±STAGE_V (16 units past the back rows' tile edges, was ±132) and widens a little along the lanes to u ∈ ±STAGE_U;
+// each duelist's dais stands on a small TAB out of its long edge (u ∈ ±TAB_U, out to |v| = TAB_V). The corner cuts keep their
+// screen lines (caps x 116 / 524, far / near flat edges y 36 / 284), so the far / near cuts are now small (20-px flat edges) and
+// the side caps 54 px (they cut the empty banish corner cells). Zone positions are unchanged.
+/** arena v5 step 2: the main block's half extents and the dais tabs, in layout.ts board units (u along the lanes, v the duel axis). */
+export const STAGE_U = 156;
+export const STAGE_V = 102;
+export const TAB_U = 28;
+export const TAB_V = 126;
+export const PLATE_C0 = BOARD_V4 ? 3 - STAGE_U / 32 : -0.875; // v5 -1.875
+export const PLATE_C1 = BOARD_V4 ? 3 + STAGE_U / 32 : NT_COLS - 0.5 + 0.375; // 6.875 (v5 7.875)
+export const PLATE_R0 = BOARD_V4 ? 2 - STAGE_V / 32 : -1.0625; // v5 -1.1875
 // arena pixel/polish round 3 (#1): the near-left edge moves out 30 px (0.9375 row) so the P1 dais stands ON the stage (one convex
 // block, no L notch round a protruding dais base); the far-right edge stays (the P2 dais keeps its ledge behind it).
-export const PLATE_R1 = BOARD_V4 ? 2 + 132 / 32 : NT_ROWS - 0.5 + 1.5; // 6.0 (v4 6.125)
+export const PLATE_R1 = BOARD_V4 ? 2 + STAGE_V / 32 : NT_ROWS - 0.5 + 1.5; // 6.0 (v5 5.1875)
+/** arena v5 step 2: the two dais tabs as grid rectangles (cols c0..c1, rows r0..r1 of the 7×5 reference grid); [] before v5. */
+export const PLATE_TABS: readonly { c0: number; c1: number; r0: number; r1: number; player: 0 | 1 }[] = BOARD_V4
+  ? [
+      { c0: 3 - TAB_U / 32, c1: 3 + TAB_U / 32, r0: 2 + (STAGE_V - 24) / 32, r1: 2 + TAB_V / 32, player: 0 },
+      { c0: 3 - TAB_U / 32, c1: 3 + TAB_U / 32, r0: 2 - TAB_V / 32, r1: 2 - (STAGE_V - 24) / 32, player: 1 },
+    ]
+  : [];
 /**
  * The chamfer lines (screen px): vertical end caps x, flat far / near edges y. Arena pass round 2: BIG cuts so the slab reads as
  * an octagon (hedef-gorunum-3): the side caps cut 20 px off the left / right tips (20-px tall vertical caps, still 10 px clear of
@@ -84,8 +102,10 @@ export function ntGrid(x: number, y: number): [number, number] {
 // chamfer lines cut 13 px off the far tip, 9 px off the near tip and 20 px off the side tips (the near flat edge is 328..364).
 // arena v4: the same eight vertices on the v4 block (point-symmetric about (320, 160)):
 // (116, 190) (116, 112) (268, 36) (336, 36) (524, 130) (524, 208) (372, 284) (304, 284).
+// arena v5 step 2: the octagon of the main block (the dais tabs are in PLATE_POLY): (116, 160) (116, 106) (256, 36) (276, 36)
+// (524, 160) (524, 214) (384, 284) (364, 284).
 export const PLATE_OUTLINE: readonly [number, number][] = BOARD_V4
-  ? [ntGrid(116, 190), ntGrid(116, 112), ntGrid(268, 36), ntGrid(336, 36), ntGrid(524, 130), ntGrid(524, 208), ntGrid(372, 284), ntGrid(304, 284)]
+  ? [ntGrid(116, 160), ntGrid(116, 106), ntGrid(256, 36), ntGrid(276, 36), ntGrid(524, 160), ntGrid(524, 214), ntGrid(384, 284), ntGrid(364, 284)]
   : [
   ntGrid(PLATE_X0, 187), // near-left corner (left face start)
   ntGrid(PLATE_X0, 137), // left end cap, top
@@ -97,9 +117,24 @@ export const PLATE_OUTLINE: readonly [number, number][] = BOARD_V4
   ntGrid(268, PLATE_Y1), // near flat edge, left end
 ];
 
+/**
+ * arena v5 step 2: the WHOLE stage-top outline (grid coords, clockwise on screen): the octagon with the two dais tabs spliced into
+ * its long edges (P2's into the far-right edge after vertex 3, P1's into the near-left edge after vertex 7). Every mask of "the
+ * stage top" (veils, light layer, still, plate texture) uses this; PLATE_OUTLINE keeps the eight corner indices.
+ * (116,160) (116,106) (256,36) (276,36) [(394,95) (418,83) (474,111) (450,123)] (524,160) (524,214) (384,284) (364,284)
+ * [(246,225) (222,237) (166,209) (190,197)].
+ */
+export const PLATE_POLY: readonly [number, number][] = BOARD_V4
+  ? (() => {
+      const g = (u: number, v: number): [number, number] => [3 + u / 32, 2 + v / 32];
+      const o = PLATE_OUTLINE;
+      return [o[0], o[1], o[2], o[3], g(-TAB_U, -STAGE_V), g(-TAB_U, -TAB_V), g(TAB_U, -TAB_V), g(TAB_U, -STAGE_V), o[4], o[5], o[6], o[7], g(TAB_U, STAGE_V), g(TAB_U, TAB_V), g(-TAB_U, TAB_V), g(-TAB_U, STAGE_V)];
+    })()
+  : PLATE_OUTLINE;
+
 /** The extreme points of the plate's top (screen): the middle of the flat far edge, the right / left end caps, the middle of the flat near edge. */
 export const PLATE_CORNERS = BOARD_V4
-  ? ({ apex: { x: 302, y: PLATE_Y0 }, right: { x: PLATE_X1, y: 169 }, bottom: { x: 338, y: PLATE_Y1 }, left: { x: PLATE_X0, y: 151 } } as const)
+  ? ({ apex: { x: 266, y: PLATE_Y0 }, right: { x: PLATE_X1, y: 187 }, bottom: { x: 374, y: PLATE_Y1 }, left: { x: PLATE_X0, y: 133 } } as const)
   : ({
       apex: { x: 294, y: PLATE_Y0 },
       right: { x: PLATE_X1, y: 173 },

@@ -22,7 +22,7 @@ import { PAL } from '../art/palette';
 import type { Color, PixelCanvas, Pt } from '../art/pixel';
 // arena v4 (BOARD_V4): the still keeps the original contiguous grid (isoToScreenRef), the reference the calm art is cut from
 import { BOARD_COLS, BOARD_V4, cellKind, isoToScreen as isoToScreenLive, isoToScreenRef as isoToScreen, screenToIso as screenToIsoLive, zoneAtCell, zoneCell, type XY } from '../view/layout';
-import { PLATE_OUTLINE, ntIso } from '../view/board-nt/layout-nt';
+import { PLATE_POLY, ntIso } from '../view/board-nt/layout-nt';
 const zoneXY = (p: 0 | 1, spot: 'monster', i: number): XY => {
   const c = zoneCell(p, spot, i);
   return isoToScreen(c.col, c.row);
@@ -199,15 +199,16 @@ export function topAt(x: number, y: number): { kind: TopKind; color: Color } | n
 let v4Plate: XY[] | null = null;
 /** Arena v4: true when screen point (x, y) lies on the stage top (the v4 block's octagon). */
 export function onV4Plate(x: number, y: number): boolean {
-  if (!v4Plate) v4Plate = PLATE_OUTLINE.map(([c, r]) => ntIso(c, r));
+  // arena v5 step 2: the octagon + the two dais tabs (not convex): even-odd crossing test
+  if (!v4Plate) v4Plate = PLATE_POLY.map(([c, r]) => ntIso(c, r));
   const P = v4Plate;
-  // convex, clockwise on screen: inside = on the right of every edge (screen y down)
-  for (let i = 0; i < P.length; i++) {
+  let k = false;
+  for (let i = 0, j = P.length - 1; i < P.length; j = i++) {
     const a = P[i];
-    const b = P[(i + 1) % P.length];
-    if ((b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x) < 0) return false;
+    const b = P[j];
+    if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) k = !k;
   }
-  return true;
+  return k;
 }
 
 /**

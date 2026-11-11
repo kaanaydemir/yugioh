@@ -38,7 +38,7 @@ import { monsterFrame, monsterTextureKey } from '../../art/textures';
 import type { MonsterUnit } from '../../duel/MonsterUnit';
 import type { ZoneEntry } from '../../duel/FieldView';
 import { BOARD_V4, DEPTH, duelistXY, GAME_H, GAME_W, LOOK_V3, type XY } from '../layout';
-import { NT_DEPTH, ntIso, PLATE_OUTLINE, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1 } from '../board-nt/layout-nt';
+import { NT_DEPTH, ntIso, PLATE_POLY, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1 } from '../board-nt/layout-nt';
 import { onDuelStart } from '../../duel/seeds';
 import { type Stamp, StepPatch, quantize, stepImgRev } from './stepped';
 import { CAUSTIC_FRAMES, LIGHT_TEX, LT, ensureLightTextures } from './textures';
@@ -1353,7 +1353,9 @@ export const UNIT_LIGHT_V4 = BOARD_V4 && LOOK_V3;
 const OWNER_LIGHT: readonly [number, number] = [PAL.cyan3, PAL.crim3];
 const OWNER_RIM: readonly [number, number] = [PAL.cyan3, PAL.crim3];
 /** Multiply factors (0xRRGGBB) of the contact shadow bands: core, contact ring, cast tail. */
-const SHADOW_MUL = [0, 0x2e2c3e, 0x6a6880, 0x8a88a0] as const;
+// arena v5 step 2: one notch darker on every band — the stage stone is a brighter mid-tone now, the units must still sit on a
+// clearly dark contact (grayscale separation)
+const SHADOW_MUL = [0, 0x1e1c2a, 0x52506a, 0x76748e] as const;
 
 interface MulShadow {
   key: string;
@@ -1750,7 +1752,7 @@ function ensureKeyLightTex(scene: Phaser.Scene): string {
   if (ctx) {
     const imgData = ctx.createImageData(W, H);
     const data = imgData.data;
-    const poly = PLATE_OUTLINE.map(([c, r]) => ntIso(c, r));
+    const poly = PLATE_POLY.map(([c, r]) => ntIso(c, r));
     const inside = (x: number, y: number): boolean => {
       let k = false;
       for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {

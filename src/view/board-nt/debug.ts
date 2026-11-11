@@ -5,14 +5,14 @@
 import type Phaser from 'phaser';
 import { PAL } from '../../art/palette';
 import { pixelText } from '../../ui/text';
-import { KEEP_OUT, NT_DEPTH, PLATE_OUTLINE, ntIso, ntRegions } from './layout-nt';
+import { KEEP_OUT, NT_DEPTH, PLATE_POLY, ntIso, ntRegions } from './layout-nt';
 
 export function drawNtDebug(scene: Phaser.Scene, add: <T extends Phaser.GameObjects.GameObject>(o: T) => T): void {
   const g = add(scene.add.graphics().setDepth(NT_DEPTH.debug));
   // the platform top outline (grid → screen), pads included
   g.lineStyle(1, PAL.gold3, 1);
   g.beginPath();
-  PLATE_OUTLINE.forEach(([c, r], i) => {
+  PLATE_POLY.forEach(([c, r], i) => {
     const s = ntIso(c, r);
     if (i === 0) g.moveTo(Math.round(s.x) + 0.5, Math.round(s.y) + 0.5);
     else g.lineTo(Math.round(s.x) + 0.5, Math.round(s.y) + 0.5);

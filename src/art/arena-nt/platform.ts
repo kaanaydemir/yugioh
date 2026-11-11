@@ -3,7 +3,7 @@
 // the upper-left coping edges, and darkened low-contrast side armour without bright neon strip glare.
 // Pure PixelCanvas code (no Phaser): runs in Node for tests. Colours only from src/art/palette.ts.
 
-import { FACE_H, NT_COLS, NT_OX, NT_OY, NT_ROWS, PLATE_C0, PLATE_C1, PLATE_OUTLINE, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1, ntIso } from '../../view/board-nt/layout-nt';
+import { FACE_H, NT_COLS, NT_OX, NT_OY, NT_ROWS, PLATE_C0, PLATE_C1, PLATE_OUTLINE, PLATE_R0, PLATE_R1, PLATE_TABS, PLATE_X0, STAGE_U, STAGE_V, TAB_U, TAB_V, PLATE_X1, PLATE_Y0, PLATE_Y1, ntIso } from '../../view/board-nt/layout-nt';
 import { type Color, PixelCanvas } from '../pixel';
 import { PAL } from '../palette';
 import { NT_PAL } from './palette';
@@ -26,6 +26,7 @@ const N0 = M[0];
 const N1 = M[1];
 const N2 = M[2];
 const N3 = M[3];
+const N4 = M[4];
 const INK = NT_PAL.ink;
 const G0 = NT_PAL.graphite[0];
 const G1 = NT_PAL.graphite[1];
@@ -64,6 +65,22 @@ function plateDepth(c: number, r: number): number {
       best = d[k];
       side = k;
     }
+  // arena v5 step 2: the dais tabs (a union: the deeper of the block and a tab wins; side indices as the block's: 0 / 1 the tab's
+  // upper-left / lower-right side edges, 2 / 3 its far / near edges)
+  for (const t of PLATE_TABS) {
+    const td = [(c - t.c0) * 32, (t.c1 - c) * 32, (r - t.r0) * 32, (t.r1 - r) * 32];
+    let tb = td[0];
+    let ts = 0;
+    for (let k = 1; k < 4; k++)
+      if (td[k] < tb) {
+        tb = td[k];
+        ts = k;
+      }
+    if (tb > best) {
+      best = tb;
+      side = ts;
+    }
+  }
   depthSide = side;
   return best < 0 ? -1 : best / 32;
 }
@@ -130,11 +147,11 @@ export function buildPlatformArt(): PlatformArt {
 
   const faces = faceDefs();
   const cand: { x: number; y: number; tone: Color }[][] = [];
-  faces.forEach((f, i) => paintFace(S, f, i, strips, cand, vents, rim));
+  faces.forEach((f, i) => (BOARD_V4 ? paintFaceV5(S, f, i, vents, rim) : paintFace(S, f, i, strips, cand, vents, rim)));
   lap('faces');
   const dashes = paintTop(S, x0, y0, x1, y1);
   lap('top');
-  for (const k of PILLARS()) paintPillar(S, k);
+  for (const k of PILLARS()) (BOARD_V4 ? paintPillarV5(S, k) : paintPillar(S, k));
   const kept: Omit<StripPiece, 'frame'>[] = [];
   strips.forEach((st, i) => {
     const px = cand[i].filter((q) => S.at(q.x, q.y) === q.tone);
@@ -307,10 +324,163 @@ function faceDefs(): FaceDef[] {
     void side;
     return { a, b, col, lit, side, seams, vents };
   };
+  if (BOARD_V4) {
+    // arena v5 step 2: the visible walls, back to front — P2's tab (the sliver of its right face above the far-right edge), the
+    // near-left long edge either side of P1's tab, the near flat edge, the near-right long edge, then P1's tab (front + right face)
+    const g = (u: number, v: number): [number, number] => [320 + u - v, 160 + (u + v) / 2];
+    const p2r = [g(-TAB_U, -TAB_V), g(TAB_U, -TAB_V), g(TAB_U, -STAGE_V)];
+    const t1 = [g(-TAB_U, STAGE_V), g(-TAB_U, TAB_V), g(TAB_U, TAB_V), g(TAB_U, STAGE_V)];
+    void p2r[0];
+    out.push(mk(p2r[2], p2r[1], false, 0, 1));
+    out.push(mk(V[0], t1[0], true, PLATE_C0, 0));
+    out.push(mk(t1[3], V[7], true, PLATE_C0, 0));
+    out.push(mk(V[7], V[6], false, 0, 0));
+    out.push(mk(V[6], V[5], false, PLATE_C1, null));
+    out.push(mk(t1[1], t1[2], true, PLATE_C0, 0));
+    out.push(mk(t1[2], t1[3], false, 0, 0));
+    return out;
+  }
   out.push(mk(V[0], V[7], true, PLATE_C0, null));
   out.push(mk(V[7], V[6], false, 0, 0));
   out.push(mk(V[6], V[5], false, PLATE_C1, null));
   return out;
+}
+
+// ---------------------------------------------------------------- arena v5 step 2: the stone-and-metal walls
+// hedef-gorunum-5: a tall chunky wall under the carved coping — two courses of stacked, carved stone blocks (staggered joints, a lit
+// top edge per block, chips), a metal ledge, then a band of riveted metal panels: every other panel a slatted vent glowing softly
+// in the owner's colour (dim spill rows, a brighter core in the middle of the slats), the others plain plates with a small status
+// LED (blinking, the view's) and a recessed name plate; panel seams with a lit edge; a darker plinth at the foot where the wall
+// meets the hall floor. Lit = the near-left faces (key light from the top left); the rest one step down. Low contrast: the stage
+// veil (view/board-nt/glow.ts) darkens it all; only the vent cores (cyan2 / crim2) and the LEDs stay emissive.
+const W5_COURSES = [3, 9] as const; // first row of each stone course (6 rows each, the last a mortar row)
+const W5_LEDGE = 15; // ink, lit ledge, shadow
+const W5_M0 = 18; // metal band rows 18 .. 39
+const W5_M1 = 40;
+const W5_PLINTH = 40; // ink, lit lip, body ×3, ink foot
+
+function paintFaceV5(S: Surface, f: FaceDef, id: number, vents: PlatformArt['vents'], rim: PlatformArt['rim']): void {
+  const [A, B] = [f.a, f.b];
+  const lit = f.lit;
+  const slope = (B[1] - A[1]) / (B[0] - A[0]);
+  const yTop = (x: number): number => edgeTop(A[1], slope, A[0], x);
+  const sideAt = (x: number): 0 | 1 => stripSide(f.side !== null ? f.side : sideOfRow(f.col - (x - NT_OX) / 32), x);
+  const L = B[0] - A[0];
+  // metal panels ~24 px (at least one), stone joints ~11..19 px per course, staggered
+  const np = Math.max(1, Math.round(L / 24));
+  const seams = Array.from({ length: np + 1 }, (_, j) => A[0] + Math.round((L * j) / np));
+  const joints = W5_COURSES.map((_, ci) => {
+    const out: number[] = [];
+    let x = A[0] - Math.floor(hash(id * 17 + ci * 5) * 14);
+    let k = 0;
+    while (x < B[0]) {
+      out.push(x);
+      x += 11 + Math.floor(hash(id * 131 + ci * 977 + k++ * 13) * 9);
+    }
+    out.push(x);
+    return out;
+  });
+  const ST = lit ? ([PAL.stone3, PAL.stone2, PAL.stone1, PAL.stone0] as const) : ([PAL.stone2, PAL.stone1, PAL.stone0, INK] as const);
+  const MT = lit ? ([N4, N3, N2, N0] as const) : ([N3, N2, N1, INK] as const);
+  const lipPts: { x: number; y: number }[] = [];
+  for (let x = A[0]; x < B[0]; x++) {
+    const yt = yTop(x);
+    let pi = 0;
+    while (pi + 1 < np && x >= seams[pi + 1]) pi++;
+    const sx0 = seams[pi];
+    const sx1 = seams[pi + 1];
+    const lx = x - sx0;
+    const rx = sx1 - 1 - x;
+    const mid = (sx0 + sx1) >> 1;
+    const vent = (pi + id) % 2 === 0 && sx1 - sx0 >= 14;
+    const T = STRIP_TONES[sideAt(x)];
+    for (let v = 0; v < FACE_H; v++) {
+      let c: Color;
+      if (v < 3) c = v === 0 ? ST[0] : v === 1 ? ST[1] : INK;
+      else if (v < W5_LEDGE) {
+        // stone courses: per block tone, a lit top row, the mortar row, a lit joint lip, the odd chip
+        const ci = v < W5_COURSES[1] ? 0 : 1;
+        const u = v - W5_COURSES[ci];
+        const js = joints[ci];
+        let bi = 0;
+        while (bi + 1 < js.length - 1 && x >= js[bi + 1]) bi++;
+        const jx = x - js[bi];
+        const jr = js[bi + 1] - 1 - x;
+        const bt = hash(bi * 7 + ci * 31 + id * 211);
+        const body = bt < 0.3 ? ST[2] : ST[1];
+        if (u === 5) c = INK;
+        else if (jx === 0) c = INK;
+        else if (u === 0) c = jx === 1 ? ST[1] : ST[0];
+        else if (jx === 1) c = ST[0];
+        else if (jr === 0 || u === 4) c = ST[2];
+        else c = body;
+        // a knocked-off block corner (dark pit, lit lower lip) and moss in an odd joint
+        if (bt > 0.8 && jr <= 2 && u <= 2 && jr + u <= 2) c = u === 2 || jr === 2 ? ST[0] : ST[3];
+        if (bt < 0.06 && jx <= 2 && u >= 3 && u <= 4) c = PAL.leaf0;
+      } else if (v < W5_M0) {
+        const u = v - W5_LEDGE;
+        c = u === 0 ? INK : u === 1 ? MT[0] : MT[3];
+      } else if (v < W5_M1) {
+        const u = v - W5_M0;
+        const H = W5_M1 - W5_M0;
+        // panel: lit top row, body, a darker foot row; seam (ink + lit edge)
+        c = u === 0 ? MT[0] : u >= H - 2 ? MT[2] : MT[1];
+        if (lx === 0 && pi > 0) c = INK;
+        else if (lx === 1 && pi > 0) c = MT[0];
+        else if (rx === 0 && pi < np - 1) c = MT[2];
+        // rivets at the four corners (a bright head, its shadow below)
+        const rv = (lx === 3 || rx === 2) && (u === 2 || u === H - 4);
+        const rvs = (lx === 3 || rx === 2) && (u === 3 || u === H - 3);
+        if (rv) c = lit ? M[5] : N4;
+        else if (rvs) c = INK;
+        else if (vent) {
+          // the slatted vent: an ink frame, slats (dark) over a soft glow (spill rows; the middle of every other glow row hotter)
+          const vx = Math.abs(x - mid + 0.5);
+          const hw = Math.min(9, (sx1 - sx0) / 2 - 5);
+          if (u >= 5 && u <= H - 6 && vx < hw + 1) {
+            if (u === 5 || u === H - 6 || vx >= hw) c = INK;
+            else if (u % 2 === 0) c = INK;
+            else c = vx < 2 && u % 4 === 1 ? T[4] : vx < hw - 3 ? T[2] : T[3];
+          }
+        } else {
+          // a recessed name plate (ink top / left, lit bottom / right) and a status LED (blinks, the view's)
+          const px0 = 5;
+          const pw = Math.min(10, sx1 - sx0 - 12);
+          if (pw >= 4 && lx >= px0 && lx < px0 + pw && u >= 9 && u <= 12) c = u === 9 || lx === px0 ? INK : u === 12 || lx === px0 + pw - 1 ? MT[0] : MT[2];
+          if (rx === 4 && u === 6) c = N0;
+          if (rx === 4 && u === 7) c = MT[3];
+        }
+        // wear: a scuff along the foot of some panels
+        if (u === H - 3 && hash(x * 3 + id) < 0.12) c = MT[3];
+      } else {
+        const u = v - W5_PLINTH;
+        c = u === 0 ? INK : u === 1 ? ST[1] : u === FACE_H - W5_PLINTH - 1 ? INK : u === 2 ? ST[2] : ST[3];
+        if (u === 1 && hash(x * 7 + id * 3) < 0.1) c = ST[2]; // a worn chip in the plinth's lip
+      }
+      S.put(x, yt + v, c);
+    }
+    if (!vent && rx === 4) LEDS.push({ x, y: yt + W5_M0 + 6, side: f.side === null ? sideOfRow(f.col - (x - NT_OX) / 32) : f.side });
+    lipPts.push({ x, y: yt - 1 });
+  }
+  for (let pi = 0; pi < np; pi++)
+    if ((pi + id) % 2 === 0) {
+      const vx = (seams[pi] + seams[pi + 1]) >> 1;
+      vents.push({ x: vx, y: yTop(vx) + W5_M0 + 8, dir: lit ? -1 : 1 });
+    }
+  if (L > 60) rim.push(lipPts);
+}
+
+/** arena v5 step 2: a corner post where two wall faces meet — a carved stone quoin column (lit left, shaded right, course lines). */
+function paintPillarV5(S: Surface, p: Pillar): void {
+  for (let x = p.cx - PIL_HW; x < p.cx + PIL_HW; x++) {
+    const yt = edgeTop(p.k[1], x <= p.k[0] ? p.sl : p.sr, p.k[0], x);
+    const k = x - p.cx;
+    for (let v = 3; v < W5_PLINTH; v++) {
+      let c: Color = k === -2 ? PAL.stone3 : k === -1 ? PAL.stone2 : k === 0 ? PAL.stone1 : INK;
+      if ((v - 3) % 6 === 5 || v === W5_LEDGE) c = k === -2 ? PAL.stone2 : INK;
+      S.put(x, yt + v, c);
+    }
+  }
 }
 
 // hedef-gorunum-3 (arena pass 2026-11-05): a THICK stage wall of grey-navy armour panels. Rows (FACE_H = 46):
@@ -484,6 +654,19 @@ interface Pillar {
 
 function PILLARS(): Pillar[] {
   const v = (i: number): [number, number] => rp(ntIso(PLATE_OUTLINE[i][0], PLATE_OUTLINE[i][1]));
+  if (BOARD_V4) {
+    // arena v5 step 2: the octagon's visible corners + P1's tab (its left silhouette corner, its front-right corner)
+    const tl: [number, number] = [320 - TAB_U - TAB_V, 160 + (TAB_V - TAB_U) / 2];
+    const tr: [number, number] = [320 + TAB_U - TAB_V, 160 + (TAB_V + TAB_U) / 2];
+    return [
+      { k: v(0), sl: 0.5, sr: 0.5, cx: v(0)[0] + 2, side: 0 },
+      { k: v(7), sl: 0.5, sr: 0, cx: v(7)[0], side: 0 },
+      { k: v(6), sl: 0, sr: -0.5, cx: v(6)[0], side: 0 },
+      { k: v(5), sl: -0.5, sr: -0.5, cx: v(5)[0] - 2, side: 1 },
+      { k: tl, sl: 0.5, sr: 0.5, cx: tl[0] + 2, side: 0 },
+      { k: tr, sl: 0.5, sr: -0.5, cx: tr[0], side: 0 },
+    ];
+  }
   const left = v(0);
   const bl = v(7);
   const br = v(6);

@@ -43,7 +43,7 @@ import { calmZones } from '../board-calm/art';
 import { REDUCED_MOTION } from '../v3/motion';
 import { TEX } from '../../vfx/core';
 import { LOW_LP, fieldThemeWatcher, readLp } from './duel-watch';
-import { DUELIST_PADS, NT_DEPTH, PLATE_C0, PLATE_C1, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1, SCREENS, SCREEN_INNER, ntGrid } from './layout-nt';
+import { DUELIST_PADS, NT_DEPTH, PLATE_C0, PLATE_C1, PLATE_POLY, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1, SCREENS, SCREEN_INNER, ntGrid, ntIso } from './layout-nt';
 import type { NtCtx, NtLayer } from './layer';
 import { ensureNtTexture } from './textures';
 
@@ -446,8 +446,15 @@ export function createReactLayer(ctx: NtCtx): NtLayer {
       const n = Math.max(1, Math.round(Math.abs(b.x - a.x) / 6));
       for (let i = 0; i <= n; i++) wallTop.push({ x: Math.round(a.x + ((b.x - a.x) * i) / n), y: Math.round(a.y + ((b.y - a.y) * i) / n) });
     };
-    seg({ x: 116, y: 190 }, { x: 304, y: 284 });
-    seg({ x: 372, y: 284 }, { x: 524, y: 208 });
+    // arena v5 step 2: the visible wall tops of PLATE_POLY (the near-left edge with P1's tab, the near-right edge)
+    const P = PLATE_POLY.map(([c, r]) => ntIso(c, r));
+    const n = P.length;
+    for (let i = 0; i < n; i++) {
+      const a = P[i];
+      const b = P[(i + 1) % n];
+      // a wall faces the camera when the edge runs left → right along the bottom of the outline (clockwise: b.x < a.x, going back)
+      if (b.x < a.x && Math.abs(b.y - a.y) > 0 && a.y > 140) seg({ x: Math.round(b.x), y: Math.round(b.y) }, { x: Math.round(a.x), y: Math.round(a.y) });
+    }
   }
 
   // ---- idle life: the screen glitch

@@ -3,7 +3,7 @@
 
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
-import { FACE_H, PLATE_OUTLINE, ntIso } from '../../view/board-nt/layout-nt';
+import { FACE_H, PLATE_OUTLINE, PLATE_POLY, ntIso } from '../../view/board-nt/layout-nt';
 import { BOARD_V4 } from '../../view/layout';
 import { type NtAtlas, packAtlas } from './wall-kit';
 
@@ -437,7 +437,7 @@ const EDGE_BOX = BOARD_V4 ? ({ x: 84, y: 140, w: 472, h: 220 } as const) : ({ x:
 
 function plateMask(): PixelCanvas {
   const m = new PixelCanvas(EDGE_BOX.w, EDGE_BOX.h);
-  const pts = PLATE_OUTLINE.map(([c, r]) => {
+  const pts = PLATE_POLY.map(([c, r]) => {
     const s = ntIso(c, r);
     return [Math.round(s.x) - EDGE_BOX.x, Math.round(s.y) - EDGE_BOX.y] as const;
   });

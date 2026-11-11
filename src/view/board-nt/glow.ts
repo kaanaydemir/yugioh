@@ -40,7 +40,7 @@ import { PAL, RAMPS } from '../../art/palette';
 import { BANISH_PAD, BOARD_V4, zoneXY } from '../layout';
 import { hasLight, lightEnabled } from '../light';
 import { calmZones } from '../board-calm/art';
-import { DUELIST_PADS, HOLOS, NT_DEPTH, PLATE_OUTLINE, SCREENS, ntIso } from './layout-nt';
+import { DUELIST_PADS, HOLOS, NT_DEPTH, PLATE_POLY, SCREENS, ntIso } from './layout-nt';
 import type { NtCtx, NtLayer } from './layer';
 
 type Img = Phaser.GameObjects.Image;
@@ -251,7 +251,8 @@ function stageK(x: number, y: number, top: boolean): { k: number; warm: number }
     const r = Math.sqrt(dx * dx + dy * dy);
     if (r < 1) warm = Math.max(warm, r < 0.45 ? 2 : 1);
   }
-  if (!top) return { k: warm === 2 ? 0.66 : warm === 1 ? 0.56 : 0.46, warm };
+  // arena v5 step 2: the stone-and-metal walls a notch up (their courses, panels, rivets must read; still well under the top)
+  if (!top) return V5_TOP ? { k: warm === 2 ? 0.74 : warm === 1 ? 0.64 : 0.56, warm } : { k: warm === 2 ? 0.66 : warm === 1 ? 0.56 : 0.46, warm };
   // step 3 (a): ONE flat level on the bare stage top. The three-band key pool (0.6 / 0.55 / 0.5) left faint elliptical contour
   // rings on the flat stone; the pools of light on the top are the units' own (LightLayer) and the zone borders' spill.
   void x;
@@ -268,7 +269,7 @@ function veilPixel(d: Uint8ClampedArray, o: number, f: RGB): void {
 
 function bakeStageVeil(px: Uint8ClampedArray, w: number, h: number): Uint8ClampedArray {
   const d = new Uint8ClampedArray(w * h * 4);
-  const poly = PLATE_OUTLINE.map(([c, r]) => ntIso(c, r));
+  const poly = PLATE_POLY.map(([c, r]) => ntIso(c, r));
   for (let j = 0; j < h; j++)
     for (let i = 0; i < w; i++) {
       const o = (j * w + i) * 4;
@@ -291,7 +292,8 @@ function bakeStageVeil(px: Uint8ClampedArray, w: number, h: number): Uint8Clampe
       const { k, warm } = stageK(x + 0.5, y + 0.5, top);
       // arena v5 step 1: the flagstone top keeps more of the slate ramp's violet (hedef-gorunum-5: violet-grey stone), a little
       // less darkening on its now textured tones (the stage's MEAN stays where it was: the painter's flags are mostly stone1)
-      if (top && V5_TOP) veilPixel(d, o, gradeFactor(c, 0.68, 0.1, VIOLET));
+      // step 2: the top a clear mid-tone slate (target ≈ 75–83 mean luma): much less darkening, the violet tint kept
+      if (top && V5_TOP) veilPixel(d, o, gradeFactor(c, 0.9, 0.1, VIOLET));
       else veilPixel(d, o, gradeFactor(c, k, 0.32, warm ? WARM : COOL));
     }
   return d;
@@ -415,7 +417,8 @@ function bakeZoneGlow(slotPx: (player: 0 | 1, frame: string) => Uint8ClampedArra
               }
         if (dist === 9) continue;
         const inside = u >= 0 && v >= 0 && u < 64 && v < 32 && px[(v * 64 + u) * 4 + 3] >= 128;
-        const lv = inside ? (IN[dist] ?? 0) : OUT[dist];
+        // step 2: the crimson spill inside a slot held lower (red on the dark pit floor read muddy next to the cyan side)
+        const lv = inside ? (IN[dist] ?? 0) * (z.player === 1 && !white ? 0.55 : 1) : OUT[dist];
         if (!lv) continue;
         const X = sx + u - ZONE_BOX.x;
         const Y = sy + v - ZONE_BOX.y;

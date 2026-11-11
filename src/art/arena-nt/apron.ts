@@ -1,7 +1,7 @@
 // Neon Tower painter: APRON — the hall floor around and under the platform.
 // Readability pass: darker, lower contrast, desaturated floor and props around the platform so the duel board stands out.
 
-import { FACE_H, NT_OX, NT_OY, PLATE_C0, PLATE_C1, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1 } from '../../view/board-nt/layout-nt';
+import { FACE_H, NT_OX, NT_OY, PLATE_C0, PLATE_C1, PLATE_R0, PLATE_R1, PLATE_TABS, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1 } from '../../view/board-nt/layout-nt';
 import { type Color, PixelCanvas } from '../pixel';
 import { PAL } from '../palette';
 import { NT_PAL } from './palette';
@@ -42,7 +42,9 @@ function outsideOf(x: number, y: number): number {
   const r = (sum - ga) / 2;
   const s = c + r;
   const u = c - r;
-  const m = Math.min((c - PLATE_C0) * 32, (PLATE_C1 - c) * 32, (r - PLATE_R0) * 32, (PLATE_R1 - r) * 32, (s - S_FAR) * 16, (S_NEAR - s) * 16, (u - U_LEFT) * 32, (U_RIGHT - u) * 32);
+  let m = Math.min((c - PLATE_C0) * 32, (PLATE_C1 - c) * 32, (r - PLATE_R0) * 32, (PLATE_R1 - r) * 32, (s - S_FAR) * 16, (S_NEAR - s) * 16, (u - U_LEFT) * 32, (U_RIGHT - u) * 32);
+  // arena v5 step 2: the dais tabs are part of the stage's footprint
+  for (const t of PLATE_TABS) m = Math.max(m, Math.min((c - t.c0) * 32, (t.c1 - c) * 32, (r - t.r0) * 32, (t.r1 - r) * 32));
   return -m;
 }
 

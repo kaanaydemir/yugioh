@@ -1669,6 +1669,8 @@ export function buildCrackField(origin: { col: number; row: number }, seed = 7):
         if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
         const j = ny * W + nx;
         if (isCrack[j]) continue;
+        // arena v5 step 2: the heat halo stays on the stage top too (it peeked 1–2 px past the cut corners)
+        if (BOARD_V4 && !onV4Plate(nx + R.x + 0.5, ny + R.y + 0.5)) continue;
         const ring = Math.max(Math.abs(dx), Math.abs(dy)) === 1 && Math.abs(dx) + Math.abs(dy) <= 1 ? 1 : 2;
         if (ring === 2 && Math.abs(dx) + Math.abs(dy) > 2) continue;
         const d = dist[i] + ring;

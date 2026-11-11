@@ -163,7 +163,8 @@ function recessFrame(player: 0 | 1, state: number, boost: number, st: boolean): 
   // crim is darker than cyan at the same step (luma ≈ 132 vs 177): the red spill one step up so both sides weigh the same
   const lift = player === 1 ? 1 : 0;
   const R = (k: number): Color => ramp[Math.max(0, Math.min(4, k))];
-  const floor: Color = player === 0 ? PAL.night0 : PAL.void0;
+  // step 2: both sides share the same clean neutral pit floor (P2's void0 read as a muddy maroon under the red spill)
+  const floor: Color = PAL.night0;
   const { cx, cy } = slotCentre();
   const dX = (i: number): number => i + 0.5 - cx;
   const dY = (j: number): number => j + 0.5 - cy;
@@ -182,9 +183,11 @@ function recessFrame(player: 0 | 1, state: number, boost: number, st: boolean): 
         const y = Math.abs(dY(j));
         return (y < 0.6 && x < 4.6) || (x < 1 && y < 2.6) || (y < 1 && x < 2);
       };
-  const gRing: Color = R([1, 1, 2][L] + (L > 0 ? lift : 0));
-  const gStar: Color = R([1, 2, 2][L] + (L > 0 ? lift : 0));
-  const gInset: Color = R([0, 1, 1][L]);
+  // step 2: the red engraving one step up at rest too (crim1 on the dark pit read as a muddy maroon smear next to cyan1), and its
+  // inset groove a neutral night1 instead of crim0
+  const gRing: Color = R([1, 1, 2][L] + lift);
+  const gStar: Color = R([1, 2, 2][L] + lift);
+  const gInset: Color = player === 1 && L === 0 ? PAL.night1 : R([0, 1, 1][L]);
   const innerD: Mask = (i, j) => Math.abs(dX(i)) / 2 + Math.abs(dY(j)) < 9;
   const inset: Mask = (i, j) => innerD(i, j) && (!innerD(i, j - 1) || !innerD(i, j + 1));
   for (let j = 0; j < 32; j++)
