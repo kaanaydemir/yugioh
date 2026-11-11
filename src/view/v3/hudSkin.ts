@@ -55,7 +55,8 @@ export const HUD3 = Object.freeze({
   /** Count groups (deck / hand / grave): icon left x; icons centred on cy. */
   counts: Object.freeze({ cy: 50, x: Object.freeze([8, 54, 100]) }),
   chip: Object.freeze({ w: 36, h: 11, y: 2, right: 6 }),
-  phase: Object.freeze({ segW: 54, segX0: 4, cap: 5, sepY: 7, pillY: 1, pillH: 14 }),
+  // segW 50 (was 54): five cells since Main Phase 2 — DRAW · MAIN 1 · BATTLE · MAIN 2 · END
+  phase: Object.freeze({ segW: 50, segX0: 4, cap: 5, sepY: 7, pillY: 1, pillH: 14 }),
   turn: Object.freeze({ dx: -50, w: 46, h: 16, labelX: 5, labelCap: 6, numCap: 5, numCx: 36 }),
   mainBtn: Object.freeze({ h: 25, y1: 1, y2: 30 }),
   toolbar: Object.freeze({ y: 4, h: 16 }),

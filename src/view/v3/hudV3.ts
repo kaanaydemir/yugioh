@@ -135,8 +135,14 @@ interface ArrivalPiece {
   shown: number;
 }
 
-const PHASES: Phase[] = ['draw', 'main', 'battle', 'end'];
-const PHASE_LABEL_V3: Record<Phase, string> = { draw: 'DRAW', main: 'MAIN', battle: 'BATTLE', end: 'END' };
+/** Five cells since Main Phase 2 (owner decision 2026-11): DRAW · MAIN 1 · BATTLE · MAIN 2 · END. */
+const PHASES: Phase[] = ['draw', 'main', 'battle', 'main2', 'end'];
+const PHASE_LABEL_V3: Record<Phase, string> = { draw: 'DRAW', main: 'MAIN 1', battle: 'BATTLE', main2: 'MAIN 2', end: 'END' };
+const BATTLE_CELL = PHASES.indexOf('battle');
+/** The phase bar's width (its own five cells; UI.phaseBar keeps v1's 224 px rect, the bar is centred on it). */
+const BAR_W = HUD3.phase.segX0 * 2 + PHASES.length * HUD3.phase.segW;
+/** The bar's screen x: centred on UI.phaseBar (screen centre), so the BATTLE cell sits right on x 320. */
+const barX = (): number => UI.phaseBar.x + Math.round((UI.phaseBar.w - BAR_W) / 2);
 const PLAYER_NAME: Record<PlayerId, string> = { 0: 'PLAYER 1', 1: 'PLAYER 2' };
 const FRAME_MS = 1000 / 60;
 
@@ -389,10 +395,11 @@ export class HudV3 implements HudApi {
     // ---- phase bar (neutral plate, separators, the pill under the labels)
     const pb = UI.phaseBar;
     const P = HUD3.phase;
-    this.phaseRoot = this.track(scene.add.container(pb.x, pb.y).setDepth(DEPTH.HUD).setScrollFactor(0));
-    const barKey = canvasTexture(scene, `ui3:hud:phasebar:${pb.w}x${pb.h}`, () => {
-      const p = plateBodyV3(pb.w, pb.h);
-      for (let i = 1; i < 4; i++) {
+    const bx = barX();
+    this.phaseRoot = this.track(scene.add.container(bx, pb.y).setDepth(DEPTH.HUD).setScrollFactor(0));
+    const barKey = canvasTexture(scene, `ui3:hud:phasebar:${BAR_W}x${pb.h}:${PHASES.length}`, () => {
+      const p = plateBodyV3(BAR_W, pb.h);
+      for (let i = 1; i < PHASES.length; i++) {
         const x = this.segX(i) - 1;
         p.set(x, P.sepY, PAL.night4).hline(x - 1, x + 1, P.sepY + 1, PAL.night4).set(x, P.sepY + 2, PAL.night4);
         p.set(x, P.sepY + 1, PAL.steel);
@@ -401,7 +408,7 @@ export class HudV3 implements HudApi {
     });
     this.phaseBody = scene.add.image(0, 0, barKey).setOrigin(0);
     this.phaseRoot.add(this.phaseBody);
-    this.phaseTrim = new TrimGfx(scene, this.phaseRoot, 0, 0, pb.w, pb.h).set(styleTrim('neutral', -1));
+    this.phaseTrim = new TrimGfx(scene, this.phaseRoot, 0, 0, BAR_W, pb.h).set(styleTrim('neutral', -1));
     this.pill = scene.add.graphics();
     this.phaseRoot.add(this.pill);
     PHASES.forEach((ph, i) => {
@@ -419,7 +426,7 @@ export class HudV3 implements HudApi {
 
     // ---- turn badge (left of the phase bar)
     const T = HUD3.turn;
-    this.turnRoot = this.track(scene.add.container(pb.x + T.dx, pb.y).setDepth(DEPTH.HUD).setScrollFactor(0));
+    this.turnRoot = this.track(scene.add.container(bx + T.dx, pb.y).setDepth(DEPTH.HUD).setScrollFactor(0));
     const badgeKey = canvasTexture(scene, `ui3:hud:turnbadge:${T.w}x${T.h}`, () => plateBodyV3(T.w, T.h));
     this.turnBody = scene.add.image(0, 0, badgeKey).setOrigin(0);
     this.turnRoot.add(this.turnBody);
@@ -837,7 +844,7 @@ export class HudV3 implements HudApi {
   /** The turn badge's rect (screen px): where the turn plate lands. */
   turnBadgeRect(): Rect {
     const pb = UI.phaseBar;
-    return { x: pb.x + HUD3.turn.dx, y: pb.y, w: HUD3.turn.w, h: HUD3.turn.h };
+    return { x: barX() + HUD3.turn.dx, y: pb.y, w: HUD3.turn.w, h: HUD3.turn.h };
   }
 
   /**
@@ -847,10 +854,17 @@ export class HudV3 implements HudApi {
   phasePillRect(phase: Phase): Rect {
     const pb = UI.phaseBar;
     const i = PHASES.indexOf(phase);
-    return { x: pb.x + this.pillHome(i) - 1, y: pb.y + HUD3.phase.pillY - 1, w: HUD3.phase.segW - 2 + 2, h: HUD3.phase.pillH + 2 };
+    return { x: barX() + this.pillHome(i) - 1, y: pb.y + HUD3.phase.pillY - 1, w: HUD3.phase.segW - 2 + 2, h: HUD3.phase.pillH + 2 };
   }
 
-  setButtons(state: { battle?: boolean; endTurn?: boolean; attention?: 'battle' | 'endTurn' | null }): void {
+  setButtons(state: { battle?: boolean; endTurn?: boolean; attention?: 'battle' | 'endTurn' | null; battleAs?: 'battle' | 'main2' }): void {
+    // battleAs 'main2' (additive): in the Battle Phase the BATTLE button ends the battle (→ Main Phase 2)
+    if (state.battleAs !== undefined) {
+      const m2 = state.battleAs === 'main2';
+      this.battleButton.setLabel(m2 ? 'MAIN 2' : 'BATTLE');
+      this.battleButton.setIcon(m2 ? ICON.endTurn : ICON.swords);
+      this.battleButton.setStyle(m2 ? 'neutral' : 'fire'); // the crimson leaves with the battle
+    }
     if (state.battle !== undefined) this.battleButton.setEnabled(state.battle);
     if (state.endTurn !== undefined) this.endTurnButton.setEnabled(state.endTurn);
     if (state.attention !== undefined) {
@@ -1081,8 +1095,8 @@ export class HudV3 implements HudApi {
     const toolbar = [this.speedButton, this.soundButton, this.logButton, this.menuButton];
     const top: ArrivalPiece = {
       objs: [
-        { o: this.phaseRoot, x: pb.x, y: pb.y },
-        { o: this.turnRoot, x: pb.x + T.dx, y: pb.y },
+        { o: this.phaseRoot, x: barX(), y: pb.y },
+        { o: this.turnRoot, x: barX() + T.dx, y: pb.y },
         ...toolbar.map((b) => ({ o: b, x: b.x, y: b.y })),
       ],
       dx: A.top.dx,
@@ -1402,7 +1416,7 @@ export class HudV3 implements HudApi {
     const dark = this.pillFlash ? PAL.white : this.pillRamp[1];
     // the SAVAŞ cell's crimson fill (F2) sits under the pill; in battle the pill's inside shows it
     const bt = this.battleTone;
-    if (bt !== null) g.fillStyle(bt, 1).fillRect(this.pillHome(2) + 1, y + 1, w - 2, h - 2);
+    if (bt !== null) g.fillStyle(bt, 1).fillRect(this.pillHome(BATTLE_CELL) + 1, y + 1, w - 2, h - 2);
     g.fillStyle(this.phase === 'battle' && bt !== null ? bt : PAL.night1, 1).fillRect(x + 1, y + 1, w - 2, h - 2);
     g.fillStyle(light, 1);
     g.fillRect(x + 1, y, w - 2, 1);

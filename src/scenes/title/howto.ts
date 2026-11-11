@@ -319,31 +319,34 @@ const PAGES: Page[] = [
   {
     title: 'Turn Flow',
     lines: [
-      'Every turn has four phases: Draw → Main → Battle → End.',
+      'Every turn has five phases: Draw → Main 1 → Battle → Main 2 → End.',
       'Draw: draw 1 card from your deck.',
-      'Main: Summon monsters, Set cards, activate Spells.',
+      'Main 1: Summon monsters, Set cards, activate Spells.',
       'Battle: attack with your monsters in Attack Position.',
+      'Main 2: everything from Main 1 again (once-per-turn limits still count).',
       'End: keep at most 6 cards in hand; the turn passes to your opponent.',
       LOOK_V3 ? 'The first player also draws on turn 1, but cannot attack.' : 'The first player does not draw on turn 1 and cannot attack.',
     ],
     async run(st) {
       const s = st.scene;
-      const phases = ['DRAW', 'MAIN', 'BATTLE', 'END'];
-      const chips = phases.map((_, i) => st.chip(36 + i * 72, 18, 66, 18, 'neutral', true));
-      const labels = phases.map((p, i) => st.label(36 + i * 72, 18, p, PAL.steel, 'md'));
+      const phases = ['DRAW', 'MAIN 1', 'BATTLE', 'MAIN 2', 'END'];
+      const CX = (i: number) => 28 + i * 58;
+      const CW = 54;
+      const chips = phases.map((_, i) => st.chip(CX(i), 18, CW, 18, 'neutral', true));
+      const labels = phases.map((p, i) => st.label(CX(i), 18, p, PAL.steel, 'md'));
       const marker = st.add(s.add.image(0, 0, ICON.caret).setAngle(90).setTint(PAL.gold3).setDepth(DEPTH.FX_TOP + 60));
       const setPhase = (i: number) => {
         phases.forEach((_, k) => {
           const on = k === i;
-          chips[k].setTexture(panelTex(s, on ? (k === 2 ? 'p2' : 'gold') : 'neutral', 66, 18, { chamfer: 2, dim: !on }));
+          chips[k].setTexture(panelTex(s, on ? (k === 2 ? 'p2' : 'gold') : 'neutral', CW, 18, { chamfer: 2, dim: !on }));
           labels[k].setTint(on ? PAL.white : PAL.steel);
         });
-        const p = st.at(36 + i * 72, 6);
+        const p = st.at(CX(i), 6);
         s.tweens.killTweensOf(marker);
         void tween(s, { targets: marker, x: p.x, y: p.y - 2, duration: 180, ease: 'Back.Out' });
         st.sfx('phaseChange', 0.35);
       };
-      const mp = st.at(36, 6);
+      const mp = st.at(CX(0), 6);
       marker.setPosition(mp.x, mp.y);
       const deckP = st.at(40, 136);
       st.add(new CardSprite(s, deckP.x, deckP.y, null).setDepth(DEPTH.FX + 10));
@@ -406,8 +409,12 @@ const PAGES: Page[] = [
           }),
         ]);
         await st.wait(500);
-        // BİTİŞ
+        // ANA 2
         setPhase(3);
+        note.setText('Main 2: Summon or Set if you still can, Set cards');
+        await st.wait(1100);
+        // BİTİŞ
+        setPhase(4);
         note.setText('The turn passes to your opponent');
         await st.wait(1300);
         await st.vanish(wolf, 'FIRE');

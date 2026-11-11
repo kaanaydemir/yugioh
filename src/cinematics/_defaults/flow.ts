@@ -213,7 +213,7 @@ registerEvent(
       return;
     }
     void hud.setPhase(phase, player, true);
-    if (phase === 'end') ctx.music.setIntensity(0.35);
+    if (phase === 'end' || phase === 'main2') ctx.music.setIntensity(0.35);
     await wait(ctx.scene, phase === 'main' ? 200 : 140);
   },
   P,

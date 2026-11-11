@@ -671,12 +671,11 @@ class GravePanelView {
     if (this.closing || this.dead || this.n <= GRAVE.visible) return;
     this.wheelAcc += Math.abs(dy) >= Math.abs(dx) ? dy : dx;
     // one card per notch (a mouse wheel's 100; a trackpad's small deltas add up)
-    while (Math.abs(this.wheelAcc) >= 40) {
-      const s = Math.sign(this.wheelAcc);
-      this.wheelAcc -= s * 100;
-      if (Math.sign(this.wheelAcc) === s) this.wheelAcc = 0;
-      this.scrollBy(s);
-    }
+    if (Math.abs(this.wheelAcc) < 40) return;
+    const s = Math.sign(this.wheelAcc);
+    const k = Math.max(1, Math.min(3, Math.round(Math.abs(this.wheelAcc) / 100)));
+    this.wheelAcc = 0;
+    this.scrollBy(s * k);
   };
 
   private onKey(e: KeyboardEvent): boolean {

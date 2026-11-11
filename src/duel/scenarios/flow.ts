@@ -51,6 +51,21 @@ const FLOW: Record<string, Scenario> = {
     stage: { active: 1, p1: { monsters: ['magma_titan', 'storm_hawk', null] }, p0: { monsters: [null, 'lumen_sprite'] } },
     steps: [{ type: 'enterBattle', player: 1 }],
   },
+  flowMain2: {
+    desc: 'battle → Main Phase 2 (pill slides on into MAIN 2, the crimson steps out, music settles, a cooling wave), then the idle MAIN 2 input',
+    stage: { phase: 'battle', p0: { monsters: ['ember_wolf', 'crystal_wyrm', { id: 'tide_golem', position: 'defense' }], hand: ['mirror_barrier', 'healing_spring'] }, p1: { monsters: [null, 'stone_sentinel'] } },
+    steps: [{ type: 'endBattle', player: 0 }],
+  },
+  flowMain2P2: {
+    desc: 'P2 battle → Main Phase 2 (mirrored side)',
+    stage: { active: 1, phase: 'battle', p1: { monsters: ['magma_titan', 'storm_hawk', null], hand: ['chains_of_light'] }, p0: { monsters: [null, 'lumen_sprite'] } },
+    steps: [{ type: 'endBattle', player: 1 }],
+  },
+  flowMain2Idle: {
+    desc: 'the Battle Phase with nothing left to attack: the MAIN 2 button asks to be pressed (hint: go to MAIN 2, or END TURN)',
+    stage: { phase: 'battle', p0: { monsters: [{ id: 'ember_wolf', attacks: 1 }], hand: ['mirror_barrier'] }, p1: { monsters: [null, 'stone_sentinel'] } },
+    steps: [],
+  },
   flowEndPhase: {
     desc: 'battle → end phase → P2 turn (music settles)',
     stage: { phase: 'battle', p0: { monsters: ['ember_wolf'] }, p1: { deck: ['tide_golem'] } },

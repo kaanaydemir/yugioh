@@ -32,7 +32,7 @@
 
 import Phaser from 'phaser';
 import { CARDS, cardDef, isMonster, isSpell, isTrap, tributesFor, type CardId } from '../data/cards';
-import { currentAtk, currentDef, describePending, legalActions } from '../engine';
+import { currentAtk, currentDef, describePending, isMainPhase, legalActions } from '../engine';
 import { freeMonsterZones, freeSpellTrapZones } from '../engine/query';
 import type { Action, GameState, PlayerId, Uid, ZoneKind, ZoneRef } from '../engine/types';
 import type { MonsterUnit } from './MonsterUnit';
@@ -131,6 +131,7 @@ export class HumanInput {
       const s = this.state;
       if (!s || this.mode !== 'idle') return;
       if (s.phase === 'battle') v.hud.flashHint('Already in the Battle Phase');
+      else if (s.phase === 'main2') v.hud.flashHint('The Battle Phase is over for this turn');
       else if (s.turn <= 1) v.hud.flashHint('No Battle Phase on the first turn of the duel');
     };
     v.hand.onSelect = (uid) => {
@@ -302,8 +303,9 @@ export class HumanInput {
         if (token !== this.token || c.kind === 'cancel') return null;
         let a: Action | null = null;
         try {
-          if (c.kind === 'battle') a = legal.find((x) => x.type === 'enterBattle') ?? null;
-          else if (c.kind === 'endTurn') a = (await this.confirmSkipBattle()) ? (legal.find((x) => x.type === 'endTurn') ?? null) : null;
+          // Main Phase 2: in the Battle Phase the BATTLE button (v3: relabelled MAIN 2) ends the battle
+          if (c.kind === 'battle') a = legal.find((x) => x.type === (state.phase === 'battle' ? 'endBattle' : 'enterBattle')) ?? null;
+          else if (c.kind === 'endTurn') a = (await this.confirmSkipBattle()) ? await this.endTurnOrMain2(legal) : null;
           else if (c.kind === 'hand') a = await this.handFlow(c.uid, legal);
           else if (c.kind === 'zone') a = await this.zoneFlow(c.ref, legal);
           else if (c.kind === 'menu') {
@@ -443,7 +445,7 @@ export class HumanInput {
     const hud = this.views.hud;
     const cardId = s.cards[uid].cardId;
     const d = CARDS[cardId];
-    if (s.phase !== 'main') {
+    if (!isMainPhase(s.phase)) {
       hud.flashHint('Cards cannot be played from the hand in the Battle Phase');
       if (V3_A6_B) void this.views.hand.reject(uid); // F5 (a key pick; a click is refused by the hand itself)
       return null;
@@ -458,7 +460,7 @@ export class HumanInput {
           id: 'specialSummon',
           label: 'Fusion Summon (3 pieces)',
           enabled: has('specialSummon'),
-          reason: s.phase !== 'main' ? 'Monsters can only be Summoned in the Main Phase' : 'You need Polar Needle, Polar Anvil and Polar Coil on your field',
+          reason: !isMainPhase(s.phase) ? 'Monsters can only be Summoned in the Main Phase' : 'You need Polar Needle, Polar Anvil and Polar Coil on your field',
         },
       ];
     } else if (isMonster(d)) {
@@ -719,6 +721,25 @@ export class HumanInput {
    * TURU BİTİR straight from the main phase skips the battle. When a monster could still attack,
    * ask first — the classic first-game slip (SAVAŞ is the button above).
    */
+  /**
+   * END TURN. v1 look, in the Battle Phase (its HUD keeps the battle's buttons and hint as they were): when
+   * Main Phase 2 has something to offer, ask first whether to go there; otherwise (and in v3, which has its
+   * own MAIN 2 button) the turn ends.
+   */
+  private async endTurnOrMain2(legal: Action[]): Promise<Action | null> {
+    const s = this.state!;
+    const end = legal.find((x) => x.type === 'endTurn') ?? null;
+    const toMain2 = legal.find((x) => x.type === 'endBattle') ?? null;
+    if (V3_A6_B || s.phase !== 'battle' || !toMain2 || !main2Offers(s, this.player)) return end;
+    this.setMode('pause');
+    const main2 = await this.views.prompt.confirm('Go to Main Phase 2 first? You can still Summon, Set cards and activate Spells there.', {
+      yes: 'MAIN 2',
+      no: 'END TURN',
+      style: this.player === 0 ? 'p1' : 'p2',
+    });
+    return main2 ? toMain2 : end;
+  }
+
   private async confirmSkipBattle(): Promise<boolean> {
     const s = this.state!;
     if (s.phase !== 'main' || s.turn <= 1) return true;
@@ -739,7 +760,7 @@ export class HumanInput {
     const me = s.players[this.player];
     const d = cardDef(cardId);
     if (!isMonster(d)) return null;
-    if (s.phase !== 'main') return 'Monsters can only be Summoned in the Main Phase';
+    if (!isMainPhase(s.phase)) return 'Monsters can only be Summoned in the Main Phase';
     if (me.noSummonTurn === s.turn) return 'Straw Decoys: you cannot Summon other monsters this turn';
     if (me.normalSummonUsed) return 'You already Summoned or Set a monster this turn (1 per turn)';
     const need = tributesFor(d.level);
@@ -753,7 +774,7 @@ export class HumanInput {
     const s = this.state!;
     const p = this.player;
     const opp: PlayerId = p === 0 ? 1 : 0;
-    if (s.phase !== 'main') return 'Spells can only be activated in the Main Phase';
+    if (!isMainPhase(s.phase)) return 'Spells can only be activated in the Main Phase';
     switch (cardId) {
       case 'judgment_bolt':
         return s.players[opp].monsters.some(Boolean) ? null : 'Your opponent has no monster to destroy';
@@ -808,7 +829,7 @@ export class HumanInput {
     const m = s.players[p].monsters[zone];
     if (!m) return null;
     const d = cardDef(s.cards[m.uid].cardId);
-    if (s.phase !== 'main') return 'Effects can only be used in the Main Phase';
+    if (!isMainPhase(s.phase)) return 'Effects can only be used in the Main Phase';
     if (isMonster(d) && d.effect === 'coinWipe') {
       if (!s.players[p === 0 ? 1 : 0].monsters.some(Boolean)) return 'Your opponent has no monsters';
       return 'This effect was already used this turn (once per turn)';
@@ -1129,15 +1150,23 @@ export class HumanInput {
     const canEnd = legal.some((a) => a.type === 'endTurn');
     const canAttack = legal.some((a) => a.type === 'attack');
     const other = handUids.size + zones.size + stZones.size > 0;
+    // Main Phase 2 (v3): in the Battle Phase the BATTLE button is the MAIN 2 button (endBattle). The v1 look
+    // keeps its battle buttons and hint exactly as they were (END TURN asks about Main Phase 2 instead).
+    const toMain2 = V3_A6_B && s.phase === 'battle' && legal.some((a) => a.type === 'endBattle');
+    const main2Worth = toMain2 && main2Offers(s, p);
     v.hud.setLocked(false);
     v.hud.setButtons({
-      battle: canBattle,
+      battle: canBattle || toMain2,
       endTurn: canEnd,
-      attention: s.phase === 'battle' && !canAttack ? 'endTurn' : !other && canBattle ? 'battle' : !other && canEnd ? 'endTurn' : null,
+      attention: s.phase === 'battle' && !canAttack ? (main2Worth ? 'battle' : 'endTurn') : !other && canBattle ? 'battle' : !other && canEnd ? 'endTurn' : null,
+      ...(V3_A6_B ? { battleAs: toMain2 ? ('main2' as const) : ('battle' as const) } : {}),
     });
     // guidance line
     let hint: string;
-    if (s.phase === 'battle') hint = canAttack ? 'Click a monster to attack with, or END TURN' : 'No monster can attack: END TURN';
+    if (s.phase === 'battle' && toMain2)
+      hint = canAttack ? 'Click a monster to attack with, or go to MAIN 2' : main2Worth ? 'No monster can attack: go to MAIN 2, or END TURN' : 'No monster can attack: END TURN';
+    else if (s.phase === 'battle') hint = canAttack ? 'Click a monster to attack with, or END TURN' : 'No monster can attack: END TURN';
+    else if (s.phase === 'main2') hint = other ? 'Main Phase 2: choose a card, or END TURN' : 'Main Phase 2: no cards to play, END TURN';
     else if (other) hint = canBattle ? 'Choose a card, or go to BATTLE' : 'Choose a card, or END TURN (no attacks on the first turn)';
     else hint = canBattle ? 'No cards to play: go to BATTLE, or END TURN' : 'No cards to play: END TURN';
     this.setMode('idle');
@@ -1375,4 +1404,10 @@ export class HumanInput {
     if (!s) return null;
     return s.cards[uid]?.cardId ?? null;
   }
+}
+
+/** Main Phase 2 would offer `p` something to do (a summon, a set, a spell, a position change, an effect). */
+function main2Offers(s: GameState, p: PlayerId): boolean {
+  if (s.phase !== 'battle') return false;
+  return legalActions({ ...s, phase: 'main2' }).some((a) => a.player === p && a.type !== 'endTurn' && a.type !== 'surrender');
 }

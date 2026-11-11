@@ -1,144 +1,220 @@
-// DECK BUILDER — the deck builder (scene key 'Deck').
+// DECK BUILDER — the deck builder (scene key 'Deck'), layout v2 (step 1 of the redesign; target picture
+// docs/v3/ref/hedef-deste-kurucu.png, notes docs/DESTE_KURMA.md).
 //
-//   left    the game's own inspect panel (big card + Turkish text), a key-help / seal-hint plate under it
-//   middle  the card pool: filter chips (kind, element), sort chips, a scrolling 3-column grid of cells
-//           (44x34 picture, name, ATK/DEF, element orb, level) — click / Enter adds or removes a card
-//   right   the deck: 5 save slots, the deck's name, the count N/40-80, a scrolling list of the distinct
-//           cards with their copy count (xN) and a - / + pair per row, the level curve, the counts, the Turkish reasons while the deck is not playable, and the action buttons
+//   top        title + crystal, the deck's name (pencil = rename), save slots 1-5, BACK
+//   meters     one progress meter per rule (cards, monsters, Lv7+, copies); hover = the detailed reasons
+//   left       the collection (hero): search, kind chips, element chips, sort dropdown, a 5×4 grid of the
+//              real cards (48×60, art + level + ATK/DEF) with an "n/max" badge; at the limit: veiled + lock
+//   middle     the focused card: art at 2×, name, level, type line, ATK/DEF, the effect text, its deck note
+//   right      the deck: per section (MONSTERS / SPELLS / TRAPS) a grid of card thumbnails with an "xN"
+//              badge (hover: - / +), a deck stack whose height follows the deck size, the level curve
+//   bottom     AUTO-FILL, PRESETS, CLASSIC, CLEAR, the message line, SAVE DECK, "?" (keyboard overlay)
 //
-// Mouse and keyboard both do everything (see HELP below). The pool is read from COLLECTIBLE_CARDS (no
-// retired cards) at runtime: 35 cards today, 60-80 later; the grid scrolls and nothing here counts cards.
-// Rules and presets: src/data/decks.ts. Persistence: ./store.ts. Notes: docs/DESTE_KURMA.md.
+// Mouse: left click adds a copy, right click removes one (collection and deck); wheel scrolls the panel
+// under the pointer. Keyboard does everything (HELP below, "?" shows it). The pool is read from
+// COLLECTIBLE_CARDS at runtime; nothing here counts cards. Rules: src/data/decks.ts. Persistence: ./store.ts.
+// Presentation hooks for step 2 (fly-in, drag & drop, add / remove feedback): ./fx.ts.
 
 import Phaser from 'phaser';
-import { ALL_CARDS, ATTRIBUTE_NAMES, CARDS, MAGNET_PIECE_IDS, SEAL_IDS, isMonster, type Attribute, type CardId } from '../../data/cards';
-import { cardArtKey } from '../../art/cards';
-import type { TrimName } from '../../art/frame-v3';
 import { ATTRIBUTE_COLOR, KIND_RAMP, PAL } from '../../art/palette';
+import { ATTRIBUTE_NAMES, CARDS, MAGNET_PIECE_IDS, SEAL_IDS, isMonster, type Attribute, type CardId } from '../../data/cards';
+import { cardArtKey, cardIsoKey } from '../../art/cards';
+import type { TrimName } from '../../art/frame-v3';
+import { PixelCanvas } from '../../art/pixel';
 import { sfx } from '../../audio/sfx';
-import {
-  CURVE_BUCKETS, DECK_HIGH_LEVEL, DECK_MAX, DECK_MIN, addBlocker, autoFillDeck, classicDeck, copiesOf, deckStats, isSealCard, isSingleCopy, maxCopies, presetDecks, validateDeck,
-} from '../../data/decks';
+import { CURVE_BUCKETS, DECK_HIGH_LEVEL, DECK_MAX, DECK_MIN, addBlocker, autoFillDeck, classicDeck, copiesOf, deckStats, isSealCard, isSingleCopy, maxCopies, presetDecks, validateDeck } from '../../data/decks';
 import { measureText, pixelText, wrapText } from '../../ui/text';
 import { Button } from '../../view/Button';
-import { InspectPanel } from '../../view/InspectPanel';
 import { GAME_H, GAME_W } from '../../view/layout';
-import { ICON, miniCardKey } from '../../view/ui-textures';
-import { TEX, tween, wait } from '../../vfx/core';
-import { ELEMENTS, SORT_KEYS, SORT_LABEL, gridMove, sortPool, visibleIds, type KindFilter, type PoolFilter, type SortKey } from './pool';
+import { canvasTexture } from '../../view/v3/hudSkin';
+import { ICON, ovalHaloTex } from '../../view/ui-textures';
+import { TEX, wait } from '../../vfx/core';
+import {
+  MINI_H, MINI_W, SPELL_WORD, STRIP_ART_H, STRIP_ART_W, THUMB_H, THUMB_W, buttonIcon, caretDownIcon, checkIcon, crystalIcon, deckThumbTex, lockIcon, meterIcon, miniCardTex, pencilIcon, ringTex, searchIcon, stripArtTex, veilTex,
+} from './art';
+import { SECTION_LABEL, deckEntries, deckLines, entryMove, lineOfEntry, maxLineScroll, scrollToEntry, visibleLines, type DeckEntry, type DeckLine, type LineMetrics } from './deckList';
+import { defaultDeckFx, type DeckFx, type Pt } from './fx';
+import { deckMeters, type Meter } from './meters';
+import { ELEMENTS, SORT_KEYS, SORT_LABEL, gridMove, visibleIds, type KindFilter, type PoolFilter, type SortKey } from './pool';
 import { NAME_MAX, SLOT_COUNT, deckStore, slotRef, type DeckStore } from './store';
-import { CELL_H, CELL_W, REDUCED_MOTION, backdropTex, panelV3, cellTex, chainTex, fadeFromInk, fadeToInk, fitText, latticeTex, magnetTex, orbOf, orbTex, singleTex, tickTex, type CellKind } from './ui';
+import { REDUCED_MOTION, backdropTex, chainTex, fadeFromInk, fadeToInk, fitText, latticeTex, magnetTex, orbOf, orbTex, panelV3, singleTex } from './ui';
 
 export interface DeckSceneData {
   /** Slot to open (default: the last edited one). */
   slot?: number;
   /** Opened by ?dev=deck (QA): Esc does not leave. */
   dev?: boolean;
-  /** Where GERİ / ESC goes instead of the title menu (the deck picker that opened the builder). */
+  /** Where BACK / ESC goes instead of the title menu (the deck picker that opened the builder). */
   back?: { key: string; data: object };
   /** QA: start with this filter / sort / deck. */
-  qa?: { kind?: KindFilter; attr?: Attribute | null; sort?: SortKey; cards?: CardId[]; name?: string; cursor?: number; zone?: Zone; deckCursor?: number; missing?: number };
+  qa?: {
+    kind?: KindFilter;
+    attr?: Attribute | null;
+    sort?: SortKey;
+    cards?: CardId[];
+    name?: string;
+    cursor?: number;
+    zone?: Zone;
+    deckCursor?: number;
+    missing?: number;
+    /** Search text. */
+    q?: string;
+    /** Deck list view: thumbnail grid (default) or the strip mock. */
+    list?: ListView;
+    /** Show the keyboard overlay. */
+    help?: boolean;
+    /** Hover this requirement meter (0..3): its tooltip. */
+    tip?: number;
+    /** Scroll the deck list to this line. */
+    deckScroll?: number;
+    /** Show the - / + of the focused deck entry (as under the mouse). */
+    hoverDeck?: boolean;
+  };
 }
 
-// ---------------------------------------------------------------- layout
-const PX = 136;
-const PY = 24;
-const PW = 340;
-const PH = 332;
-const DX = 480;
-const DY = 24;
-const DW = 156;
-const DH = 332;
-const COLS = 3;
-const ROWS = 6;
-const GAP = 2;
-const GRID_X = PX + 6;
-const GRID_Y = PY + 40;
-const ROW_H = 9;
-const LIST_Y = DY + 39;
-const NAME_W = 82;
-/** Visible rows of the deck list (it scrolls: up to 55 distinct cards). */
-const LIST_ROWS = 20;
-const RANGE = `/${DECK_MIN}-${DECK_MAX}`;
-const BTN_Y = DY + DH - 2 * 17 - 1;
-const KIND_LABEL: Record<KindFilter, string> = { all: 'All', monster: 'Monster', spell: 'Spell', trap: 'Trap' };
-const KINDS: readonly KindFilter[] = ['all', 'monster', 'spell', 'trap'];
-const SPELL_WORD: Record<string, string> = { normal: 'Normal', equip: 'Equip', field: 'Field', continuous: 'Cont.', quick: 'Quick' };
+type Zone = 'pool' | 'deck' | 'search';
+type ListView = 'grid' | 'strip';
+type Tone = 'info' | 'ok' | 'bad' | 'gold';
+const TONE: Record<Tone, number> = { info: PAL.mist, ok: PAL.leaf3, bad: PAL.crim3, gold: PAL.gold3 };
 
-/** The polar fusion family (the three pieces + Kutup Hükümdarı). */
+// ---------------------------------------------------------------- layout (640×360)
+const TOP_H = 21;
+const NAME_X = 112;
+const NAME_Y = 3;
+const NAME_W = 112;
+const NAME_H = 16;
+const SLOT_X = 234;
+const SLOT_PITCH = 21;
+const REQ_Y = 22;
+const REQ_H = 20;
+const METER_X = 10;
+const METER_PITCH = 157;
+const METER_W = 146;
+const MAIN_Y = 44;
+const MAIN_H = 292;
+const COL_X = 4;
+const COL_W = 272;
+const DET_X = 280;
+const DET_W = 104;
+const DK_X = 388;
+const DK_W = 248;
+const TB1_Y = 48;
+const TB2_Y = 64;
+const SEARCH_W = 118;
+const GRID_X = 10;
+const GRID_Y = 82;
+const COLS = 5;
+const ROWS = 4;
+const PITCH_X = MINI_W + 3;
+const PITCH_Y = MINI_H + 3;
+const LIST_X = DK_X + 7;
+const LIST_Y = 64;
+const LIST_W = 226;
+const LIST_H = 188;
+const PER_ROW: Record<ListView, number> = { grid: 7, strip: 1 };
+const METRICS: Record<ListView, LineMetrics> = { grid: { headH: 13, rowH: THUMB_H + 2 }, strip: { headH: 13, rowH: STRIP_ART_H + 1 } };
+const THUMB_PITCH = THUMB_W + 2;
+const POOL_THUMBS = 42;
+const FOOT_Y = 256;
+/** Centre of the bottom card of the deck stack. */
+const STACK_BASE = FOOT_Y + 50;
+const BOT_Y = 340;
+const BOT_H = 18;
+const MSG_X = 282;
+const MSG_W = 214;
+
+const KIND_LABEL: Record<KindFilter, string> = { all: 'ALL', monster: 'MONSTER', spell: 'SPELL', trap: 'TRAP' };
+const KINDS: readonly KindFilter[] = ['all', 'monster', 'spell', 'trap'];
+const SPELL_TYPE_LONG: Record<string, string> = { normal: 'Normal', equip: 'Equip', field: 'Field', continuous: 'Continuous', quick: 'Quick-Play' };
+
+/** The keyboard overlay ("?"). */
+const HELP: readonly (readonly [string, string])[] = [
+  ['ARROWS', 'Move in the collection / deck'],
+  ['ENTER · SPACE', 'Add (collection) / remove (deck)'],
+  ['+ · =   - · DEL', 'Add / remove a copy'],
+  ['TAB', 'Switch collection / deck'],
+  ['/', 'Search by name (ESC clears)'],
+  ['PGUP · PGDN', 'Scroll'],
+  ['1-5', 'Deck slot'],
+  ['N', 'Rename the deck'],
+  ['S', 'Save deck'],
+  ['R', 'Auto-fill'],
+  ['P · D', 'Next preset · Classic deck'],
+  ['X', 'Clear the deck'],
+  ['F · E · O', 'Kind / element filter · sort'],
+  ['?', 'This overlay'],
+  ['ESC', 'Back'],
+  ['MOUSE', 'Left click adds, right click removes'],
+];
+
+/** The polar fusion family (the three pieces + Polar Sovereign). */
 function isMagnetCard(id: CardId): boolean {
   const d = CARDS[id];
   return isMonster(d) && (d.effect === 'magnetPiece' || d.effect === 'magnetFusion');
 }
 
-/** The small mark after a card's name: seal chain, polar magnet, single-copy "1" tag (or none). */
+/** The small mark of a card: seal chain, polar magnet, single-copy "1" tag (or none). */
 function markTexOf(scene: Phaser.Scene, id: CardId): string | null {
   if (isSealCard(id)) return chainTex(scene);
   if (isMagnetCard(id)) return magnetTex(scene);
   if (isSingleCopy(id)) return singleTex(scene);
   return null;
 }
-const HELP: readonly (readonly [string, string])[] = [
-  ['ENTER', 'Add copy'],
-  ['DEL', 'Remove copy'],
-  ['TAB', 'Switch panel'],
-  ['1-5', 'Deck slot'],
-  ['S · N', 'Save · Name'],
-  ['R', 'Random fill'],
-  ['P · D', 'Preset · Classic'],
-  ['X', 'Clear'],
-  ['F E O', 'Filter/Elem./Order'],
-  ['ESC', 'Back'],
-];
-
-type Zone = 'pool' | 'deck';
-type Tone = 'info' | 'ok' | 'bad' | 'gold';
-const TONE: Record<Tone, number> = { info: PAL.mist, ok: PAL.leaf3, bad: PAL.crim3, gold: PAL.gold3 };
 
 interface Cell {
   box: Phaser.GameObjects.Container;
-  bg: Phaser.GameObjects.Image;
-  art: Phaser.GameObjects.Image;
-  orb: Phaser.GameObjects.Image;
-  lvlBg: Phaser.GameObjects.Rectangle;
-  lvl: Phaser.GameObjects.BitmapText;
-  name: Phaser.GameObjects.BitmapText;
-  atk: Phaser.GameObjects.BitmapText;
-  def: Phaser.GameObjects.BitmapText;
-  word: Phaser.GameObjects.BitmapText;
-  chain: Phaser.GameObjects.Image;
-  tick: Phaser.GameObjects.Image;
-  cntBg: Phaser.GameObjects.Rectangle;
-  cnt: Phaser.GameObjects.BitmapText;
-  minus: Phaser.GameObjects.Container;
+  card: Phaser.GameObjects.Image;
+  veil: Phaser.GameObjects.Image;
+  lock: Phaser.GameObjects.Image;
+  mark: Phaser.GameObjects.Image;
+  badgeBg: Phaser.GameObjects.Rectangle;
+  badge: Phaser.GameObjects.BitmapText;
   zone: Phaser.GameObjects.Zone;
-  minusZone: Phaser.GameObjects.Zone;
   x: number;
   y: number;
   index: number;
   id: CardId | null;
 }
 
-interface Row {
+/** One deck-list entry on screen (grid thumbnail or strip). */
+interface Thumb {
   box: Phaser.GameObjects.Container;
-  hi: Phaser.GameObjects.Rectangle;
-  orb: Phaser.GameObjects.Image;
+  img: Phaser.GameObjects.Image;
+  ring: Phaser.GameObjects.Image;
+  badgeBg: Phaser.GameObjects.Rectangle;
+  badge: Phaser.GameObjects.BitmapText;
   name: Phaser.GameObjects.BitmapText;
-  lvl: Phaser.GameObjects.BitmapText;
-  atk: Phaser.GameObjects.BitmapText;
-  cnt: Phaser.GameObjects.BitmapText;
-  chain: Phaser.GameObjects.Image;
   minus: StepBtn;
   plus: StepBtn;
   zone: Phaser.GameObjects.Zone;
-  id: CardId | null;
+  entry: DeckEntry | null;
+  flat: number;
+  x: number;
+  y: number;
 }
 
-/** The small - / + button of a deck row. */
 interface StepBtn {
+  box: Phaser.GameObjects.Container;
   bg: Phaser.GameObjects.Rectangle;
   label: Phaser.GameObjects.BitmapText;
   zone: Phaser.GameObjects.Zone;
+}
+
+interface Head {
+  icon: Phaser.GameObjects.Image;
+  label: Phaser.GameObjects.BitmapText;
+  count: Phaser.GameObjects.BitmapText;
+  rule: Phaser.GameObjects.Rectangle;
+}
+
+interface MeterView {
+  icon: Phaser.GameObjects.Image;
+  label: Phaser.GameObjects.BitmapText;
+  value: Phaser.GameObjects.BitmapText;
+  check: Phaser.GameObjects.Image;
+  fill: Phaser.GameObjects.Rectangle;
+  shine: Phaser.GameObjects.Rectangle;
+  x: number;
 }
 
 interface Draft {
@@ -146,7 +222,7 @@ interface Draft {
   cards: CardId[];
   /** The saved copy it was loaded from (to tell if it changed). */
   savedKey: string;
-  /** Cards dropped on load because they no longer exist ("eksik kart"); cleared by saving. */
+  /** Cards dropped on load because they no longer exist; cleared by saving. */
   missing: number;
   /** Copies of a retired card swapped for a substitute on load (store `replaced`); cleared by saving. */
   replaced?: number;
@@ -157,18 +233,21 @@ const keyOf = (name: string, cards: readonly string[]) => `${name}|${cards.join(
 export class DeckScene extends Phaser.Scene {
   private data0: DeckSceneData = {};
   private store!: DeckStore;
-  private insp!: InspectPanel;
+  private fx!: DeckFx;
   private drafts: Draft[] = [];
   private slot = 0;
-  private filter: PoolFilter = { kind: 'all', attr: null };
+  private filter: PoolFilter = { kind: 'all', attr: null, q: '' };
   private sort: SortKey = 'new';
   private list: CardId[] = [];
   private cursor = 0;
   private scrollRow = 0;
   private zone: Zone = 'pool';
   private deckCursor = 0;
-  /** First visible entry of the deck list. */
+  /** First visible line of the deck list. */
   private deckScroll = 0;
+  /** The deck entry under the mouse (-1: none) — shows its - / +. */
+  private hoverFlat = -1;
+  private view: ListView = 'grid';
   private editing = false;
   /** The first character typed replaces the old name (select-all behaviour). */
   private nameFresh = false;
@@ -178,42 +257,74 @@ export class DeckScene extends Phaser.Scene {
   private exitArmed = 0;
   private ready = false;
   private pressedCell = -1;
-  private lastPoolClick = { cell: -1, at: -1000 };
-  private msgGen = 0;
   private lastHoverSound = 0;
+  private helpOpen = false;
+  private sortOpen = false;
+  private tipIndex = -1;
 
   private cells: Cell[] = [];
-  private rows: Row[] = [];
+  private thumbs: Thumb[] = [];
+  private heads: Head[] = [];
   private kindBtns: Button[] = [];
   private attrBtns: Button[] = [];
-  private sortBtns: Button[] = [];
+  private sortBtn!: Button;
+  private sortMenu: Button[] = [];
   private slotBtns: Button[] = [];
   private slotPips: Phaser.GameObjects.Rectangle[] = [];
-  private actionBtns: Button[] = [];
+  private actionBtns: Record<string, Button> = {};
+  private meters: MeterView[] = [];
   private nameField!: Phaser.GameObjects.Image;
   private nameText!: Phaser.GameObjects.BitmapText;
   private nameCaret!: Phaser.GameObjects.Rectangle;
-  private nameZone!: Phaser.GameObjects.Zone;
-  private countText!: Phaser.GameObjects.BitmapText;
-  private rangeText!: Phaser.GameObjects.BitmapText;
+  private searchField!: Phaser.GameObjects.Image;
+  private searchText!: Phaser.GameObjects.BitmapText;
+  private searchCaret!: Phaser.GameObjects.Rectangle;
+  private searchClear!: Phaser.GameObjects.BitmapText;
+  private poolCount!: Phaser.GameObjects.BitmapText;
+  private emptyHint!: Phaser.GameObjects.BitmapText;
+  private track!: Phaser.GameObjects.Rectangle;
+  private thumbBar!: Phaser.GameObjects.Rectangle;
+  private hoverRing!: Phaser.GameObjects.Image;
+  private hoverGlow!: Phaser.GameObjects.Image;
+  // detail panel
+  private detBg!: Phaser.GameObjects.Image;
+  private detFrame!: Phaser.GameObjects.Image;
+  private detArt!: Phaser.GameObjects.Image;
+  private detName!: Phaser.GameObjects.BitmapText;
+  private detStars: Phaser.GameObjects.Image[] = [];
+  private detKind!: Phaser.GameObjects.BitmapText;
+  private detOrb!: Phaser.GameObjects.Image;
+  private detType!: Phaser.GameObjects.BitmapText;
+  private detAtk!: Phaser.GameObjects.BitmapText;
+  private detDef!: Phaser.GameObjects.BitmapText;
+  private detRule!: Phaser.GameObjects.Rectangle;
+  private detBody!: Phaser.GameObjects.BitmapText;
+  private detNote!: Phaser.GameObjects.BitmapText;
+  private detMark!: Phaser.GameObjects.Image;
+  private detEmpty!: Phaser.GameObjects.BitmapText;
+  private detMore!: Phaser.GameObjects.BitmapText;
+  private detLines: string[] = [];
+  private detFit = 0;
+  private detScroll = 0;
+  private detFor: CardId | null = null;
+  private shownId: CardId | null | undefined = undefined;
+  // deck panel
+  private deckTitle!: Phaser.GameObjects.BitmapText;
+  private deckState!: Phaser.GameObjects.BitmapText;
+  private deckOk!: Phaser.GameObjects.Image;
+  private deckEmpty!: Phaser.GameObjects.BitmapText;
   private dTrack!: Phaser.GameObjects.Rectangle;
   private dThumb!: Phaser.GameObjects.Rectangle;
-  private okIcon!: Phaser.GameObjects.Image;
+  private stack: Phaser.GameObjects.Image[] = [];
+  private stackLabel!: Phaser.GameObjects.BitmapText;
+  private stackPool!: Phaser.GameObjects.Image;
   private curveBars: Phaser.GameObjects.Rectangle[] = [];
+  private curveTops: Phaser.GameObjects.Rectangle[] = [];
   private curveNums: Phaser.GameObjects.BitmapText[] = [];
-  private countTexts: Phaser.GameObjects.BitmapText[] = [];
-  private reasons!: Phaser.GameObjects.BitmapText;
+  private curveVals: Phaser.GameObjects.BitmapText[] = [];
   private footMsg!: Phaser.GameObjects.BitmapText;
-  private footPage!: Phaser.GameObjects.BitmapText;
-  private emptyHint!: Phaser.GameObjects.BitmapText;
-  private thumb!: Phaser.GameObjects.Rectangle;
-  private track!: Phaser.GameObjects.Rectangle;
-  private plate: Phaser.GameObjects.GameObject[] = [];
-  private plateSeal: Phaser.GameObjects.GameObject[] = [];
-  private sealCount!: Phaser.GameObjects.BitmapText;
-  private noteTitle!: Phaser.GameObjects.BitmapText;
-  private noteIcon!: Phaser.GameObjects.Image;
-  private noteBody!: Phaser.GameObjects.BitmapText;
+  private tip!: Phaser.GameObjects.Container;
+  private help!: Phaser.GameObjects.Container;
   private lattice!: Phaser.GameObjects.TileSprite;
   private motes: { img: Phaser.GameObjects.Image; x: number; y: number; v: number; ph: number }[] = [];
   private t = 0;
@@ -227,36 +338,48 @@ export class DeckScene extends Phaser.Scene {
     this.leaving = false;
     this.editing = false;
     this.ready = false;
+    this.drafts = [];
     this.cells = [];
-    this.rows = [];
+    this.thumbs = [];
+    this.heads = [];
     this.kindBtns = [];
     this.attrBtns = [];
-    this.sortBtns = [];
+    this.sortMenu = [];
     this.slotBtns = [];
     this.slotPips = [];
-    this.actionBtns = [];
+    this.actionBtns = {};
+    this.meters = [];
+    this.detStars = [];
+    this.stack = [];
     this.curveBars = [];
+    this.curveTops = [];
     this.curveNums = [];
-    this.countTexts = [];
+    this.curveVals = [];
     this.motes = [];
-    this.plate = [];
-    this.plateSeal = [];
     this.scrollRow = 0;
     this.cursor = 0;
     this.deckCursor = 0;
     this.deckScroll = 0;
+    this.hoverFlat = -1;
     this.zone = 'pool';
-    this.filter = { kind: 'all', attr: null };
+    this.filter = { kind: 'all', attr: null, q: '' };
     this.sort = 'new';
     this.presetIdx = -1;
     this.exitArmed = 0;
+    this.helpOpen = false;
+    this.sortOpen = false;
+    this.tipIndex = -1;
+    this.shownId = undefined;
+    this.view = this.data0.qa?.list === 'strip' ? 'strip' : 'grid';
   }
 
   // ================================================================ build
 
   create(): void {
     this.cameras.main.setBackgroundColor(PAL.night0);
+    this.input.mouse?.disableContextMenu();
     this.store = deckStore();
+    this.fx = defaultDeckFx(this);
     this.add.image(0, 0, backdropTex(this)).setOrigin(0).setDepth(0);
     this.lattice = this.add.tileSprite(0, 0, GAME_W, GAME_H, latticeTex(this)).setOrigin(0).setDepth(1);
     this.buildMotes();
@@ -268,29 +391,40 @@ export class DeckScene extends Phaser.Scene {
     }
     const lastEdit = Number((this.store.last('edit') ?? '').replace('slot:', ''));
     this.slot = this.data0.slot ?? (Number.isInteger(lastEdit) && lastEdit >= 0 && lastEdit < SLOT_COUNT ? lastEdit : 0);
-    if (this.data0.qa?.cards) this.cur.cards = [...this.data0.qa.cards];
-    if (this.data0.qa?.name) this.cur.name = this.data0.qa.name;
-    if (this.data0.qa?.kind) this.filter.kind = this.data0.qa.kind;
-    if (this.data0.qa && 'attr' in this.data0.qa) this.filter.attr = this.data0.qa.attr ?? null;
-    if (this.data0.qa?.sort) this.sort = this.data0.qa.sort;
+    const qa = this.data0.qa;
+    if (qa?.cards) this.cur.cards = [...qa.cards];
+    if (qa?.name) this.cur.name = qa.name;
+    if (qa?.kind) this.filter.kind = qa.kind;
+    if (qa && 'attr' in qa) this.filter.attr = qa.attr ?? null;
+    if (qa?.sort) this.sort = qa.sort;
+    if (qa?.q) this.filter.q = qa.q;
 
-    this.buildHeader();
-    this.buildPool();
+    this.buildTop();
+    this.buildMeters();
+    this.buildCollection();
+    this.buildDetail();
     this.buildDeckPanel();
-    this.buildPlate();
-    this.insp = new InspectPanel(this);
+    this.buildBottom();
+    this.buildTip();
+    this.buildHelp();
 
     this.refreshList();
-    if (this.data0.qa?.cursor !== undefined) this.cursor = Math.max(0, Math.min(this.list.length - 1, this.data0.qa.cursor));
-    if (this.data0.qa?.zone === 'deck' && this.cur.cards.length) {
+    if (qa?.cursor !== undefined) this.cursor = Math.max(0, Math.min(this.list.length - 1, qa.cursor));
+    if (qa?.zone === 'deck' && this.cur.cards.length) {
       this.zone = 'deck';
-      this.deckCursor = Math.min(this.cur.cards.length - 1, this.data0.qa.deckCursor ?? 0);
+      this.deckCursor = Math.min(this.entries().length - 1, qa.deckCursor ?? 0);
+      this.deckScroll = scrollToEntry(this.lines(), 0, this.deckCursor, LIST_H, this.metrics);
     }
-    if (this.data0.qa?.missing) this.cur.missing = this.data0.qa.missing;
+    if (qa?.zone === 'search') this.zone = 'search';
+    if (qa?.deckScroll !== undefined) this.deckScroll = qa.deckScroll;
+    if (qa?.hoverDeck && this.zone === 'deck') this.hoverFlat = this.deckCursor;
+    if (qa?.missing) this.cur.missing = qa.missing;
     this.ensureVisible();
     this.renderAll();
-    this.showInspect();
-    this.say(this.cur.cards.length ? 'Click cards to build your deck.' : 'Empty deck: click a card, or try Random / Preset.', 'info', true);
+    this.showDetail();
+    if (qa?.help) this.setHelp(true);
+    if (qa?.tip !== undefined) this.showTip(qa.tip);
+    this.say(this.cur.cards.length ? 'Left click adds a card, right click removes it.' : 'Empty deck: click cards, or try AUTO-FILL / PRESETS.', 'info');
 
     const onKey = (e: KeyboardEvent) => {
       if (!this.sys.isActive()) return;
@@ -299,13 +433,15 @@ export class DeckScene extends Phaser.Scene {
     window.addEventListener('keydown', onKey);
     const onWheel = (p: Phaser.Input.Pointer, _o: unknown, _dx: number, dy: number) => this.wheel(dy, p.x);
     this.input.on(Phaser.Input.Events.POINTER_WHEEL, onWheel);
+    const onDown = (p: Phaser.Input.Pointer) => this.globalDown(p);
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, onDown);
     const onUpdate = (_t: number, dt: number) => this.tick(dt);
     this.events.on(Phaser.Scenes.Events.UPDATE, onUpdate);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       window.removeEventListener('keydown', onKey);
       this.input.off(Phaser.Input.Events.POINTER_WHEEL, onWheel);
+      this.input.off(Phaser.Input.Events.POINTER_DOWN, onDown);
       this.events.off(Phaser.Scenes.Events.UPDATE, onUpdate);
-      this.insp?.destroy();
     });
 
     (window.__neon as Record<string, unknown>).deck = this;
@@ -321,6 +457,18 @@ export class DeckScene extends Phaser.Scene {
     return this.drafts[this.slot];
   }
 
+  private get metrics(): LineMetrics {
+    return METRICS[this.view];
+  }
+
+  private entries(): DeckEntry[] {
+    return deckEntries(this.cur.cards);
+  }
+
+  private lines(): DeckLine[] {
+    return deckLines(this.cur.cards, PER_ROW[this.view]);
+  }
+
   private buildMotes(): void {
     for (let i = 0; i < 16; i++) {
       const img = this.add.image(0, 0, TEX.px1).setDepth(2).setTint(i % 3 === 0 ? PAL.cyan2 : PAL.night4);
@@ -330,273 +478,573 @@ export class DeckScene extends Phaser.Scene {
     }
   }
 
-  private panel(x: number, y: number, w: number, h: number, style: TrimName = 'neutral', header = 0): void {
-    this.add.image(x, y, panelV3(this, style, w, h, header)).setOrigin(0).setDepth(3);
+  private panel(x: number, y: number, w: number, h: number, style: TrimName = 'neutral', header = 0): Phaser.GameObjects.Image {
+    return this.add.image(x, y, panelV3(this, style, w, h, header)).setOrigin(0).setDepth(3);
   }
 
   private txt(x: number, y: number, s: string, color: number = PAL.mist, size: 'sm' | 'md' = 'sm', depth = 10): Phaser.GameObjects.BitmapText {
     return pixelText(this, x, y, s, { size, color }).setDepth(depth);
   }
 
-  private buildHeader(): void {
-    const t = pixelText(this, 10, 6, 'DECK BUILDER', { size: 'md', color: PAL.white }).setDepth(10);
-    t.setTint(PAL.gold4, PAL.gold4, PAL.gold3, PAL.gold3);
-    this.txt(96, 8, `${DECK_MIN}-${DECK_MAX} cards · max 3 copies · Seals and single-copy cards: 1`, PAL.steel);
-    const back = new Button(this, GAME_W - 66, 2, { w: 62, h: 18, label: 'BACK', size: 'sm', icon: ICON.close, style: 'neutral', depth: 20 });
-    back.onClick = () => void this.leave();
-    back.onHover = (on) => on && this.say('Back to the main menu (ESC)', 'info');
-  }
-
-  private chip(x: number, y: number, w: number, label: string, onClick: () => void, icon?: string): Button {
-    const b = new Button(this, x, y, { w, h: 14, label, size: 'sm', icon, style: 'neutral', depth: 20 });
+  private chip(x: number, y: number, w: number, h: number, label: string, onClick: () => void, icon?: string): Button {
+    const b = new Button(this, x, y, { w, h, label, size: 'sm', icon, style: 'neutral', depth: 20 });
     b.onClick = onClick;
     return b;
   }
 
-  private buildPool(): void {
-    this.panel(PX, PY, PW, PH);
-    // row 1: kind + element chips
-    let x = PX + 5;
+  // ---------------------------------------------------------------- top bar
+
+  private buildTop(): void {
+    // a thin night band behind the bar, a cyan rule under it
+    this.add.rectangle(0, 0, GAME_W, TOP_H, PAL.night0).setOrigin(0).setDepth(3);
+    this.add.rectangle(0, TOP_H - 1, GAME_W, 1, PAL.cyan1).setOrigin(0).setDepth(3);
+    this.add.image(5, 3, crystalIcon(this)).setOrigin(0).setDepth(10);
+    const t = pixelText(this, 19, 3, 'DECK BUILDER', { size: 'md', color: PAL.cyan3 }).setDepth(10);
+    t.setTint(PAL.cyan4, PAL.cyan4, PAL.cyan3, PAL.cyan3);
+    this.add.rectangle(104, 4, 1, 13, PAL.night3).setOrigin(0).setDepth(10);
+
+    // name field + pencil
+    this.nameField = this.add.image(NAME_X, NAME_Y, panelV3(this, 'neutral', NAME_W, NAME_H)).setOrigin(0).setDepth(9);
+    this.nameText = pixelText(this, NAME_X + 6, NAME_Y + 2, '', { size: 'sm', color: PAL.white }).setDepth(10);
+    this.nameCaret = this.add.rectangle(NAME_X + 6, NAME_Y + 4, 1, 8, PAL.gold4).setOrigin(0).setDepth(11).setVisible(false);
+    this.add.image(NAME_X + NAME_W - 13, NAME_Y + 3, pencilIcon(this)).setOrigin(0).setDepth(10);
+    const nz = this.add.zone(NAME_X, NAME_Y, NAME_W, NAME_H).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
+    nz.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => !p.rightButtonReleased() && this.setEditing(!this.editing));
+    nz.on(Phaser.Input.Events.POINTER_OVER, () => !this.editing && this.say('Rename the deck (N)', 'info'));
+
+    // slot tabs
+    for (let i = 0; i < SLOT_COUNT; i++) {
+      const x = SLOT_X + i * SLOT_PITCH;
+      const b = this.chip(x, NAME_Y, 18, NAME_H, String(i + 1), () => this.selectSlot(i));
+      b.onHover = (on) => on && this.say(`Slot ${i + 1}: ${this.store.slot(i)?.name ?? 'empty'}`, 'info');
+      this.slotBtns.push(b);
+      this.slotPips.push(this.add.rectangle(x + 13, NAME_Y + 2, 3, 3, PAL.leaf3).setOrigin(0).setDepth(22).setVisible(false));
+    }
+
+    const back = new Button(this, GAME_W - 70, NAME_Y, { w: 66, h: NAME_H, label: 'BACK', size: 'sm', icon: buttonIcon(this, 'back'), style: 'p1', depth: 20 });
+    back.onClick = () => void this.leave();
+    back.onHover = (on) => on && this.say(this.data0.back ? 'Back to the deck picker (ESC)' : 'Back to the main menu (ESC)', 'info');
+    this.actionBtns.back = back;
+  }
+
+  // ---------------------------------------------------------------- requirement meters
+
+  private buildMeters(): void {
+    this.add.rectangle(0, REQ_Y, GAME_W, REQ_H, PAL.night1).setOrigin(0).setDepth(3);
+    this.add.rectangle(0, REQ_Y + REQ_H, GAME_W, 1, PAL.night2).setOrigin(0).setDepth(3);
+    const keys = ['cards', 'monsters', 'high', 'copies'] as const;
+    keys.forEach((k, i) => {
+      const x = METER_X + i * METER_PITCH;
+      if (i) this.add.rectangle(x - 6, REQ_Y + 4, 1, REQ_H - 8, PAL.night3).setOrigin(0).setDepth(4);
+      const icon = this.add.image(x, REQ_Y + 3, meterIcon(this, k)).setOrigin(0).setDepth(10);
+      const label = this.txt(x + 17, REQ_Y + 1, '', PAL.mist);
+      const value = this.txt(x + 17, REQ_Y + 1, '', PAL.white);
+      const check = this.add.image(x, REQ_Y + 4, checkIcon(this)).setOrigin(0).setDepth(10);
+      this.add.rectangle(x + 17, REQ_Y + 14, METER_W - 17, 3, PAL.night0).setOrigin(0).setDepth(9);
+      const fill = this.add.rectangle(x + 17, REQ_Y + 14, 1, 3, PAL.cyan2).setOrigin(0).setDepth(10);
+      const shine = this.add.rectangle(x + 17, REQ_Y + 14, 1, 1, PAL.cyan3).setOrigin(0).setDepth(11);
+      const z = this.add.zone(x - 2, REQ_Y, METER_W + 4, REQ_H).setOrigin(0).setDepth(12).setInteractive();
+      z.on(Phaser.Input.Events.POINTER_OVER, () => this.showTip(i));
+      z.on(Phaser.Input.Events.POINTER_OUT, () => this.showTip(-1));
+      this.meters.push({ icon, label, value, check, fill, shine, x });
+    });
+  }
+
+  private renderMeters(): void {
+    const ms = deckMeters(this.cur.cards, { missing: this.cur.missing, replaced: this.cur.replaced });
+    ms.forEach((m, i) => {
+      const v = this.meters[i];
+      v.label.setText(m.label);
+      const lw = Math.ceil(measureText(m.label, 'sm').w);
+      v.value.setText(m.value).setX(v.x + 17 + lw + 4).setTint(m.met ? PAL.gold3 : PAL.cyan4);
+      const vw = m.value ? Math.ceil(measureText(m.value, 'sm').w) + 4 : 0;
+      v.check.setVisible(m.met).setPosition(v.x + 17 + lw + 4 + vw, REQ_Y + 3);
+      v.icon.setAlpha(1);
+      const w = Math.max(m.fill > 0 ? 1 : 0, Math.round((METER_W - 17) * m.fill));
+      v.fill.setVisible(w > 0).setSize(w, 3).setFillStyle(m.met ? PAL.gold2 : PAL.cyan1);
+      v.shine.setVisible(w > 0).setSize(w, 1).setFillStyle(m.met ? PAL.gold4 : PAL.cyan2);
+      v.label.setTint(m.met ? PAL.white : PAL.mist);
+    });
+    if (this.tipIndex >= 0) this.showTip(this.tipIndex);
+  }
+
+  private buildTip(): void {
+    this.tip = this.add.container(0, 0).setDepth(850).setVisible(false);
+  }
+
+  /** The tooltip of meter `i` (-1 hides). */
+  private showTip(i: number): void {
+    this.tipIndex = i;
+    this.tip.removeAll(true);
+    if (i < 0) {
+      this.tip.setVisible(false);
+      return;
+    }
+    const m: Meter = deckMeters(this.cur.cards, { missing: this.cur.missing, replaced: this.cur.replaced })[i];
+    const W = 176;
+    const lines = m.tip.flatMap((l) => wrapText(l, 'sm', W - 12));
+    const H = 8 + lines.length * 10 + 1;
+    const x = Math.min(GAME_W - W - 4, METER_X + i * METER_PITCH - 4);
+    const bg = this.add.image(0, 0, panelV3(this, m.met ? 'monster' : 'p1', W, H)).setOrigin(0);
+    const body = pixelText(this, 6, 3, '', { size: 'sm', color: PAL.white, lineSpacing: -1 });
+    body.setText(lines.join('\n'));
+    this.tip.add([bg, body]).setPosition(x, REQ_Y + REQ_H + 1).setVisible(true);
+  }
+
+  // ---------------------------------------------------------------- collection
+
+  private buildCollection(): void {
+    this.panel(COL_X, MAIN_Y, COL_W, MAIN_H, 'p1', 34);
+    // search field
+    this.searchField = this.add.image(GRID_X - 1, TB1_Y, panelV3(this, 'neutral', SEARCH_W, 14)).setOrigin(0).setDepth(9);
+    this.add.image(GRID_X + 3, TB1_Y + 2, searchIcon(this)).setOrigin(0).setDepth(10);
+    this.searchText = pixelText(this, GRID_X + 14, TB1_Y + 1, '', { size: 'sm', color: PAL.white }).setDepth(10);
+    this.searchCaret = this.add.rectangle(GRID_X + 14, TB1_Y + 3, 1, 8, PAL.gold4).setOrigin(0).setDepth(11).setVisible(false);
+    this.searchClear = pixelText(this, GRID_X + SEARCH_W - 9, TB1_Y + 1, 'x', { size: 'sm', color: PAL.steel }).setDepth(11).setVisible(false);
+    const sz = this.add.zone(GRID_X - 1, TB1_Y, SEARCH_W - 12, 14).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
+    sz.on(Phaser.Input.Events.POINTER_UP, () => this.focusSearch(true));
+    sz.on(Phaser.Input.Events.POINTER_OVER, () => this.say('Search by name (/)', 'info'));
+    const cz = this.add.zone(GRID_X + SEARCH_W - 13, TB1_Y, 12, 14).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
+    cz.on(Phaser.Input.Events.POINTER_UP, () => (this.filter.q ? this.setQuery('') : this.focusSearch(true)));
+
+    // element chips (row 1, right of the search)
+    let x = GRID_X + SEARCH_W + 5;
+    for (const a of ELEMENTS) {
+      const b = this.chip(x, TB1_Y, 16, 14, '', () => this.setAttr(this.filter.attr === a ? null : a), orbTex(this, a));
+      b.onHover = (on) => on && this.say(`Element: ${ATTRIBUTE_NAMES[a]} (E)`, 'info');
+      this.attrBtns.push(b);
+      x += 18;
+    }
+
+    // kind chips (row 2)
+    x = GRID_X - 1;
     for (const k of KINDS) {
       const w = Math.ceil(measureText(KIND_LABEL[k], 'sm').w) + 10;
-      const b = this.chip(x, PY + 4, w, KIND_LABEL[k], () => this.setKind(k));
-      b.onHover = (on) => on && this.say(`Filter: ${KIND_LABEL[k]}`, 'info');
+      const b = this.chip(x, TB2_Y, w, 14, KIND_LABEL[k], () => this.setKind(k));
+      b.onHover = (on) => on && this.say(`Show: ${KIND_LABEL[k].toLowerCase()} (F)`, 'info');
       this.kindBtns.push(b);
       x += w + 2;
     }
-    x += 6;
-    for (const a of ELEMENTS) {
-      const b = this.chip(x, PY + 4, 17, '', () => this.setAttr(this.filter.attr === a ? null : a), orbTex(this, a));
-      b.onHover = (on) => on && this.say(`Element: ${ATTRIBUTE_NAMES[a]}`, 'info');
-      this.attrBtns.push(b);
-      x += 19;
-    }
-    // row 2: sort chips
-    this.txt(PX + 6, PY + 23, 'SORT', PAL.steel);
-    x = PX + 46;
-    for (const k of SORT_KEYS) {
-      const w = Math.ceil(measureText(SORT_LABEL[k], 'sm').w) + 10;
-      const b = this.chip(x, PY + 20, w, SORT_LABEL[k], () => this.setSort(k));
-      b.onHover = (on) => on && this.say(`Sort: ${SORT_LABEL[k]}`, 'info');
-      this.sortBtns.push(b);
-      x += w + 2;
-    }
-    this.footPage = pixelText(this, PX + PW - 10, PY + 23, '', { size: 'sm', color: PAL.steel, originX: 1 }).setDepth(10);
+    // sort dropdown (row 2, right)
+    const SW = 64;
+    const sx = COL_X + COL_W - 8 - SW;
+    this.poolCount = pixelText(this, sx - 4, TB2_Y + 1, '', { size: 'sm', color: PAL.steel, originX: 1 }).setDepth(10);
+    this.sortBtn = this.chip(sx, TB2_Y, SW, 14, '', () => this.toggleSort());
+    this.sortBtn.onHover = (on) => on && this.say('Sort order (O)', 'info');
+    this.add.image(sx + SW - 10, TB2_Y + 5, caretDownIcon(this)).setOrigin(0).setDepth(25);
+    SORT_KEYS.forEach((k, i) => {
+      const b = this.chip(sx, TB2_Y + 15 + i * 15, SW, 14, SORT_LABEL[k], () => {
+        this.toggleSort(false);
+        this.setSort(k);
+      });
+      b.setDepth(820).setVisible(false);
+      this.sortMenu.push(b);
+    });
 
-    // grid cells
-    for (let r = 0; r < ROWS; r++)
-      for (let c = 0; c < COLS; c++) this.cells.push(this.makeCell(r, c));
-    this.emptyHint = pixelText(this, GRID_X + 164, GRID_Y + 110, 'No cards match this filter.', { size: 'md', color: PAL.steel, originX: 0.5, align: 'center' }).setDepth(10).setVisible(false);
+    // light under the focused card + its ring
+    this.hoverGlow = this.add.image(0, 0, ovalHaloTex(this, 30, 38)).setDepth(6).setBlendMode(Phaser.BlendModes.ADD).setTint(PAL.gold3).setAlpha(0.32).setVisible(false);
+    this.hoverRing = this.add.image(0, 0, ringTex(this, MINI_W, MINI_H)).setOrigin(0).setDepth(9).setVisible(false);
+    for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) this.cells.push(this.makeCell(r, c));
+    this.emptyHint = pixelText(this, COL_X + COL_W / 2, GRID_Y + 100, 'No cards match.\nClear the search or the filters.', { size: 'sm', color: PAL.steel, originX: 0.5, align: 'center' }).setDepth(10).setVisible(false);
 
     // scrollbar
-    this.track = this.add.rectangle(PX + PW - 7, GRID_Y, 3, ROWS * (CELL_H + GAP) - GAP, PAL.night2).setOrigin(0).setDepth(10);
-    this.thumb = this.add.rectangle(PX + PW - 7, GRID_Y, 3, 20, PAL.steel).setOrigin(0).setDepth(11);
-    const tz = this.add.zone(PX + PW - 11, GRID_Y, 11, ROWS * (CELL_H + GAP) - GAP).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
+    const th = ROWS * PITCH_Y - 3;
+    this.track = this.add.rectangle(COL_X + COL_W - 7, GRID_Y, 3, th, PAL.night2).setOrigin(0).setDepth(10);
+    this.thumbBar = this.add.rectangle(COL_X + COL_W - 7, GRID_Y, 3, 20, PAL.cyan2).setOrigin(0).setDepth(11);
+    const tz = this.add.zone(COL_X + COL_W - 10, GRID_Y, 9, th).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
     tz.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => this.dragTrack(p));
     tz.on(Phaser.Input.Events.POINTER_MOVE, (p: Phaser.Input.Pointer) => p.isDown && this.dragTrack(p));
-
-    // footer: message line
-    const fy = GRID_Y + ROWS * (CELL_H + GAP) - GAP + 6;
-    this.add.rectangle(PX + 6, fy - 2, PW - 12, 1, PAL.night3).setOrigin(0).setDepth(10);
-    this.footMsg = pixelText(this, PX + 8, fy + 3, '', { size: 'sm', color: PAL.mist, maxWidth: PW - 16, lineSpacing: -1 }).setDepth(10);
   }
 
   private makeCell(r: number, c: number): Cell {
-    const x = GRID_X + c * (CELL_W + GAP);
-    const y = GRID_Y + r * (CELL_H + GAP);
+    const x = GRID_X + c * PITCH_X;
+    const y = GRID_Y + r * PITCH_Y;
     const box = this.add.container(x, y).setDepth(8);
-    const bg = this.add.image(0, 0, cellTex(this, 'monster', false, false)).setOrigin(0);
-    const art = this.add.image(3, 3, cardArtKey(ALL_CARDS[0].id)).setOrigin(0);
-    const orb = this.add.image(5, 5, orbTex(this, 'FIRE')).setOrigin(0);
-    const lvlBg = this.add.rectangle(46, 33, 1, 1, PAL.ink).setOrigin(1, 1);
-    const lvl = pixelText(this, 46, 38, '', { size: 'sm', color: PAL.gold4, originX: 1, originY: 1 });
-    const name = pixelText(this, 51, 3, '', { size: 'sm', color: PAL.white, maxWidth: CELL_W - 53, lineSpacing: -1 });
-    const atk = pixelText(this, 52, 26, '', { size: 'sm', color: PAL.crim3 });
-    const def = pixelText(this, 82, 26, '', { size: 'sm', color: PAL.cyan3 });
-    const word = pixelText(this, 52, 26, '', { size: 'sm', color: PAL.mist });
-    const chain = this.add.image(CELL_W - 12, 17, chainTex(this)).setOrigin(0);
-    const tick = this.add.image(37, 4, tickTex(this)).setOrigin(0);
-    const cntBg = this.add.rectangle(3, 37, 1, 1, PAL.ink).setOrigin(0, 1).setVisible(false);
-    const cnt = pixelText(this, 4, 36, '', { size: 'sm', color: PAL.gold4, originY: 1 });
-    // the - button (remove one copy), bottom of the art window between "xN" and the level; visible while the card is in the deck
-    const mbg = this.add.rectangle(0, 0, 11, 9, PAL.night3).setOrigin(0);
-    const mtx = pixelText(this, 3, 2, '-', { size: 'sm', color: PAL.white });
-    const minus = this.add.container(19, CELL_H - 12, [mbg, mtx]).setVisible(false);
-    box.add([bg, art, orb, lvlBg, lvl, name, atk, def, word, chain, tick, cntBg, cnt, minus]);
-    const zone = this.add.zone(x, y, CELL_W, CELL_H).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
-    const minusZone = this.add.zone(x + 19, y + CELL_H - 12, 11, 9).setOrigin(0).setDepth(13).setInteractive({ useHandCursor: true });
-    minusZone.input!.enabled = false;
-    const cell: Cell = { box, bg, art, orb, lvlBg, lvl, name, atk, def, word, chain, tick, cntBg, cnt, minus, zone, minusZone, x, y, index: -1, id: null };
-    minusZone.on(Phaser.Input.Events.POINTER_OVER, () => {
-      if (cell.id && !this.editing) this.setFocus('pool', cell.index, true);
-    });
-    minusZone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
-      if (!cell.id || this.editing || p.rightButtonReleased()) return;
-      this.removeCard(cell.id);
-    });
+    const card = this.add.image(0, 0, TEX.px1).setOrigin(0);
+    const veil = this.add.image(0, 0, veilTex(this, MINI_W, MINI_H)).setOrigin(0).setVisible(false);
+    const lock = this.add.image(MINI_W - 11, 2, lockIcon(this)).setOrigin(0).setVisible(false);
+    const mark = this.add.image(MINI_W - 12, 3, chainTex(this)).setOrigin(0).setVisible(false);
+    const badgeBg = this.add.rectangle(0, 25, 1, 10, PAL.ink).setOrigin(0);
+    const badge = pixelText(this, 0, 24, '', { size: 'sm', color: PAL.white });
+    box.add([card, veil, mark, lock, badgeBg, badge]);
+    const zone = this.add.zone(x, y, MINI_W, MINI_H).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
+    const cell: Cell = { box, card, veil, lock, mark, badgeBg, badge, zone, x, y, index: -1, id: null };
     zone.on(Phaser.Input.Events.POINTER_OVER, () => {
-      if (cell.index < 0 || this.editing) return;
+      if (cell.index < 0 || this.editing || this.helpOpen) return;
       this.setFocus('pool', cell.index, true);
     });
     zone.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => {
-      if (cell.index < 0 || this.editing) return;
+      if (cell.index < 0 || this.editing || this.helpOpen || this.sortOpen) return;
+      this.setFocus('pool', cell.index, false);
       if (p.rightButtonDown()) {
-        this.setFocus('pool', cell.index, false);
+        if (cell.id && this.copies(cell.id)) this.removeCard(cell.id, this.cellCentre(cell));
         return;
       }
       this.pressedCell = cell.index;
-      this.setFocus('pool', cell.index, false);
-      box.y = y + 1;
-    });
-    // (adding the same card twice in a row is allowed now: copies)
-    zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
       box.y = y;
+    });
+    zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
       if (cell.index < 0 || this.pressedCell !== cell.index || p.rightButtonReleased()) return;
       this.pressedCell = -1;
-      this.lastPoolClick = { cell: cell.index, at: performance.now() };
-      this.togglePool(cell.index);
+      this.addCard(cell.id, cell.index);
     });
     zone.on(Phaser.Input.Events.POINTER_OUT, () => {
-      box.y = y;
       this.pressedCell = -1;
     });
     return cell;
   }
 
-  private buildDeckPanel(): void {
-    this.panel(DX, DY, DW, DH);
-    // slot tabs
-    for (let i = 0; i < SLOT_COUNT; i++) {
-      const b = this.chip(DX + 5 + i * 29, DY + 4, 27, String(i + 1), () => this.selectSlot(i));
-      b.onHover = (on) => on && this.say(`Slot ${i + 1}: ${this.store.slot(i)?.name ?? 'empty'}`, 'info');
-      this.slotBtns.push(b);
-      this.slotPips.push(this.add.rectangle(DX + 5 + i * 29 + 21, DY + 4 + 9, 3, 3, PAL.leaf3).setOrigin(0).setDepth(22).setVisible(false));
-    }
-    // name field
-    this.nameField = this.add.image(DX + 5, DY + 21, panelV3(this, 'neutral', NAME_W, 15)).setOrigin(0).setDepth(9);
-    this.nameText = pixelText(this, DX + 10, DY + 25, '', { size: 'sm', color: PAL.white }).setDepth(10);
-    this.nameCaret = this.add.rectangle(DX + 10, DY + 25, 1, 8, PAL.gold4).setOrigin(0).setDepth(11).setVisible(false);
-    this.nameZone = this.add.zone(DX + 5, DY + 21, NAME_W, 15).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
-    this.nameZone.on(Phaser.Input.Events.POINTER_UP, () => this.setEditing(!this.editing));
-    this.nameZone.on(Phaser.Input.Events.POINTER_OVER, () => !this.editing && this.say('Desteye ad ver (N)', 'info'));
-    // count line + legal mark
-    this.countText = pixelText(this, DX + NAME_W + 9, DY + 24, '', { size: 'md', color: PAL.white }).setDepth(10);
-    this.rangeText = pixelText(this, DX + NAME_W + 9, DY + 28, RANGE, { size: 'sm', color: PAL.steel }).setDepth(10);
-    this.okIcon = this.add.image(DX + DW - 9, DY + 28, ICON.check).setDepth(10).setVisible(false);
+  private cellCentre(c: Cell): Pt {
+    return { x: c.x + MINI_W / 2, y: c.y + MINI_H / 2 };
+  }
 
-    // list rows: one per distinct card, "xN" copies, - / + per row; the list scrolls
-    const RW = DW - 12;
-    for (let i = 0; i < LIST_ROWS; i++) {
-      const y = LIST_Y + i * ROW_H;
-      const box = this.add.container(DX + 4, y).setDepth(9);
-      // the highlight sits BELOW every row's text (a row's outline overlaps the next row's pixels)
-      const hi = this.add.rectangle(DX + 4, y, RW, ROW_H, PAL.night3).setOrigin(0).setVisible(false).setDepth(8);
-      const cnt = pixelText(this, 1, 1, '', { size: 'sm', color: PAL.gold3 });
-      const orb = this.add.image(13, 0, orbTex(this, 'FIRE')).setOrigin(0);
-      const name = pixelText(this, 24, 1, '', { size: 'sm', color: PAL.mist });
-      const chain = this.add.image(80, 2, chainTex(this)).setOrigin(0).setVisible(false);
-      const lvl = pixelText(this, 99, 1, '', { size: 'sm', color: PAL.gold3, originX: 1 });
-      const atk = pixelText(this, 121, 1, '', { size: 'sm', color: PAL.crim3, originX: 1 });
-      const stepBtn = (bx: number, label: string): StepBtn => {
-        const bg = this.add.rectangle(DX + 4 + bx, y + 1, 10, ROW_H - 2, PAL.night3).setOrigin(0).setDepth(9);
-        const lt = pixelText(this, DX + 4 + bx + 3, y + 1, label, { size: 'sm', color: PAL.white }).setDepth(10);
-        const zone = this.add.zone(DX + 4 + bx, y, 11, ROW_H).setOrigin(0).setDepth(13).setInteractive({ useHandCursor: true });
-        return { bg, label: lt, zone };
-      };
-      const minus = stepBtn(124, '-');
-      const plus = stepBtn(135, '+');
-      box.add([cnt, orb, name, chain, lvl, atk]);
-      const zone = this.add.zone(DX + 4, y, RW, ROW_H).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
-      const row: Row = { box, hi, orb, name, lvl, atk, cnt, chain, minus, plus, zone, id: null };
-      const focusRow = () => {
-        if (!row.id || this.editing) return;
-        this.zone = 'deck';
-        this.deckCursor = this.deckScroll + i;
-        this.renderFocus();
-        this.showInspect();
-        this.hoverSound();
-      };
-      zone.on(Phaser.Input.Events.POINTER_OVER, focusRow);
-      zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
-        if (!row.id || this.editing || p.rightButtonReleased()) return;
-        focusRow();
-      });
-      for (const b of [minus, plus]) b.zone.on(Phaser.Input.Events.POINTER_OVER, focusRow);
-      minus.zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
-        if (!row.id || this.editing || p.rightButtonReleased()) return;
-        this.deckCursor = this.deckScroll + i;
-        this.removeCard(row.id);
-      });
-      plus.zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
-        if (!row.id || this.editing || p.rightButtonReleased()) return;
-        this.deckCursor = this.deckScroll + i;
-        this.addCard(row.id, -1);
-      });
-      this.rows.push(row);
+  // ---------------------------------------------------------------- detail
+
+  private buildDetail(): void {
+    this.detBg = this.panel(DET_X, MAIN_Y, DET_W, MAIN_H, 'monster', 76);
+    this.detFrame = this.add.image(DET_X + 5, MAIN_Y + 5, TEX.px1).setOrigin(0).setDepth(9);
+    this.detArt = this.add.image(DET_X + 7, MAIN_Y + 7, TEX.px1).setOrigin(0).setScale(2).setDepth(10);
+    this.detName = pixelText(this, DET_X + DET_W / 2, MAIN_Y + 79, '', { size: 'md', color: PAL.white, originX: 0.5, align: 'center' }).setDepth(10);
+    for (let i = 0; i < 8; i++) this.detStars.push(this.add.image(0, 0, ICON.star).setOrigin(0).setDepth(10).setVisible(false));
+    this.detKind = pixelText(this, DET_X + DET_W / 2, 0, '', { size: 'sm', color: PAL.teal3, originX: 0.5 }).setDepth(10);
+    this.detOrb = this.add.image(DET_X + 7, 0, orbTex(this, 'FIRE')).setOrigin(0).setDepth(10);
+    this.detType = pixelText(this, DET_X + 19, 0, '', { size: 'sm', color: PAL.mist }).setDepth(10);
+    this.detAtk = pixelText(this, DET_X + 7, 0, '', { size: 'sm', color: PAL.crim3 }).setDepth(10);
+    this.detDef = pixelText(this, DET_X + 55, 0, '', { size: 'sm', color: PAL.cyan3 }).setDepth(10);
+    this.detRule = this.add.rectangle(DET_X + 6, 0, DET_W - 12, 1, PAL.night3).setOrigin(0).setDepth(10);
+    this.detBody = pixelText(this, DET_X + 7, 0, '', { size: 'sm', color: PAL.white, lineSpacing: -1 }).setDepth(10);
+    this.detNote = pixelText(this, DET_X + 7, 0, '', { size: 'sm', color: PAL.gold3, lineSpacing: -1 }).setDepth(10);
+    this.detMark = this.add.image(DET_X + DET_W - 16, 0, chainTex(this)).setOrigin(0).setDepth(10).setVisible(false);
+    this.detMore = pixelText(this, DET_X + DET_W - 7, 0, 'more', { size: 'sm', color: PAL.steel, originX: 1 }).setDepth(11).setVisible(false);
+    this.detEmpty = pixelText(this, DET_X + DET_W / 2, MAIN_Y + 120, 'Point at a card\nto see it here.', { size: 'sm', color: PAL.steel, originX: 0.5, align: 'center' }).setDepth(10).setVisible(false);
+  }
+
+  private artFrameTex(kind: 'monster' | 'spell' | 'trap'): string {
+    return canvasTexture(this, `deck2:artframe:${kind}`, () => {
+      const R = KIND_RAMP[kind];
+      const p = new PixelCanvas(92, 72);
+      p.rect(0, 0, 92, 72, PAL.ink);
+      p.frame(1, 1, 90, 70, R[2]);
+      p.hline(1, 90, 1, R[3]);
+      p.vline(1, 1, 70, R[3]);
+      p.set(1, 1, R[4]);
+      for (const [x, y] of [[0, 0], [91, 0], [0, 71], [91, 71]] as const) p.erase(x, y);
+      return p;
+    });
+  }
+
+  private showDetail(): void {
+    const id = this.currentCard();
+    this.renderDetail(id);
+  }
+
+  private renderDetail(id: CardId | null): void {
+    const objs = [this.detFrame, this.detArt, this.detName, this.detKind, this.detOrb, this.detType, this.detAtk, this.detDef, this.detRule, this.detBody, this.detNote];
+    this.detEmpty.setVisible(!id);
+    for (const o of objs) o.setVisible(!!id);
+    this.detMore.setVisible(false);
+    for (const s of this.detStars) s.setVisible(false);
+    this.detMark.setVisible(false);
+    if (!id) {
+      this.detBg.setTexture(panelV3(this, 'neutral', DET_W, MAIN_H, 76));
+      this.shownId = null;
+      return;
     }
-    // scrollbar of the list
-    this.dTrack = this.add.rectangle(DX + DW - 6, LIST_Y, 2, LIST_ROWS * ROW_H, PAL.night2).setOrigin(0).setDepth(10);
-    this.dThumb = this.add.rectangle(DX + DW - 6, LIST_Y, 2, 20, PAL.steel).setOrigin(0).setDepth(11);
-    const dz = this.add.zone(DX + DW - 9, LIST_Y, 8, LIST_ROWS * ROW_H).setOrigin(0).setDepth(14).setInteractive({ useHandCursor: true });
+    const d = CARDS[id];
+    this.shownId = id;
+    this.detBg.setTexture(panelV3(this, d.kind, DET_W, MAIN_H, 76));
+    this.detFrame.setTexture(this.artFrameTex(d.kind));
+    this.detArt.setTexture(cardArtKey(id));
+    const cx = DET_X + DET_W / 2;
+    // name: md when it fits, otherwise sm on up to two lines
+    let y = MAIN_Y + 80;
+    if (measureText(d.name, 'md').w <= DET_W - 8) {
+      this.detName.destroy();
+      this.detName = pixelText(this, cx, y, d.name, { size: 'md', color: PAL.white, originX: 0.5, align: 'center' }).setDepth(10);
+      y += 15;
+    } else {
+      const lines = wrapText(d.name, 'sm', DET_W - 8).slice(0, 2);
+      this.detName.destroy();
+      this.detName = pixelText(this, cx, y + 1, lines.join('\n'), { size: 'sm', color: PAL.white, originX: 0.5, align: 'center', lineSpacing: -1 }).setDepth(10);
+      y += lines.length * 10 + 4;
+    }
+    if (isMonster(d)) {
+      const n = Math.min(8, d.level);
+      const sx = Math.round(cx - (n * 6 - 1) / 2);
+      for (let i = 0; i < n; i++) this.detStars[i].setPosition(sx + i * 6, y + 1).setVisible(true).setTint(d.level >= DECK_HIGH_LEVEL ? PAL.fire3 : PAL.gold3);
+      this.detKind.setVisible(false);
+      y += 8;
+      this.detOrb.setTexture(orbTex(this, d.attribute)).setY(y + 1);
+      this.detType.setText(fitText(`${ATTRIBUTE_NAMES[d.attribute]} / ${d.race}`, DET_W - 26, (s) => measureText(s, 'sm').w)).setY(y);
+      y += 12;
+      this.detAtk.setText(`ATK ${d.atk}`).setY(y).setVisible(true);
+      this.detDef.setText(`DEF ${d.def}`).setY(y).setX(DET_X + DET_W - 7 - Math.ceil(measureText(`DEF ${d.def}`, 'sm').w)).setVisible(true);
+      y += 13;
+    } else {
+      const word = d.kind === 'spell' ? `SPELL · ${(SPELL_TYPE_LONG[d.spellType] ?? 'Normal').toUpperCase()}` : 'TRAP · NORMAL';
+      this.detKind.setText(word).setY(y - 1).setTint(KIND_RAMP[d.kind][3]).setVisible(true);
+      y += 11;
+      this.detOrb.setTexture(orbTex(this, orbOf(id))).setY(y + 1);
+      this.detType.setText(d.kind === 'spell' ? 'Spell card' : 'Trap card').setY(y);
+      this.detAtk.setVisible(false);
+      this.detDef.setVisible(false);
+      y += 13;
+    }
+    this.detRule.setY(y);
+    y += 4;
+    // deck note at the bottom: copies + the card's rule mark
+    const n = this.copies(id);
+    const max = maxCopies(id);
+    const noteFull = this.noteOf(id);
+    const bottom = MAIN_Y + MAIN_H - 6;
+    const note = (full: boolean) => [`In deck: ${n}/${max}`, ...(full && noteFull ? wrapText(noteFull, 'sm', DET_W - 14) : [])];
+    const words = d.kind === 'monster' && !d.text ? `"${d.flavor}"` : d.text;
+    const body = wrapText(words, 'sm', DET_W - 12);
+    let noteLines = note(true);
+    const rows = (k: number) => Math.floor((bottom - y - k * 10 - 3) / 10);
+    if (body.length > rows(noteLines.length)) noteLines = note(false);
+    if (this.detFor !== id) this.detScroll = 0;
+    this.detFor = id;
+    this.detLines = body;
+    this.detFit = rows(noteLines.length);
+    this.detBody.setY(y).setTint(d.kind === 'monster' && !d.text ? PAL.mist : PAL.white);
+    this.paintDetBody();
+    const ny = bottom - noteLines.length * 10;
+    this.detNote.setText(noteLines.join('\n')).setY(ny).setTint(n >= max ? PAL.gold3 : n ? PAL.cyan3 : PAL.steel);
+    const mark = markTexOf(this, id);
+    if (mark) this.detMark.setTexture(mark).setPosition(DET_X + DET_W - 16, ny + 3).setVisible(true);
+  }
+
+  /** The effect text window (it scrolls with the wheel when the text is longer than the panel). */
+  private paintDetBody(): void {
+    const fit = this.detFit;
+    const all = this.detLines;
+    const over = all.length > fit;
+    const max = Math.max(0, all.length - fit);
+    this.detScroll = Math.max(0, Math.min(max, this.detScroll));
+    const shown = all.slice(this.detScroll, this.detScroll + fit);
+    this.detBody.setText(shown.join('\n'));
+    this.detMore.setVisible(over).setY(this.detBody.y + fit * 10 - 9);
+    this.detMore.setText(this.detScroll < max ? 'more' : 'top').setTint(PAL.steel);
+  }
+
+  private scrollDetail(dy: number): void {
+    if (this.detLines.length <= this.detFit) return;
+    const before = this.detScroll;
+    this.detScroll += dy > 0 ? 2 : -2;
+    this.paintDetBody();
+    if (this.detScroll !== before) this.hoverSound();
+  }
+
+  /** The rule note of a marked card (seal / polar / single copy), with its deck count. */
+  private noteOf(id: CardId): string | null {
+    if (isSealCard(id)) {
+      const have = SEAL_IDS.filter((s) => this.inDeck(s)).length;
+      return `Five Seals: all 5 in hand wins. Deck: ${have}/${SEAL_IDS.length}.`;
+    }
+    if (isMagnetCard(id)) {
+      const have = MAGNET_PIECE_IDS.filter((s) => this.inDeck(s)).length;
+      return `Polar: 3 pieces on the field call Polar Sovereign. Deck: ${have}/${MAGNET_PIECE_IDS.length}, Sovereign ${this.inDeck('polar_sovereign') ? 'yes' : 'no'}.`;
+    }
+    if (isSingleCopy(id)) return 'Single copy: a deck holds only 1.';
+    return null;
+  }
+
+  // ---------------------------------------------------------------- deck panel
+
+  private buildDeckPanel(): void {
+    this.panel(DK_X, MAIN_Y, DK_W, MAIN_H, 'p1', 18);
+    this.deckTitle = pixelText(this, DK_X + 8, MAIN_Y + 3, '', { size: 'md', color: PAL.white }).setDepth(10);
+    this.deckState = pixelText(this, DK_X + DK_W - 8, MAIN_Y + 5, '', { size: 'sm', color: PAL.steel, originX: 1 }).setDepth(10);
+    this.deckOk = this.add.image(0, MAIN_Y + 7, checkIcon(this)).setOrigin(0).setDepth(10).setVisible(false);
+    this.add.rectangle(DK_X + 6, MAIN_Y + 18, DK_W - 12, 1, PAL.cyan1).setOrigin(0).setDepth(10);
+    this.deckEmpty = pixelText(this, LIST_X + LIST_W / 2, LIST_Y + 70, 'Your deck is empty.\nLeft click a card to add it,\nright click to take it out.', { size: 'sm', color: PAL.steel, originX: 0.5, align: 'center', lineSpacing: -1 }).setDepth(10).setVisible(false);
+
+    for (let i = 0; i < 3; i++) {
+      this.heads.push({
+        icon: this.add.image(0, 0, this.diamondTex()).setOrigin(0).setDepth(10),
+        label: pixelText(this, 0, 0, '', { size: 'sm', color: PAL.gold3 }).setDepth(10),
+        count: pixelText(this, 0, 0, '', { size: 'sm', color: PAL.steel, originX: 1 }).setDepth(10),
+        rule: this.add.rectangle(0, 0, 1, 1, PAL.night3).setOrigin(0).setDepth(10),
+      });
+    }
+    for (let i = 0; i < POOL_THUMBS; i++) this.thumbs.push(this.makeThumb());
+
+    // scrollbar
+    this.dTrack = this.add.rectangle(DK_X + DK_W - 8, LIST_Y, 3, LIST_H, PAL.night2).setOrigin(0).setDepth(10);
+    this.dThumb = this.add.rectangle(DK_X + DK_W - 8, LIST_Y, 3, 20, PAL.cyan2).setOrigin(0).setDepth(11);
+    const dz = this.add.zone(DK_X + DK_W - 11, LIST_Y, 9, LIST_H).setOrigin(0).setDepth(14).setInteractive({ useHandCursor: true });
     const dragD = (p: Phaser.Input.Pointer) => {
-      const max = this.maxDeckScroll();
+      const max = maxLineScroll(this.lines(), LIST_H, this.metrics);
       if (!max) return;
-      const t = Math.max(0, Math.min(1, (p.y - LIST_Y) / (LIST_ROWS * ROW_H)));
+      const t = Math.max(0, Math.min(1, (p.y - LIST_Y) / LIST_H));
       this.scrollDeck(Math.round(t * max) - this.deckScroll);
     };
     dz.on(Phaser.Input.Events.POINTER_DOWN, dragD);
     dz.on(Phaser.Input.Events.POINTER_MOVE, (p: Phaser.Input.Pointer) => p.isDown && dragD(p));
 
-    // level curve + counts
-    const cy = LIST_Y + LIST_ROWS * ROW_H + 3;
-    this.add.rectangle(DX + 6, cy + 1, DW - 12, 1, PAL.night3).setOrigin(0).setDepth(10);
+    // footer: deck stack (left) + level curve (right)
+    this.add.rectangle(DK_X + 6, FOOT_Y - 3, DK_W - 12, 1, PAL.night3).setOrigin(0).setDepth(10);
+    this.stackPool = this.add.image(DK_X + 44, STACK_BASE + 8, ovalHaloTex(this, 36, 11)).setDepth(5).setBlendMode(Phaser.BlendModes.ADD).setTint(PAL.cyan2).setAlpha(0.45);
+    for (let i = 0; i < 24; i++) this.stack.push(this.add.image(DK_X + 44, 0, cardIsoKey('back', 'up', 0)).setDepth(6 + i * 0.01).setVisible(false));
+    this.stackLabel = pixelText(this, DK_X + 44, STACK_BASE + 13, '', { size: 'sm', color: PAL.mist, originX: 0.5 }).setDepth(10);
+    this.txt(DK_X + 92, FOOT_Y + 1, 'LEVEL CURVE', PAL.steel);
+    const base = FOOT_Y + 62;
     for (let b = 0; b < CURVE_BUCKETS; b++) {
-      const bx = DX + 8 + b * 11;
-      this.curveBars.push(this.add.rectangle(bx, cy + 20, 9, 1, PAL.gold2).setOrigin(0, 1).setDepth(10));
-      this.curveNums.push(pixelText(this, bx + 5, cy + 21, b === CURVE_BUCKETS - 1 ? '8+' : String(b + 1), { size: 'sm', color: b + 1 >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.steel, originX: 0.5 }).setDepth(10));
+      const bx = DK_X + 94 + b * 18;
+      this.add.rectangle(bx, base - 44, 12, 44, PAL.night1).setOrigin(0).setDepth(9);
+      this.curveBars.push(this.add.rectangle(bx, base, 12, 1, PAL.cyan2).setOrigin(0, 1).setDepth(10));
+      this.curveTops.push(this.add.rectangle(bx, base, 12, 1, PAL.cyan4).setOrigin(0).setDepth(11));
+      this.curveVals.push(pixelText(this, bx + 6, base, '', { size: 'sm', color: PAL.white, originX: 0.5, originY: 1 }).setDepth(11));
+      this.curveNums.push(pixelText(this, bx + 6, base + 1, b === CURVE_BUCKETS - 1 ? '8+' : String(b + 1), { size: 'sm', color: b + 1 >= DECK_HIGH_LEVEL ? PAL.fire3 : PAL.steel, originX: 0.5 }).setDepth(10));
     }
-    const icons = [ICON.swords, ICON.spell, ICON.trap];
-    for (let i = 0; i < 3; i++) {
-      const y = cy + 2 + i * 9;
-      this.add.image(DX + 104, y + 4, icons[i]).setDepth(10).setTint(i === 0 ? PAL.gold3 : i === 1 ? PAL.teal3 : PAL.mag3);
-      this.countTexts.push(pixelText(this, DX + 111, y, '', { size: 'sm', color: PAL.mist }).setDepth(10));
-    }
-    this.reasons = pixelText(this, DX + 8, cy + 33, '', { size: 'sm', color: PAL.crim3, maxWidth: DW - 16, lineSpacing: -1 }).setDepth(10);
+  }
 
-    // action buttons (2 columns x 3 rows)
-    const defs: { label: string; tip: string; run: () => void }[] = [
-      { label: 'Save', tip: 'Save the deck to this slot (S)', run: () => this.save() },
-      { label: 'Random', tip: 'Random fill: fills the free spaces with legal cards (R)', run: () => this.randomFill() },
-      { label: 'Preset', tip: 'Load the preset decks one by one (P)', run: () => this.nextPreset() },
-      { label: 'Reset', tip: 'Load the Classic deck: the first 20 cards, two copies each, 40 cards (D)', run: () => this.resetClassic() },
-      { label: 'Clear', tip: 'Remove every card from the deck (X)', run: () => this.clearDeck() },
-      { label: 'Rename', tip: 'Name the deck (N)', run: () => this.setEditing(true) },
-    ];
-    defs.forEach((d, i) => {
-      const b = new Button(this, DX + 4 + (i % 3) * 50, BTN_Y + Math.floor(i / 3) * 17, { w: 49, h: 16, label: d.label, size: 'sm', style: i === 0 ? 'gold' : 'neutral', depth: 20 });
-      b.onClick = d.run;
-      b.onHover = (on) => on && this.say(d.tip, 'info');
-      this.actionBtns.push(b);
+  private diamondTex(): string {
+    return canvasTexture(this, 'deck2:diamond', () => {
+      const p = new PixelCanvas(7, 7);
+      p.stamp(['...#...', '..###..', '.##W##.', '###W###', '.#####.', '..###..', '...#...'], { '#': PAL.white, W: PAL.white }, 0, 0);
+      return p;
     });
   }
 
-  private buildPlate(): void {
-    const x = 4;
-    const y = 262;
-    const w = 128;
-    const h = 94;
-    this.plate.push(this.add.image(x, y, panelV3(this, 'neutral', w, h)).setOrigin(0).setDepth(3));
-    HELP.forEach(([k, v], i) => {
-      this.plate.push(this.txt(x + 8, y + 5 + i * 9, k, PAL.gold3));
-      this.plate.push(this.txt(x + 44, y + 5 + i * 9, v, PAL.mist));
+  private makeThumb(): Thumb {
+    const box = this.add.container(0, 0).setDepth(9).setVisible(false);
+    const img = this.add.image(0, 0, TEX.px1).setOrigin(0);
+    const ring = this.add.image(-2, -2, ringTex(this, THUMB_W, THUMB_H)).setOrigin(0).setVisible(false);
+    const badgeBg = this.add.rectangle(0, 0, 1, 10, PAL.ink).setOrigin(0);
+    const badge = pixelText(this, 0, 0, '', { size: 'sm', color: PAL.gold4 });
+    const name = pixelText(this, STRIP_ART_W + 4, 2, '', { size: 'sm', color: PAL.mist });
+    const step = (label: string): StepBtn => {
+      const bg = this.add.rectangle(0, 0, 10, 10, label === '+' ? PAL.cyan1 : PAL.crim1).setOrigin(0).setStrokeStyle(1, PAL.ink);
+      const lt = pixelText(this, label === '+' ? 2 : 3, -1, label, { size: 'sm', color: PAL.white });
+      const b = this.add.container(0, 0, [bg, lt]).setDepth(16).setVisible(false);
+      const zone = this.add.zone(0, 0, 11, 11).setOrigin(0).setDepth(17).setInteractive({ useHandCursor: true });
+      zone.input!.enabled = false;
+      return { box: b, bg, label: lt, zone };
+    };
+    const minus = step('-');
+    const plus = step('+');
+    box.add([img, ring, name, badgeBg, badge]);
+    const zone = this.add.zone(0, 0, THUMB_W, THUMB_H).setOrigin(0).setDepth(15).setInteractive({ useHandCursor: true });
+    zone.input!.enabled = false;
+    const th: Thumb = { box, img, ring, badgeBg, badge, name, minus, plus, zone, entry: null, flat: -1, x: 0, y: 0 };
+    const focus = () => {
+      if (!th.entry || this.editing || this.helpOpen) return;
+      const changed = this.zone !== 'deck' || this.deckCursor !== th.flat || this.hoverFlat !== th.flat;
+      this.zone = 'deck';
+      this.deckCursor = th.flat;
+      this.hoverFlat = th.flat;
+      if (!changed) return;
+      this.hoverSound();
+      this.renderDeckList();
+      this.renderFocus();
+      this.showDetail();
+    };
+    zone.on(Phaser.Input.Events.POINTER_OVER, focus);
+    zone.on(Phaser.Input.Events.POINTER_OUT, (p: Phaser.Input.Pointer) => {
+      // leaving the entry (not onto its own - / +): hide the buttons
+      const inside = p.x >= th.x && p.x < th.x + this.entryW() && p.y >= th.y && p.y < th.y + this.entryH();
+      if (!inside && this.hoverFlat === th.flat) {
+        this.hoverFlat = -1;
+        this.renderDeckList();
+      }
     });
-    // note mode (a seal piece, a polar card or a single-copy card is focused): title, mark, rule, deck count
-    this.noteTitle = this.txt(x + 8, y + 5, 'FIVE SEALS', PAL.gold3);
-    this.noteIcon = this.add.image(x + w - 14, y + 8, chainTex(this)).setOrigin(0.5).setDepth(10);
-    this.noteBody = pixelText(this, x + 8, y + 19, '', { size: 'sm', color: PAL.white, maxWidth: w - 16, lineSpacing: -1 }).setDepth(10);
-    this.sealCount = pixelText(this, x + 8, y + 56, '', { size: 'sm', color: PAL.mist, maxWidth: w - 16, lineSpacing: -1 }).setDepth(10);
-    this.plateSeal.push(this.noteTitle, this.noteIcon, this.noteBody, this.sealCount);
-    for (const o of this.plateSeal) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(false);
+    zone.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => {
+      if (!th.entry || this.editing || this.helpOpen || this.sortOpen) return;
+      if (p.rightButtonDown()) this.removeCard(th.entry.id, this.thumbCentre(th));
+    });
+    zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
+      if (!th.entry || this.editing || this.helpOpen || p.rightButtonReleased()) return;
+      this.addCard(th.entry.id, -1);
+    });
+    for (const b of [minus, plus]) b.zone.on(Phaser.Input.Events.POINTER_OVER, focus);
+    minus.zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
+      if (!th.entry || this.editing || p.rightButtonReleased()) return;
+      this.removeCard(th.entry.id, this.thumbCentre(th));
+    });
+    plus.zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
+      if (!th.entry || this.editing || p.rightButtonReleased()) return;
+      this.addCard(th.entry.id, -1);
+    });
+    return th;
+  }
+
+  private entryW(): number {
+    return this.view === 'grid' ? THUMB_W : LIST_W;
+  }
+
+  private entryH(): number {
+    return this.view === 'grid' ? THUMB_H : STRIP_ART_H;
+  }
+
+  private thumbCentre(th: Thumb): Pt {
+    return { x: th.x + Math.round(this.entryW() / 2), y: th.y + Math.round(this.entryH() / 2) };
+  }
+
+  // ---------------------------------------------------------------- bottom row
+
+  private buildBottom(): void {
+    this.add.rectangle(0, BOT_Y - 3, GAME_W, 1, PAL.night2).setOrigin(0).setDepth(3);
+    const defs: { key: string; label: string; icon: string; w: number; tip: string; run: () => void }[] = [
+      { key: 'auto', label: 'AUTO-FILL', icon: buttonIcon(this, 'auto'), w: 74, tip: 'Fill the free space with legal cards (R)', run: () => this.randomFill() },
+      { key: 'preset', label: 'PRESETS', icon: buttonIcon(this, 'preset'), w: 64, tip: 'Load the preset decks one by one (P)', run: () => this.nextPreset() },
+      { key: 'classic', label: 'CLASSIC', icon: buttonIcon(this, 'classic'), w: 64, tip: 'Load the Classic deck: the first 20 cards x2 (D)', run: () => this.resetClassic() },
+      { key: 'clear', label: 'CLEAR', icon: buttonIcon(this, 'clear'), w: 56, tip: 'Remove every card from the deck (X)', run: () => this.clearDeck() },
+    ];
+    let x = 4;
+    for (const d of defs) {
+      const b = new Button(this, x, BOT_Y, { w: d.w, h: BOT_H, label: d.label, icon: d.icon, size: 'sm', style: 'p1', depth: 20 });
+      b.onClick = d.run;
+      b.onHover = (on) => on && this.say(d.tip, 'info');
+      this.actionBtns[d.key] = b;
+      x += d.w + 4;
+    }
+    this.footMsg = pixelText(this, MSG_X, BOT_Y + 3, '', { size: 'sm', color: PAL.mist }).setDepth(10);
+    const save = new Button(this, DK_X + 116 - 4, BOT_Y, { w: 102, h: BOT_H, label: 'SAVE DECK', icon: buttonIcon(this, 'save'), size: 'md', style: 'gold', depth: 20 });
+    save.onClick = () => this.save();
+    save.onHover = (on) => on && this.say('Save the deck to this slot (S)', 'info');
+    this.actionBtns.save = save;
+    const q = new Button(this, GAME_W - 24, BOT_Y, { w: 20, h: BOT_H, label: '?', size: 'md', style: 'p1', depth: 20 });
+    q.onClick = () => this.setHelp(!this.helpOpen);
+    q.onHover = (on) => on && this.say('Keyboard shortcuts (?)', 'info');
+    this.actionBtns.help = q;
+  }
+
+  // ---------------------------------------------------------------- keyboard overlay
+
+  private buildHelp(): void {
+    const W = 300;
+    const H = 30 + HELP.length * 11;
+    const x = Math.round((GAME_W - W) / 2);
+    const y = Math.round((GAME_H - H) / 2);
+    const shade = this.add.image(0, 0, veilTex(this, GAME_W + 2, GAME_H + 2)).setOrigin(0).setPosition(-1, -1);
+    const bg = this.add.image(x, y, panelV3(this, 'p1', W, H, 16)).setOrigin(0);
+    const title = pixelText(this, x + 8, y + 3, 'KEYBOARD SHORTCUTS', { size: 'sm', color: PAL.cyan4 });
+    const close = pixelText(this, x + W - 8, y + 3, '? / ESC closes', { size: 'sm', color: PAL.steel, originX: 1 });
+    const parts: Phaser.GameObjects.GameObject[] = [shade, bg, title, close];
+    HELP.forEach(([k, v], i) => {
+      parts.push(pixelText(this, x + 10, y + 21 + i * 11, k, { size: 'sm', color: PAL.gold3 }));
+      parts.push(pixelText(this, x + 100, y + 21 + i * 11, v, { size: 'sm', color: PAL.white }));
+    });
+    this.help = this.add.container(0, 0, parts).setDepth(900).setVisible(false);
+    const z = this.add.zone(0, 0, GAME_W, GAME_H).setOrigin(0).setDepth(901);
+    z.setInteractive();
+    z.input!.enabled = false;
+    z.on(Phaser.Input.Events.POINTER_UP, () => this.setHelp(false));
+    this.help.setData('zone', z);
+  }
+
+  private setHelp(on: boolean): void {
+    if (on === this.helpOpen) return;
+    this.helpOpen = on;
+    this.help.setVisible(on);
+    const z = this.help.getData('zone') as Phaser.GameObjects.Zone;
+    // the closing click must not reach the cards under it: enable on the next frame, disable at once
+    if (on) void wait(this, 1).then(() => this.helpOpen && (z.input!.enabled = true));
+    else z.input!.enabled = false;
+    if (on) this.toggleSort(false);
+    sfx.play(on ? 'uiClick' : 'uiBack', { volume: 0.4 });
   }
 
   // ================================================================ state changes
@@ -606,8 +1054,11 @@ export class DeckScene extends Phaser.Scene {
     this.list = visibleIds(this.filter, this.sort);
     const i = prev ? this.list.indexOf(prev) : -1;
     this.cursor = i >= 0 ? i : Math.min(this.cursor, Math.max(0, this.list.length - 1));
-    const maxRow = Math.max(0, Math.ceil(this.list.length / COLS) - ROWS);
-    this.scrollRow = Math.min(this.scrollRow, maxRow);
+    this.scrollRow = Math.min(this.scrollRow, this.maxRow());
+  }
+
+  private maxRow(): number {
+    return Math.max(0, Math.ceil(this.list.length / COLS) - ROWS);
   }
 
   private setKind(k: KindFilter): void {
@@ -617,7 +1068,7 @@ export class DeckScene extends Phaser.Scene {
   }
 
   private setAttr(a: Attribute | null): void {
-    this.filter = { kind: a && this.filter.kind !== 'monster' ? 'monster' : this.filter.kind, attr: a };
+    this.filter = { ...this.filter, kind: a && this.filter.kind !== 'monster' ? 'monster' : this.filter.kind, attr: a };
     this.afterFilter();
   }
 
@@ -627,15 +1078,81 @@ export class DeckScene extends Phaser.Scene {
     this.afterFilter();
   }
 
-  private afterFilter(): void {
-    sfx.play('uiClick', { volume: 0.5, pitch: 1.1 });
+  private setQuery(q: string): void {
+    if ((this.filter.q ?? '') === q) return;
+    this.filter = { ...this.filter, q };
+    this.afterFilter(false);
+  }
+
+  private afterFilter(sound = true): void {
+    if (sound) sfx.play('uiClick', { volume: 0.5, pitch: 1.1 });
     const keep = this.list[this.cursor];
     this.scrollRow = 0;
     this.refreshList(keep);
     this.ensureVisible();
     this.renderAll();
-    this.showInspect();
+    this.showDetail();
     this.slideGrid(1);
+  }
+
+  private toggleSort(on = !this.sortOpen): void {
+    this.sortOpen = on;
+    this.sortMenu.forEach((b, i) => b.setVisible(on).setStyle(SORT_KEYS[i] === this.sort ? 'gold' : 'neutral'));
+    if (on) sfx.play('uiClick', { volume: 0.4 });
+  }
+
+  /** A click anywhere else closes the sort menu and ends the search / name typing. */
+  private globalDown(p: Phaser.Input.Pointer): void {
+    if (this.sortOpen) {
+      const sx = this.sortBtn.x;
+      const inMenu = p.x >= sx && p.x < sx + this.sortBtn.w && p.y >= TB2_Y && p.y < TB2_Y + 15 + SORT_KEYS.length * 15;
+      if (!inMenu) this.toggleSort(false);
+    }
+    if (this.zone === 'search') {
+      const inField = p.x >= GRID_X - 1 && p.x < GRID_X - 1 + SEARCH_W && p.y >= TB1_Y && p.y < TB1_Y + 14;
+      if (!inField) this.focusSearch(false);
+    }
+    if (this.editing) {
+      const inName = p.x >= NAME_X && p.x < NAME_X + NAME_W && p.y >= NAME_Y && p.y < NAME_Y + NAME_H;
+      if (!inName) this.setEditing(false);
+    }
+  }
+
+  private focusSearch(on: boolean): void {
+    if (this.editing) this.setEditing(false);
+    if (on) {
+      if (this.zone === 'search') return;
+      this.zone = 'search';
+      this.caretT = 0;
+      sfx.play('uiClick', { volume: 0.4 });
+      this.say('Type to search · ENTER: to the cards · ESC: clear', 'info');
+    } else {
+      if (this.zone !== 'search') return;
+      this.zone = 'pool';
+    }
+    this.renderSearch();
+    this.renderFocus();
+  }
+
+  private typeSearch(e: KeyboardEvent): boolean {
+    const q = this.filter.q ?? '';
+    if (e.key === 'Escape') {
+      if (q) this.setQuery('');
+      else this.focusSearch(false);
+      return true;
+    }
+    if (e.key === 'Enter' || e.key === 'ArrowDown' || e.key === 'Tab') {
+      this.focusSearch(false);
+      return true;
+    }
+    if (e.key === 'Backspace') {
+      this.setQuery(q.slice(0, -1));
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && /[A-Za-z0-9 '\-.,!çğıöşüÇĞİÖŞÜ]/.test(e.key)) {
+      if (q.length < 18) this.setQuery(q + e.key);
+    } else return e.key.length === 1;
+    this.caretT = 0;
+    this.renderSearch();
+    return true;
   }
 
   private selectSlot(i: number): void {
@@ -644,20 +1161,28 @@ export class DeckScene extends Phaser.Scene {
     this.slot = i;
     this.presetIdx = -1;
     this.deckCursor = 0;
+    this.deckScroll = 0;
+    this.hoverFlat = -1;
+    if (this.zone === 'deck' && !this.cur.cards.length) this.zone = 'pool';
     sfx.play('uiClick', { volume: 0.55, pitch: 1.05 });
     this.renderAll();
+    this.showDetail();
     this.say(`Slot ${i + 1}: ${this.store.slot(i) ? this.cur.name : 'empty slot'}`, 'info');
   }
 
-  /** Cell index of the cursor card -> focus (mouse hover / keys). */
   private setFocus(zone: Zone, index: number, sound: boolean): void {
+    if (this.zone === 'search') this.focusSearch(false);
     const changed = this.zone !== zone || this.cursor !== index;
     this.zone = zone;
     if (zone === 'pool') this.cursor = index;
     if (!changed) return;
+    if (this.hoverFlat >= 0) {
+      this.hoverFlat = -1;
+      this.renderDeckList();
+    }
     if (sound) this.hoverSound();
     this.renderFocus();
-    this.showInspect();
+    this.showDetail();
   }
 
   private hoverSound(): void {
@@ -671,64 +1196,47 @@ export class DeckScene extends Phaser.Scene {
     const row = Math.floor(this.cursor / COLS);
     if (row < this.scrollRow) this.scrollRow = row;
     else if (row >= this.scrollRow + ROWS) this.scrollRow = row - ROWS + 1;
-    const maxRow = Math.max(0, Math.ceil(this.list.length / COLS) - ROWS);
-    this.scrollRow = Math.max(0, Math.min(maxRow, this.scrollRow));
+    this.scrollRow = Math.max(0, Math.min(this.maxRow(), this.scrollRow));
   }
 
   private wheel(dy: number, x = 0): void {
-    if (!this.ready || this.editing || !dy) return;
-    if (x >= DX) this.scrollDeck(dy > 0 ? 3 : -3);
-    else this.scrollBy(dy > 0 ? 1 : -1);
+    if (!this.ready || this.editing || this.helpOpen || !dy) return;
+    if (x >= DK_X) this.scrollDeck(dy > 0 ? 1 : -1);
+    else if (x < DET_X) this.scrollBy(dy > 0 ? 1 : -1);
+    else this.scrollDetail(dy);
   }
 
-  /** The distinct cards of the deck with their copy counts, in list order (level, then ATK, then name). */
-  private deckEntries(): { id: CardId; n: number }[] {
-    const ids = [...new Set(this.cur.cards)];
-    return this.sortedIds(ids).map((id) => ({ id, n: copiesOf(this.cur.cards, id) }));
-  }
-
-  private sortedIds(ids: readonly CardId[]): CardId[] {
-    return sortPool(ids.map((id) => CARDS[id]), 'level').map((d) => d.id);
-  }
-
-  private maxDeckScroll(): number {
-    return Math.max(0, this.deckEntries().length - LIST_ROWS);
-  }
-
-  private scrollDeck(rows: number): void {
-    const next = Math.max(0, Math.min(this.maxDeckScroll(), this.deckScroll + rows));
+  private scrollDeck(lines: number): void {
+    const max = maxLineScroll(this.lines(), LIST_H, this.metrics);
+    const next = Math.max(0, Math.min(max, this.deckScroll + lines));
     if (next === this.deckScroll) return;
     this.deckScroll = next;
-    this.renderDeck();
+    this.hoverFlat = -1;
+    this.renderDeckList();
   }
 
   private ensureDeckVisible(): void {
-    if (this.deckCursor < this.deckScroll) this.deckScroll = this.deckCursor;
-    else if (this.deckCursor >= this.deckScroll + LIST_ROWS) this.deckScroll = this.deckCursor - LIST_ROWS + 1;
-    this.deckScroll = Math.max(0, Math.min(this.maxDeckScroll(), this.deckScroll));
+    this.deckScroll = scrollToEntry(this.lines(), this.deckScroll, this.deckCursor, LIST_H, this.metrics);
   }
 
   private scrollBy(rows: number): void {
-    const maxRow = Math.max(0, Math.ceil(this.list.length / COLS) - ROWS);
-    const next = Math.max(0, Math.min(maxRow, this.scrollRow + rows));
+    const next = Math.max(0, Math.min(this.maxRow(), this.scrollRow + rows));
     if (next === this.scrollRow) return;
     const dir = next > this.scrollRow ? 1 : -1;
     this.scrollRow = next;
-    // keep the cursor inside the window
     const lo = this.scrollRow * COLS;
     const hi = (this.scrollRow + ROWS) * COLS - 1;
-    this.cursor = Math.max(lo, Math.min(Math.min(hi, this.list.length - 1), this.cursor));
+    if (this.zone === 'pool') this.cursor = Math.max(lo, Math.min(Math.min(hi, this.list.length - 1), this.cursor));
     this.renderGrid();
     this.renderFocus();
-    this.showInspect();
+    this.showDetail();
     this.slideGrid(dir);
   }
 
   private dragTrack(p: Phaser.Input.Pointer): void {
-    const total = Math.ceil(this.list.length / COLS);
-    const maxRow = Math.max(0, total - ROWS);
+    const maxRow = this.maxRow();
     if (!maxRow) return;
-    const t = Math.max(0, Math.min(1, (p.y - GRID_Y) / (ROWS * (CELL_H + GAP))));
+    const t = Math.max(0, Math.min(1, (p.y - GRID_Y) / (ROWS * PITCH_Y)));
     const next = Math.round(t * maxRow);
     if (next !== this.scrollRow) this.scrollBy(next - this.scrollRow);
   }
@@ -743,56 +1251,63 @@ export class DeckScene extends Phaser.Scene {
     return copiesOf(this.cur.cards, id);
   }
 
-  /** Pool click: one more copy (the - button / DEL / the deck list take copies out). */
-  private togglePool(index: number): void {
-    const id = this.list[index];
-    if (!id) return;
-    this.addCard(id, index);
-  }
-
   private countLabel(): string {
-    return `${this.cur.cards.length}${RANGE}`;
+    return `${this.cur.cards.length}/${this.cur.cards.length <= DECK_MIN ? DECK_MIN : DECK_MAX}`;
   }
 
-  private addCard(id: CardId, fromIndex = this.cursor): void {
+  /** Where entry `id` sits on screen now (null: scrolled away / not in the deck). */
+  private entryCentre(id: CardId): Pt | null {
+    const th = this.thumbs.find((t) => t.entry?.id === id);
+    return th ? this.thumbCentre(th) : null;
+  }
+
+  private addCard(id: CardId | null, fromIndex = this.cursor): void {
+    if (!id) return;
+    const cell = fromIndex >= 0 ? this.cells.find((k) => k.index === fromIndex) : undefined;
     const why = addBlocker(this.cur.cards, id);
     if (why) {
       sfx.play('uiError', { volume: 0.55 });
       this.say(why, 'bad');
       this.shakeCell(fromIndex);
+      this.fx.blocked(id, cell ? this.cellCentre(cell) : this.entryCentre(id));
       return;
     }
     this.cur.cards.push(id);
     sfx.play('uiClick', { volume: 0.7, pitch: 1.25 });
-    const shown = this.deckEntries().findIndex((e) => e.id === id);
-    // keep the row we touched on screen
-    if (shown >= 0 && (shown < this.deckScroll || shown >= this.deckScroll + LIST_ROWS)) this.deckScroll = Math.max(0, Math.min(this.maxDeckScroll(), shown - Math.floor(LIST_ROWS / 2)));
+    const flat = this.entries().findIndex((e) => e.id === id);
+    // keep the entry we touched on screen
+    if (this.zone === 'deck') this.deckCursor = flat;
+    this.deckScroll = scrollToEntry(this.lines(), this.deckScroll, flat, LIST_H, this.metrics);
     this.afterEdit();
-    const row = shown - this.deckScroll;
-    if (fromIndex >= 0) this.flyTo(fromIndex, row);
-    this.flashRow(row);
+    this.fx.added(id, cell ? this.cellCentre(cell) : null, this.entryCentre(id));
     this.say(`${CARDS[id].name} added (x${this.copies(id)}) · ${this.countLabel()}`, 'ok');
   }
 
-  private removeCard(id: CardId): void {
+  private removeCard(id: CardId, at: Pt | null = null): void {
     const i = this.cur.cards.lastIndexOf(id);
     if (i < 0) return;
     this.cur.cards.splice(i, 1);
     sfx.play('uiClick', { volume: 0.6, pitch: 0.8 });
     this.afterEdit();
+    this.fx.removed(id, at);
     const left = this.copies(id);
     this.say(`${CARDS[id].name} removed${left ? ` (x${left} left)` : ''} · ${this.countLabel()}`, 'info');
   }
 
   private afterEdit(): void {
-    const n = this.deckEntries().length;
+    const n = this.entries().length;
     this.deckCursor = Math.max(0, Math.min(n - 1, this.deckCursor));
-    if (!n) this.deckScroll = 0;
-    this.deckScroll = Math.max(0, Math.min(this.maxDeckScroll(), this.deckScroll));
+    if (!n) {
+      this.deckScroll = 0;
+      this.hoverFlat = -1;
+      if (this.zone === 'deck') this.zone = 'pool';
+    }
+    if (this.hoverFlat >= n) this.hoverFlat = -1;
+    this.deckScroll = Math.max(0, Math.min(maxLineScroll(this.lines(), LIST_H, this.metrics), this.deckScroll));
     this.renderGrid();
     this.renderDeck();
     this.renderFocus();
-    this.renderPlate();
+    this.showDetail();
   }
 
   private save(): void {
@@ -806,10 +1321,11 @@ export class DeckScene extends Phaser.Scene {
     d.name = this.store.slot(this.slot)!.name;
     sfx.play('uiConfirm', { volume: 0.7 });
     this.renderDeck();
-    this.pulse(this.nameField);
+    this.pulse(this.nameText);
+    this.fx.saved();
     const v = validateDeck(d.cards);
-    const where = this.store.persisted ? '' : ' (this session only; the browser does not allow saving)';
-    this.say(v.ok ? `Saved: slot ${this.slot + 1} · playable${where}` : `Saved: slot ${this.slot + 1} · not playable yet${where}`, v.ok ? 'ok' : 'gold');
+    const where = this.store.persisted ? '' : ' (this session only)';
+    this.say(v.ok ? `Saved to slot ${this.slot + 1} · ready to duel${where}` : `Saved to slot ${this.slot + 1} · draft, not playable yet${where}`, v.ok ? 'ok' : 'gold');
   }
 
   private randomFill(): void {
@@ -819,8 +1335,9 @@ export class DeckScene extends Phaser.Scene {
     this.cur.cards = autoFillDeck(this.cur.cards, seed, undefined, Math.max(DECK_MIN, this.cur.cards.length));
     sfx.play('uiConfirm', { volume: 0.55, pitch: 1.2 });
     this.afterEdit();
-    this.pulse(this.countText);
-    this.say(this.cur.cards.length > before ? `${this.cur.cards.length - before} card${this.cur.cards.length - before === 1 ? '' : 's'} added: ${this.countLabel()}` : this.cur.cards.length >= DECK_MIN ? 'The deck is already full' : 'No legal card left to add', this.cur.cards.length > before ? 'ok' : 'bad');
+    this.fx.bulk('auto');
+    const added = this.cur.cards.length - before;
+    this.say(added > 0 ? `${added} card${added === 1 ? '' : 's'} added · ${this.countLabel()}` : this.cur.cards.length >= DECK_MIN ? 'The deck is already full' : 'No legal card left to add', added > 0 ? 'ok' : 'bad');
   }
 
   private nextPreset(): void {
@@ -830,9 +1347,10 @@ export class DeckScene extends Phaser.Scene {
     const p = list[this.presetIdx];
     this.cur.cards = [...p.cards];
     this.cur.name = p.name.slice(0, NAME_MAX);
+    this.deckScroll = 0;
     sfx.play('uiConfirm', { volume: 0.55, pitch: 1.1 });
     this.afterEdit();
-    this.renderDeck();
+    this.fx.bulk('preset');
     this.say(`${p.name}: ${p.blurb}`, 'gold');
   }
 
@@ -841,10 +1359,11 @@ export class DeckScene extends Phaser.Scene {
     this.cur.cards = classicDeck();
     this.cur.name = 'Classic Deck';
     this.presetIdx = -1;
+    this.deckScroll = 0;
     sfx.play('uiConfirm', { volume: 0.5, pitch: 0.95 });
     this.afterEdit();
-    this.renderDeck();
-    this.say('Classic deck loaded: the first 20 cards, two copies each (40).', 'info');
+    this.fx.bulk('classic');
+    this.say('Classic deck: the first 20 cards, two copies each (40).', 'info');
   }
 
   private clearDeck(): void {
@@ -853,6 +1372,7 @@ export class DeckScene extends Phaser.Scene {
     this.cur.cards = [];
     sfx.play('uiBack', { volume: 0.6 });
     this.afterEdit();
+    this.fx.bulk('clear');
     this.say('Deck cleared.', 'info');
   }
 
@@ -860,6 +1380,7 @@ export class DeckScene extends Phaser.Scene {
 
   private setEditing(on: boolean): void {
     if (on === this.editing) return;
+    if (on && this.zone === 'search') this.focusSearch(false);
     this.editing = on;
     this.nameFresh = on;
     this.caretT = 0;
@@ -892,28 +1413,41 @@ export class DeckScene extends Phaser.Scene {
   private onKey(e: KeyboardEvent): boolean {
     if (this.leaving || !this.ready) return false;
     if (this.editing) return this.typeName(e);
+    if (this.zone === 'search') return this.typeSearch(e);
     if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    if (this.helpOpen) {
+      if (e.key === '?' || e.code === 'Escape' || e.code === 'Enter' || e.code === 'F1') this.setHelp(false);
+      return true;
+    }
+    if (e.key === '?' || e.code === 'F1') {
+      this.setHelp(true);
+      return true;
+    }
+    if (this.sortOpen && e.code === 'Escape') {
+      this.toggleSort(false);
+      return true;
+    }
     const code = e.code;
+    const deckId = () => this.entries()[this.deckCursor]?.id;
     const dir = (dx: number, dy: number) => {
       if (this.zone === 'pool') {
-        const atRight = dx > 0 && this.cursor % COLS === COLS - 1;
-        if (atRight && this.cur.cards.length) return this.switchZone('deck');
+        if (dx > 0 && this.cursor % COLS === COLS - 1 && this.cur.cards.length) return this.switchZone('deck');
+        if (dy < 0 && this.cursor < COLS) return this.focusSearch(true);
         const n = gridMove(this.cursor, dx, dy, COLS, this.list.length);
         if (n >= 0) this.moveCursor(n);
       } else {
-        if (dx < 0) return this.switchZone('pool');
-        const n = this.deckEntries().length;
-        if (dx > 0) {
-          const e = this.deckEntries()[this.deckCursor];
-          if (e) this.addCard(e.id, -1);
-          return;
-        }
-        if (n) {
-          this.deckCursor = (this.deckCursor + dy + n) % n;
+        const lines = this.lines();
+        const li = lineOfEntry(lines, this.deckCursor);
+        const row = lines[li];
+        if (dx < 0 && row?.kind === 'row' && this.deckCursor === row.start) return this.switchZone('pool');
+        const n = entryMove(lines, this.deckCursor, dx, dy);
+        if (n >= 0 && n !== this.deckCursor) {
+          this.deckCursor = n;
+          this.hoverFlat = -1;
           this.ensureDeckVisible();
-          this.renderDeck();
+          this.renderDeckList();
           this.renderFocus();
-          this.showInspect();
+          this.showDetail();
           this.hoverSound();
         }
       }
@@ -935,39 +1469,38 @@ export class DeckScene extends Phaser.Scene {
       case 'NumpadEnter':
       case 'Space':
         if (e.repeat) return true;
-        if (this.zone === 'pool') this.togglePool(this.cursor);
+        if (this.zone === 'pool') this.addCard(this.list[this.cursor] ?? null, this.cursor);
         else {
-          const e = this.deckEntries()[this.deckCursor];
-          if (e) this.removeCard(e.id);
+          const id = deckId();
+          if (id) this.removeCard(id, this.entryCentre(id));
         }
         return true;
       case 'Delete':
-      case 'Backspace': {
-        const id = this.zone === 'pool' ? this.list[this.cursor] : this.deckEntries()[this.deckCursor]?.id;
-        if (id && this.inDeck(id)) this.removeCard(id);
+      case 'Backspace':
+      case 'Minus':
+      case 'NumpadSubtract': {
+        const id = this.zone === 'pool' ? this.list[this.cursor] : deckId();
+        if (id && this.inDeck(id)) this.removeCard(id, this.entryCentre(id));
         return true;
       }
       case 'Equal':
       case 'NumpadAdd': {
-        const id = this.zone === 'pool' ? this.list[this.cursor] : this.deckEntries()[this.deckCursor]?.id;
+        const id = this.zone === 'pool' ? this.list[this.cursor] : deckId();
         if (id) this.addCard(id, this.zone === 'pool' ? this.cursor : -1);
         return true;
       }
-      case 'Minus':
-      case 'NumpadSubtract': {
-        const id = this.zone === 'pool' ? this.list[this.cursor] : this.deckEntries()[this.deckCursor]?.id;
-        if (id && this.inDeck(id)) this.removeCard(id);
+      case 'Slash':
+        this.focusSearch(true);
         return true;
-      }
       case 'Tab':
-        this.switchZone(this.zone === 'pool' ? 'deck' : 'pool', e.shiftKey);
+        this.switchZone(this.zone === 'pool' ? 'deck' : 'pool');
         return true;
       case 'PageDown':
-        if (this.zone === 'deck') this.scrollDeck(LIST_ROWS - 1);
+        if (this.zone === 'deck') this.scrollDeck(3);
         else this.scrollBy(ROWS - 1);
         return true;
       case 'PageUp':
-        if (this.zone === 'deck') this.scrollDeck(-(LIST_ROWS - 1));
+        if (this.zone === 'deck') this.scrollDeck(-3);
         else this.scrollBy(-(ROWS - 1));
         return true;
       case 'Home':
@@ -1023,7 +1556,11 @@ export class DeckScene extends Phaser.Scene {
   }
 
   private moveCursor(n: number): void {
-    if (n === this.cursor) return;
+    if (this.zone !== 'pool') this.zone = 'pool';
+    if (n === this.cursor || n < 0) {
+      this.renderFocus();
+      return;
+    }
     this.cursor = n;
     this.hoverSound();
     const before = this.scrollRow;
@@ -1033,42 +1570,50 @@ export class DeckScene extends Phaser.Scene {
       this.slideGrid(this.scrollRow > before ? 1 : -1);
     }
     this.renderFocus();
-    this.showInspect();
+    this.showDetail();
   }
 
-  private switchZone(z: Zone, _back = false): void {
+  private switchZone(z: Zone): void {
     if (z === 'deck' && !this.cur.cards.length) {
       sfx.play('uiError', { volume: 0.35 });
       this.say('The deck is empty: add a card first', 'bad');
       return;
     }
     this.zone = z;
-    this.deckCursor = Math.max(0, Math.min(this.deckEntries().length - 1, this.deckCursor));
+    this.hoverFlat = -1;
+    this.deckCursor = Math.max(0, Math.min(this.entries().length - 1, this.deckCursor));
     this.ensureDeckVisible();
-    this.renderDeck();
+    this.renderDeckList();
     this.hoverSound();
     this.renderFocus();
-    this.showInspect();
+    this.showDetail();
   }
 
   // ================================================================ rendering
 
   private renderAll(): void {
     this.renderChips();
+    this.renderSearch();
     this.renderGrid();
     this.renderDeck();
     this.renderFocus();
-    this.renderPlate();
   }
 
   private renderChips(): void {
     KINDS.forEach((k, i) => this.kindBtns[i].setStyle(this.filter.kind === k ? 'gold' : 'neutral'));
     ELEMENTS.forEach((a, i) => this.attrBtns[i].setStyle(this.filter.attr === a ? 'gold' : 'neutral'));
-    SORT_KEYS.forEach((k, i) => this.sortBtns[i].setStyle(this.sort === k ? 'p1' : 'neutral'));
+    this.sortBtn.setLabel(`Sort: ${SORT_LABEL[this.sort]}`);
+    this.sortMenu.forEach((b, i) => b.setStyle(SORT_KEYS[i] === this.sort ? 'gold' : 'neutral'));
   }
 
-  private cellKind(id: CardId): CellKind {
-    return CARDS[id].kind;
+  private renderSearch(): void {
+    const q = this.filter.q ?? '';
+    const on = this.zone === 'search';
+    this.searchField.setTexture(panelV3(this, on ? 'p1' : 'neutral', SEARCH_W, 14, 0, on ? 2 : 0));
+    const shown = q ? fitText(q, SEARCH_W - 30, (s) => measureText(s, 'sm').w) : on ? '' : 'Search...';
+    this.searchText.setText(shown).setTint(q ? PAL.white : PAL.steel);
+    this.searchClear.setVisible(!!q);
+    this.updateCaret();
   }
 
   private renderGrid(): void {
@@ -1084,89 +1629,61 @@ export class DeckScene extends Phaser.Scene {
         cell.box.setVisible(!!id);
         if (cell.zone.input) cell.zone.input.enabled = !!id;
         if (!id) continue;
-        this.bindCell(cell, id);
+        cell.card.setTexture(miniCardTex(this, id));
+        this.paintCount(cell);
       }
-    // scrollbar
     const rowsTotal = Math.ceil(total / COLS);
     const need = rowsTotal > ROWS;
     this.track.setVisible(need);
-    this.thumb.setVisible(need);
+    this.thumbBar.setVisible(need);
     if (need) {
       const h = this.track.height;
-      const th = Math.max(10, Math.round((h * ROWS) / rowsTotal));
-      const maxRow = rowsTotal - ROWS;
-      this.thumb.setSize(3, th).setPosition(this.track.x, GRID_Y + Math.round(((h - th) * this.scrollRow) / maxRow));
+      const th = Math.max(12, Math.round((h * ROWS) / rowsTotal));
+      this.thumbBar.setSize(3, th).setPosition(this.track.x, GRID_Y + Math.round(((h - th) * this.scrollRow) / this.maxRow()));
     }
-    const first = total ? this.scrollRow * COLS + 1 : 0;
-    const last = Math.min(total, (this.scrollRow + ROWS) * COLS);
-    this.footPage.setText(total ? `${first}-${last} / ${total} cards` : '0 cards');
+    this.poolCount.setText(String(total));
   }
 
-  private bindCell(cell: Cell, id: CardId): void {
-    const d = CARDS[id];
-    const focus = this.zone === 'pool' && cell.index === this.cursor;
-    this.paintCount(cell, focus);
-    cell.art.setTexture(cardArtKey(id));
-    cell.orb.setTexture(orbTex(this, orbOf(id)));
-    const mark = markTexOf(this, id);
-    cell.chain.setVisible(mark !== null);
-    if (mark) cell.chain.setTexture(mark);
-    const nameW = CELL_W - 53;
-    let lines = wrapText(d.name, 'sm', nameW);
-    if (lines.length > 2) lines = [lines[0], fitText(lines.slice(1).join(' '), nameW, (s) => measureText(s, 'sm').w)];
-    cell.name.setText(lines.join('\n')).setTint(PAL.white);
-    if (isMonster(d)) {
-      cell.lvl.setText(`Lv${d.level}`);
-      const w = Math.ceil(measureText(`Lv${d.level}`, 'sm').w) - 1;
-      cell.lvlBg.setSize(w + 3, 8).setVisible(true).setPosition(46, 37);
-      cell.lvl.setPosition(45, 38).setVisible(true).setTint(d.level >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.gold4);
-      cell.atk.setText(String(d.atk)).setVisible(true).setPosition(51, 27);
-      cell.def.setText(String(d.def)).setVisible(true).setPosition(51 + Math.ceil(measureText(String(d.atk), 'sm').w) + 4, 27);
-      cell.word.setVisible(false);
-    } else {
-      cell.lvl.setVisible(false);
-      cell.lvlBg.setVisible(false);
-      cell.atk.setVisible(false);
-      cell.def.setVisible(false);
-      cell.word.setText(d.kind === 'spell' ? (d.spellType === 'normal' ? 'Spell' : (SPELL_WORD[d.spellType] ?? 'Spell')) : 'Trap').setVisible(true).setPosition(51, 27);
-      cell.word.setTint(d.kind === 'spell' ? KIND_RAMP.spell[3] : KIND_RAMP.trap[3]);
-    }
-    cell.def.setTint(PAL.cyan3);
-    cell.atk.setTint(PAL.crim3);
-  }
-
-  /** Frame, tick, "xN" copy badge and - button of a pool cell. */
-  private paintCount(cell: Cell, focus: boolean): void {
+  /** Badge "n/max", veil + lock at the limit, rule mark. */
+  private paintCount(cell: Cell): void {
     const id = cell.id;
     if (!id) return;
     const n = this.copies(id);
     const max = maxCopies(id);
-    cell.bg.setTexture(cellTex(this, this.cellKind(id), focus, n > 0));
-    cell.tick.setVisible(n > 0);
-    cell.minus.setVisible(n > 0);
-    if (cell.minusZone.input) cell.minusZone.input.enabled = n > 0;
-    cell.cnt.setText(n > 0 ? `x${n}` : '').setTint(n >= max ? PAL.crim3 : PAL.gold4);
-    cell.cntBg.setVisible(n > 0).setSize(n > 0 ? Math.ceil(measureText(`x${n}`, 'sm').w) + 3 : 1, 8);
+    const full = n >= max;
+    cell.veil.setVisible(full);
+    cell.lock.setVisible(full);
+    const mark = markTexOf(this, id);
+    cell.mark.setVisible(!!mark && !full);
+    if (mark) cell.mark.setTexture(mark);
+    const s = `${n}/${max}`;
+    const w = Math.ceil(measureText(s, 'sm').w) + 3;
+    const bx = Math.round((MINI_W - w) / 2);
+    cell.badgeBg.setPosition(bx, 26).setSize(w, 10).setFillStyle(full ? PAL.gold0 : PAL.ink);
+    cell.badge.setText(s).setPosition(bx + 1, 25).setTint(full ? PAL.gold4 : n ? PAL.cyan4 : PAL.mist);
   }
 
-  /** Only the focus ring / in-deck frames (cheap; used while the mouse sweeps). */
+  /** Focus ring, lift and light (cheap; called while the mouse sweeps). */
   private renderFocus(): void {
+    let focused: Cell | null = null;
     for (const cell of this.cells) {
       if (!cell.id) continue;
-      const focus = this.zone === 'pool' && cell.index === this.cursor;
-      this.paintCount(cell, focus);
+      const on = this.zone === 'pool' && cell.index === this.cursor;
+      cell.box.y = on ? cell.y - 2 : cell.y;
+      cell.box.setDepth(on ? 10 : 8);
+      if (on) focused = cell;
     }
-    this.rows.forEach((r, i) => {
-      const on = this.zone === 'deck' && this.deckScroll + i === this.deckCursor && !!r.id;
-      r.hi.setVisible(on);
-      r.name.setTint(on ? PAL.white : r.id ? PAL.mist : PAL.night4);
-    });
+    this.hoverRing.setVisible(!!focused);
+    this.hoverGlow.setVisible(!!focused && !REDUCED_MOTION);
+    if (focused) {
+      this.hoverRing.setPosition(focused.x - 2, focused.y - 4);
+      this.hoverGlow.setPosition(focused.x + MINI_W / 2, focused.y + MINI_H / 2 + 4);
+    }
+    for (const th of this.thumbs) th.ring.setVisible(!!th.entry && this.zone === 'deck' && th.flat === this.deckCursor);
   }
 
   private renderDeck(): void {
     const d = this.cur;
-    const entries = this.deckEntries();
-    this.deckScroll = Math.max(0, Math.min(this.maxDeckScroll(), this.deckScroll));
     // slot tabs
     this.slotBtns.forEach((b, i) => {
       b.setStyle(i === this.slot ? 'gold' : 'neutral');
@@ -1177,146 +1694,147 @@ export class DeckScene extends Phaser.Scene {
     });
     // name
     const dirty = keyOf(d.name, d.cards) !== d.savedKey;
-    const shown = fitText(d.name, NAME_W - 18, (s) => measureText(s, 'sm').w);
-    this.nameText.setText(shown + (dirty ? ' *' : ''));
+    const shown = fitText(d.name, NAME_W - 30, (s) => measureText(s, 'sm').w);
+    this.nameText.setText(shown + (dirty && !this.editing ? ' *' : ''));
     this.nameText.setTint(this.editing ? (this.nameFresh ? PAL.white : PAL.gold4) : PAL.white);
-    this.nameField.setTexture(panelV3(this, 'neutral', NAME_W, 15, 0, this.editing ? 2 : 0));
+    this.nameField.setTexture(panelV3(this, this.editing ? 'monster' : 'neutral', NAME_W, NAME_H, 0, this.editing ? 2 : 0));
     this.updateCaret();
-    // count + legality
+    // header
     const v = validateDeck(d.cards);
     const n = d.cards.length;
-    const inRange = n >= DECK_MIN && n <= DECK_MAX;
-    const tone = n === 0 ? PAL.white : v.ok ? PAL.leaf3 : inRange ? PAL.gold3 : PAL.crim3;
-    this.countText.setText(String(n)).setTint(tone);
-    this.rangeText.setX(this.countText.x + Math.ceil(measureText(String(n), 'md').w) + 1).setTint(tone === PAL.white ? PAL.steel : tone);
-    this.okIcon.setVisible(v.ok).setTint(PAL.leaf3);
-    // rows
-    this.rows.forEach((r, i) => {
-      const e = entries[this.deckScroll + i];
-      const id = e?.id ?? null;
-      r.id = id;
-      if (r.zone.input) r.zone.input.enabled = !!id;
-      for (const b of [r.minus, r.plus]) {
-        b.bg.setVisible(!!id);
-        b.label.setVisible(!!id);
-        if (b.zone.input) b.zone.input.enabled = !!id;
-      }
-      if (!id) {
-        r.orb.setVisible(false);
-        r.name.setText(i === 0 && !entries.length ? '· · ·' : '').setTint(PAL.night4);
-        r.cnt.setText('');
-        r.lvl.setText('');
-        r.atk.setText('');
-        r.chain.setVisible(false);
-        return;
-      }
-      const def = CARDS[id];
-      const blocked = addBlocker(d.cards, id) !== null;
-      r.plus.bg.setFillStyle(blocked ? PAL.night2 : PAL.night4);
-      r.plus.label.setTint(blocked ? PAL.night4 : PAL.white);
-      r.minus.bg.setFillStyle(PAL.night4);
-      r.minus.label.setTint(PAL.white);
-      r.cnt.setText(`x${e.n}`).setTint(e.n >= maxCopies(id) ? PAL.crim3 : PAL.gold3);
-      r.orb.setVisible(true).setTexture(orbTex(this, orbOf(id)));
-      const mark = markTexOf(this, id);
-      const nm = fitText(def.name, mark ? 44 : 54, (s) => measureText(s, 'sm').w);
-      r.name.setText(nm).setTint(this.zone === 'deck' && this.deckScroll + i === this.deckCursor ? PAL.white : PAL.mist);
-      r.chain.setVisible(mark !== null).setX(24 + Math.ceil(measureText(nm, 'sm').w) + 3);
-      if (mark) r.chain.setTexture(mark);
-      if (isMonster(def)) {
-        r.lvl.setText(`Lv${def.level}`).setTint(def.level >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.gold3);
-        r.atk.setText(String(def.atk)).setTint(PAL.crim3);
-      } else {
-        r.lvl.setText('');
-        r.atk.setText(def.kind === 'spell' ? 'SPELL' : 'TRAP').setTint(def.kind === 'spell' ? KIND_RAMP.spell[3] : KIND_RAMP.trap[3]);
-      }
-    });
-    // list scrollbar
-    const needBar = entries.length > LIST_ROWS;
-    this.dTrack.setVisible(needBar);
-    this.dThumb.setVisible(needBar);
-    if (needBar) {
-      const h = this.dTrack.height;
-      const th = Math.max(8, Math.round((h * LIST_ROWS) / entries.length));
-      this.dThumb.setSize(2, th).setPosition(this.dTrack.x, LIST_Y + Math.round(((h - th) * this.deckScroll) / this.maxDeckScroll()));
-    }
-    this.renderFocus();
-    // curve + counts
-    const st = deckStats(d.cards);
-    const maxN = Math.max(1, ...st.curve);
-    const unit = Math.min(4, 16 / maxN);
-    st.curve.forEach((n, b) => {
-      this.curveBars[b].setSize(9, Math.max(1, Math.round(n * unit))).setFillStyle(n === 0 ? PAL.night3 : b + 1 >= DECK_HIGH_LEVEL ? PAL.crim2 : PAL.gold2);
-      this.curveNums[b].setTint(n ? (b + 1 >= DECK_HIGH_LEVEL ? PAL.crim3 : PAL.gold3) : PAL.night4);
-    });
-    this.countTexts[0].setText(`${st.monsters}`);
-    this.countTexts[1].setText(`${st.spells}`);
-    this.countTexts[2].setText(`${st.traps}`);
-    // reasons
-    const lost = d.missing > 0 ? [`· Missing cards: ${d.missing} (removed from the game, dropped)`] : [];
-    if (d.replaced) lost.push(`· Retired cards: ${d.replaced} cop${d.replaced === 1 ? 'y' : 'ies'} swapped for a similar card`);
-    if (v.ok && !lost.length) {
-      this.reasons.setTint(PAL.leaf3).setText('Deck ready. You can pick it for a duel.');
-    } else if (v.ok) {
-      this.reasons.setTint(PAL.gold3).setText(wrapText(`${lost.join('\n')}\nSave to clear this warning.`, 'sm', DW - 16).slice(0, 4).join('\n'));
-    } else {
-      const text = [...lost, ...v.issues.map((i) => `· ${i.text}`)].join('\n');
-      const lines = wrapText(text, 'sm', DW - 16).slice(0, 4);
-      this.reasons.setTint(d.cards.length === 0 && !lost.length ? PAL.steel : PAL.crim3).setText(lines.join('\n'));
-    }
+    this.deckTitle.setText(`DECK ${this.slot + 1} · ${n} / ${n <= DECK_MIN ? DECK_MIN : DECK_MAX}`).setTint(v.ok ? PAL.gold3 : PAL.white);
+    this.deckState.setText(n === 0 ? 'EMPTY' : v.ok ? 'READY' : 'DRAFT').setTint(v.ok ? PAL.gold3 : PAL.steel);
+    this.deckOk.setVisible(v.ok).setX(this.deckState.x - Math.ceil(measureText('READY', 'sm').w) - 12);
+    this.renderMeters();
+    this.renderDeckList();
+    this.renderFooter();
   }
 
-  private renderPlate(): void {
-    const id = this.currentCard();
-    const mark = id ? markTexOf(this, id) : null;
-    for (const o of this.plate) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(!mark);
-    for (const o of this.plateSeal) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(!!mark);
-    if (!id || !mark) return;
-    this.noteIcon.setTexture(mark);
-    if (isSealCard(id)) {
-      const have = SEAL_IDS.filter((s) => this.inDeck(s)).length;
-      this.noteTitle.setText('FIVE SEALS');
-      this.noteBody.setText('Five Seals: assemble all 5 pieces in your hand to win');
-      this.sealCount.setText(`In deck: ${have}/${SEAL_IDS.length} pieces. ${have === SEAL_IDS.length ? 'All five in hand ends the duel.' : 'Collect them all to assemble them in hand.'}`);
-    } else if (isMagnetCard(id)) {
-      const have = MAGNET_PIECE_IDS.filter((s) => this.inDeck(s)).length;
-      const sov = this.inDeck('polar_sovereign');
-      this.noteTitle.setText('POLAR');
-      this.noteBody.setText('Polar piece: with all three on your field you can Summon Polar Sovereign');
-      this.sealCount.setText(`In deck: ${have}/${MAGNET_PIECE_IDS.length} pieces, Sovereign: ${sov ? 'yes' : 'no'}.`);
-    } else {
-      this.noteTitle.setText('SINGLE COPY');
-      this.noteBody.setText('A deck can hold at most 1 copy of this card.');
-      this.sealCount.setText(this.inDeck(id) ? 'In deck: 1/1.' : 'Not in deck.');
+  private renderDeckList(): void {
+    const lines = this.lines();
+    const m = this.metrics;
+    const max = maxLineScroll(lines, LIST_H, m);
+    this.deckScroll = Math.max(0, Math.min(max, this.deckScroll));
+    const vis = visibleLines(lines, this.deckScroll, LIST_H, m);
+    this.deckEmpty.setVisible(!lines.length);
+    let hi = 0;
+    let ti = 0;
+    const grid = this.view === 'grid';
+    for (const { line, y: ly } of vis) {
+      const y = LIST_Y + ly;
+      if (line.kind === 'head') {
+        const h = this.heads[hi++];
+        const R = KIND_RAMP[line.section];
+        h.icon.setPosition(LIST_X, y + 2).setTint(R[3]).setVisible(true);
+        h.label.setText(SECTION_LABEL[line.section]).setPosition(LIST_X + 10, y).setTint(R[3]).setVisible(true);
+        const lw = Math.ceil(measureText(SECTION_LABEL[line.section], 'sm').w);
+        h.count.setText(String(line.copies)).setPosition(LIST_X + LIST_W, y).setVisible(true);
+        h.rule.setPosition(LIST_X + 14 + lw, y + 6).setSize(Math.max(1, LIST_W - lw - 32), 1).setFillStyle(R[0]).setVisible(true);
+        continue;
+      }
+      line.entries.forEach((e, k) => {
+        const th = this.thumbs[ti++];
+        if (!th) return;
+        const x = grid ? LIST_X + k * THUMB_PITCH : LIST_X;
+        this.bindThumb(th, e, line.start + k, x, y);
+      });
     }
+    for (; hi < this.heads.length; hi++) {
+      const h = this.heads[hi];
+      for (const o of [h.icon, h.label, h.count, h.rule]) o.setVisible(false);
+    }
+    for (; ti < this.thumbs.length; ti++) this.bindThumb(this.thumbs[ti], null, -1, 0, 0);
+    // scrollbar
+    this.dTrack.setVisible(max > 0);
+    this.dThumb.setVisible(max > 0);
+    if (max > 0) {
+      const th = Math.max(12, Math.round((LIST_H * vis.length) / lines.length));
+      this.dThumb.setSize(3, th).setPosition(this.dTrack.x, LIST_Y + Math.round(((LIST_H - th) * this.deckScroll) / max));
+    }
+    this.renderFocus();
+  }
+
+  private bindThumb(th: Thumb, e: DeckEntry | null, flat: number, x: number, y: number): void {
+    th.entry = e;
+    th.flat = flat;
+    th.x = x;
+    th.y = y;
+    th.box.setVisible(!!e);
+    if (th.zone.input) th.zone.input.enabled = !!e;
+    const hover = !!e && flat === this.hoverFlat;
+    for (const b of [th.minus, th.plus]) {
+      b.box.setVisible(hover);
+      if (b.zone.input) b.zone.input.enabled = hover;
+    }
+    if (!e) return;
+    const grid = this.view === 'grid';
+    const max = maxCopies(e.id);
+    th.box.setPosition(x, y);
+    th.img.setTexture(grid ? deckThumbTex(this, e.id) : stripArtTex(this, e.id));
+    th.ring.setTexture(grid ? ringTex(this, THUMB_W, THUMB_H) : ringTex(this, LIST_W, STRIP_ART_H));
+    const s = `x${e.n}`;
+    const w = Math.ceil(measureText(s, 'sm').w) + 3;
+    if (grid) {
+      th.zone.setPosition(x, y).setSize(THUMB_W, THUMB_H);
+      th.badgeBg.setPosition(THUMB_W - w - 1, THUMB_H - 11).setSize(w, 10).setFillStyle(PAL.ink);
+      th.badge.setText(s).setPosition(THUMB_W - w, THUMB_H - 12);
+      th.name.setVisible(false);
+      th.minus.box.setPosition(x + 1, y + 1);
+      th.plus.box.setPosition(x + THUMB_W - 12, y + 1);
+    } else {
+      th.zone.setPosition(x, y).setSize(LIST_W, STRIP_ART_H);
+      th.badgeBg.setPosition(LIST_W - w - 26, 3).setSize(w, 10).setFillStyle(PAL.ink);
+      th.badge.setText(s).setPosition(LIST_W - w - 25, 2);
+      th.name.setText(fitText(CARDS[e.id].name, LIST_W - STRIP_ART_W - 60, (q) => measureText(q, 'sm').w)).setVisible(true).setTint(hover ? PAL.white : PAL.mist);
+      th.minus.box.setPosition(x + LIST_W - 24, y + 3);
+      th.plus.box.setPosition(x + LIST_W - 12, y + 3);
+    }
+    th.badge.setTint(e.n >= max ? PAL.gold3 : PAL.white);
+    th.minus.zone.setPosition(th.minus.box.x, th.minus.box.y);
+    th.plus.zone.setPosition(th.plus.box.x, th.plus.box.y);
+    const blocked = addBlocker(this.cur.cards, e.id) !== null;
+    th.plus.bg.setFillStyle(blocked ? PAL.night2 : PAL.cyan1);
+    th.plus.label.setTint(blocked ? PAL.night4 : PAL.white);
+  }
+
+  private renderFooter(): void {
+    const n = this.cur.cards.length;
+    // the stack: one card back per ~3 cards, on a soft light pool
+    const layers = n ? Math.min(this.stack.length, 1 + Math.round((n / DECK_MAX) * (this.stack.length - 1))) : 0;
+    this.stack.forEach((img, i) => img.setVisible(i < layers).setPosition(DK_X + 44, STACK_BASE - Math.round(i * 1.5)));
+    this.stackPool.setAlpha(n ? 0.45 : 0.2);
+    this.stackLabel.setText(n ? `${n} card${n === 1 ? '' : 's'}` : 'no cards').setTint(n ? PAL.mist : PAL.steel);
+    const st = deckStats(this.cur.cards);
+    const maxN = Math.max(4, ...st.curve);
+    const bb = FOOT_Y + 62;
+    st.curve.forEach((v, b) => {
+      const h = v ? Math.max(2, Math.round((v / maxN) * 40)) : 0;
+      const high = b + 1 >= DECK_HIGH_LEVEL;
+      this.curveBars[b].setSize(12, Math.max(1, h)).setVisible(h > 0).setFillStyle(high ? PAL.fire2 : PAL.cyan2);
+      this.curveTops[b].setPosition(this.curveBars[b].x, bb - h).setVisible(h > 0).setFillStyle(high ? PAL.fire4 : PAL.cyan4);
+      this.curveVals[b].setText(v ? String(v) : '').setY(bb - h - 1);
+      this.curveNums[b].setTint(v ? (high ? PAL.fire3 : PAL.mist) : PAL.night4);
+    });
   }
 
   private currentCard(): CardId | null {
-    return this.zone === 'pool' ? (this.list[this.cursor] ?? null) : (this.deckEntries()[this.deckCursor]?.id ?? null);
+    if (this.zone === 'deck') return this.entries()[this.deckCursor]?.id ?? null;
+    return this.list[this.cursor] ?? null;
   }
 
-  private showInspect(): void {
-    const id = this.currentCard();
-    if (id) this.insp.show(id);
-    this.renderPlate();
-  }
-
-  private say(text: string, tone: Tone, instant = false): void {
-    const gen = ++this.msgGen;
-    this.footMsg.setText(text).setTint(TONE[tone]);
-    void gen;
-    void instant;
+  private say(text: string, tone: Tone): void {
+    this.footMsg.setText(fitText(text, MSG_W, (s) => measureText(s, 'sm').w)).setTint(TONE[tone]);
   }
 
   // ---------------------------------------------------------------- small motion
 
-  /** Rows of the grid step 3 px and settle (no easing in reduced motion). */
   private slideGrid(dir: number): void {
     if (REDUCED_MOTION) return;
     for (const c of this.cells) {
       if (!c.id) continue;
-      c.box.y = c.y + dir * 4;
-      this.tweens.add({ targets: c.box, y: c.y, duration: 100, ease: 'Quad.Out' });
+      const to = c.box.y;
+      c.box.y = to + dir * 4;
+      this.tweens.add({ targets: c.box, y: to, duration: 100, ease: 'Quad.Out' });
     }
   }
 
@@ -1327,52 +1845,24 @@ export class DeckScene extends Phaser.Scene {
     this.tweens.add({ targets: c.box, x: { from: c.x - 2, to: c.x }, duration: 140, ease: 'Bounce.Out' });
   }
 
-  private flashRow(i: number): void {
-    const r = this.rows[i];
-    if (!r || REDUCED_MOTION) return;
-    r.hi.setVisible(true).setFillStyle(PAL.gold3);
-    void wait(this, 140).then(() => {
-      r.hi.setFillStyle(PAL.night3);
-      this.renderFocus();
-    });
-  }
-
-  private pulse(o: Phaser.GameObjects.Image | Phaser.GameObjects.BitmapText): void {
+  private pulse(o: Phaser.GameObjects.BitmapText): void {
     if (REDUCED_MOTION) return;
-    o.setTint(PAL.white);
-    void wait(this, 90).then(() => this.renderDeck());
-  }
-
-  /** A mini card flies from the grid cell to the deck row it joined. */
-  private flyTo(fromIndex: number, rowIdx: number): void {
-    if (REDUCED_MOTION || rowIdx < 0 || rowIdx >= LIST_ROWS) return;
-    const c = this.cells.find((k) => k.index === fromIndex);
-    if (!c) return;
-    const img = this.add.image(c.x + 24, c.y + 20, miniCardKey(0)).setDepth(40);
-    const x1 = DX + 12;
-    const y1 = LIST_Y + rowIdx * ROW_H + 4;
-    const x0 = img.x;
-    const y0 = img.y;
-    void tween(this, {
-      targets: { t: 0 },
-      t: 1,
-      duration: 190,
-      ease: 'Cubic.In',
-      onUpdate: (tw: Phaser.Tweens.Tween) => {
-        const t = (tw.targets[0] as { t: number }).t;
-        img.setPosition(Math.round(x0 + (x1 - x0) * t), Math.round(y0 + (y1 - y0) * t - Math.sin(t * Math.PI) * 14));
-      },
-    }).then(() => img.destroy());
+    o.setTint(PAL.gold4);
+    void wait(this, 120).then(() => this.renderDeck());
   }
 
   private updateCaret(): void {
+    const blink = REDUCED_MOTION || this.caretT % 900 < 560;
     const w = Math.ceil(measureText(this.cur.name, 'sm').w);
-    this.nameCaret.setPosition(DX + 10 + w + 1, DY + 25).setVisible(this.editing && (REDUCED_MOTION || this.caretT % 900 < 560));
+    this.nameCaret.setPosition(NAME_X + 6 + w + 1, NAME_Y + 4).setVisible(this.editing && blink);
+    const q = this.filter.q ?? '';
+    const qw = q ? Math.ceil(measureText(this.searchText.text, 'sm').w) : 0;
+    this.searchCaret.setPosition(GRID_X + 14 + qw + 1, TB1_Y + 3).setVisible(this.zone === 'search' && blink);
   }
 
   private tick(dt: number): void {
     this.t += dt;
-    if (this.editing) {
+    if (this.editing || this.zone === 'search') {
       this.caretT += dt;
       this.updateCaret();
     }
@@ -1398,7 +1888,7 @@ export class DeckScene extends Phaser.Scene {
     if (dirty && this.time.now - this.exitArmed > 2500) {
       this.exitArmed = this.time.now;
       sfx.play('uiError', { volume: 0.4 });
-      this.say('You have unsaved changes. Press ESC / BACK again to leave.', 'gold');
+      this.say('Unsaved changes. Press ESC / BACK again to leave.', 'gold');
       return;
     }
     if (this.data0.dev) {
@@ -1416,26 +1906,70 @@ export class DeckScene extends Phaser.Scene {
   // ================================================================ QA
 
   /** QA: the state the tests and tools read. */
-  get qaState(): { slot: number; cards: CardId[]; name: string; list: number; cursor: number; zone: Zone; legal: boolean; scrollRow: number; deckScroll: number; entries: { id: CardId; n: number }[] } {
-    return { slot: this.slot, cards: [...this.cur.cards], name: this.cur.name, list: this.list.length, cursor: this.cursor, zone: this.zone, legal: validateDeck(this.cur.cards).ok, scrollRow: this.scrollRow, deckScroll: this.deckScroll, entries: this.deckEntries() };
+  get qaState(): {
+    slot: number;
+    cards: CardId[];
+    name: string;
+    list: number;
+    cursor: number;
+    zone: Zone;
+    legal: boolean;
+    scrollRow: number;
+    deckScroll: number;
+    entries: DeckEntry[];
+    query: string;
+    help: boolean;
+    view: ListView;
+  } {
+    return {
+      slot: this.slot,
+      cards: [...this.cur.cards],
+      name: this.cur.name,
+      list: this.list.length,
+      cursor: this.cursor,
+      zone: this.zone,
+      legal: validateDeck(this.cur.cards).ok,
+      scrollRow: this.scrollRow,
+      deckScroll: this.deckScroll,
+      entries: this.entries(),
+      query: this.filter.q ?? '',
+      help: this.helpOpen,
+      view: this.view,
+    };
   }
 
-  qaKey(code: string, key = code): boolean {
-    return this.onKey({ code, key, repeat: false, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, preventDefault() {} } as unknown as KeyboardEvent);
+  qaKey(code: string, key = code, shiftKey = false): boolean {
+    return this.onKey({ code, key, repeat: false, shiftKey, ctrlKey: false, metaKey: false, altKey: false, preventDefault() {} } as unknown as KeyboardEvent);
   }
 
-  /** QA: grid cell centres in game pixels, for real-mouse tools. */
-  qaLayout(): { cells: { index: number; id: CardId; x: number; y: number; minusX: number; minusY: number }[]; rows: { id: CardId; x: number; y: number; minusX: number; plusX: number }[]; buttons: Record<string, { x: number; y: number }> } {
-    const cells = this.cells.filter((c) => c.id).map((c) => ({ index: c.index, id: c.id as CardId, x: c.x + CELL_W / 2, y: c.y + CELL_H / 2, minusX: c.x + 24, minusY: c.y + CELL_H - 8 }));
-    const rows = this.rows.filter((r) => r.id).map((r, i) => ({ id: r.id as CardId, x: DX + 60, y: LIST_Y + i * ROW_H + 4, minusX: DX + 4 + 129, plusX: DX + 4 + 140 }));
+  /** QA: types `text` into whatever has the keyboard (search / name). */
+  qaType(text: string): void {
+    for (const ch of text) this.qaKey(ch === ' ' ? 'Space' : `Key${ch.toUpperCase()}`, ch);
+  }
+
+  /** QA: centres in game pixels, for real-mouse tools. */
+  qaLayout(): {
+    cells: { index: number; id: CardId; x: number; y: number }[];
+    entries: { flat: number; id: CardId; x: number; y: number; minusX: number; plusX: number; stepY: number }[];
+    buttons: Record<string, { x: number; y: number }>;
+  } {
+    const cells = this.cells.filter((c) => c.id).map((c) => ({ index: c.index, id: c.id as CardId, ...this.cellCentre(c) }));
+    const entries = this.thumbs.filter((t) => t.entry).map((t) => ({ flat: t.flat, id: t.entry!.id, ...this.thumbCentre(t), minusX: t.minus.box.x + 5, plusX: t.plus.box.x + 5, stepY: t.minus.box.y + 5 }));
     const buttons: Record<string, { x: number; y: number }> = {};
-    ['kaydet', 'rastgele', 'hazir', 'sifirla', 'temizle', 'adver'].forEach((k, i) => {
-      buttons[k] = { x: DX + 4 + (i % 3) * 50 + 24, y: BTN_Y + Math.floor(i / 3) * 17 + 8 };
-    });
-    this.slotBtns.forEach((b, i) => (buttons[`slot${i + 1}`] = { x: b.x + 13, y: b.y + 7 }));
-    buttons.name = { x: DX + 5 + NAME_W / 2, y: DY + 28 };
-    buttons.geri = { x: GAME_W - 35, y: 11 };
-    return { cells, rows, buttons };
+    const at = (b: Button) => ({ x: b.x + Math.floor(b.w / 2), y: b.y + Math.floor(b.h / 2) });
+    buttons.kaydet = at(this.actionBtns.save);
+    buttons.rastgele = at(this.actionBtns.auto);
+    buttons.hazir = at(this.actionBtns.preset);
+    buttons.sifirla = at(this.actionBtns.classic);
+    buttons.temizle = at(this.actionBtns.clear);
+    buttons.help = at(this.actionBtns.help);
+    buttons.geri = at(this.actionBtns.back);
+    buttons.adver = { x: NAME_X + NAME_W / 2, y: NAME_Y + NAME_H / 2 };
+    buttons.name = buttons.adver;
+    buttons.search = { x: GRID_X + 40, y: TB1_Y + 7 };
+    buttons.sort = at(this.sortBtn);
+    this.slotBtns.forEach((b, i) => (buttons[`slot${i + 1}`] = at(b)));
+    return { cells, entries, buttons };
   }
 
   /** QA: the colour of an element, to check chips. */

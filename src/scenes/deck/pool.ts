@@ -10,6 +10,21 @@ export interface PoolFilter {
   kind: KindFilter;
   /** null = any element (only narrows monsters). */
   attr: Attribute | null;
+  /** Search text typed in the builder (case-insensitive, matches the card name; '' / undefined = any). */
+  q?: string;
+}
+
+/** Normalised search text: lower case, single spaces, trimmed. */
+export function normQuery(q: string | undefined): string {
+  return (q ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** Does the card's name hold every word of the search text (any order)? */
+export function matchesQuery(def: CardDef, q: string | undefined): boolean {
+  const n = normQuery(q);
+  if (!n) return true;
+  const name = def.name.toLowerCase();
+  return n.split(' ').every((w) => name.includes(w));
 }
 
 export const ELEMENTS: readonly Attribute[] = ['FIRE', 'WATER', 'LIGHT', 'DARK', 'EARTH', 'WIND'];
@@ -19,7 +34,7 @@ export const SORT_LABEL: Record<SortKey, string> = { new: 'New', level: 'Level',
 export function matches(def: CardDef, f: PoolFilter): boolean {
   if (f.kind !== 'all' && def.kind !== f.kind) return false;
   if (f.attr && (!isMonster(def) || def.attribute !== f.attr)) return false;
-  return true;
+  return matchesQuery(def, f.q);
 }
 
 /** Locale-aware name comparison (card names are English). */

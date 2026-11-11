@@ -395,6 +395,7 @@ async function phaseChangeV3(ctx: Ctx<'phaseChange'>): Promise<void> {
   const { phase, player } = ctx.ev;
   const v = ctx.views;
   if (phase === 'battle') return battleStartV3(ctx);
+  if (phase === 'main2') return main2V3(ctx);
   bg(v.hud.setPhase(phase, player, true));
   if (phase === 'end' || phase === 'main') ctx.music.setIntensity(intensityFor(ctx.stateNext, phase));
   // the turn plate lands at the main phase — or at the draw phase when no main phase will come (deck-out)
@@ -408,6 +409,44 @@ async function phaseChangeV3(ctx: Ctx<'phaseChange'>): Promise<void> {
     if (h.scene === ctx.scene) await Promise.race([h.p, ctx.wait(800)]);
   }
 }
+
+/**
+ * Battle → Main Phase 2 (owner decision 2026-11): the battle winds down. The pill slides on from BATTLE
+ * into MAIN 2 (whole pixels, 1-px overshoot) while the BATTLE cell's crimson steps out in two steps; the
+ * music settles back to calm; a lower second tick answers the phase tick (a falling two-step — the battle
+ * beat rose); the podium's light and a cooling wave in the turn player's tones run over their monsters
+ * (the turn start's calm wave, quicker and softer: a 2-frame contour R4 → R3 and a small pool each).
+ */
+async function main2V3(ctx: Ctx<'phaseChange'>): Promise<void> {
+  const { player } = ctx.ev;
+  const v = ctx.views;
+  const sc = ctx.scene;
+  bg(v.hud.setPhase('main2', player, true));
+  ctx.music.setIntensity(intensityFor(ctx.stateNext, 'main2'));
+  bg(ctx.wait(MAIN2_V3_MS.lowTickAt).then(() => ctx.sfx('phaseChange', { volume: 0.3, pitch: 0.67 })));
+  const R: Ramp = PLAYER_RAMP[player];
+  const pod = duelistXY(player);
+  void lightFlash(sc, pod.x, pod.y - 16, R[2], fs(32), 380, { floorY: pod.y, intensity: 0.5 });
+  for (const u of unitsOf(ctx, player)) {
+    const at = REDUCED_MOTION ? 0 : Math.round(calmWaveMs(player, u.home) * MAIN2_V3_MS.waveRate);
+    bg(
+      ctx.wait(at).then(() => {
+        if (u.retired) return undefined;
+        void lightFlash(sc, u.home.x, u.home.y, R[3], fs(22), 260, { intensity: 0.4 });
+        return contourBlink(ctx, u, [R[4], R[3]]);
+      }),
+    );
+  }
+  await ctx.wait(TURN_V3_MS.phaseOther);
+}
+
+/** Main Phase 2's beat (main2V3). */
+export const MAIN2_V3_MS = Object.freeze({
+  /** The lower answering tick, after the pill's own tick (30 ms). */
+  lowTickAt: 120,
+  /** The cooling wave runs at this fraction of the turn start's calm wave delay (quicker). */
+  waveRate: 0.6,
+});
 
 async function battleStartV3(ctx: Ctx<'phaseChange'>): Promise<void> {
   const { player } = ctx.ev;

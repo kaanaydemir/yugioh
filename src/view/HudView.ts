@@ -62,7 +62,12 @@ export interface HudOpts {
 
 const ADD = Phaser.BlendModes.ADD;
 const PHASES: Phase[] = ['draw', 'main', 'battle', 'end'];
-export const PHASE_LABEL: Record<Phase, string> = { draw: 'DRAW', main: 'MAIN', battle: 'BATTLE', end: 'END' };
+export const PHASE_LABEL: Record<Phase, string> = { draw: 'DRAW', main: 'MAIN', battle: 'BATTLE', main2: 'MAIN 2', end: 'END' };
+/**
+ * The v1 bar keeps its four cells (the v1 films stay identical): Main Phase 2 shares the MAIN cell — the
+ * marker slides back onto it and its label reads "MAIN 2" until the next turn's Main Phase 1.
+ */
+const cellOf = (ph: Phase): number => (ph === 'main2' ? 1 : PHASES.indexOf(ph));
 const PLAYER_NAME: Record<PlayerId, string> = { 0: 'PLAYER 1', 1: 'PLAYER 2' };
 
 /** Text y so that the caps of `size` start at `capTop`. */
@@ -278,7 +283,7 @@ class HudViewV1 {
       this.phaseLabels.push(t);
       this.phaseRoot.add(t);
     });
-    const i0 = PHASES.indexOf(this.phase);
+    const i0 = cellOf(this.phase);
     this.markerL = this.segX(i0) + 1;
     this.markerR = this.segX(i0) + SEG_W - 1;
     this.markerRamp = this.phase === 'battle' ? RAMPS.fire : UI_RAMP[playerStyle(this.phasePlayer)];
@@ -574,10 +579,12 @@ class HudViewV1 {
 
   /** Slide the phase marker to `phase` (inch-worm stretch, arrival flash). */
   async setPhase(phase: Phase, player: PlayerId = this.activePlayer, animate = true): Promise<void> {
-    const from = PHASES.indexOf(this.phase);
-    const to = PHASES.indexOf(phase);
+    const from = cellOf(this.phase);
+    const to = cellOf(phase);
     const samePlayer = player === this.phasePlayer;
     this.phase = phase;
+    if (phase === 'main2') this.setMainLabel(PHASE_LABEL.main2);
+    else if (phase === 'draw' || phase === 'main') this.setMainLabel(PHASE_LABEL.main);
     this.phasePlayer = player;
     const ramp = phase === 'battle' ? RAMPS.fire : UI_RAMP[playerStyle(player)];
     for (const t of this.markerTweens) t.stop();
@@ -596,8 +603,10 @@ class HudViewV1 {
     sfx.play('phaseChange', { volume: 0.6 });
     const right = to > from || (to === from && !samePlayer);
     const moving = to !== from;
-    // a new turn wraps from BİTİŞ back to ÇEKME: dip out and come back in from the left
-    if (to < from) {
+    // a new turn wraps from BİTİŞ back to ÇEKME: dip out and come back in from the left (Main Phase 2
+    // slides back onto the MAIN cell instead)
+    const wrap = to < from && phase !== 'main2';
+    if (wrap) {
       await this.anim([{ k: 'markerR', to: this.markerL + 4, ms: 110, ease: 'Quad.In' }]);
       this.markerL = -30;
       this.markerR = -4;
@@ -608,7 +617,7 @@ class HudViewV1 {
     const leadTo = right ? R1 : L1;
     const trailTo = right ? L1 : R1;
     this.refreshPhaseLabels(true);
-    if (moving || to < from) {
+    if (moving || wrap) {
       this.streaks(right);
       await this.anim([
         { k: lead, to: leadTo, ms: 200, ease: 'Back.Out' },
@@ -675,7 +684,9 @@ class HudViewV1 {
   }
 
   /** Enable/disable the main buttons. `attention` makes one breathe (suggested action). */
-  setButtons(state: { battle?: boolean; endTurn?: boolean; attention?: 'battle' | 'endTurn' | null }): void {
+  setButtons(state: { battle?: boolean; endTurn?: boolean; attention?: 'battle' | 'endTurn' | null; battleAs?: 'battle' | 'main2' }): void {
+    // battleAs 'main2' (additive): in the Battle Phase the BATTLE button ends the battle (→ Main Phase 2)
+    if (state.battleAs !== undefined) this.battleButton.setLabel(state.battleAs === 'main2' ? 'MAIN 2' : 'BATTLE');
     if (state.battle !== undefined) this.battleButton.setEnabled(state.battle);
     if (state.endTurn !== undefined) this.endTurnButton.setEnabled(state.endTurn);
     if (state.attention !== undefined) {
@@ -1209,8 +1220,16 @@ class HudViewV1 {
     this.markerGlow.setScale((w + 6) / this.markerGlow.width, 1);
   }
 
+  /** The MAIN cell's label ("MAIN" / "MAIN 2"), re-centred in its cell. */
+  private setMainLabel(text: string): void {
+    const t = this.phaseLabels[1];
+    if (!t || t.text === text) return;
+    t.setText(text);
+    t.x = Math.round(this.segX(1) + SEG_W / 2 - t.width / 2);
+  }
+
   private refreshPhaseLabels(moving = false): void {
-    const idx = PHASES.indexOf(this.phase);
+    const idx = cellOf(this.phase);
     this.phaseLabels.forEach((t, i) => {
       if (i === idx && !moving) t.setTint(PAL.white);
       else if (i < idx) t.setTint(PAL.night4);

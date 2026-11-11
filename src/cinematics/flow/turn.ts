@@ -9,7 +9,9 @@
 // phaseChange
 //   the phase bar's marker slides. Battle: "SAVAŞ AŞAMASI" on a crimson band with a red edge
 //   pulse, the music jumps up (drum fill), the duelist commands and every monster in attack
-//   position flares red, one after another. End: the music settles back.
+//   position flares red, one after another. Main 2 (Battle → Main Phase 2): the battle winds down —
+//   the music settles back, a lower second tick answers the phase tick, and a cooling wave in the
+//   turn player's colour runs over their monsters from the podium. End: the music settles back.
 // music
 //   calm in the main phase, up in battle, and kept up while either player is under 1000 LP.
 //   The killing blow (damage to 0 LP) drops into slow motion and the music cuts out.
@@ -118,11 +120,39 @@ registerEvent(
       return;
     }
     bg(v.hud.setPhase(phase, player, true));
-    if (phase === 'end' || phase === 'main') ctx.music.setIntensity(intensityFor(ctx.stateNext, phase));
+    if (phase === 'end' || phase === 'main' || phase === 'main2') ctx.music.setIntensity(intensityFor(ctx.stateNext, phase));
+    if (phase === 'main2') {
+      main2Wave(ctx, player);
+      await ctx.wait(180);
+      return;
+    }
     await ctx.wait(phase === 'main' ? 180 : 140);
   },
   { name: 'flow:phaseChange' },
 );
+
+/**
+ * Battle → Main Phase 2: the battle cools down. A second, lower tick answers the phase tick (a falling
+ * two-step: the battle is over), the podium glows softly in the player's colour and the wave from it
+ * gives each of their monsters a short, calm glow (no red: the crimson leaves with the battle).
+ */
+function main2Wave(ctx: AnyCtx, player: PlayerId): void {
+  const sc = ctx.scene;
+  bg(ctx.wait(120).then(() => ctx.sfx('phaseChange', { volume: 0.3, pitch: 0.67 })));
+  const pod = duelistXY(player);
+  const R = PLAYER_RAMP[player];
+  void lightFlash(sc, pod.x, pod.y - 16, R[2], fs(34), 460, { floorY: pod.y, intensity: 0.55 });
+  for (const u of unitsOf(ctx, player)) {
+    const d = Math.hypot(u.home.x - pod.x, u.home.y - pod.y);
+    bg(
+      ctx.wait(60 + d * 1.6).then(() => {
+        if (u.retired) return undefined;
+        void lightFlash(sc, u.home.x, u.home.y, R[3], fs(24), 320, { intensity: 0.4 });
+        return addGlow(sc, u.sprite, R[3], 260, 0.4);
+      }),
+    );
+  }
+}
 
 // ================================================================ music + the killing blow
 

@@ -68,7 +68,7 @@ const PACK: Record<string, Scenario> = {
   },
   // ---- K11, the graveyard panel (step A6): the other player's pile, a long one (scrolling), an empty one
   a6GraveP2: {
-    desc: "UI: a click on the OTHER player's graveyard (P2's, 3 cards), ← → focus, Enter pins, Esc",
+    desc: "UI: a click on the OTHER player's graveyard (P2's, 3 cards), ← → focus, Enter pins, CLOSE",
     stage: { p0: { hand: ['tide_golem'], graveyard: ['ember_wolf'] }, p1: { graveyard: ['volt_lizard', 'mirror_barrier', 'crystal_wyrm'], monsters: [null, 'stone_sentinel'] } },
     steps: [
       { ui: 'move', at: { pile: [1, 'graveyard'] }, ms: 200 },
@@ -76,7 +76,8 @@ const PACK: Record<string, Scenario> = {
       { ui: 'key', key: 'ArrowRight', ms: 150 },
       { ui: 'key', key: 'ArrowRight', ms: 150 },
       { ui: 'key', key: 'Enter', ms: 300 },
-      { ui: 'key', key: 'Escape', ms: 350 },
+      // CLOSE (top right of the plate: x 120 + 340 + 27, y 210 + 3 + 9)
+      { ui: 'click', at: { xy: [487, 222] }, ms: 350 },
     ],
   },
   a6GraveMany: {

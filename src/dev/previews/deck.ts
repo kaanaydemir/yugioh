@@ -3,6 +3,10 @@
 //   &fill=empty|partial|legal|illegal|preset:<id>|classic   the deck in the editor (default: empty)
 //   &slot=0..4   &cursor=N   &zone=deck &dcursor=N   &missing=N (flag "eksik kart")   &fresh=1   forget the saved decks first   &name=Ad
 //   &pick=hotseat|vsBot|vsBot2   the deck picker instead of the builder (&dev picks nothing saved)
+//   &q=text   search text   &zone=search|deck   &list=grid|strip (deck list view; strip = the mock)
+//   &help=1   the keyboard overlay   &tip=0..3   a requirement meter's tooltip   &dscroll=N   deck list line
+//   &hover=1  (with &zone=deck) the focused entry shows its - / +
+//   &fill=long   a long 80-card deck (many distinct cards: the deck list scrolls)
 import { ALL_CARDS, isMonster, type Attribute, type CardId } from '../../data/cards';
 import { autoFillDeck, classicDeck, presetById } from '../../data/decks';
 import { DeckScene } from '../../scenes/deck/DeckScene';
@@ -21,6 +25,11 @@ function fillFor(kind: string | null): CardId[] | undefined {
     const monsters = ALL_CARDS.filter(isMonster).slice(0, 4).map((c) => c.id);
     const rest = ALL_CARDS.filter((c) => !isMonster(c)).map((c) => c.id);
     return [...monsters, ...rest].slice(0, 12);
+  }
+  if (kind === 'long') {
+    // every collectible card once (seals / single-copy cards are 1 anyway), then fill to 80
+    const ids = ALL_CARDS.filter((c) => !c.retired).map((c) => c.id).slice(0, 56);
+    return autoFillDeck(ids, 5, undefined, 80);
   }
   if (kind.startsWith('preset:')) return presetById(kind.slice(7))?.cards;
   return undefined;
@@ -56,7 +65,13 @@ const preview: DevPreview = {
         cards: fillFor(params.get('fill')),
         name: params.get('name') ?? undefined,
         cursor: params.has('cursor') ? Number(params.get('cursor')) : undefined,
-        zone: params.get('zone') === 'deck' ? ('deck' as const) : undefined,
+        zone: params.get('zone') === 'deck' ? ('deck' as const) : params.get('zone') === 'search' ? ('search' as const) : undefined,
+        q: params.get('q') ?? undefined,
+        list: params.get('list') === 'strip' ? ('strip' as const) : undefined,
+        help: params.get('help') === '1',
+        tip: params.has('tip') ? Number(params.get('tip')) : undefined,
+        deckScroll: params.has('dscroll') ? Number(params.get('dscroll')) : undefined,
+        hoverDeck: params.get('hover') === '1',
         deckCursor: params.has('dcursor') ? Number(params.get('dcursor')) : undefined,
         missing: params.has('missing') ? Number(params.get('missing')) : undefined,
       },
