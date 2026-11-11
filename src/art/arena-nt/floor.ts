@@ -207,10 +207,14 @@ function recessFrame(player: 0 | 1, state: number, boost: number, st: boolean): 
         const dn = kFar <= kNear ? kFar - 2 : kNear - 1;
         const spill = [[], [0], [1, 0]][L];
         c = dn - 1 < spill.length ? R(spill[dn - 1] + (spill[dn - 1] > 0 ? lift : 0)) : floor;
-        if (inset(i, j)) c = gInset;
-        if (glyph(i, j)) c = gStar;
-        else if (ring(i, j)) c = gRing;
-        else if (on && disc(i, j)) c = R(0);
+        // owner (2026-11-11): no engraving inside the zones — the ring / glyph / inset made it hard to tell an empty zone from
+        // an occupied one. The slot floor stays plain; the masks are kept (unused) so the look can be restored.
+        void inset;
+        void glyph;
+        void ring;
+        void gInset;
+        void gStar;
+        void gRing;
       }
       if (state === SLOT_DOWN && (kFar === 0 || kNear === 0 || kFar === 1 || kNear === 1)) {
         const dx = Math.abs(dX(i));
