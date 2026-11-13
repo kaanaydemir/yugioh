@@ -12,7 +12,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#05060f"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "bundleIdentifier": "com.prismduel.game",
       "buildNumber": "1",
@@ -37,6 +39,15 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["expo-asset", "expo-screen-orientation"]
+    "plugins": [
+      "expo-asset",
+      "expo-screen-orientation"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "514d43a5-5f41-42b3-98b4-97247bf957b5"
+      }
+    },
+    "owner": "kaanaydemir"
   }
 }
