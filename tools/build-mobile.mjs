@@ -5,7 +5,8 @@
 // Why one file: the app shows the game in a WebView from a local file (no server, works offline).
 // iOS WebViews refuse to load ES-module chunks from file:// URLs, so every chunk (including the
 // lazily imported cinematics) is bundled into a single module and inlined into the page.
-// The page sets window.__PRISM_MOBILE = true before the game boots (src/main.ts: fill the screen).
+// The page sets window.__PRISM_MOBILE = true (src/main.ts: fill the screen) and window.__NEON_LOOK = 'v3'
+// (the v3 look: Neon Tower arena, 5+5 zones, v3 cards) before the game boots.
 
 import { build } from 'vite';
 import { fileURLToPath, URL } from 'node:url';
@@ -58,7 +59,10 @@ html = html.replace(
 // A function replacer: a string replacer would expand `$&`, `$'` … sequences inside the bundle.
 html = html.replace(
   '</body>',
-  () => `  <script>window.__PRISM_MOBILE = true;</script>\n    <script type="module">${code}</script>\n  </body>`,
+  // __NEON_LOOK = 'v3': the playable game is the v3 look (Neon Tower arena, 5+5 zones, v3 cards). Without
+  // it the page falls back to the legacy v1 look, because the app opens game.html with no `?look=v3`.
+  () =>
+    `  <script>window.__PRISM_MOBILE = true; window.__NEON_LOOK = 'v3';</script>\n    <script type="module">${code}</script>\n  </body>`,
 );
 
 mkdirSync(outDir, { recursive: true });
