@@ -1,0 +1,7 @@
+// Metro must treat the bundled game page (assets/game/game.html) as an asset, not as source.
+const { getDefaultConfig } = require('expo/metro-config');
+
+const config = getDefaultConfig(__dirname);
+config.resolver.assetExts.push('html');
+
+module.exports = config;

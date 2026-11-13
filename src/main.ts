@@ -35,9 +35,19 @@ const game = new Phaser.Game({
   },
 });
 
-/** Largest whole-number zoom that fits the window (keeps every pixel square); fractional below 1×. */
+/**
+ * Largest whole-number zoom that fits the window (keeps every pixel square); fractional below 1×.
+ * The mobile app (mobile/, window.__PRISM_MOBILE) fills the phone screen instead: a phone in
+ * landscape is ~1.1–1.3× the game size in CSS px, so whole-number zoom would leave wide black bars.
+ * It snaps to whole DEVICE pixels when that loses little, else uses the exact fit.
+ */
 function fitZoom(): number {
   const z = Math.min(window.innerWidth / GAME_W, window.innerHeight / GAME_H);
+  if ((window as unknown as { __PRISM_MOBILE?: boolean }).__PRISM_MOBILE) {
+    const dpr = window.devicePixelRatio || 1;
+    const snapped = Math.floor(z * dpr) / dpr;
+    return snapped >= z * 0.97 ? snapped : z;
+  }
   return z >= 1 ? Math.floor(z) : z;
 }
 window.addEventListener('resize', () => game.scale.setZoom(fitZoom()));
