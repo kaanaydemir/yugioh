@@ -7,7 +7,7 @@ Screenshots: `store/screenshots/` (iPhone 6.9", 2868 × 1320, landscape; upload 
 - **Name** (30 max): Prism Duel
 - **Subtitle** (30 max): Pixel-Art Hologram Card Duels
 - **Primary category**: Games → Card. **Secondary**: Games → Strategy
-- **Bundle ID**: com.prismduel.game · **SKU**: prismduel-ios-1
+- **Bundle ID**: com.kaanaydemir.prismduel · **SKU**: prismduel-ios-1
 - **Content rights**: does not contain, show or access third-party content
 - **Age rating questionnaire**: Cartoon or Fantasy Violence → Infrequent/Mild; everything else → None.
   (Monsters fight with pixel-art attacks; no blood, no gambling with real money, no user content, no web access.)

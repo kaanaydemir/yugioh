@@ -11,7 +11,7 @@
       "**/*"
     ],
     "ios": {
-      "bundleIdentifier": "com.prismduel.game",
+      "bundleIdentifier": "com.kaanaydemir.prismduel",
       "buildNumber": "1",
       "supportsTablet": false,
       "requireFullScreen": true,
@@ -22,7 +22,7 @@
       }
     },
     "android": {
-      "package": "com.prismduel.game",
+      "package": "com.kaanaydemir.prismduel",
       "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#05060f",
