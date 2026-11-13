@@ -250,6 +250,30 @@ const tone = (i: number): Color => (i >= 4 && i <= 6 ? VIO[i - 4] : ST[Math.max(
  * id (for the mortar test against the pixel below). Rim pixels are painted by `rimTone`.
  */
 export function floorTone(x: number, y: number): Color {
+  return CALM ? calmTone(x, y) : busyTone(x, y);
+}
+
+/**
+ * Owner (2026-11-13): "the arena floor is too busy, the monsters blend into it". The play surface is now CALM: one flat stone tone,
+ * only faint joints, no blotches / cracks / moss / chips / scratches, the emblem reduced to its outline. Detail stays on the rim,
+ * walls and hall. The busy painter is kept (CALM = false) to compare.
+ */
+const CALM = true;
+
+function calmTone(x: number, y: number): Color {
+  const { u, v } = uvAt(x, y);
+  const s = stoneAt(u, v);
+  const below = uvAt(x, y + 1);
+  const sb = stoneAt(below.u, below.v);
+  // the emblem: only its outer outline survives, as a faint groove
+  if (s.id === -1) return sb.id !== -1 ? PAL.stone0 : PAL.stone1;
+  if (sb.id === -1) return PAL.stone0;
+  // joints: 1 px, one tone below the face; the lane only shows its two long kerb edges
+  if (sb.id !== s.id && (!s.lane || s.kerb !== stoneAt(below.u, below.v).kerb)) return PAL.stone0;
+  return PAL.stone1;
+}
+
+function busyTone(x: number, y: number): Color {
   const { u, v } = uvAt(x, y);
   const s = stoneAt(u, v);
   const below = uvAt(x, y + 1);
