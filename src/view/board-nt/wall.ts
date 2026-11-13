@@ -30,9 +30,12 @@ import { hallFloorPixel } from '../../art/arena-nt/hallfloor';
 import { HALL_PILLARS, HALL_PIPES, NT_BANNER_KEY, NT_PILLAR_KEY, NT_PIPES_KEY, ensureBackHallTextures } from './backhall';
 import { type NtCtx, type NtLayer } from './layer';
 import { ensureNtTexture } from './textures';
+import { WIDE_OX } from '../mobile';
 
 const NT_BACK_FLOOR_KEY = 'nt:hall:backfloor';
-const BACK_FLOOR = { x: -48, y: 96, w: 736, h: 54 } as const;
+// wide phones (src/view/wide.ts): every backdrop strip reaches past the side bars too
+const EDGE = Math.max(48, WIDE_OX + 8);
+const BACK_FLOOR = { x: -EDGE, y: 96, w: 640 + EDGE * 2, h: 54 } as const;
 function paintBackFloor(): PixelCanvas {
   const p = new PixelCanvas(BACK_FLOOR.w, BACK_FLOOR.h);
   for (let y = 0; y < BACK_FLOOR.h; y++) for (let x = 0; x < BACK_FLOOR.w; x++) p.set(x, y, hallFloorPixel(BACK_FLOOR.x + x, BACK_FLOOR.y + y));
@@ -88,7 +91,7 @@ export function createWallLayer(ctx: NtCtx): NtLayer {
   ensureWallTextures(scene);
 
   ctx.add(scene.add.rectangle(-200, -520, 1040, 120, PAL.ink).setOrigin(0).setDepth(WALL_Z.ink));
-  ctx.add(scene.add.tileSprite(-64, 96, 768, 320, NT_HALL_FLOOR_KEY).setOrigin(0).setDepth(WALL_Z.floor));
+  ctx.add(scene.add.tileSprite(-EDGE - 16, 96, 672 + EDGE * 2, 320, NT_HALL_FLOOR_KEY).setOrigin(0).setDepth(WALL_Z.floor));
   // value pass (2026-11-06): the strip of hall floor between the back wall and the apron (y 96 … 150) is the SAME flag floor
   // as the apron (art/arena-nt/hallfloor.ts), not the lifted navy tile — no brighter blue band behind the holograms, no seam
   ensureNtTexture(scene, 'backfloor', NT_BACK_FLOOR_KEY, paintBackFloor);
@@ -104,7 +107,7 @@ export function createWallLayer(ctx: NtCtx): NtLayer {
 
   // above the brick wall (seen while the intro pans up): the same dark vault, not the old navy panels
   const upper = ctx.add(scene.add.blitter(0, 0, NT_BRICK_VAULT_KEY).setDepth(WALL_Z.panel).setVisible(false));
-  for (let y = BRICKWALL_AT.y - BRICK_VAULT_H; y > -480; y -= BRICK_VAULT_H) for (let x = -8; x < 648; x += BRICK_VAULT_W) upper.create(x, y);
+  for (let y = BRICKWALL_AT.y - BRICK_VAULT_H; y > -480; y -= BRICK_VAULT_H) for (let x = BRICKWALL_AT.x; x < 648 + WIDE_OX; x += BRICK_VAULT_W) upper.create(x, y);
 
   const blit = (z: number): Phaser.GameObjects.Blitter => ctx.add(scene.add.blitter(0, 0, NT_WALL_KEY).setDepth(z));
   const blitters = new Map<number, Phaser.GameObjects.Blitter>();

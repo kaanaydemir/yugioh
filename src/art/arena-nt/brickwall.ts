@@ -11,11 +11,13 @@ import { BOARD_V4 } from '../../view/layout';
 import { PAL } from '../palette';
 import { PixelCanvas } from '../pixel';
 import { hash01 } from './wall-kit';
+import { WIDE_OX } from '../../view/mobile';
 
 export const NT_BRICKWALL_KEY = 'nt:wall:brick';
 /** Texture origin on screen and size. */
-export const BRICKWALL_AT = { x: -8, y: -8 } as const;
-export const BRICKWALL_W = 656;
+// wide phones (src/view/wide.ts): the wall runs on into the side bars
+export const BRICKWALL_AT = { x: -8 - WIDE_OX, y: -8 } as const;
+export const BRICKWALL_W = 656 + WIDE_OX * 2;
 export const BRICKWALL_H = 110;
 
 /** Wall-sconce torches: the FLAME centre on screen (the sconce sprite hangs below it). */

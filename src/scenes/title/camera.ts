@@ -6,6 +6,7 @@
 // world (scrollFactor ≠ 0) while the logo and menus (scrollFactor 0) stay rock steady.
 
 import Phaser from 'phaser';
+import { GAME_W } from '../../view/layout';
 
 interface ShakeJob {
   t: number;
@@ -42,7 +43,7 @@ export class TitleCamera {
       context?: unknown,
     ) => {
       const k = typeof intensity === 'number' ? intensity : intensity.x;
-      this.jobs.push({ t: 0, dur: Math.max(1, duration), px: k * scene.scale.width, cb: callback ?? null, ctx: context });
+      this.jobs.push({ t: 0, dur: Math.max(1, duration), px: k * GAME_W, cb: callback ?? null, ctx: context });
       return cam;
     };
     this.onUpdate = (_time, dt) => this.update(dt);

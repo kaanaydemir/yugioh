@@ -24,6 +24,7 @@ import { HowToOverlay } from './title/howto';
 import { SettingsOverlay, applyAudioSettings } from './title/settings';
 import { Showcase } from './title/showcase';
 import { wipeIn, wipeOut } from './title/transition';
+import { wideSides } from '../view/wide';
 
 export type TitleScreen = 'attract' | 'menu' | 'howto' | 'gallery' | 'settings';
 
@@ -119,6 +120,7 @@ export class TitleScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setBackgroundColor(PAL.night0);
+    wideSides(this);
     this.settings = loadSettings();
     if (this.opts.dev) (window.__neon as Record<string, unknown>).title = this;
     const layout = buildLogo(this);

@@ -33,6 +33,7 @@ import { monsterAnimKey, monsterFrameName, monsterTextureKey, sheetTexture } fro
 import { cutinArt, cutinFrame, cutinFrameName, cutinP2Key, cutinRelit, cutinSequence } from '../../art/cutins';
 import type { PixelCanvas } from '../../art/pixel';
 import { DEPTH, GAME_W } from '../../view/layout';
+import { WIDE_OX } from '../../view/mobile';
 import { TEX, shake } from '../../vfx/core';
 import { pixelText, upper } from '../../ui/text';
 import { Sparks, onFrame, sleep } from '../../vfx/combat';
@@ -168,9 +169,12 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
   const top = (x: number) => Math.round(mid - H_BAND / 2 + (x - GAME_W / 2) * slope);
   const objs: { destroy(): void }[] = [];
   // the band is one pixel raster (crisp, palette tones only), redrawn every frame
-  const yMin = Math.min(top(0), top(GAME_W)) - 8;
-  const yMax = Math.max(top(0), top(GAME_W)) + H_BAND + 8;
-  const bandR = new Raster(scene, 0, yMin, GAME_W, yMax - yMin, D + 1);
+  // wide phones (src/view/wide.ts): the band runs from screen edge to screen edge (XL … XR; 0 … 640 elsewhere)
+  const XL = -WIDE_OX;
+  const XR = GAME_W + WIDE_OX;
+  const yMin = Math.min(top(XL), top(XR)) - 8;
+  const yMax = Math.max(top(XL), top(XR)) + H_BAND + 8;
+  const bandR = new Raster(scene, XL, yMin, XR - XL, yMax - yMin, D + 1);
   bandR.img.setScrollFactor(0);
   objs.push(bandR);
   // ---- state
@@ -189,7 +193,7 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
   const rad = new Float32Array(BW * BH);
   for (let y = 0; y < BH; y++)
     for (let x = 0; x < BW; x++) {
-      const dx = x - focus.x;
+      const dx = x + XL - focus.x;
       const dy = y + yMin - focus.y;
       ang[y * BW + x] = Math.atan2(dy, dx);
       rad[y * BW + x] = Math.hypot(dx, dy);
@@ -198,28 +202,28 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
     v: ((i * 37) % 97) / 97,
     len: 20 + ((i * 53) % 110),
     speed: 900 + ((i * 71) % 700),
-    x: (i * 131) % GAME_W,
+    x: XL + ((i * 131) % (XR - XL)),
     c: i % 4 === 0 ? PAL.white : i % 3 === 0 ? ramp[3] : ramp[2],
   }));
-  const edgeX = () => (dir > 0 ? Math.round(-20 + (GAME_W + 40) * wipe) : Math.round(GAME_W + 20 - (GAME_W + 40) * wipe));
+  const edgeX = () => (dir > 0 ? Math.round(XL - 20 + (XR - XL + 40) * wipe) : Math.round(XR + 20 - (XR - XL + 40) * wipe));
   const inWipe = (x: number) => (dir > 0 ? x <= edgeX() : x >= edgeX());
   const drawBand = (el: number, dt: number) => {
     for (const l of lines) {
       l.x -= dir * l.speed * (dt / 1000);
-      if (dir > 0 && l.x + l.len < 0) l.x += GAME_W + l.len;
-      if (dir < 0 && l.x > GAME_W) l.x -= GAME_W + l.len;
+      if (dir > 0 && l.x + l.len < XL) l.x += XR - XL + l.len;
+      if (dir < 0 && l.x > XR) l.x -= XR - XL + l.len;
     }
     bandR.draw((g) => {
       if (wipe <= 0) return;
       const shrink = Math.round((H_BAND / 2) * close);
       const rot = el * 0.0005 * dir;
-      for (let x = 0; x < GAME_W; x++) {
+      for (let x = XL; x < XR; x++) {
         if (!inWipe(x)) continue;
         const t0 = top(x) + shrink;
         const h = H_BAND - shrink * 2;
         if (h <= 0) continue;
         for (let y = t0; y < t0 + h; y++) {
-          const i = (y - yMin) * BW + x;
+          const i = (y - yMin) * BW + (x - XL);
           const sr = split ? (inBack(x, y) ? split.back : split.front) : null;
           const dp = sr ? sr[0] : deep;
           const wd = sr ? sr[1] : wedge;
@@ -261,7 +265,7 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
         const x0 = Math.round(l.x);
         for (let k = 0; k < l.len; k += 1) {
           const x = x0 + k;
-          if (x < 0 || x >= GAME_W || !inWipe(x)) continue;
+          if (x < XL || x >= XR || !inWipe(x)) continue;
           const t0 = top(x) + shrink;
           const h = H_BAND - shrink * 2;
           if (h < 8) continue;
@@ -283,7 +287,7 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
         }
       }
       // closing: the seam
-      if (close > 0 && close < 1) for (let x = 0; x < GAME_W; x++) g.px(x, top(x) + H_BAND / 2, PAL.white);
+      if (close > 0 && close < 1) for (let x = XL; x < XR; x++) g.px(x, top(x) + H_BAND / 2, PAL.white);
     });
   };
 
@@ -325,8 +329,8 @@ async function run(scene: Phaser.Scene, o: CutInV3Opts, onExit: () => void): Pro
     maskG.clear();
     maskG.fillStyle(0xffffff, 1);
     const shrink = Math.round((H_BAND / 2) * close);
-    const xa = dir > 0 ? 0 : Math.max(0, edgeX());
-    const xb = dir > 0 ? Math.min(GAME_W, edgeX()) : GAME_W;
+    const xa = dir > 0 ? XL : Math.max(XL, edgeX());
+    const xb = dir > 0 ? Math.min(XR, edgeX()) : XR;
     if (xb <= xa) return;
     maskG.fillPoints([new Phaser.Math.Vector2(xa, top(xa) + shrink), new Phaser.Math.Vector2(xb, top(xb) + shrink), new Phaser.Math.Vector2(xb, top(xb) + H_BAND - shrink), new Phaser.Math.Vector2(xa, top(xa) + H_BAND - shrink)], true);
   };

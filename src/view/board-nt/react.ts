@@ -46,6 +46,7 @@ import { LOW_LP, fieldThemeWatcher, readLp } from './duel-watch';
 import { DUELIST_PADS, NT_DEPTH, PLATE_C0, PLATE_C1, PLATE_POLY, PLATE_R0, PLATE_R1, PLATE_X0, PLATE_X1, PLATE_Y0, PLATE_Y1, SCREENS, SCREEN_INNER, ntGrid, ntIso } from './layout-nt';
 import type { NtCtx, NtLayer } from './layer';
 import { ensureNtTexture } from './textures';
+import { WIDE_OX } from '../mobile';
 
 type Img = Phaser.GameObjects.Image;
 type Bob = Phaser.GameObjects.Bob;
@@ -410,7 +411,7 @@ export function createReactLayer(ctx: NtCtx): NtLayer {
   let theme: Exclude<SealTheme, 'none'> | null = null;
   let themeK = 0; // 0 … 4 notches in
   let themeStepAt = 0;
-  const hallDark = add(scene.add.rectangle(-16, -616, 672, 992, PAL.mist).setOrigin(0).setDepth(Z.hallDark).setBlendMode(MUL).setVisible(false));
+  const hallDark = add(scene.add.rectangle(-16 - WIDE_OX, -616, 672 + WIDE_OX * 2, 992, PAL.mist).setOrigin(0).setDepth(Z.hallDark).setBlendMode(MUL).setVisible(false));
   // festival: the torches' baked light halos once more, warm (lantern light)
   const lantern = scene.textures.exists('nt:v4light:backglow:1')
     ? add(scene.add.image(-16, -16, 'nt:v4light:backglow:1').setOrigin(0).setDepth(Z.lantern).setBlendMode(ADD).setTint(PAL.gold3).setVisible(false))

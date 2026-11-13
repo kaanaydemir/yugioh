@@ -42,6 +42,7 @@ import { hasLight, lightEnabled } from '../light';
 import { calmZones } from '../board-calm/art';
 import { DUELIST_PADS, HOLOS, NT_DEPTH, PLATE_POLY, SCREENS, ntIso } from './layout-nt';
 import type { NtCtx, NtLayer } from './layer';
+import { WIDE_OX } from '../mobile';
 
 type Img = Phaser.GameObjects.Image;
 type RGB = [number, number, number];
@@ -73,9 +74,10 @@ const KEY = {
 /** The hall's ambient light (multiply: what is left of the wall / floor art far from every light). */
 const AMBIENT: RGB = [0.5, 0.53, 0.66];
 /** Back veil overscan (the camera leans / shakes a few px) and the area it covers. */
-const BACK = { x: -16, y: -16, w: 672, h: 392 } as const;
+// wide phones (src/view/wide.ts): the veils run on into the side bars (the vignette keeps darkening outward)
+const BACK = { x: -16 - WIDE_OX, y: -16, w: 672 + WIDE_OX * 2, h: 392 } as const;
 /** The back glow's area: the wall and the hall floor round the hologram plinths (nothing glows lower down). */
-const BACK_GLOW = { x: -16, y: -16, w: 672, h: 224 } as const;
+const BACK_GLOW = { x: -16 - WIDE_OX, y: -16, w: 672 + WIDE_OX * 2, h: 224 } as const;
 
 const rgb = (c: number): RGB => [((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255];
 

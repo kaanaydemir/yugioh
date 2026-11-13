@@ -25,3 +25,16 @@ export const MOBILE: boolean = detect();
  * pixels crisp and makes each row a comfortable finger target.
  */
 export const TOUCH_UI_SCALE: number = MOBILE ? 2 : 1;
+
+function detectOx(): number {
+  if (!MOBILE || typeof window === 'undefined') return 0;
+  const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+  const w = Math.round((360 * aspect) / 2) * 2;
+  return Math.max(0, Math.min(80, Math.floor((w - 640) / 2)));
+}
+
+/**
+ * Widescreen (src/view/wide.ts): extra canvas width on each side of the 640 frame on a wide phone
+ * (0 everywhere else). Here, without Phaser, so art modules can widen their backdrops by it.
+ */
+export const WIDE_OX: number = detectOx();

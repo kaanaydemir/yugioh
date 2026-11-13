@@ -41,6 +41,7 @@ import { loadSettings, saveSettings, type DuelLaunch, type DuelMode, type Settin
 import { ARENA_V2, LANES, LOOK_V3 } from '../view/layout';
 import { resetAtDuelStart } from '../duel/seeds';
 import { ensureLightLayer } from '../view/light';
+import { wideSides } from '../view/wide';
 
 /** Everything DuelScene accepts (DuelLaunch + QA extras). */
 export interface DuelStart extends DuelLaunch {
@@ -175,6 +176,7 @@ export class DuelScene extends Phaser.Scene {
 
     // ---- views
     this.cameras.main.setBackgroundColor(PAL.night0);
+    wideSides(this);
     const camera = new CameraRig(this);
     const board = new BoardView(this, { active: staged ? state.activePlayer : null, lights: skipIntro });
     const field = new FieldView(this);

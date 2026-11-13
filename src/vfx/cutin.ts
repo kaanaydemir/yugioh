@@ -22,6 +22,7 @@ import { frameRGBA } from '../art/atlas';
 import { monsterArt } from '../art/monsters';
 import { monsterAnimKey, monsterFrameName, monsterTextureKey } from '../art/textures';
 import { DEPTH, GAME_H, GAME_W } from '../view/layout';
+import { WIDE_OX } from '../view/mobile';
 import { TEX, shake } from './core';
 import { pixelText, upper } from '../ui/text';
 import { E, Raster, Sparks, bayer, clamp01, lerp, onFrame, rnd, rr, run, seg, sleep, snd } from './setpieces';
@@ -129,9 +130,12 @@ export async function cutIn(scene: Phaser.Scene, o: CutInOpts): Promise<void> {
   objs.push(dim);
 
   // ---- band raster (focus burst + speed lines + borders)
-  const yMin = Math.floor(Math.min(band.top(0), band.top(GAME_W))) - 6;
-  const yMax = Math.ceil(Math.max(band.bottom(0), band.bottom(GAME_W))) + 6;
-  const bandR = new Raster(scene, 0, yMin, GAME_W, yMax - yMin, D + 1);
+  // wide phones (src/view/wide.ts): the band runs from screen edge to screen edge (XL … XR; 0 … 640 elsewhere)
+  const XL = -WIDE_OX;
+  const XR = GAME_W + WIDE_OX;
+  const yMin = Math.floor(Math.min(band.top(XL), band.top(XR))) - 6;
+  const yMax = Math.ceil(Math.max(band.bottom(XL), band.bottom(XR))) + 6;
+  const bandR = new Raster(scene, XL, yMin, XR - XL, yMax - yMin, D + 1);
   bandR.img.setScrollFactor(0);
   objs.push(bandR);
   const focus = { x: p1 ? 214 : GAME_W - 214, y: 170 };
@@ -142,7 +146,7 @@ export async function cutIn(scene: Phaser.Scene, o: CutInOpts): Promise<void> {
   const rad = new Float32Array(BW * BH);
   for (let y = 0; y < BH; y++)
     for (let x = 0; x < BW; x++) {
-      const dx = x - focus.x;
+      const dx = x + XL - focus.x;
       const dy = y + yMin - focus.y;
       ang[y * BW + x] = Math.atan2(dy, dx);
       rad[y * BW + x] = Math.hypot(dx, dy);
@@ -151,7 +155,7 @@ export async function cutIn(scene: Phaser.Scene, o: CutInOpts): Promise<void> {
     v: rnd(),
     len: rr(24, 150),
     speed: rr(700, 1500),
-    x: rr(0, GAME_W),
+    x: rr(XL, XR),
     c: rnd() < 0.25 ? PAL.white : rnd() < 0.6 ? ramp[3] : ramp[2],
     w: rnd() < 0.25 ? 2 : 1,
   }));
@@ -162,20 +166,20 @@ export async function cutIn(scene: Phaser.Scene, o: CutInOpts): Promise<void> {
   const drawBand = (el: number, dt: number) => {
     for (const l of lines) {
       l.x -= dir * l.speed * lineSpeedK * (dt / 1000);
-      if (dir > 0 && l.x + l.len < 0) l.x += GAME_W + l.len + rr(0, 80);
-      if (dir < 0 && l.x > GAME_W) l.x -= GAME_W + l.len + rr(0, 80);
+      if (dir > 0 && l.x + l.len < XL) l.x += XR - XL + l.len + rr(0, 80);
+      if (dir < 0 && l.x > XR) l.x -= XR - XL + l.len + rr(0, 80);
     }
     bandR.draw((g) => {
-      const edgeX = dir > 0 ? lerp(-60, GAME_W + 60, wipe) : lerp(GAME_W + 60, -60, wipe);
+      const edgeX = dir > 0 ? lerp(XL - 60, XR + 60, wipe) : lerp(XR + 60, XL - 60, wipe);
       const rot = el * 0.0004;
-      for (let x = 0; x < GAME_W; x++) {
+      for (let x = XL; x < XR; x++) {
         // slanted wipe edge (leans with the band)
         const yy0 = band.top(x);
         const yy1 = band.bottom(x);
         for (let y = Math.ceil(yy0); y < yy1; y++) {
           const wx = x + (y - 180) * 0.35 * dir;
           if (dir > 0 ? wx > edgeX : wx < edgeX) continue;
-          const i = (y - yMin) * BW + x;
+          const i = (y - yMin) * BW + (x - XL);
           let c: number = deep;
           if (burstOn > 0) {
             const a = ang[i] + rot;
@@ -202,7 +206,7 @@ export async function cutIn(scene: Phaser.Scene, o: CutInOpts): Promise<void> {
       // accent strip: thin ribbon above the band with a scrolling ★ pattern (opposite drift)
       if (wipe > 0.3) {
         const off = Math.floor(el * 0.12) * -dir;
-        for (let x = 0; x < GAME_W; x++) {
+        for (let x = XL; x < XR; x++) {
           const yb = Math.floor(band.top(x)) - 13;
           const ph = (((x + off) % 24) + 24) % 24;
           for (let yy = 0; yy < 6; yy++) {
@@ -222,7 +226,7 @@ export async function cutIn(scene: Phaser.Scene, o: CutInOpts): Promise<void> {
         const x0 = Math.round(l.x);
         for (let k = 0; k < l.len; k++) {
           const x = x0 + k;
-          if (x < 0 || x >= GAME_W) continue;
+          if (x < XL || x >= XR) continue;
           const wx = x + (band.top(x) + l.v * band.H - 180) * 0.35 * dir;
           if (dir > 0 ? wx > edgeX : wx < edgeX) continue;
           const y = Math.round(band.top(x) + 3 + l.v * (band.H - 6));
@@ -282,9 +286,9 @@ export async function cutIn(scene: Phaser.Scene, o: CutInOpts): Promise<void> {
   const drawMask = () => {
     maskG.clear();
     maskG.fillStyle(0xffffff, 1);
-    const edgeX = dir > 0 ? lerp(-60, GAME_W + 60, wipe) : lerp(GAME_W + 60, -60, wipe);
-    const xa = dir > 0 ? 0 : Math.max(0, edgeX - 60);
-    const xb = dir > 0 ? Math.min(GAME_W, edgeX + 60) : GAME_W;
+    const edgeX = dir > 0 ? lerp(XL - 60, XR + 60, wipe) : lerp(XR + 60, XL - 60, wipe);
+    const xa = dir > 0 ? XL : Math.max(XL, edgeX - 60);
+    const xb = dir > 0 ? Math.min(XR, edgeX + 60) : XR;
     maskG.fillPoints(
       [
         new Phaser.Math.Vector2(xa, band.top(xa)),
