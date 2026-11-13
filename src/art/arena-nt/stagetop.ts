@@ -260,16 +260,31 @@ export function floorTone(x: number, y: number): Color {
  */
 const CALM = true;
 
+// Owner (2026-11-13, later): "add some joints and a few carvings, super high quality". Still calm (faces one tone), but every flag
+// is now a cut stone: a 1-px joint in shade (stone0) on its lower edges and a 1-px lit arris (stone2) along its key-lit upper-left
+// edge, so the paving reads as bevelled blocks without any noise inside the faces. The carved emblem is back, in a narrow tone range
+// (stone0..stone2, no ink, no stone3) so it is crafted but never louder than a monster.
+const EMBLEM_CALM: Partial<Record<number, Color>> = {
+  [PAL.ink]: PAL.stone0,
+  [PAL.stone3]: PAL.stone2,
+  [PAL.stone4]: PAL.stone2,
+};
+
 function calmTone(x: number, y: number): Color {
   const { u, v } = uvAt(x, y);
   const s = stoneAt(u, v);
   const below = uvAt(x, y + 1);
   const sb = stoneAt(below.u, below.v);
-  // the emblem: only its outer outline survives, as a faint groove
-  if (s.id === -1) return sb.id !== -1 ? PAL.stone0 : PAL.stone1;
-  if (sb.id === -1) return PAL.stone0;
-  // joints: 1 px, one tone below the face; the lane only shows its two long kerb edges
-  if (sb.id !== s.id && (!s.lane || s.kerb !== stoneAt(below.u, below.v).kerb)) return PAL.stone0;
+  const above = uvAt(x, y - 1);
+  const sa = stoneAt(above.u, above.v);
+  if (s.id === -1) {
+    const c = emblemTone(x, y, u, v, sb.id !== -1, sa.id !== -1);
+    return EMBLEM_CALM[c] ?? c;
+  }
+  // the joint: the last pixel row of a stone (shade side)
+  if (sb.id !== s.id) return PAL.stone0;
+  // the lit arris: the first pixel row of a stone along its upper-left (key-lit) edge
+  if (sa.id !== s.id && s.du0 <= s.dv0) return PAL.stone2;
   return PAL.stone1;
 }
 
@@ -429,4 +444,28 @@ export function rimTone(d: number, side: number, along: number, x: number): Colo
   // the step down to the floor: far edges show the coping's shaded inner face, near edges a lit lip and the drop
   if (far) return d < RIM_W - 1 ? PAL.stone0 : PAL.ink;
   return d < RIM_W - 1 ? PAL.stone3 : PAL.ink;
+}
+
+// ---------------------------------------------------------------- the carved border band
+// Owner (2026-11-13): "a few carvings, super high quality". Just inside the coping runs a narrow carved frieze: two fine border
+// grooves and between them a chain of linked lozenges, each with a raised dot. Carved, not painted: every groove is a 1-px shade
+// line (stone0) with the lit arris (stone2) on its key-lit side, inside the calm stone1 field. `dd` = units inside the coping.
+export const BAND_W = 9;
+const BAND_REP = 12;
+
+export function bandTone(dd: number, side: number, along: number): Color | null {
+  if (!CALM || dd < 1 || dd >= BAND_W) return null;
+  const lit = side === 0 || side === 2 || side === 4 || side === 6;
+  // the two border grooves (outer at dd 1..2, inner at dd 7..8), each with its arris on the lit side
+  if (dd < 2) return PAL.stone0;
+  if (dd < 3) return lit ? PAL.stone2 : null;
+  if (dd >= BAND_W - 1) return lit ? PAL.stone2 : PAL.stone0;
+  if (dd >= BAND_W - 2) return lit ? PAL.stone0 : PAL.stone2;
+  // the lozenge chain between them (dd 3..7, centre 5)
+  const t = (((along % BAND_REP) + BAND_REP) % BAND_REP) - BAND_REP / 2;
+  const e = Math.abs(t) / 2.6 + Math.abs(dd - 5) / 1.6;
+  if (e >= 1.55 && e < 2.05) return PAL.stone0;
+  if (e >= 1.15 && e < 1.55) return PAL.stone2;
+  if (e < 0.45) return PAL.stone2;
+  return null;
 }

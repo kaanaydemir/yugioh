@@ -9,7 +9,7 @@ import { PAL } from '../palette';
 import { NT_PAL } from './palette';
 import { type Atlas, Surface, packAtlas } from './platform-pack';
 import { BOARD_V4 } from '../../view/layout';
-import { RIM_W, floorTone, rimTone } from './stagetop';
+import { RIM_W, bandTone, floorTone, rimTone } from './stagetop';
 
 /** Texture keys: the platform body (hull, top, shadow) and the fx atlas (frames named inside). */
 export const NT_PLATFORM_KEY = 'nt:platform';
@@ -251,7 +251,7 @@ function paintTop(S: Surface, x0: number, y0: number, x1: number, y1: number): P
         }
         // arena v5 step 1: worn flagstones, the neutral lane's pavers, the engraved emblem and the carved coping (./stagetop.ts)
         const along = side <= 1 ? 32 * (r - 2) : side <= 3 ? 32 * (c - 3) : side <= 5 ? x : 2 * y;
-        const rc = d32 < RIM_W ? rimTone(d32, side, along, x) : null;
+        const rc = d32 < RIM_W ? rimTone(d32, side, along, x) : bandTone(d32 - RIM_W, side, along);
         S.put(x, y, rc ?? floorTone(x, y));
         continue;
       }
