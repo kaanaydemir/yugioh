@@ -26,6 +26,8 @@ import { CURVE_BUCKETS, DECK_HIGH_LEVEL, DECK_MAX, DECK_MIN, addBlocker, autoFil
 import { measureText, pixelText, wrapText } from '../../ui/text';
 import { Button } from '../../view/Button';
 import { GAME_H, GAME_W } from '../../view/layout';
+import { MOBILE } from '../../view/mobile';
+import { DeckTouch, TOUCH_STEP_H, type DeckTouchHost } from './touch';
 import { canvasTexture } from '../../view/v3/hudSkin';
 import { ICON, ovalHaloTex } from '../../view/ui-textures';
 import { TEX, wait } from '../../vfx/core';
@@ -328,6 +330,8 @@ export class DeckScene extends Phaser.Scene {
   private lattice!: Phaser.GameObjects.TileSprite;
   private motes: { img: Phaser.GameObjects.Image; x: number; y: number; v: number; ph: number }[] = [];
   private t = 0;
+  /** Phone controls (tap = show, big - / +, drag in / out, swipe scrolling); null on desktop. */
+  private touch: DeckTouch | null = null;
 
   constructor() {
     super('Deck');
@@ -407,6 +411,7 @@ export class DeckScene extends Phaser.Scene {
     this.buildBottom();
     this.buildTip();
     this.buildHelp();
+    if (MOBILE) this.touch = new DeckTouch(this, this.touchHost());
 
     this.refreshList();
     if (qa?.cursor !== undefined) this.cursor = Math.max(0, Math.min(this.list.length - 1, qa.cursor));
@@ -424,7 +429,8 @@ export class DeckScene extends Phaser.Scene {
     this.showDetail();
     if (qa?.help) this.setHelp(true);
     if (qa?.tip !== undefined) this.showTip(qa.tip);
-    this.say(this.cur.cards.length ? 'Left click adds a card, right click removes it.' : 'Empty deck: click cards, or try AUTO-FILL / PRESETS.', 'info');
+    if (MOBILE) this.say(this.cur.cards.length ? 'Tap: see a card · drag in / out: add / remove' : 'Empty deck: drag cards onto it, or try AUTO-FILL / PRESETS.', 'info');
+    else this.say(this.cur.cards.length ? 'Left click adds a card, right click removes it.' : 'Empty deck: click cards, or try AUTO-FILL / PRESETS.', 'info');
 
     const onKey = (e: KeyboardEvent) => {
       if (!this.sys.isActive()) return;
@@ -670,11 +676,11 @@ export class DeckScene extends Phaser.Scene {
     const zone = this.add.zone(x, y, MINI_W, MINI_H).setOrigin(0).setDepth(12).setInteractive({ useHandCursor: true });
     const cell: Cell = { box, card, veil, lock, mark, badgeBg, badge, zone, x, y, index: -1, id: null };
     zone.on(Phaser.Input.Events.POINTER_OVER, () => {
-      if (cell.index < 0 || this.editing || this.helpOpen) return;
+      if (MOBILE || cell.index < 0 || this.editing || this.helpOpen) return;
       this.setFocus('pool', cell.index, true);
     });
     zone.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => {
-      if (cell.index < 0 || this.editing || this.helpOpen || this.sortOpen) return;
+      if (MOBILE || cell.index < 0 || this.editing || this.helpOpen || this.sortOpen) return;
       this.setFocus('pool', cell.index, false);
       if (p.rightButtonDown()) {
         if (cell.id && this.copies(cell.id)) this.removeCard(cell.id, this.cellCentre(cell));
@@ -684,7 +690,7 @@ export class DeckScene extends Phaser.Scene {
       box.y = y;
     });
     zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
-      if (cell.index < 0 || this.pressedCell !== cell.index || p.rightButtonReleased()) return;
+      if (MOBILE || cell.index < 0 || this.pressedCell !== cell.index || p.rightButtonReleased()) return;
       this.pressedCell = -1;
       this.addCard(cell.id, cell.index);
     });
@@ -748,6 +754,7 @@ export class DeckScene extends Phaser.Scene {
     if (!id) {
       this.detBg.setTexture(panelV3(this, 'neutral', DET_W, MAIN_H, 76));
       this.shownId = null;
+      this.touch?.renderSteps(null);
       return;
     }
     const d = CARDS[id];
@@ -796,7 +803,7 @@ export class DeckScene extends Phaser.Scene {
     const n = this.copies(id);
     const max = maxCopies(id);
     const noteFull = this.noteOf(id);
-    const bottom = MAIN_Y + MAIN_H - 6;
+    const bottom = MAIN_Y + MAIN_H - 6 - (MOBILE ? TOUCH_STEP_H + 6 : 0);
     const note = (full: boolean) => [`In deck: ${n}/${max}`, ...(full && noteFull ? wrapText(noteFull, 'sm', DET_W - 14) : [])];
     const words = d.kind === 'monster' && !d.text ? `"${d.flavor}"` : d.text;
     const body = wrapText(words, 'sm', DET_W - 12);
@@ -813,6 +820,7 @@ export class DeckScene extends Phaser.Scene {
     this.detNote.setText(noteLines.join('\n')).setY(ny).setTint(n >= max ? PAL.gold3 : n ? PAL.cyan3 : PAL.steel);
     const mark = markTexOf(this, id);
     if (mark) this.detMark.setTexture(mark).setPosition(DET_X + DET_W - 16, ny + 3).setVisible(true);
+    this.touch?.renderSteps(id);
   }
 
   /** The effect text window (it scrolls with the wheel when the text is longer than the panel). */
@@ -858,7 +866,7 @@ export class DeckScene extends Phaser.Scene {
     this.deckState = pixelText(this, DK_X + DK_W - 8, MAIN_Y + 5, '', { size: 'sm', color: PAL.steel, originX: 1 }).setDepth(10);
     this.deckOk = this.add.image(0, MAIN_Y + 7, checkIcon(this)).setOrigin(0).setDepth(10).setVisible(false);
     this.add.rectangle(DK_X + 6, MAIN_Y + 18, DK_W - 12, 1, PAL.cyan1).setOrigin(0).setDepth(10);
-    this.deckEmpty = pixelText(this, LIST_X + LIST_W / 2, LIST_Y + 70, 'Your deck is empty.\nLeft click a card to add it,\nright click to take it out.', { size: 'sm', color: PAL.steel, originX: 0.5, align: 'center', lineSpacing: -1 }).setDepth(10).setVisible(false);
+    this.deckEmpty = pixelText(this, LIST_X + LIST_W / 2, LIST_Y + 70, MOBILE ? 'Your deck is empty.\nDrag a card here to add it,\nor tap it and press +.' : 'Your deck is empty.\nLeft click a card to add it,\nright click to take it out.', { size: 'sm', color: PAL.steel, originX: 0.5, align: 'center', lineSpacing: -1 }).setDepth(10).setVisible(false);
 
     for (let i = 0; i < 3; i++) {
       this.heads.push({
@@ -930,7 +938,7 @@ export class DeckScene extends Phaser.Scene {
     zone.input!.enabled = false;
     const th: Thumb = { box, img, ring, badgeBg, badge, name, minus, plus, zone, entry: null, flat: -1, x: 0, y: 0 };
     const focus = () => {
-      if (!th.entry || this.editing || this.helpOpen) return;
+      if (MOBILE || !th.entry || this.editing || this.helpOpen) return;
       const changed = this.zone !== 'deck' || this.deckCursor !== th.flat || this.hoverFlat !== th.flat;
       this.zone = 'deck';
       this.deckCursor = th.flat;
@@ -951,11 +959,11 @@ export class DeckScene extends Phaser.Scene {
       }
     });
     zone.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => {
-      if (!th.entry || this.editing || this.helpOpen || this.sortOpen) return;
+      if (MOBILE || !th.entry || this.editing || this.helpOpen || this.sortOpen) return;
       if (p.rightButtonDown()) this.removeCard(th.entry.id, this.thumbCentre(th));
     });
     zone.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => {
-      if (!th.entry || this.editing || this.helpOpen || p.rightButtonReleased()) return;
+      if (MOBILE || !th.entry || this.editing || this.helpOpen || p.rightButtonReleased()) return;
       this.addCard(th.entry.id, -1);
     });
     for (const b of [minus, plus]) b.zone.on(Phaser.Input.Events.POINTER_OVER, focus);
@@ -980,6 +988,52 @@ export class DeckScene extends Phaser.Scene {
 
   private thumbCentre(th: Thumb): Pt {
     return { x: th.x + Math.round(this.entryW() / 2), y: th.y + Math.round(this.entryH() / 2) };
+  }
+
+  // ---------------------------------------------------------------- phone controls (./touch.ts)
+
+  /** What the phone controls may see and do (a narrow window onto this scene's private state). */
+  private touchHost(): DeckTouchHost {
+    return {
+      blocked: () => !this.ready || this.leaving || this.editing || this.helpOpen || this.sortOpen,
+      poolAt: (x, y) => {
+        const c = this.cells.find((k) => k.id && x >= k.x && x < k.x + MINI_W && y >= k.y && y < k.y + MINI_H);
+        return c && c.id ? { id: c.id, index: c.index, at: this.cellCentre(c) } : null;
+      },
+      deckAt: (x, y) => {
+        const th = this.thumbs.find((t) => t.entry && x >= t.x && x < t.x + this.entryW() && y >= t.y && y < t.y + this.entryH());
+        return th && th.entry ? { id: th.entry.id, index: th.flat, at: this.thumbCentre(th) } : null;
+      },
+      selectPool: (index) => this.setFocus('pool', index, true),
+      selectDeck: (flat) => {
+        this.zone = 'deck';
+        this.deckCursor = flat;
+        this.hoverFlat = -1;
+        this.hoverSound();
+        this.renderDeckList();
+        this.renderFocus();
+        this.showDetail();
+      },
+      scrollPool: (rows) => this.scrollBy(rows),
+      scrollDeck: (lines) => this.scrollDeck(lines),
+      scrollDetail: (dir) => this.scrollDetail(dir),
+      add: (id, index) => this.addCard(id, index >= 0 && this.list[index] === id ? index : -1),
+      remove: (id, at) => this.removeCard(id, at),
+      copies: (id) => this.copies(id),
+      canAdd: (id) => addBlocker(this.cur.cards, id) === null,
+      shown: () => this.shownId ?? null,
+      focusIndex: () => (this.zone === 'pool' ? this.cursor : -1),
+      say: (text, tone) => this.say(text, tone),
+      rowPitch: () => this.metrics.rowH,
+      geo: {
+        pool: { x: COL_X, y: GRID_Y, w: COL_W - 12, h: ROWS * PITCH_Y },
+        poolPitch: PITCH_Y,
+        deckList: { x: DK_X, y: LIST_Y, w: DK_W - 12, h: LIST_H },
+        deckPanel: { x: DK_X, y: MAIN_Y, w: DK_W, h: MAIN_H },
+        detailText: { x: DET_X, y: MAIN_Y + 80, w: DET_W, h: MAIN_H - 80 - TOUCH_STEP_H - 8 },
+        steps: { x: DET_X + 5, y: MAIN_Y + MAIN_H - 5 - TOUCH_STEP_H, w: DET_W - 10, h: TOUCH_STEP_H },
+      },
+    };
   }
 
   // ---------------------------------------------------------------- bottom row
@@ -1761,7 +1815,8 @@ export class DeckScene extends Phaser.Scene {
     th.y = y;
     th.box.setVisible(!!e);
     if (th.zone.input) th.zone.input.enabled = !!e;
-    const hover = !!e && flat === this.hoverFlat;
+    // the phone uses the big - / + under the detail panel instead of these 10-px steps
+    const hover = !MOBILE && !!e && flat === this.hoverFlat;
     for (const b of [th.minus, th.plus]) {
       b.box.setVisible(hover);
       if (b.zone.input) b.zone.input.enabled = hover;

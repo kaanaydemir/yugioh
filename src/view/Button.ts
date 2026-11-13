@@ -17,6 +17,7 @@ import { measureText, pixelText, type TextSize } from '../ui/text';
 import { TEX } from '../vfx/core';
 import { rootDepth } from './CardSprite';
 import { ButtonSkinV3, ui3Sfx } from './v3/hudSkin';
+import { MOBILE } from './mobile';
 import { REDUCED_MOTION } from './v3/motion';
 import { V3_A6_B } from './v3flags';
 import {
@@ -137,7 +138,20 @@ export class Button extends Phaser.GameObjects.Container {
 
   /** Pointer input on the face + teardown (both looks). */
   private wireInput(): void {
-    this.bg.setInteractive({ useHandCursor: true });
+    if (MOBILE) {
+      // phone: the touch target grows past the drawn face (the look is unchanged) to a finger-sized
+      // area — up to 26×26 game px, at most 5 px wider and 6 px taller per side (so neighbours a few px
+      // apart do not swallow each other's taps)
+      const fw = this.bg.width;
+      const fh = this.bg.height;
+      const px = Math.min(5, Math.max(0, Math.ceil((26 - fw) / 2)));
+      const py = Math.min(6, Math.max(0, Math.ceil((26 - fh) / 2)));
+      this.bg.setInteractive({
+        hitArea: new Phaser.Geom.Rectangle(-px, -py, fw + px * 2, fh + py * 2),
+        hitAreaCallback: Phaser.Geom.Rectangle.Contains,
+        useHandCursor: true,
+      });
+    } else this.bg.setInteractive({ useHandCursor: true });
     this.bg.on(Phaser.Input.Events.POINTER_OVER, () => this.setHover(true));
     this.bg.on(Phaser.Input.Events.POINTER_OUT, () => {
       this.setHover(false);

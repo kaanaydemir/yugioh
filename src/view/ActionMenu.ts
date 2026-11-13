@@ -21,6 +21,10 @@ import { measureText, pixelText, textMetrics, type TextSize } from '../ui/text';
 import { TEX, tween } from '../vfx/core';
 import { ARENA_V2, DEPTH, GAME_H, GAME_W, UI } from './layout';
 import { GLOW_PAD, ICON, UI_RAMP, type UiStyle, glowTex, panelTex, pushUiKeys } from './ui-textures';
+import { TOUCH_UI_SCALE } from './mobile';
+
+/** Screen scale of the whole menu: 1 on desktop, 2 in the phone app (finger-sized rows). */
+const S = TOUCH_UI_SCALE;
 
 export interface MenuOption {
   id: string;
@@ -106,10 +110,13 @@ export class ActionMenu {
     this.bodyTop = PAD_TOP + (title ? TITLE_H : 0);
     this.h = this.bodyTop + list.length * ROW_H + PAD_BOTTOM;
     // place: centered on x, above the anchor if it fits, else below
-    const above = y - this.h - 10 >= 22;
-    let left = Math.round(x - this.w / 2);
-    left = Math.max(4, Math.min(GAME_W - 4 - this.w, left));
-    const top = above ? Math.round(y - this.h - 9) : Math.round(Math.min(GAME_H - 4 - this.h, y + 9));
+    const sw = this.w * S;
+    const sh = this.h * S;
+    const above = y - sh - 10 >= 22;
+    let left = Math.round(x - sw / 2);
+    left = Math.max(4, Math.min(GAME_W - 4 - sw, left));
+    let top = above ? Math.round(y - sh - 9) : Math.round(Math.min(GAME_H - 4 - sh, y + 9));
+    top = Math.max(4, top);
     this.left = left;
     this.top = top;
 
@@ -123,7 +130,7 @@ export class ActionMenu {
     this.blocker.on(Phaser.Input.Events.POINTER_DOWN, () => this.cancel());
 
     // root pivots on the edge facing the anchor, so the menu unfolds out of it
-    const pivotY = above ? top + this.h : top;
+    const pivotY = above ? top + sh : top;
     const root = sc.add.container(left, pivotY).setDepth(DEPTH.MENU).setScrollFactor(0);
     this.root = root;
     const oy = above ? -this.h : 0;
@@ -137,7 +144,7 @@ export class ActionMenu {
     root.add([glow, bg]);
     // pointer notch toward the anchor
     const notch = sc.add.graphics();
-    const nx = Math.max(8, Math.min(this.w - 9, Math.round(x - left)));
+    const nx = Math.max(8, Math.min(this.w - 9, Math.round((x - left) / S)));
     if (above) {
       const ny = 0;
       notch.fillStyle(PAL.ink).fillRect(nx - 4, ny - 1, 9, 1).fillRect(nx - 3, ny, 7, 1).fillRect(nx - 2, ny + 1, 5, 1).fillRect(nx - 1, ny + 2, 3, 1).fillRect(nx, ny + 3, 1, 1);
@@ -183,18 +190,18 @@ export class ActionMenu {
     // hit area over the rows (scene-level so the unfold scale does not matter)
     // (covers the whole panel so clicks on the title / padding do not fall through and cancel)
     this.hit = sc.add
-      .zone(left, top, this.w, this.h)
+      .zone(left, top, sw, sh)
       .setOrigin(0)
       .setDepth(DEPTH.MENU + 1)
       .setScrollFactor(0)
       .setInteractive({ useHandCursor: true });
     this.hit.on(Phaser.Input.Events.POINTER_MOVE, (p: Phaser.Input.Pointer) => {
-      const i = Math.floor((p.y - (top + this.bodyTop)) / ROW_H);
+      const i = Math.floor(((p.y - top) / S - this.bodyTop) / ROW_H);
       if (i >= 0 && i < this.rows.length) this.setHover(i, true);
     });
     this.hit.on(Phaser.Input.Events.POINTER_DOWN, (p: Phaser.Input.Pointer) => {
       if (p.rightButtonDown()) return this.cancel();
-      const i = Math.floor((p.y - (top + this.bodyTop)) / ROW_H);
+      const i = Math.floor(((p.y - top) / S - this.bodyTop) / ROW_H);
       if (i >= 0 && i < this.rows.length) this.pick(i);
     });
 
@@ -202,8 +209,8 @@ export class ActionMenu {
 
     // unfold; the rows slide in to their resting x (the initially hovered row sits 2px in)
     sfx.play('uiClick', { volume: 0.5, pitch: 1.2 });
-    root.setScale(0.92, 0.2).setAlpha(0);
-    sc.tweens.add({ targets: root, scaleX: 1, scaleY: 1, alpha: 1, duration: 170, ease: 'Back.Out', easeParams: [1.6] });
+    root.setScale(0.92 * S, 0.2 * S).setAlpha(0);
+    sc.tweens.add({ targets: root, scaleX: S, scaleY: S, alpha: 1, duration: 170, ease: 'Back.Out', easeParams: [1.6] });
     const firstEnabled = Math.max(0, this.rows.findIndex((r) => r.enabled && r.opt.id !== 'cancel'));
     this.rows.forEach((r, i) => {
       const x0 = r.label.getData('x0') as number;
@@ -226,7 +233,7 @@ export class ActionMenu {
     if (!this.root) return null;
     const i = this.rows.findIndex((r) => r.opt.id === id);
     if (i < 0) return null;
-    return { x: Math.round(this.left + this.w / 2), y: Math.round(this.top + this.bodyTop + i * ROW_H + ROW_H / 2) };
+    return { x: Math.round(this.left + (this.w * S) / 2), y: Math.round(this.top + (this.bodyTop + i * ROW_H + ROW_H / 2) * S) };
   }
 
   /** Labels of the open menu's rows (QA). */
@@ -372,9 +379,9 @@ export class ActionMenu {
   private sparkRow(r: Row, color: number): void {
     if (!this.root) return;
     const m = this.root.getWorldTransformMatrix();
-    const y = m.ty + r.y + ROW_H / 2;
+    const y = m.ty + (r.y + ROW_H / 2) * S;
     for (let k = 0; k < 10; k++) {
-      const x = m.tx + 6 + ((k * 23) % (this.w - 12));
+      const x = m.tx + (6 + ((k * 23) % (this.w - 12))) * S;
       const sp = this.scene.add
         .image(Math.round(x), Math.round(y + (k % 2 ? -5 : 5)), k % 4 === 0 ? TEX.plus : TEX.px1)
         .setTint(k % 3 ? color : PAL.white)
@@ -399,8 +406,8 @@ export class ActionMenu {
     if (!text || !this.root) return;
     if (this.tip && this.tipRow === i) {
       if (punch) {
-        this.tip.setScale(1.08);
-        this.scene.tweens.add({ targets: this.tip, scale: 1, duration: 140, ease: 'Quad.Out' });
+        this.tip.setScale(1.08 * S);
+        this.scene.tweens.add({ targets: this.tip, scale: S, duration: 140, ease: 'Quad.Out' });
       }
       return;
     }
@@ -410,12 +417,12 @@ export class ActionMenu {
     const m = measureText(text, 'sm', maxW);
     const w = Math.ceil(m.w) + 12;
     const h = Math.ceil(m.h) + 7;
-    let x = this.left + this.w + 5;
-    if (x + w > GAME_W - 4) x = this.left - 5 - w;
+    let x = this.left + this.w * S + 5;
+    if (x + w * S > GAME_W - 4) x = this.left - 5 - w * S;
     x = Math.max(4, x);
-    const rowY = this.top + this.bodyTop + i * ROW_H;
-    const y = Math.max(4, Math.min(GAME_H - 4 - h, Math.round(rowY + ROW_H / 2 - h / 2)));
-    const c = sc.add.container(x, y).setDepth(DEPTH.MENU + 3).setScrollFactor(0);
+    const rowY = this.top + (this.bodyTop + i * ROW_H + ROW_H / 2) * S;
+    const y = Math.max(4, Math.min(GAME_H - 4 - h * S, Math.round(rowY - (h * S) / 2)));
+    const c = sc.add.container(x, y).setDepth(DEPTH.MENU + 3).setScrollFactor(0).setScale(S);
     const bg = sc.add.image(0, 0, panelTex(sc, 'fire', w, h, { alpha: 240, chamfer: 2, scan: false })).setOrigin(0);
     const t = pixelText(sc, 6, 3, text, { size: 'sm', color: PAL.white, maxWidth: maxW, lineSpacing: -1 });
     c.add([bg, t]);
@@ -453,7 +460,7 @@ export class ActionMenu {
     this.releaseKeys = null;
     if (root) {
       if (animate)
-        void tween(this.scene, { targets: root, scaleY: 0.1, scaleX: 0.95, alpha: 0, duration: 120, ease: 'Quad.In' }).then(() => root.destroy());
+        void tween(this.scene, { targets: root, scaleY: 0.1 * S, scaleX: 0.95 * S, alpha: 0, duration: 120, ease: 'Quad.In' }).then(() => root.destroy());
       else root.destroy();
     }
     resolve?.(id);

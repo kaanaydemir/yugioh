@@ -5,6 +5,8 @@ import { DevScene } from './scenes/DevScene';
 import { sceneList } from './scenes/registry';
 import { onDuelStart } from './duel/seeds';
 import { mulberry32 } from './art/pixel';
+import { MOBILE } from './view/mobile';
+import { installSwipeWheel } from './view/swipeWheel';
 
 const params = new URLSearchParams(location.search);
 const dev = params.get('dev');
@@ -51,6 +53,8 @@ function fitZoom(): number {
   return z >= 1 ? Math.floor(z) : z;
 }
 window.addEventListener('resize', () => game.scale.setZoom(fitZoom()));
+// Phone: swipes scroll the wheel-driven panels (gallery, deck picker, graveyard), with momentum.
+if (MOBILE) installSwipeWheel(game, ['Title', 'DeckPick', 'Duel']);
 
 // ---------------------------------------------------------------- test hooks
 // Used by tools/shot.mjs and tools/film.mjs to capture deterministic frames.
