@@ -12,7 +12,7 @@
     ],
     "ios": {
       "bundleIdentifier": "com.kaanaydemir.prismduel",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "supportsTablet": false,
       "requireFullScreen": true,
       "infoPlist": {
