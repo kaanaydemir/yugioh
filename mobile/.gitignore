@@ -40,3 +40,6 @@ yarn-error.*
 /ios
 /android
 .build-tmp/
+
+# App Review contact for EAS Metadata (personal; never commit)
+store.review.json

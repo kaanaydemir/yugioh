@@ -1,7 +1,8 @@
 # Prism Duel — App Store listing (draft)
 
-Paste these into App Store Connect → the app → App Information / the version page.
-Screenshots: `store/screenshots/` (iPhone 6.9", 2868 × 1320, landscape; upload all five in order).
+The source of truth is `mobile/store.config.json` — push it with `npx eas-cli@latest metadata:push`
+(texts, categories, age rating, URLs, review notes and screenshots in one go). This file is a readable copy.
+Screenshots: `store/screenshots/` (iPhone 6.7"/6.9" slot, 2796 × 1290, landscape, five in order).
 
 ## App Information
 - **Name** (30 max): Prism Duel
@@ -28,10 +29,10 @@ Build a deck from 80 original cards — dragons, golems, knights, spells and tra
 • Hand-drawn pixel art with soft real-time lighting; fills the whole screen on modern iPhones
 • Plays fully offline. No ads, no accounts, no data collected
 
-**Keywords** (100 max, comma-separated, no spaces after commas)
-card,duel,deck,builder,tcg,ccg,monster,summon,pixel,strategy,offline,two player,hologram,tactics
+**Keywords** (100 max)
+deck,builder,tcg,ccg,monster,summon,dragon,spell,trap,offline,2 player,tactics,battle,arena,strategy
 
-**Support URL**: (needed — e.g. the GitHub repo page, or a simple page with a contact email)
+**Support URL**: https://kaanaydemir.github.io/prism-duel/support/
 **Marketing URL**: optional
 **Copyright**: 2026 Kaan Aydemir
 **Review notes**: No login needed. Tap the screen on the title, pick VERSUS CPU, choose a deck and play.
@@ -39,7 +40,7 @@ card,duel,deck,builder,tcg,ccg,monster,summon,pixel,strategy,offline,two player,
 ## App Privacy
 - Data collection: **Data Not Collected** (the game keeps decks and settings on the device only;
   it makes no network requests, has no analytics, ads or accounts).
-- **Privacy Policy URL**: required even for "Data Not Collected" — host the text below anywhere public.
+- **Privacy Policy URL**: https://kaanaydemir.github.io/prism-duel/privacy/ (pages in `privacy/` and `support/` at the repo root)
 
 ### Privacy policy text
 > Prism Duel does not collect, store or share any personal information. The game runs entirely on
