@@ -5,6 +5,7 @@ The source of truth is `mobile/store.config.json` — push it with `npx eas-cli@
 Screenshots: `store/screenshots/` (iPhone 6.7"/6.9" slot, 2796 × 1290, landscape, five in order).
 
 ## App Information
+- **Price**: USD 2.99 (one-time; set in App Store Connect → Pricing and Availability — EAS Metadata does not carry prices)
 - **Name** (30 max): Prism Duel
 - **Subtitle** (30 max): Pixel-Art Hologram Card Duels
 - **Primary category**: Games → Card. **Secondary**: Games → Strategy
