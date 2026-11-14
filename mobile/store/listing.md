@@ -14,9 +14,9 @@ App preview video: `store/preview/prism-duel-preview.mp4` (1920 × 886, 30 fps, 
 - **Content rights**: does not contain, show or access third-party content
 - **Age rating** — answer in App Store Connect → App Information → Age Rating → Edit (EAS Metadata cannot send
   Apple's newer questions such as Social Media yet, so it no longer touches the age rating):
-  - Cartoon or Fantasy Violence: **Infrequent/Mild** · Guns or Other Weapons: **Infrequent/Mild**
+  - Cartoon or Fantasy Violence: **Frequent** (monsters fight every turn; fantastical, no blood) · Guns or Other Weapons: **Infrequent** (swords / axes on some cards, no guns)
   - Realistic Violence, Prolonged/Graphic Violence, Sexual Content/Nudity, Profanity, Alcohol/Tobacco/Drugs,
-    Mature/Suggestive Themes, Horror/Fear, Medical Information, Simulated Gambling, Contests: **None**
+    Mature/Suggestive Themes, Horror/Fear, Medical Information, Simulated Gambling (dice / coin cards are not wagering), Contests: **None**
   - Gambling (real money): **No** · Loot Boxes: **No** · Unrestricted Web Access: **No**
   - User-Generated Content: **No** · Messaging and Chat: **No** · Social Media: **No** · Advertising: **No**
   - Parental Controls: **No** · Age Assurance: **No** · Health or Wellness Topics: **No** · Made for Kids: **No**
