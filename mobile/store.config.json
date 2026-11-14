@@ -56,33 +56,6 @@
         }
       }
     },
-    "advisory": {
-      "alcoholTobaccoOrDrugUseOrReferences": "NONE",
-      "contests": "NONE",
-      "gamblingSimulated": "NONE",
-      "gunsOrOtherWeapons": "INFREQUENT_OR_MILD",
-      "horrorOrFearThemes": "NONE",
-      "matureOrSuggestiveThemes": "NONE",
-      "medicalOrTreatmentInformation": "NONE",
-      "profanityOrCrudeHumor": "NONE",
-      "sexualContentGraphicAndNudity": "NONE",
-      "sexualContentOrNudity": "NONE",
-      "violenceCartoonOrFantasy": "INFREQUENT_OR_MILD",
-      "violenceRealistic": "NONE",
-      "violenceRealisticProlongedGraphicOrSadistic": "NONE",
-      "gambling": false,
-      "unrestrictedWebAccess": false,
-      "kidsAgeBand": null,
-      "ageRatingOverride": "NONE",
-      "koreaAgeRatingOverride": "NONE",
-      "lootBox": false,
-      "advertising": false,
-      "userGeneratedContent": false,
-      "messagingAndChat": false,
-      "parentalControls": false,
-      "healthOrWellnessTopics": false,
-      "ageAssurance": false
-    },
     "release": {
       "automaticRelease": false,
       "phasedRelease": false
