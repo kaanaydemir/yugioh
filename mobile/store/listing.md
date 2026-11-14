@@ -2,7 +2,8 @@
 
 The source of truth is `mobile/store.config.json` — push it with `npx eas-cli@latest metadata:push`
 (texts, categories, age rating, URLs, review notes and screenshots in one go). This file is a readable copy.
-Screenshots: `store/screenshots/` (iPhone 6.7"/6.9" slot, 2796 × 1290, landscape, five in order).
+Screenshots: `store/screenshots/` (iPhone 6.7"/6.9" slot, 2796 × 1290, landscape, seven in order, captioned).
+App preview video: `store/preview/prism-duel-preview.mp4` (1920 × 886, 30 fps, H.264 + AAC, poster frame at 2.4 s).
 
 ## App Information
 - **Price**: USD 2.99 (one-time; set in App Store Connect → Pricing and Availability — EAS Metadata does not carry prices)

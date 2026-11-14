@@ -39,12 +39,20 @@
         "supportUrl": "https://kaanaydemir.github.io/prism-duel/support/",
         "screenshots": {
           "APP_IPHONE_67": [
-            "./store/screenshots/01-title.png",
-            "./store/screenshots/02-summon.png",
-            "./store/screenshots/03-duel.png",
-            "./store/screenshots/04-attack.png",
-            "./store/screenshots/05-deck-builder.png"
+            "./store/screenshots/01-legendary-summons.png",
+            "./store/screenshots/02-traps.png",
+            "./store/screenshots/03-final-blow.png",
+            "./store/screenshots/04-arena.png",
+            "./store/screenshots/05-80-cards.png",
+            "./store/screenshots/06-deck-builder.png",
+            "./store/screenshots/07-no-ads.png"
           ]
+        },
+        "previews": {
+          "IPHONE_67": {
+            "path": "./store/preview/prism-duel-preview.mp4",
+            "previewFrameTimeCode": "00:02:12"
+          }
         }
       }
     },
